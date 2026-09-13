@@ -1568,16 +1568,24 @@ __name(songExtent, "songExtent");
 var NUMBER = /^-?(?:\d+\.?\d*|\.\d+)$/;
 function readSteps(param) {
   const value = param.value;
-  if (!value || typeof value !== "object" || value.tag !== "Cycle") return null;
+  if (!value || typeof value !== "object") return null;
+  let stretch = 1;
+  let cycle = value;
+  if (value.tag === "Slow") {
+    if (!Number.isInteger(value.factor)) return null;
+    stretch = value.factor;
+    cycle = value.body;
+  }
+  if (cycle.tag !== "Cycle") return null;
   const raw = param.rawArgs.trim();
   const quote = raw[0];
   if (quote !== '"' && quote !== "`" && quote !== "'" || raw.indexOf(quote, 1) !== raw.length - 1) {
     return null;
   }
-  if (!spansWholeLiteral(param, value)) return null;
+  if (!spansWholeLiteral(param, cycle, value)) return null;
   const steps = [];
   let at = 0;
-  for (const item of value.items) {
+  for (const item of cycle.items) {
     let weight = 1;
     let body = item;
     if (item.tag === "Elongate") {
@@ -1590,20 +1598,21 @@ function readSteps(param) {
     if (!NUMBER.test(text)) return null;
     const span = body.loc?.[0];
     if (!span || !Number.isFinite(span.start) || !Number.isFinite(span.end)) return null;
-    steps.push({ value: Number(text), weight, startCycle: at, valueSpan: span });
-    at += weight;
+    steps.push({ value: Number(text), weight: weight * stretch, startCycle: at, valueSpan: span });
+    at += weight * stretch;
   }
   return steps.length > 0 ? steps : null;
 }
 __name(readSteps, "readSteps");
-function spansWholeLiteral(param, node) {
+function spansWholeLiteral(param, first, last) {
   const call = param.loc?.[0];
-  const span = node.loc?.[0];
-  if (!call || !span) return false;
+  const from = first.loc?.[0];
+  const to = last.loc?.[0];
+  if (!call || !from || !to) return false;
   const raw = param.rawArgs;
   const inner = raw.trim().slice(1, -1);
   const start = call.end - 1 - raw.length + (raw.length - raw.trimStart().length) + 1 + (inner.length - inner.trimStart().length);
-  return span.start === start && span.end === start + inner.trim().length;
+  return from.start === start && to.end === start + inner.trim().length;
 }
 __name(spansWholeLiteral, "spansWholeLiteral");
 var LEAVES_THE_CYCLE = /* @__PURE__ */ new Set([

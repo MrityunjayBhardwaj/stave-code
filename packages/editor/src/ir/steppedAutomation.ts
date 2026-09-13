@@ -12,6 +12,8 @@
  *
  *   `<a b>`        cycle n plays step (n mod 2)          → period 2
  *   `<a@2 b>`      a weighted step spans 2 cycles         → period 3
+ *   `<a b>/2`      every step spans 2 cycles              → period 4   (#1579)
+ *   `<a b>/1.5`    a step changes INSIDE a cycle          → not stepped
  *   `<a [b c]>`    the second step SUBDIVIDES its cycle   → not stepped
  *   `<a ~ b>`      the `~` step SILENCES THE TRACK        → not "no value"
  *
@@ -40,7 +42,11 @@ import type { SourceLocation } from './IREvent'
 export interface SteppedStep {
   /** The value this step holds, as a number. */
   readonly value: number
-  /** How many cycles the step holds for — `@n`, else 1. A positive integer. */
+  /**
+   * How many CYCLES the step holds for — its `@n` (else 1) times the literal's
+   * `/n` (else 1). A positive integer. Not the written `@n`: `<0.2@2 0.8>/2`
+   * holds its first step for 4 cycles (#1579).
+   */
   readonly weight: number
   /** The cycle, within one period, at which this step begins. */
   readonly startCycle: number
@@ -86,7 +92,25 @@ const NUMBER = /^-?(?:\d+\.?\d*|\.\d+)$/
  */
 function readSteps(param: PatternIR & { tag: 'Param' }): SteppedStep[] | null {
   const value = param.value
-  if (!value || typeof value !== 'object' || value.tag !== 'Cycle') return null
+  if (!value || typeof value !== 'object') return null
+  // `<…>/n` (#1579): the parser wraps the alternation in ONE `Slow`, whose span is
+  // the operator alone. A whole-number n stretches every step to `n` times its
+  // weight and nothing more — measured through the engine for /2, /3, a weighted
+  // step and three steps. A fractional n (`/1.5`, `/0.5`) changes the step INSIDE
+  // a cycle, so there is no per-cycle value to draw and the parameter declines.
+  //
+  // ⚠ NO "n ≥ 1" CLAUSE, AND THAT WAS MEASURED. The parser builds a `Slow` only for
+  // a positive factor: `/0`, `/0.0`, `/00`, `/-1`, `/-2.0` all parse to the bare
+  // `Cycle`, which the whole-literal check below refuses (the engine plays nothing
+  // for any of them). A `< 1` clause was written and broken alone; nothing went red.
+  let stretch = 1
+  let cycle: PatternIR = value
+  if (value.tag === 'Slow') {
+    if (!Number.isInteger(value.factor)) return null
+    stretch = value.factor
+    cycle = value.body
+  }
+  if (cycle.tag !== 'Cycle') return null
   const raw = param.rawArgs.trim()
   const quote = raw[0]
   // ONE literal: the next quote after the opening one is the LAST character.
@@ -98,11 +122,13 @@ function readSteps(param: PatternIR & { tag: 'Param' }): SteppedStep[] | null {
   if ((quote !== '"' && quote !== '`' && quote !== "'") || raw.indexOf(quote, 1) !== raw.length - 1) {
     return null
   }
-  if (!spansWholeLiteral(param, value)) return null
+  // From the `<` to the end of the `/n` when there is one — the `Slow`'s own span
+  // starts at the operator, so the alternation supplies the start.
+  if (!spansWholeLiteral(param, cycle, value)) return null
 
   const steps: SteppedStep[] = []
   let at = 0
-  for (const item of value.items) {
+  for (const item of cycle.items) {
     let weight = 1
     let body: PatternIR = item
     if (item.tag === 'Elongate') {
@@ -125,15 +151,16 @@ function readSteps(param: PatternIR & { tag: 'Param' }): SteppedStep[] | null {
     if (!NUMBER.test(text)) return null
     const span = body.loc?.[0]
     if (!span || !Number.isFinite(span.start) || !Number.isFinite(span.end)) return null
-    steps.push({ value: Number(text), weight, startCycle: at, valueSpan: span })
-    at += weight
+    steps.push({ value: Number(text), weight: weight * stretch, startCycle: at, valueSpan: span })
+    at += weight * stretch
   }
   return steps.length > 0 ? steps : null
 }
 
 /**
- * Whether `node` was parsed from the WHOLE text inside the argument's quotes
- * (#1584).
+ * Whether the text from `first`'s start to `last`'s end is the WHOLE text inside
+ * the argument's quotes (#1584). For a plain alternation both are the `Cycle`;
+ * for `<…>/n` the start is the `Cycle`'s and the end is the `Slow`'s (#1579).
  *
  * ⚠ THE PARSER CAN DROP AN OPERATOR AND KEEP THE ALTERNATION. `"<0.2 0.8>/[2]"`
  * and `"<0.2 0.8>/<2 1>"` both parse to the bare `Cycle` of `"<0.2 0.8>"`, with no
@@ -141,21 +168,28 @@ function readSteps(param: PatternIR & { tag: 'Param' }): SteppedStep[] | null {
  * check above cannot see it — both are one literal. The node's own span can: it
  * ends at the `>`, short of the text.
  *
+ * ⚠ AND IT CAN DROP ONE OPERATOR OF TWO. `"<0.2 0.8>/2/2"` parses to ONE `Slow`
+ * of 2 — the engine plays `/4` — and `"<0.2 0.8>/2@3"` to the same `Slow` with
+ * the `@3` gone. Both `Slow`s end at the first `/2`, short of the text, so the
+ * same check refuses them; `[<0.2 0.8>]/2` starts short at the `[` and is refused
+ * too, a missing lane rather than a wrong one.
+ *
  * Positions come from the parser, not from re-reading the mini grammar: the call
  * site runs from the `.` to past the `)`, and `rawArgs` is everything between the
  * parentheses, untrimmed — so the argument begins `rawArgs.length + 1` before the
  * call's end. Whitespace inside the quotes is allowed on either side; the engine
  * plays `" <0.2 0.8> "` as steps.
  */
-function spansWholeLiteral(param: PatternIR & { tag: 'Param' }, node: PatternIR): boolean {
+function spansWholeLiteral(param: PatternIR & { tag: 'Param' }, first: PatternIR, last: PatternIR): boolean {
   const call = param.loc?.[0]
-  const span = node.loc?.[0]
-  if (!call || !span) return false
+  const from = first.loc?.[0]
+  const to = last.loc?.[0]
+  if (!call || !from || !to) return false
   const raw = param.rawArgs
   const inner = raw.trim().slice(1, -1)
   const start =
     call.end - 1 - raw.length + (raw.length - raw.trimStart().length) + 1 + (inner.length - inner.trimStart().length)
-  return span.start === start && span.end === start + inner.trim().length
+  return from.start === start && to.end === start + inner.trim().length
 }
 
 /**
