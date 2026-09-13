@@ -82,8 +82,7 @@ describe('steppedAutomations — abstains rather than drawing what does not play
     expect(read('$: s("bd*2").gain("<0.2 [0.4 0.8]>")')).toEqual([])
   })
 
-  it('`<…>/n` and `<…>*n` change what a step spans — out of scope for now', () => {
-    expect(read('$: s("bd*2").gain("<0.2 0.8>/2")')).toEqual([])
+  it('`<…>*n` puts n steps inside every cycle — no held value to draw (#1579)', () => {
     expect(read('$: s("bd*2").gain("<0.2 0.8>*4")')).toEqual([])
   })
 
@@ -186,6 +185,103 @@ describe('steppedAutomations — the parsed node must be the whole literal (#158
   it('the CONTROL — whitespace inside the quotes or around the argument is still the whole literal', () => {
     expect(read('$: s("bd*2").gain(" <0.2 0.8> ")').map((a) => a.paramKey)).toEqual(['gain'])
     expect(read('$: s("bd*2").gain( "<0.2 0.8>" )').map((a) => a.paramKey)).toEqual(['gain'])
+  })
+})
+
+describe('steppedAutomations — a whole-number `/n` stretches every step (#1579)', () => {
+  // The parse is `Param.value = Slow{factor, body: Cycle}`, the Slow's span being
+  // the operator alone. The engine test holds each of these against what plays.
+  const stepsOf = (src: string) => read(src)[0]?.steps.map((s) => [s.value, s.weight, s.startCycle])
+
+  it('each step holds n times its weight, and the period is the sum', () => {
+    const [a] = read('$: s("bd*2").gain("<0.2 0.8>/2")')
+    expect(a.periodCycles).toBe(4)
+    expect(a.steps.map((s) => [s.value, s.weight, s.startCycle])).toEqual([
+      [0.2, 2, 0],
+      [0.8, 2, 2],
+    ])
+    expect(read('$: s("bd*2").gain("<0.2 0.8>/3")')[0].periodCycles).toBe(6)
+    expect(stepsOf('$: s("bd*2").gain("<0.2 0.8 0.5>/2")')).toEqual([
+      [0.2, 2, 0],
+      [0.8, 2, 2],
+      [0.5, 2, 4],
+    ])
+  })
+
+  it('a weighted step holds its weight times n — the weight is cycles held, not the written `@n`', () => {
+    const [a] = read('$: s("bd*2").gain("<0.2@2 0.8>/2")')
+    expect(a.periodCycles).toBe(6)
+    expect(a.steps.map((s) => [s.value, s.weight, s.startCycle])).toEqual([
+      [0.2, 4, 0],
+      [0.8, 2, 4],
+    ])
+  })
+
+  it('the value spans are still the numbers, never the operator', () => {
+    const src = '$: s("bd*2").gain("<0.2@2 0.8>/2")'
+    const [a] = read(src)
+    expect(a.steps.map((s) => src.slice(s.valueSpan.start, s.valueSpan.end))).toEqual(['0.2', '0.8'])
+  })
+
+  it.each([
+    ['spaced', '<0.2 0.8> / 2'],
+    ['whitespace inside the quotes', ' <0.2 0.8>/2 '],
+    ['a whole number spelled with a decimal', '<0.2 0.8>/2.0'],
+    ['a leading zero', '<0.2 0.8>/02'],
+  ])('reads %s as `/2`', (_label, literal) => {
+    expect(stepsOf(`$: s("bd*2").gain("${literal}")`)).toEqual([
+      [0.2, 2, 0],
+      [0.8, 2, 2],
+    ])
+  })
+
+  it('`/1` is the plain alternation', () => {
+    expect(stepsOf('$: s("bd*2").gain("<0.2 0.8>/1")')).toEqual([
+      [0.2, 1, 0],
+      [0.8, 1, 1],
+    ])
+  })
+
+  it.each([
+    // The step changes inside a cycle (engine test).
+    ['a fractional n', '<0.2 0.8>/1.5'],
+    ['an n below one', '<0.2 0.8>/0.5'],
+    // The parser keeps ONE Slow of 2 and drops the rest; the engine plays /4, and /2 with no @3.
+    ['two divisions', '<0.2 0.8>/2/2'],
+    ['a weight after the division', '<0.2 0.8>/2@3'],
+    // The Cycle's span starts inside the bracket — a missing lane, not a wrong one.
+    ['a bracketed alternation', '[<0.2 0.8>]/2'],
+    // The parser drops these operators entirely, and the engine plays nothing.
+    ['zero', '<0.2 0.8>/0'],
+    ['a negative n', '<0.2 0.8>/-2'],
+    // Stretched, but still not held values.
+    ['a rest step', '<0.2 ~>/2'],
+    ['a subdivided step', '<0.2 [0.4 0.8]>/2'],
+  ])('%s declines', (_label, literal) => {
+    expect(read(`$: s("bd*2").gain("${literal}")`)).toEqual([])
+  })
+
+  it('the one-literal and nothing-above rules still hold over a `/n`', () => {
+    expect(read('$: s("bd*2").gain("<0.2 0.8>/2" + "")')).toEqual([])
+    expect(read('$: s("bd*2").gain("<0.2 0.8>/2").slow(2)')).toEqual([])
+    expect(read('$: s("bd*2").gain("<0.2 0.8>/2").gain(0.5)')).toEqual([])
+  })
+
+  it('the step playing in each cycle — two cycles each', () => {
+    const [a] = read('$: s("bd*2").gain("<0.2 0.8>/2")')
+    expect([0, 1, 2, 3, 4, 5].map((c) => stepIndexAtCycle(a, c))).toEqual([0, 0, 1, 1, 0, 0])
+  })
+
+  it('an edit replaces the step\'s number and keeps the `/n`, and reads back with the same period', () => {
+    const src = '$: s("bd*2").gain("<0.2 0.8> / 2")'
+    const [a] = read(src)
+    const next = apply(src, stepValueEdit(a, 1, 0.5)!)
+    expect(next).toBe('$: s("bd*2").gain("<0.2 0.5> / 2")')
+    const [b] = read(next)
+    expect(b.steps.map((s) => [s.value, s.weight, s.startCycle])).toEqual([
+      [0.2, 2, 0],
+      [0.5, 2, 2],
+    ])
   })
 })
 

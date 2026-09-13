@@ -155,6 +155,63 @@ describe('#1584 — what the reader still reads plays exactly what it predicts',
   }, 60_000)
 })
 
+describe('#1579 — a whole-number `/n` plays what the reader predicts, and the plain reading does not', () => {
+  // Two readings, written down before choosing inputs: the reader's (each step
+  // holds weight·n cycles) and the plain one that ignores the `/n` (the second
+  // column's document). Each input is one where they DISAGREE — so an arm passing
+  // is evidence for the reader, not a coincidence both readings share.
+  it.each([
+    ['/2', 's("bd*4").gain("<0.2 0.8>/2")', 's("bd*4").gain("<0.2 0.8>")'],
+    ['/3', 's("bd*4").gain("<0.2 0.8>/3")', 's("bd*4").gain("<0.2 0.8>")'],
+    ['a weighted step /2', 's("bd*4").gain("<0.2@2 0.8>/2")', 's("bd*4").gain("<0.2@2 0.8>")'],
+    ['three steps /2', 's("bd*4").gain("<0.2 0.8 0.5>/2")', 's("bd*4").gain("<0.2 0.8 0.5>")'],
+    ['spaced', 's("bd*4").gain("<0.2 0.8> / 2")', 's("bd*4").gain("<0.2 0.8>")'],
+    ['a decimal spelling', 's("bd*4").gain("<0.2 0.8>/2.0")', 's("bd*4").gain("<0.2 0.8>")'],
+  ])('%s', async (_label, code, plainCode) => {
+    const [a] = steppedAutomations(parseStrudel(code) as never)
+    const [plain] = steppedAutomations(parseStrudel(plainCode) as never)
+    expect(a, 'the reader found no stepped parameter').toBeDefined()
+    const cycles = a.periodCycles * 2
+    const rows = await valuesPerCycle(code, 'gain', cycles)
+    expect(rows).toEqual(predicted(a, 4, cycles))
+    expect(rows, 'the plain reading predicts this input too — it is not evidence').not.toEqual(predicted(plain, 4, cycles))
+  }, 60_000)
+
+  it.each([
+    ['a fractional n', 's("bd*4").gain("<0.2 0.8>/1.5")'],
+    ['an n below one', 's("bd*4").gain("<0.2 0.8>/0.5")'],
+    ['*n', 's("bd*4").gain("<0.2 0.8>*2")'],
+  ])('%s declines, and really changes the value inside a cycle', async (_label, code) => {
+    expect(steppedAutomations(parseStrudel(code) as never)).toEqual([])
+    const rows = await valuesPerCycle(code, 'gain', 4)
+    expect(rows.some((row) => new Set(row).size > 1), JSON.stringify(rows)).toBe(true)
+  }, 60_000)
+
+  it('two divisions decline — the parser keeps one `/2`, and the engine plays `/4`', async () => {
+    const code = 's("bd*4").gain("<0.2 0.8>/2/2")'
+    expect(steppedAutomations(parseStrudel(code) as never)).toEqual([])
+    const [asParsed] = steppedAutomations(parseStrudel('s("bd*4").gain("<0.2 0.8>/2")') as never)
+    const rows = await valuesPerCycle(code, 'gain', 8)
+    expect(rows).not.toEqual(predicted(asParsed, 4, 8))
+    expect(rows.map((row) => row[0])).toEqual([0.2, 0.2, 0.2, 0.2, 0.8, 0.8, 0.8, 0.8])
+  }, 60_000)
+
+  it('editing step 0 of `<0.2 0.8>/2` moves cycles 0, 1, 4 and 5, and no other', async () => {
+    const code = 's("bd*2").gain("<0.2 0.8>/2")'
+    const [a] = steppedAutomations(parseStrudel(code) as never)
+    const next = apply(code, stepValueEdit(a, 0, 0.6)!)
+    expect(next).toBe('s("bd*2").gain("<0.6 0.8>/2")')
+
+    const before = await valuesPerCycle(code, 'gain', 8)
+    const after = await valuesPerCycle(next, 'gain', 8)
+    expect(before.map((row) => row[0])).toEqual([0.2, 0.2, 0.8, 0.8, 0.2, 0.2, 0.8, 0.8])
+    expect(after.map((row) => row[0])).toEqual([0.6, 0.6, 0.8, 0.8, 0.6, 0.6, 0.8, 0.8])
+
+    const [b] = steppedAutomations(parseStrudel(next) as never)
+    expect(after).toEqual(predicted(b, 2, 8))
+  }, 60_000)
+})
+
 describe('#1463 — an edit changes exactly the cycles its step owns', () => {
   it('editing the weighted step moves every cycle it plays, and no other', async () => {
     const code = 's("bd*2").gain("<0.2@2 0.8>")'

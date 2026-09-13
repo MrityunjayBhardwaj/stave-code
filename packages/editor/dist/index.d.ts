@@ -971,6 +971,8 @@ declare function signalCarryingParamKeys(ir: PatternIR | null | undefined): Read
  *
  *   `<a b>`        cycle n plays step (n mod 2)          → period 2
  *   `<a@2 b>`      a weighted step spans 2 cycles         → period 3
+ *   `<a b>/2`      every step spans 2 cycles              → period 4   (#1579)
+ *   `<a b>/1.5`    a step changes INSIDE a cycle          → not stepped
  *   `<a [b c]>`    the second step SUBDIVIDES its cycle   → not stepped
  *   `<a ~ b>`      the `~` step SILENCES THE TRACK        → not "no value"
  *
@@ -997,7 +999,11 @@ declare function signalCarryingParamKeys(ir: PatternIR | null | undefined): Read
 interface SteppedStep {
     /** The value this step holds, as a number. */
     readonly value: number;
-    /** How many cycles the step holds for — `@n`, else 1. A positive integer. */
+    /**
+     * How many CYCLES the step holds for — its `@n` (else 1) times the literal's
+     * `/n` (else 1). A positive integer. Not the written `@n`: `<0.2@2 0.8>/2`
+     * holds its first step for 4 cycles (#1579).
+     */
     readonly weight: number;
     /** The cycle, within one period, at which this step begins. */
     readonly startCycle: number;

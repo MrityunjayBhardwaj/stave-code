@@ -325,6 +325,70 @@ test('a step retyped on the lane changes what the engine plays, in every bar tha
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
 
+// ── #1579: a slowed alternation ──────────────────────────────────────────────
+
+/**
+ * `/2` stretches every step over two cycles: over the four-cycle song the kick
+ * plays .2 in bars 0 and 1 and .9 in bars 2 and 3. The plain reading (`/2`
+ * ignored) would put .9 in bar 1, so bar 1 separates the two — which is why the
+ * arm opens it after the edit.
+ */
+const SLOW_SONG = '$: s("bd*2").gain("<.2 .9>/2")\n$: s("<hh cp hh cp>")'
+
+test('a step of a slowed alternation retyped on the lane moves both bars that play it, and keeps the /2 (#1579)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+
+  await bootShell(page)
+  await setSongAndEval(page, SLOW_SONG)
+  await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
+  await page.waitForTimeout(500)
+
+  // (0) The engine plays each step for two bars.
+  await expect.poll(() => gainsByBar(page), { timeout: 10_000 })
+    .toEqual({ 0: [0.2, 0.2], 1: [0.2, 0.2], 2: [0.9, 0.9], 3: [0.9, 0.9] })
+
+  const editor = page.locator('[data-full-song="automation-step"]')
+  const box = await page.locator('[data-full-song-canvas]').boundingBox()
+  if (!box) throw new Error('no canvas')
+  const barX = (bar: number) => Math.round(box.width * ((bar + 0.5) / 4))
+
+  await page.mouse.dblclick(box.x + barX(2), box.y + 8)
+  await page.waitForTimeout(800)
+
+  // (1) The last bar plays the second step.
+  expect(await openStepShowing(page, barX(3), '0.9'), 'no step editor showing 0.9 opened over bar 3').toBe(true)
+
+  // (2) Only that step's number is rewritten; the `/2` survives.
+  await page.keyboard.press(`${MOD}+A`)
+  await page.keyboard.type('0.4')
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(600)
+  const after = await readDoc(page)
+  expect(after, `the step did not reach the document: ${after}`).toContain('$: s("bd*2").gain("<.2 0.4>/2")')
+  expect(await editor.count(), 'the editor lingered after its commit').toBe(0)
+
+  // (3) Both bars of the edited step moved; both bars of the other held.
+  await expect.poll(() => gainsByBar(page), { timeout: 10_000 })
+    .toEqual({ 0: [0.2, 0.2], 1: [0.2, 0.2], 2: [0.4, 0.4], 3: [0.4, 0.4] })
+
+  // (4) Bar 1 is still the FIRST step — the lane draws the stretch, not `c mod 2`.
+  expect(await openStepShowing(page, barX(1), '0.2'), 'no step editor showing 0.2 opened over bar 1').toBe(true)
+  await page.keyboard.press('Escape')
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
 // ── #1578: drag a step's level ───────────────────────────────────────────────
 
 /** Rows (in CSS px of the canvas) where column `x` differs by more than the
