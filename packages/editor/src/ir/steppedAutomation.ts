@@ -14,12 +14,19 @@
  *   `<a@2 b>`      a weighted step spans 2 cycles         → period 3
  *   `<a [b c]>`    the second step SUBDIVIDES its cycle   → not stepped
  *   `<a ~ b>`      the `~` step SILENCES THE TRACK        → not "no value"
- *   inside an `arrange` arm, the step is still chosen by the ABSOLUTE cycle
  *
- * ⚠ THE LAST LINE IS WHY A STEP IS ADDRESSED BY ITS INDEX, NOT BY A BAR. Step k
- * plays in every cycle where `cycle mod period` selects it, so an edit to step k
- * changes every bar that plays it — which is what the document says. A lane that
- * pretended to change one bar would be describing a document nobody wrote.
+ * ⚠ A STEP IS ADDRESSED BY ITS INDEX, NOT BY A BAR. Step k plays in every cycle
+ * where `cycle mod period` selects it, so an edit to step k changes every bar that
+ * plays it — which is what the document says. A lane that pretended to change one
+ * bar would be describing a document nobody wrote.
+ *
+ * ⚠ `cycle mod period` HOLDS ONLY WHERE NOTHING ABOVE THE PARAMETER MOVES TIME
+ * (#1584). `.slow(2)`, `.early(1)`, `cat(…)` and an `arrange` section all hand the
+ * parameter a different cycle than the song's — a section sees how many cycles IT
+ * has played. This was once recorded as "an arrange arm follows the absolute
+ * cycle", from `arrange([1, a], [2, b])`: a section two cycles behind per pass,
+ * which a two-step pattern cannot tell apart. `[3, a], [1, b]` can. So the walk
+ * admits a parameter only under nodes measured to leave the cycle alone.
  *
  * Mirrors `signalAutomation.ts`: pure and structural, no eval, no source
  * scanning, the same per-track attribution, and the same direction of error —
@@ -91,6 +98,7 @@ function readSteps(param: PatternIR & { tag: 'Param' }): SteppedStep[] | null {
   if ((quote !== '"' && quote !== '`' && quote !== "'") || raw.indexOf(quote, 1) !== raw.length - 1) {
     return null
   }
+  if (!spansWholeLiteral(param, value)) return null
 
   const steps: SteppedStep[] = []
   let at = 0
@@ -123,6 +131,74 @@ function readSteps(param: PatternIR & { tag: 'Param' }): SteppedStep[] | null {
   return steps.length > 0 ? steps : null
 }
 
+/**
+ * Whether `node` was parsed from the WHOLE text inside the argument's quotes
+ * (#1584).
+ *
+ * ⚠ THE PARSER CAN DROP AN OPERATOR AND KEEP THE ALTERNATION. `"<0.2 0.8>/[2]"`
+ * and `"<0.2 0.8>/<2 1>"` both parse to the bare `Cycle` of `"<0.2 0.8>"`, with no
+ * trace of the division, and the engine still divides (engine test). The quote
+ * check above cannot see it — both are one literal. The node's own span can: it
+ * ends at the `>`, short of the text.
+ *
+ * Positions come from the parser, not from re-reading the mini grammar: the call
+ * site runs from the `.` to past the `)`, and `rawArgs` is everything between the
+ * parentheses, untrimmed — so the argument begins `rawArgs.length + 1` before the
+ * call's end. Whitespace inside the quotes is allowed on either side; the engine
+ * plays `" <0.2 0.8> "` as steps.
+ */
+function spansWholeLiteral(param: PatternIR & { tag: 'Param' }, node: PatternIR): boolean {
+  const call = param.loc?.[0]
+  const span = node.loc?.[0]
+  if (!call || !span) return false
+  const raw = param.rawArgs
+  const inner = raw.trim().slice(1, -1)
+  const start =
+    call.end - 1 - raw.length + (raw.length - raw.trimStart().length) + 1 + (inner.length - inner.trimStart().length)
+  return span.start === start && span.end === start + inner.trim().length
+}
+
+/**
+ * The nodes a stepped parameter may sit under and still play `cycle mod period`
+ * (#1584). Anything else — a time transform, or a node the parser left opaque —
+ * declines the parameter.
+ *
+ * Every entry is an arm in `steppedAutomation.engine.test.ts`, which checks the
+ * reader's prediction against what the engine plays; every time-changing shape it
+ * declines is an arm there too, showing the engine really plays something else.
+ * `Track` is the root the walk starts from, and a control (`Param`) sets a value
+ * without moving an event.
+ *
+ * ⚠ BY TAG, NOT BY METHOD, AND THAT WAS MEASURED. `parseStrudel` builds these tags
+ * from a short, known set of calls: `Stack` from `stack`, `layer`, `jux` and `off`;
+ * `When` from `mask`; `Degrade` from `degrade` and `degradeBy`; `Every` from
+ * `every`; `Choice` from `sometimes` and `sometimesBy`; `Struct`, `Chop` and `Ply`
+ * from the call of the same name. Only `off` moves time, and it builds its shift
+ * as a `Late` inside the stack, where the walk sees it. A per-method list was
+ * written first and break-tested: opening any tag to every method turned nothing
+ * red, because no parsed document can reach a method the list left out. So a NEW
+ * producer of one of these tags has to be measured before it is trusted here — a
+ * call that moved time without putting a node in the tree would pass silently.
+ *
+ * ⚠ A METHOD THAT TAKES A FUNCTION (`every`, `sometimesBy`, `layer`, `jux`) IS SAFE
+ * ONLY BECAUSE THE FUNCTION'S BODY IS IN THE TREE. `jux(x => x.fast(2))` reaches the
+ * parameter a second time through a `Fast`, and that route declines it (see
+ * `collect`). A function the parser cannot model is an opaque `Code`, which declines
+ * too.
+ */
+const LEAVES_THE_CYCLE: ReadonlySet<string> = new Set([
+  'Track',
+  'Param',
+  'Stack',
+  'When',
+  'Struct',
+  'Degrade',
+  'Chop',
+  'Ply',
+  'Every',
+  'Choice',
+])
+
 const SKIP_KEYS: ReadonlySet<string> = new Set(['loc', 'keyLoc', 'callSiteRange'])
 
 /** Every child IR node of `node`, found by reflection — the walk
@@ -152,7 +228,15 @@ function childNodes(node: PatternIR): PatternIR[] {
 }
 
 /**
- * Collect one track's stepped automations.
+ * Walk one track, recording for every `Param` it meets whether EVERY route to it
+ * was clean: no same-key call above it, and nothing above it that moves time.
+ *
+ * ⚠ EVERY ROUTE, NOT THE FIRST. A function-taking method puts one node in the tree
+ * twice over: `jux(x => x.fast(2))` reaches the same `Param` once through the
+ * plain channel and once through a `Fast`. The first route alone is clean, and the
+ * engine plays two different values in a cycle (engine test). So a node is walked
+ * again whenever it is reached in a state it has not been walked in, and one dirty
+ * route declines it.
  *
  * ⚠ `overridden` IS THE LOAD-BEARING ARGUMENT. Strudel's controls SET a value, so
  * the last call in a chain wins: `.gain("<0.2 0.8>").gain(0.5)` plays 0.5 on every
@@ -169,38 +253,30 @@ function childNodes(node: PatternIR): PatternIR[] {
  * input can exercise is a branch no test can defend, so it is not drawn.
  */
 function collect(
-  trackId: string,
   node: PatternIR,
   overridden: ReadonlySet<string>,
-  out: SteppedAutomation[],
-  seen: Set<PatternIR>,
+  timeMoved: boolean,
+  clean: Map<PatternIR & { tag: 'Param' }, boolean>,
+  seen: Map<PatternIR, Set<string>>,
 ): void {
-  if (!node || typeof node !== 'object' || seen.has(node)) return
-  seen.add(node)
+  if (!node || typeof node !== 'object') return
+  const state = `${timeMoved}|${[...overridden].sort().join(',')}`
+  const states = seen.get(node) ?? new Set<string>()
+  if (states.has(state)) return
+  states.add(state)
+  seen.set(node, states)
 
   let passDown = overridden
   if (node.tag === 'Param') {
-    if (!overridden.has(node.key)) {
-      const steps = readSteps(node)
-      if (steps) {
-        const start = node.loc?.[0]?.start
-        out.push({
-          trackId,
-          paramKey: node.key,
-          method: node.userMethod ?? node.key,
-          steps,
-          periodCycles: steps.reduce((sum, s) => sum + s.weight, 0),
-          offset: typeof start === 'number' && Number.isFinite(start) ? start : null,
-        })
-      }
-    }
+    clean.set(node, (clean.get(node) ?? true) && !timeMoved && !overridden.has(node.key))
     passDown = new Set(overridden).add(node.key)
   }
+  const childTimeMoved = timeMoved || !LEAVES_THE_CYCLE.has(node.tag)
 
   for (const child of childNodes(node)) {
     // A nested Track declares its own lane; its parameters are not this one's.
     if (child.tag === 'Track') continue
-    collect(trackId, child, passDown, out, seen)
+    collect(child, passDown, childTimeMoved, clean, seen)
   }
 }
 
@@ -214,9 +290,25 @@ export function steppedAutomations(ir: PatternIR | null | undefined): readonly S
   const out: SteppedAutomation[] = []
   for (const node of roots) {
     if (node?.tag !== 'Track') continue
-    const id = node.trackId
-    if (typeof id !== 'string' || id.length === 0) continue
-    collect(id, node, new Set(), out, new Set())
+    const trackId = node.trackId
+    if (typeof trackId !== 'string' || trackId.length === 0) continue
+    const clean = new Map<PatternIR & { tag: 'Param' }, boolean>()
+    collect(node, new Set(), false, clean, new Map())
+    // In the order the walk first met each parameter.
+    for (const [param, ok] of clean) {
+      if (!ok) continue
+      const steps = readSteps(param)
+      if (!steps) continue
+      const start = param.loc?.[0]?.start
+      out.push({
+        trackId,
+        paramKey: param.key,
+        method: param.userMethod ?? param.key,
+        steps,
+        periodCycles: steps.reduce((sum, s) => sum + s.weight, 0),
+        offset: typeof start === 'number' && Number.isFinite(start) ? start : null,
+      })
+    }
   }
   return out
 }

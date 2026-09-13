@@ -101,6 +101,60 @@ describe('#1463 — an override through structure', () => {
   }, 60_000)
 })
 
+/** The plain reading of `<0.2 0.8>`: cycle c plays step `c mod 2`. */
+const PLAIN = (c: number) => [0.2, 0.8][c % 2]
+
+describe('#1584 — what the reader declines really does play something else', () => {
+  // `undefined` is an event from another section or track that carries no gain —
+  // not a disagreement. A disagreement is a value the plain reading would not give.
+  it.each([
+    ['slow', 's("bd*4").gain("<0.2 0.8>").slow(2)'],
+    ['fast', 's("bd*4").gain("<0.2 0.8>").fast(2)'],
+    ['early', 's("bd*4").gain("<0.2 0.8>").early(1)'],
+    ['off', 's("bd*4").gain("<0.2 0.8>").off(0.25, x => x.speed(2))'],
+    ['cat', 'cat(s("bd*4").gain("<0.2 0.8>"), s("hh*4"))'],
+    ['an arrange section', 'arrange([3, s("bd*4").gain("<0.2 0.8>")], [1, s("hh*4")])'],
+    ['every, with a time transform', 's("bd*4").gain("<0.2 0.8>").every(2, x => x.fast(2))'],
+    ['sometimesBy, with a time transform', 's("bd*4").gain("<0.2 0.8>").sometimesBy(0.5, x => x.late(0.25))'],
+    ['jux, with a time transform', 's("bd*4").gain("<0.2 0.8>").jux(x => x.fast(2))'],
+    ['an operator the parser drops: /[2]', 's("bd*4").gain("<0.2 0.8>/[2]")'],
+    ['an operator the parser drops: /<2 1>', 's("bd*4").gain("<0.2 0.8>/<2 1>")'],
+    ['an operator the parser drops: *<8 16>', 's("bd*4").gain("<0.2 0.8>*<8 16>")'],
+  ])('%s', async (_label, code) => {
+    expect(steppedAutomations(parseStrudel(code) as never)).toEqual([])
+    const rows = await valuesPerCycle(code, 'gain', 8)
+    const disagrees = rows.some((row, c) => row.some((v) => v !== undefined && v !== PLAIN(c)))
+    expect(disagrees, `the engine played the plain reading after all: ${JSON.stringify(rows)}`).toBe(true)
+  }, 60_000)
+})
+
+describe('#1584 — what the reader still reads plays exactly what it predicts', () => {
+  it.each([
+    ['an effect chain', 's("bd*4").gain("<0.2 0.8>").room(0.5).lpf(800)'],
+    ['stack', 'stack(s("bd*4").gain("<0.2 0.8>"), s("hh*4").gain(1))'],
+    ['layer', 's("bd*4").gain("<0.2 0.8>").layer(x => x.speed(2))'],
+    ['mask', 's("bd*4").gain("<0.2 0.8>").mask("<1 [1 0]>")'],
+    ['degradeBy', 's("bd*4").gain("<0.2 0.8>").degradeBy(0.3)'],
+    ['struct', 's("bd*4").gain("<0.2 0.8>").struct("x ~ x x")'],
+    ['chop', 's("bd*4").gain("<0.2 0.8>").chop(2)'],
+    ['ply', 's("bd*4").gain("<0.2 0.8>").ply(2)'],
+    ['every, with a transform that leaves time alone', 's("bd*4").gain("<0.2 0.8>").every(2, x => x.speed(2))'],
+    ['sometimesBy, with a transform that leaves time alone', 's("bd*4").gain("<0.2 0.8>").sometimesBy(0.5, x => x.speed(2))'],
+    ['a time transform on the receiver', 's("bd*4").fast(2).gain("<0.2 0.8>")'],
+    ['whitespace inside the quotes', 's("bd*4").gain(" <0.2 0.8> ")'],
+  ])('%s', async (_label, code) => {
+    const found = steppedAutomations(parseStrudel(code) as never)
+    expect(found.map((a) => a.paramKey), 'the reader declined a shape that plays its steps').toEqual(['gain'])
+    const [a] = found
+    const rows = await valuesPerCycle(code, 'gain', 8)
+    // `stack`'s second member carries its own gain of 1 — a different parameter,
+    // so it is left out of this row; every other event must carry the step.
+    const ours = rows.map((row) => row.filter((v) => v !== 1))
+    expect(ours.flat().length).toBeGreaterThan(0)
+    expect(ours).toEqual(ours.map((row, c) => row.map(() => a.steps[stepIndexAtCycle(a, c)].value)))
+  }, 60_000)
+})
+
 describe('#1463 — an edit changes exactly the cycles its step owns', () => {
   it('editing the weighted step moves every cycle it plays, and no other', async () => {
     const code = 's("bd*2").gain("<0.2@2 0.8>")'
