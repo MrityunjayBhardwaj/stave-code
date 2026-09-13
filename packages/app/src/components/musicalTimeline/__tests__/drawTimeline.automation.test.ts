@@ -17,6 +17,7 @@ import { drawTimeline, type DrawTheme, type DrawTransform } from '../drawTimelin
 import { DEFAULT_METER } from '../../../lib/meter'
 import type { TimelineScene, SceneLane } from '../timelineScene'
 import type { SignalAutomation } from '@stave/editor'
+import { signalTimeAt } from '../../../../../editor/src/ir/signalAutomation'
 import { computeLaneLayout } from '../laneLayout'
 
 const THEME: DrawTheme = {
@@ -26,7 +27,8 @@ const THEME: DrawTheme = {
 }
 const TRANSFORM: DrawTransform = { scrollLeft: 0, contentWidth: 400, viewportWidth: 400, meter: DEFAULT_METER }
 
-interface Path { points: { x: number; y: number }[]; style: string; dash: readonly number[] }
+/** `moves`: the index in `points` of every `moveTo` — where the pen came down. */
+interface Path { points: { x: number; y: number }[]; moves: number[]; style: string; dash: readonly number[] }
 interface Text { text: string; x: number; y: number; style: string }
 interface Fill { x: number; y: number; w: number; h: number; style: string; alpha: number }
 
@@ -35,6 +37,7 @@ function mockCtx() {
   const texts: Text[] = []
   const fills: Fill[] = []
   let cur: { x: number; y: number }[] = []
+  let moves: number[] = []
   const ctx = {
     fillStyle: '', strokeStyle: '', globalAlpha: 1, lineWidth: 1, lineJoin: '',
     font: '', textBaseline: '', _dash: [] as readonly number[],
@@ -45,10 +48,10 @@ function mockCtx() {
     },
     measureText(t: string) { return { width: t.length * 6 } as TextMetrics },
     fillText(text: string, x: number, y: number) { texts.push({ text, x, y, style: ctx.fillStyle }) },
-    beginPath() { cur = [] },
-    moveTo(x: number, y: number) { cur.push({ x, y }) },
+    beginPath() { cur = []; moves = [] },
+    moveTo(x: number, y: number) { moves.push(cur.length); cur.push({ x, y }) },
     lineTo(x: number, y: number) { cur.push({ x, y }) },
-    stroke() { paths.push({ points: cur, style: ctx.strokeStyle, dash: ctx._dash }) },
+    stroke() { paths.push({ points: cur, moves, style: ctx.strokeStyle, dash: ctx._dash }) },
   }
   return { ctx: ctx as unknown as CanvasRenderingContext2D, paths, texts, fills }
 }
@@ -59,13 +62,14 @@ const auto = (over: Partial<SignalAutomation> = {}): SignalAutomation => ({
   trackId: 'd1', paramKey: 'cutoff', kind: 'sine', periodCycles: 1,
   // Spans are Stage 2's WRITE coordinates; nothing on the drawing path reads
   // them, which is why the drawing fixtures leave them empty.
-  lo: 0, hi: 1, ranged: true, offset: 0, spans: NO_SPANS, ...over,
+  lo: 0, hi: 1, ranged: true, offset: 0, spans: NO_SPANS, placements: [[]], ...over,
 })
 
 const lane = (automations: readonly SignalAutomation[]): SceneLane => ({
   laneKey: 'd1', displayName: 'd1', color: '#7af', density: [1, 1, 1, 1],
   notes: [], pitchMin: null, pitchMax: null, voices: [], clips: [],
-  sourceOffset: null, arrangeOffset: null, labelOffset: null, automations, stepped: [],
+  sourceOffset: null, arrangeOffset: null, labelOffset: null,
+  automations: automations.map((automation) => ({ automation, timeAt: signalTimeAt })), stepped: [],
 })
 
 const sceneWith = (automations: readonly SignalAutomation[]): TimelineScene => ({
@@ -94,6 +98,55 @@ function runWide(automations: readonly SignalAutomation[]) {
   drawTimeline(m.ctx, scene, TRANSFORM, THEME, layout)
   return m
 }
+
+describe('automation curve — inside an arrangement section (#1590)', () => {
+  // `arrange([1, x], [3, curve])` over the 4-bar view: bar 0 is silent and bars 1-3
+  // are the section's cycles 0-2. 400px wide, so 100px a bar.
+  const IN_SECTION = { kind: 'saw' as const, periodCycles: 3, placements: [[{ startCycle: 1, cycles: 3, total: 4 }]] }
+  const PLAIN = { kind: 'saw' as const, periodCycles: 3 }
+  const yNear = (points: { x: number; y: number }[], x: number) =>
+    points.reduce((best, p) => (Math.abs(p.x - x) < Math.abs(best.x - x) ? p : best)).y
+
+  it('draws nothing over the bar its section is silent in, and reaches the end of the view', () => {
+    const { paths } = run([auto(IN_SECTION)])
+    expect(paths).toHaveLength(1)
+    const xs = paths[0].points.map((p) => p.x)
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(100)
+    expect(Math.max(...xs)).toBeGreaterThan(390)
+  })
+
+  it('is drawn at the section\'s own time: bar 2 shows what the plain curve shows at bar 1', () => {
+    const section = run([auto(IN_SECTION)]).paths[0].points
+    const plain = run([auto(PLAIN)]).paths[0].points
+    // Both are handed time 1 there (and time 0 at the section's first bar, the song's 0).
+    expect(Math.abs(yNear(section, 200) - yNear(plain, 100))).toBeLessThan(1)
+    expect(Math.abs(yNear(section, 101) - yNear(plain, 1))).toBeLessThan(1)
+    // …and the song's own clock would give something else there — the input discriminates.
+    expect(Math.abs(yNear(section, 200) - yNear(plain, 200))).toBeGreaterThan(5)
+  })
+
+  it('lifts the pen over a silent bar in the middle — no drawn segment crosses it', () => {
+    // `arrange([1, curve], [1, x], [2, curve])`: bar 1 (x 100-200) is silent between
+    // two appearances of the same curve.
+    const twice = [[{ startCycle: 0, cycles: 1, total: 4 }], [{ startCycle: 2, cycles: 2, total: 4 }]]
+    const [path] = run([auto({ kind: 'saw', periodCycles: 3, placements: twice })]).paths
+    const { points, moves } = path
+    expect(points.some((p) => p.x < 100) && points.some((p) => p.x >= 200)).toBe(true)
+    expect(points.filter((p) => p.x > 100.5 && p.x < 199.5)).toEqual([])
+    // A segment joins points i-1 and i unless the pen came down at i.
+    const crossing = points.findIndex((p, i) => i > 0 && !moves.includes(i) && points[i - 1].x <= 100.5 && p.x >= 199.5)
+    expect(crossing, 'a segment was drawn across the silent bar').toBe(-1)
+  })
+
+  it('a band too fast to draw is filled only over the bars its section plays', () => {
+    // `cat(x, curve)`: plays the odd bars of 256.
+    const m = runWide([auto({ kind: 'sine', periodCycles: 0.01, placements: [[{ startCycle: 1, cycles: 1, total: 2 }]] })])
+    const band = m.fills.filter((f) => f.alpha === 0.18)
+    expect(band.length).toBeGreaterThan(0)
+    const barW = 400 / 256
+    expect(band.every((f) => Math.floor((f.x + f.w / 2) / barW) % 2 === 1)).toBe(true)
+  })
+})
 
 describe('automation curve — presence', () => {
   it('draws nothing when the lane has no automation', () => {

@@ -21,6 +21,7 @@ import { AUTOMATION_PAD_Y } from '../automationCaption'
 import { colorForAutomation } from '../colors'
 import { unitOnAxis, type StepAxis } from '../steppedLane'
 import { stepIndexAtCycle } from '../../../../../editor/src/ir/steppedAutomation'
+import { signalTimeAt } from '../../../../../editor/src/ir/signalAutomation'
 
 const THEME: DrawTheme = {
   background: '#bg', rowAlt: '#rowAlt', section: '#sect', sectionAlt: '#sectAlt',
@@ -66,13 +67,14 @@ const entry = (a: SteppedAutomation, axis: StepAxis = LINEAR): SceneStepped => (
 
 const NO_SPANS = { shape: null, rate: null, range: null, chainEnd: null } as const
 const signal = (paramKey: string): SignalAutomation => ({
-  trackId: 'd1', paramKey, kind: 'sine', periodCycles: 1, lo: 0, hi: 1, ranged: true, offset: 0, spans: NO_SPANS,
+  trackId: 'd1', paramKey, kind: 'sine', periodCycles: 1, lo: 0, hi: 1, ranged: true, offset: 0, spans: NO_SPANS, placements: [[]],
 })
 
 const lane = (stepped: readonly SceneStepped[], automations: readonly SignalAutomation[] = []): SceneLane => ({
   laneKey: 'd1', displayName: 'd1', color: '#7af', density: [1, 1, 1, 1],
   notes: [], pitchMin: null, pitchMax: null, voices: [], clips: [],
-  sourceOffset: null, arrangeOffset: null, labelOffset: null, automations, stepped,
+  sourceOffset: null, arrangeOffset: null, labelOffset: null,
+  automations: automations.map((automation) => ({ automation, timeAt: signalTimeAt })), stepped,
 })
 
 function run(stepped: readonly SceneStepped[], automations: readonly SignalAutomation[] = [], rowH = 40) {

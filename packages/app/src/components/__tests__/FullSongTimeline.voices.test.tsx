@@ -31,13 +31,14 @@ vi.mock('@stave/editor', async () => {
   // or the component gets `undefined` and every case here dies in a useMemo —
   // the exact trap the `wholeWalkWindow` note below already describes. Real
   // function, from source: it is a pure IR walk, so there is nothing to stub.
-  const { signalAutomations } = await import('../../../../editor/src/ir/signalAutomation')
+  const { signalAutomations, signalTimeAt } = await import('../../../../editor/src/ir/signalAutomation')
   // #1463 Stage 2 — the component also reads stepped automation and its axis.
   // #1585 — and each lane entry carries `stepIndexAtCycle`.
   const { steppedAutomations, stepIndexAtCycle } = await import('../../../../editor/src/ir/steppedAutomation')
   const { knobRangeFor } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
   return {
     signalAutomations,
+    signalTimeAt,
     steppedAutomations,
     stepIndexAtCycle,
     knobRangeFor,

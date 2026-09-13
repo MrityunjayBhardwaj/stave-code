@@ -141,6 +141,115 @@ test('a continuously automated parameter draws a curve on its lane', async ({ pa
 })
 
 
+// ── #1590: a curve inside an arrangement section ──────────────────────────────
+
+/** `a` plays in the last three bars of each four-bar pass; the first is the hh
+ *  section, where `a` — and its curve — is silent. */
+const SECTION_CURVE_SONG = 'const a = s("bd*8").cutoff(saw.slow(3).range(200, 2000))\n$: arrange([1, s("hh*8")], [3, a])'
+/** The control: the same arrangement, the same marks, a constant cutoff. */
+const SECTION_CONSTANT_SONG = 'const a = s("bd*8").cutoff(800)\n$: arrange([1, s("hh*8")], [3, a])'
+
+/** Replace the document and evaluate it — `setValue`, so the editor's bracket
+ *  helpers cannot reshape a two-line song. */
+async function setSongAndEval(page: Page, code: string): Promise<void> {
+  await page.locator('.monaco-editor').first().click()
+  await page.evaluate((c) => {
+    const eds = ((window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { setValue: (s: string) => void; getLanguageId?: () => string } | null }> } } }).monaco?.editor?.getEditors?.()) ?? []
+    const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+    t?.getModel()?.setValue(c)
+  }, code)
+  await page.waitForTimeout(400)
+  await page.keyboard.press(`${MOD}+Enter`)
+  await page.waitForTimeout(1800)
+}
+
+/** How many bars the view spans, read off the engine's own marks — never assumed:
+ *  the view spans the song's true period. 0 until the song has sounded. */
+async function barsOnView(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const probe = (window as unknown as { __staveTimelineMarks?: { byLane: Record<string, { onsets: number[] }> } }).__staveTimelineMarks
+    const onsets = probe ? Object.values(probe.byLane).flatMap((l) => l.onsets) : []
+    return onsets.length ? Math.floor(Math.max(...onsets)) + 1 : 0
+  })
+}
+
+/** Curve pixels (the `readCurve` detector) in each canvas column. */
+async function curveColumns(page: Page): Promise<number[]> {
+  return page.locator('[data-full-song-canvas]').evaluate((el) => {
+    const c = el as HTMLCanvasElement
+    const { width: W, height: H } = c
+    const img = c.getContext('2d')!.getImageData(0, 0, W, H).data
+    const cols = new Array<number>(W).fill(0)
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4
+        const r = img[i], g = img[i + 1], b = img[i + 2]
+        if (b > 120 && b - r > 45 && b - g > 20) cols[x]++
+      }
+    }
+    return cols
+  })
+}
+
+/** Subject curve pixels beyond the control's, per bar — a few columns in from each
+ *  bar line, so antialiasing across a line cannot count for its neighbour. */
+function curveByBar(subject: number[], control: number[], bars: number): number[] {
+  const W = subject.length
+  return Array.from({ length: bars }, (_, bar) => {
+    let n = 0
+    for (let x = Math.floor((W * bar) / bars) + 4; x < Math.floor((W * (bar + 1)) / bars) - 4; x++) {
+      n += Math.max(0, subject[x] - control[x])
+    }
+    return n
+  })
+}
+
+test('a curve inside an arrangement section is drawn only over the bars its section plays (#1590)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+  await bootShell(page)
+  const canvas = page.locator('[data-full-song-canvas]')
+
+  // ── CONTROL FIRST, over the same arrangement.
+  await setSongAndEval(page, SECTION_CONSTANT_SONG)
+  await canvas.waitFor({ timeout: 10_000 })
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBeGreaterThan(0)
+  await page.waitForTimeout(500)
+  const controlBars = await barsOnView(page)
+  const control = await curveColumns(page)
+
+  await setSongAndEval(page, SECTION_CURVE_SONG)
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(controlBars)
+  await page.waitForTimeout(800)
+  const subject = await curveColumns(page)
+
+  // (0) THE INSTRUMENT: the span is whole passes of the four-bar arrangement, the
+  //     control spans the same bars, and it draws no curve of its own.
+  expect(controlBars % 4, `the view spans ${controlBars} bars`).toBe(0)
+  expect(control.length).toBe(subject.length)
+  expect(control.reduce((s, n) => s + n, 0), 'the detector fires on a constant cutoff').toBeLessThan(20)
+
+  // (1) THE CURVE IS DRAWN IN EVERY BAR `a` PLAYS, and in NONE where the hh section
+  //     plays. Before #1590 it was drawn straight across the hh bars.
+  const perBar = curveByBar(subject, control, controlBars)
+  const silent = perBar.filter((_, bar) => bar % 4 === 0)
+  const playing = perBar.filter((_, bar) => bar % 4 !== 0)
+  expect(silent.every((n) => n < 5), `a curve was drawn over the hh section: ${perBar}`).toBe(true)
+  expect(playing.every((n) => n > 20), `a bar that plays \`a\` has no curve: ${perBar}`).toBe(true)
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
 /** Two automated parameters on ONE lane — the #1485 case. Both periods are slow
  *  enough to resolve as curves at the default zoom rather than as bands. */
 const TWO_PARAM_SONG = 's("bd*2").cutoff(saw.slow(4).range(200, 2000)).pan(sine.slow(3))'

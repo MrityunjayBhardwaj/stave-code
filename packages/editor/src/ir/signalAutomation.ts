@@ -25,6 +25,7 @@
  */
 import type { PatternIR } from './PatternIR'
 import type { SourceLocation } from './IREvent'
+import { placementsTimeAt, playableParameters, type SectionWindow } from './parameterRoutes'
 
 type SignalNode = PatternIR & { tag: 'Signal' }
 export type SignalKind = SignalNode['kind']
@@ -92,6 +93,12 @@ export interface SignalAutomation {
   readonly offset: number | null
   /** WHERE each leg is written (#1464 Stage 2). Read the type's own doc. */
   readonly spans: SignalSpans
+  /**
+   * Where the curve plays, one entry per route to it: the arrangement sections that
+   * route passes through, OUTERMOST FIRST (#1590) — the same shape the stepped
+   * reader carries. `[[]]` for a curve under no section.
+   */
+  readonly placements: readonly (readonly SectionWindow[])[]
 }
 
 /**
@@ -110,8 +117,10 @@ export interface SignalAutomation {
  * (insert a call at `chainEnd`), and the two must not be confused, because one
  * preserves every other byte and the other lengthens the document.
  *
- * Measured over the sweep corpus (`loadCorpus`, 150 documents, 204 drawable
- * automations): range spelled 184 (90%), rate spelled 130 (64%), NEITHER 16 (8%).
+ * Measured over the sweep corpus (`loadCorpus`, 150 documents, 119 drawable
+ * automations since #1590): range spelled 105 (88%), rate spelled 76 (64%),
+ * NEITHER 11 (9%). Before #1590 declined curves drawn on the wrong clock it was
+ * 204: 184 (90%), 130 (64%), 16 (8%) — the shares held.
  * (#1468 moved the first three by +4/+4/+2: two documents whose top-level
  * bindings were discarded by the old leading-run rule now resolve, so their
  * chains are readable. The shares are unchanged.)
@@ -315,70 +324,58 @@ function childNodes(node: PatternIR): PatternIR[] {
   return out
 }
 
-/** Collect this track's automations, depth-first. Stops at a nested `Track` so a
- *  parameter is attributed to the track that actually declares it. */
-function collectFromTrack(trackId: string, root: PatternIR, out: SignalAutomation[]): void {
-  const stack: PatternIR[] = [root]
-  const seen = new Set<PatternIR>()
-
-  while (stack.length > 0) {
-    const node = stack.pop() as PatternIR
-    if (!node || typeof node !== 'object' || seen.has(node)) continue
-    seen.add(node)
-
-    if (node.tag === 'Param') {
-      const value: unknown = node.value
-      if (value && typeof value === 'object' && typeof (value as PatternIR).tag === 'string') {
-        const read = readChain(value as PatternIR)
-        if (read) {
-          const polarity = polarityOf(read.signal.kind)
-          const ranged = read.lo !== null && read.hi !== null
-          // An unbounded signal with no explicit range has nothing to plot
-          // BETWEEN, so it abstains rather than borrowing a plausible 0..1.
-          if (ranged || polarity !== 'unbounded') {
-            const lo = ranged ? (read.lo as number) : polarity === 'bipolar' ? -1 : 0
-            const hi = ranged ? (read.hi as number) : 1
-            const start = node.loc?.[0]?.start
-            out.push({
-              trackId,
-              paramKey: node.key,
-              kind: read.signal.kind,
-              periodCycles: read.periodCycles,
-              lo,
-              hi,
-              ranged,
-              offset: typeof start === 'number' && Number.isFinite(start) ? start : null,
-              spans: read.spans,
-            })
-          }
-        }
-      }
-    }
-
-    for (const child of childNodes(node)) {
-      // A nested Track declares its own lane; its parameters are not this one's.
-      if (child.tag === 'Track') continue
-      stack.push(child)
-    }
+/**
+ * Every continuous automation the document declares, by track, in the order the
+ * shared walk meets them. Empty for a document with none — which is most of them,
+ * and is why the drawing side must treat absence as ordinary.
+ *
+ * ⚠ ONLY WHERE THE CURVE IS HANDED A TIME A LANE CAN DRAW (#1590). A curve under
+ * `.slow(2)`, `.early(0.5)`, `cpm`, or `jux(x => x.late(.25))` plays at a time the
+ * song's clock does not give (measured through the engine: off by up to 0.917), and
+ * one overridden by a later same-key call plays nothing at all. Those decline, by
+ * the same walk the stepped reader uses (`parameterRoutes.ts`). A curve inside an
+ * arrangement section is kept, with its placements, and is drawn at the section's
+ * own time (`signalTimeAt`).
+ */
+export function signalAutomations(ir: PatternIR | null | undefined): readonly SignalAutomation[] {
+  const out: SignalAutomation[] = []
+  for (const { trackId, param, placements } of playableParameters(ir)) {
+    const value: unknown = param.value
+    if (!value || typeof value !== 'object' || typeof (value as PatternIR).tag !== 'string') continue
+    const read = readChain(value as PatternIR)
+    if (!read) continue
+    const polarity = polarityOf(read.signal.kind)
+    const ranged = read.lo !== null && read.hi !== null
+    // An unbounded signal with no explicit range has nothing to plot
+    // BETWEEN, so it abstains rather than borrowing a plausible 0..1.
+    if (!ranged && polarity === 'unbounded') continue
+    const lo = ranged ? (read.lo as number) : polarity === 'bipolar' ? -1 : 0
+    const hi = ranged ? (read.hi as number) : 1
+    const start = param.loc?.[0]?.start
+    out.push({
+      trackId,
+      paramKey: param.key,
+      kind: read.signal.kind,
+      periodCycles: read.periodCycles,
+      lo,
+      hi,
+      ranged,
+      offset: typeof start === 'number' && Number.isFinite(start) ? start : null,
+      spans: read.spans,
+      placements,
+    })
   }
+  return out
 }
 
 /**
- * Every continuous automation the document declares, keyed by the track that
- * declares it, in source order. Empty for a document with none — which is most
- * of them, and is why the drawing side must treat absence as ordinary.
+ * The time a curve is handed at song time `time` — the argument its signal is
+ * evaluated at — or null when its section is silent then (#1590). A curve under no
+ * section is handed the song's time itself. The lane samples `kind` at
+ * `signalTimeAt(a, t) / periodCycles` and lifts the pen where this is null.
  */
-export function signalAutomations(ir: PatternIR | null | undefined): readonly SignalAutomation[] {
-  if (!ir) return []
-  const roots: readonly PatternIR[] = ir.tag === 'Stack' ? ir.tracks : [ir]
-  const out: SignalAutomation[] = []
-  for (const node of roots) {
-    if (node?.tag !== 'Track') continue
-    const id = node.trackId
-    if (typeof id !== 'string' || id.length === 0) continue
-    collectFromTrack(id, node, out)
-  }
-  return out
+export function signalTimeAt(a: SignalAutomation, time: number): number | null {
+  return placementsTimeAt(a.placements, time)
 }
 
 /**
@@ -391,9 +388,12 @@ export function signalAutomations(ir: PatternIR | null | undefined): readonly Si
  * drawn, and absolutely does make every cycle differ.
  *
  * Measured over the sweep's own corpus (`loadCorpus`, 142 documents that
- * evaluate): the closed-form reader sees 199 signal-carrying `Param` nodes and
- * this one sees 239. Answering the period question with the drawing reader would
- * silently under-report by those 40.
+ * evaluate), before #1590: the closed-form reader saw 199 signal-carrying `Param`
+ * nodes and this one 239. Answering the period question with the drawing reader
+ * would silently under-report by those 40 — and by far more since #1590, which
+ * made the drawing reader decline every curve the song does not hand its own
+ * clock (the span census now counts 119 drawable automations there). This
+ * reader is unchanged by it: a curve under `.slow(2)` still makes its control move.
  *
  * Returns KEYS rather than nodes because that is what the consumer needs: the
  * cycle fingerprint reads an event's whole value partition (`eventValueKey.ts` —

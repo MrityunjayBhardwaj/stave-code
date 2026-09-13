@@ -16,7 +16,7 @@ export { parseMini, parseStrudel, classifyLiteralRhs } from './ir'
 
 // #1464 Stage 1's IR reader, re-exported for the timeline lane that draws it
 // (moved out of @stave/app by #1489 so `songAnalysis` can reach it too).
-export { signalAutomations, signalCarryingParamKeys } from './ir'
+export { signalAutomations, signalCarryingParamKeys, signalTimeAt } from './ir'
 export type { SignalAutomation, SignalKind, SignalSpans } from './ir'
 // #1463 Stage 1 — the stepped class, for the same lane.
 export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './ir'

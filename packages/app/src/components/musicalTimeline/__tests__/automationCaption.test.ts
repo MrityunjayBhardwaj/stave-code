@@ -35,7 +35,7 @@ const NO_SPANS = { shape: null, rate: null, range: null, chainEnd: null } as con
 
 const auto = (over: Partial<SignalAutomation> = {}): SignalAutomation => ({
   trackId: 'd1', paramKey: 'cutoff', kind: 'sine', periodCycles: 1,
-  lo: 200, hi: 2000, ranged: true, offset: 0, spans: NO_SPANS, ...over,
+  lo: 200, hi: 2000, ranged: true, offset: 0, spans: NO_SPANS, placements: [[]], ...over,
 })
 
 /** The x of character `n`'s left edge, under `measure`. */

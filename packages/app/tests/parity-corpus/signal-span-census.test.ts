@@ -92,17 +92,24 @@ describe('signal span census over the sweep corpus', () => {
       // top-level bindings let those documents resolve, so chains that had been
       // sealed inside an unresolved node became readable. Nothing lost an
       // automation; the four added are all range-spelled.
-      automations: 204,
-      rangeSpelled: 184,
-      rateSpelled: 130,
-      neitherSpelled: 16,
+      //
+      // #1590 — −85, every one a decline and none added: the reader now draws a
+      // curve only where the song hands it a time a lane can draw (the walk
+      // shared with the stepped reader). What left sits under a time change
+      // (`.slow`/`.fast`/`.early`/`cpm`, `every`/`jux` with one), an opaque call
+      // the walk cannot see through (`add`, `mul`, `rarely`, …), or a later
+      // same-key call. The shares barely moved: range 88%, rate 64%, neither 9%.
+      automations: 119,
+      rangeSpelled: 105,
+      rateSpelled: 76,
+      neitherSpelled: 11,
       // Never null on any real document today. The disabled-control path this
       // would trigger is therefore UNEXERCISED, not proven — if this leaves
       // zero, that path needs an arm before it is trusted.
       noChainEnd: 0,
       // Every automation a rate control cannot replace into is one that spells
       // NO rate at all — insertable at `chainEnd`, which is non-null throughout.
-      rateAbsent: 74,
+      rateAbsent: 43,
       // ZERO. The multi-arm guard in `readChain` protects a tree no real
       // document produces, which is what its own comment claims and this is the
       // evidence for. It stays: the cost is one integer and the failure it
