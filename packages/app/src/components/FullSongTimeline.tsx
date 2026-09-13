@@ -96,7 +96,7 @@ import {
 import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
 import { signalAutomations, steppedAutomations, stepValueEdit, knobRangeFor, type SignalAutomation } from '@stave/editor'
-import { stepAxis, stepEdit, stepHitAt, type StepHit } from './musicalTimeline/steppedLane'
+import { stepAxis, stepDragValue, stepEdit, stepHitAt, stepY, withStepValue, type StepBand, type StepHit } from './musicalTimeline/steppedLane'
 import type { SceneStepped } from './musicalTimeline/timelineScene'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import {
@@ -1693,10 +1693,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // one bar alone would mean rewriting the pattern's period, which nobody asked
   // for.
   //
-  // ⚠ A TYPED VALUE IS A DELIBERATE FIRST CUT. A DAW's gesture for a stepped
-  // lane is dragging the level up or down. That needs the inverse of `stepY` and
-  // a preview that redraws without re-evaluating, and it can land on this same
-  // commit path when it comes.
+  // The typed value is the fallback, not the main way in: a DAW's gesture for a
+  // stepped lane is dragging the level, which #1578 added below ("Drag a STEP's
+  // level") on this same `stepEdit` commit path. A press opens this editor only
+  // when it is released without travelling.
   const [editingStep, setEditingStep] = useState<{
     hit: StepHit
     /** Viewport x of the press — the editor opens where the user pointed. */
@@ -1745,6 +1745,98 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       onEditAutomation(edit, `automation ${editing.hit.entry.automation.paramKey} step ${editing.hit.index}`)
     },
     [editingStep, onEditAutomation],
+  )
+
+  // ── Drag a STEP's level (#1578) ───────────────────────────────────────────
+  // The DAW gesture for a stepped lane, on top of the typed value: press a level,
+  // move up or down, let go. A press that never travels is still a click, and a
+  // click still opens the number — so the typed editor now opens on RELEASE, the
+  // way a clip body resolves select-or-move on release.
+  //
+  // ⚠ THE PREVIEW NEVER REACHES THE DOCUMENT. Every pixel of travel redraws the
+  // staircase from a copy of the scene (`drawScene`); the edit is written once, on
+  // release, through the typed value's own `stepEdit` → `stepValueEdit` path. A
+  // write per pixel would re-evaluate the song on every pointer event and fill the
+  // undo history with a hundred steps nobody chose.
+  //
+  // ⚠ THE AXIS AND BAND ARE FROZEN AT POINTER-DOWN — see `stepDragValue`.
+  const stepDragRef = useRef<{
+    pointerId: number
+    hit: StepHit
+    laneKey: string
+    startClientY: number
+    band: StepBand
+    /** Where the typed editor opens if this press turns out to be a click. */
+    left: number
+    color: string
+    value: number
+    dragging: boolean
+  } | null>(null)
+  const [stepPreview, setStepPreview] = useState<{
+    laneKey: string
+    hit: StepHit
+    value: number
+    left: number
+    /** Content y of the previewed level — the value label sits on it. */
+    y: number
+    color: string
+  } | null>(null)
+
+  /** The scene the canvas draws: the real one, or a copy holding the dragged level. */
+  const drawScene = useMemo(() => {
+    if (!stepPreview) return scene
+    const { laneKey, hit, value } = stepPreview
+    return {
+      ...scene,
+      lanes: scene.lanes.map((lane) =>
+        lane.laneKey !== laneKey
+          ? lane
+          : { ...lane, stepped: withStepValue(lane.stepped, hit.entry.automation, hit.index, value) },
+      ),
+    }
+  }, [scene, stepPreview])
+
+  /** Move the dragged level to wherever the pointer is now. */
+  const applyStepDrag = React.useCallback((clientY: number): void => {
+    const drag = stepDragRef.current
+    if (!drag) return
+    const { automation, axis } = drag.hit.entry
+    const start = automation.steps[drag.hit.index].value
+    const value = stepDragValue(start, clientY - drag.startClientY, axis, drag.band)
+    drag.value = value
+    setStepPreview({ laneKey: drag.laneKey, hit: drag.hit, value, left: drag.left, y: stepY(value, axis, drag.band), color: drag.color })
+  }, [])
+
+  /**
+   * End a step press. No travel → a click: open the typed editor. Travel → write
+   * the dragged value once. A cancelled pointer does neither.
+   */
+  const endStepDrag = React.useCallback(
+    (e: React.PointerEvent, commit: boolean): void => {
+      const drag = stepDragRef.current
+      if (!drag || e.pointerId !== drag.pointerId) return
+      stepDragRef.current = null
+      setStepPreview(null)
+      try {
+        areaRef.current?.releasePointerCapture?.(e.pointerId)
+      } catch {
+        /* best-effort */
+      }
+      if (!commit) return
+      if (!drag.dragging) {
+        stepCommittedRef.current = false
+        setEditingStep({ hit: drag.hit, left: drag.left, color: drag.color, seq: ++stepSeqRef.current })
+        return
+      }
+      if (!onEditAutomation) return
+      // The typed path's own gate: `stepValueEdit` returns null for a value the
+      // step already holds, so a drag that came back to where it started writes
+      // nothing.
+      const edit = stepEdit(drag.hit, String(drag.value), stepValueEdit)
+      if (!edit) return
+      onEditAutomation(edit, `automation ${drag.hit.entry.automation.paramKey} step ${drag.hit.index}`)
+    },
+    [onEditAutomation],
   )
 
   const clipEdgeAt = React.useCallback(
@@ -1979,17 +2071,37 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // body, so testing the body first would turn every press on a step into a
       // select. `stepHitAt` answers only on EXPANDED lanes, so a collapsed row
       // keeps selecting the clip it always selected.
+      //
+      // #1578 — the press is PENDING: a drag if the pointer travels, the typed
+      // editor if it is released where it went down (`endStepDrag`).
       const step = stepAt(e.clientX, e.clientY)
       if (step) {
         e.preventDefault()
+        try {
+          areaRef.current?.setPointerCapture?.(e.pointerId)
+        } catch {
+          /* best-effort (jsdom / inactive pointer) */
+        }
         const { paramKey } = step.hit.entry.automation
-        stepCommittedRef.current = false
-        setEditingStep({
+        const box = layoutRef.current.boxes.find((b) => b.laneKey === step.lane.laneKey)
+        stepDragRef.current = {
+          pointerId: e.pointerId,
           hit: step.hit,
+          laneKey: step.lane.laneKey,
+          startClientY: e.clientY,
+          // `stepAt` hit-tested against this same box, so it is present; the
+          // fallback only keeps the type honest.
+          band: {
+            top: box?.top ?? 0,
+            rowHeight: box?.height ?? 0,
+            padY: AUTOMATION_PAD_Y,
+            minBandH: AUTOMATION_MIN_BAND_H,
+          },
           left: e.clientX - (areaRef.current?.getBoundingClientRect().left ?? 0),
           color: automationColorOnLane(paramKey, automationCountOnLane(step.lane), DEFAULT_THEME.automationLine),
-          seq: ++stepSeqRef.current,
-        })
+          value: step.hit.entry.automation.steps[step.hit.index].value,
+          dragging: false,
+        }
         return
       }
       const hit = clipEdgeAt(e.clientX, e.clientY)
@@ -2135,6 +2247,17 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         applyRegionTrim(e.clientX)
         return
       }
+      // Step drag (#1578): vertical only. Under the threshold the press is still
+      // a click, so a hand that trembles on the way to typing a number does not
+      // nudge the step it was aiming at. No auto-scroll: the value is bounded by
+      // the axis, which the band already holds on screen.
+      const sd = stepDragRef.current
+      if (sd && e.pointerId === sd.pointerId) {
+        if (!sd.dragging && Math.abs(e.clientY - sd.startClientY) < CLIP_MOVE_THRESHOLD_PX) return
+        sd.dragging = true
+        applyStepDrag(e.clientY)
+        return
+      }
       // Move drag (Phase 5c): once the press travels past the threshold, preview
       // the reorder destination (the arm whose span the pointer falls in) and
       // stash it on the ref for commit. Only real arms reach here — a bare clip
@@ -2170,18 +2293,23 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // The mark edge shows the same `col-resize` as a clip edge and is tested
       // in the same order the press is, so what the cursor promises and what the
       // press does cannot come apart.
-      el.style.cursor = clipEdgeAt(e.clientX, e.clientY)
-        ? 'col-resize'
-        : regionEdgeAtClient(e.clientX, e.clientY)
+      // A step's level is tested FIRST here because it is tested ahead of the
+      // clip edge on press (#1578) — the cursor must not promise a trim over a
+      // level that a press would drag.
+      el.style.cursor = stepAt(e.clientX, e.clientY)
+        ? 'ns-resize'
+        : clipEdgeAt(e.clientX, e.clientY)
           ? 'col-resize'
-          : onMoveClip && clipBodyAt(e.clientX, e.clientY)
-            ? 'grab'
-            : ''
+          : regionEdgeAtClient(e.clientX, e.clientY)
+            ? 'col-resize'
+            : onMoveClip && clipBodyAt(e.clientX, e.clientY)
+              ? 'grab'
+              : ''
     },
     // #1210 — `songWindow`, not `displayCycles`: this handler maps the pointer
     // through the window itself (the move-target highlight), so a paged origin
     // has to re-create it.
-    [clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, armSpansNow, songWindow, dragAwareContentWidth, applyTrim, extendAutoScrollTick, stopExtendAutoScroll, onMoveClip],
+    [stepAt, applyStepDrag, clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, armSpansNow, songWindow, dragAwareContentWidth, applyTrim, extendAutoScrollTick, stopExtendAutoScroll, onMoveClip],
   )
 
   const endTrimDrag = React.useCallback(
@@ -2321,6 +2449,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // gesture. Cancel discards (no commit).
   const handleGridPointerUp = React.useCallback(
     (e: React.PointerEvent) => {
+      if (stepDragRef.current) {
+        endStepDrag(e, true)
+        return
+      }
       if (regionDragRef.current) {
         endRegionDrag(e, true)
         return
@@ -2331,10 +2463,14 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       }
       endBodyDrag(e, true)
     },
-    [endRegionDrag, endTrimDrag, endBodyDrag],
+    [endStepDrag, endRegionDrag, endTrimDrag, endBodyDrag],
   )
   const handleGridPointerCancel = React.useCallback(
     (e: React.PointerEvent) => {
+      if (stepDragRef.current) {
+        endStepDrag(e, false)
+        return
+      }
       if (regionDragRef.current) {
         endRegionDrag(e, false)
         return
@@ -2345,7 +2481,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       }
       endBodyDrag(e, false)
     },
-    [endRegionDrag, endTrimDrag, endBodyDrag],
+    [endStepDrag, endRegionDrag, endTrimDrag, endBodyDrag],
   )
 
   // Delete/Backspace on the focused grid removes the selected clip. The grid is
@@ -2944,7 +3080,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 — all the high-volume mass — over the shared transform (PV116). */}
             {areaWidth > 0 && (
               <SongTimelineCanvas
-                scene={scene}
+                // #1578 — `drawScene`: a step being dragged is drawn at the
+                // pointer's value before anything is written. Everything that
+                // hit-tests keeps reading the real scene through `sceneRef`.
+                scene={drawScene}
                 scrollLeft={scrollLeft}
                 contentWidth={contentWidth}
                 viewportWidth={areaWidth}
@@ -3106,6 +3245,25 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   }}
                   onBlur={(e) => commitStep(e.currentTarget.value)}
                 />
+              )}
+              {/* #1578 — the value a dragged step will be written as, on its
+                  previewed level. The canvas shows WHERE the line is going; the
+                  number is what the document will say, snapped to the knob's
+                  quantum, so the release holds no surprise. */}
+              {stepPreview && (
+                <div
+                  data-full-song="automation-step-drag"
+                  style={{
+                    ...styles.regionEdgeValue,
+                    left: stepPreview.left + 8,
+                    // Above the level, but never above the frame: on the top
+                    // lane a high step would put the number out of sight.
+                    top: Math.max(0, stepPreview.y - 16),
+                    color: stepPreview.color,
+                  }}
+                >
+                  {`${stepPreview.hit.entry.automation.paramKey} ${stepPreview.value}`}
+                </div>
               )}
               {editingSection && selectionRect && (
                 <>

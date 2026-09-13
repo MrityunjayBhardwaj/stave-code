@@ -11,12 +11,16 @@
 import { describe, it, expect } from 'vitest'
 import type { SteppedAutomation } from '@stave/editor'
 import {
+  snapToStep,
   stepAxis,
+  stepDragValue,
   stepEdit,
   stepHitAt,
   stepSegments,
   stepY,
   unitOnAxis,
+  valueAtUnit,
+  withStepValue,
   STEP_HIT_TOLERANCE_PX,
   type RangeFor,
   type StepAxis,
@@ -24,7 +28,7 @@ import {
 } from '../steppedLane'
 
 describe('stepHitAt — which step a press lands on (Stage 3\'s claim)', () => {
-  const LIN: StepAxis = { lo: 0, hi: 1, scale: 'linear' }
+  const LIN: StepAxis = { lo: 0, hi: 1, scale: 'linear', step: 0.01 }
   // A 96px expanded row at y=100, 3px pad → a 90px band.
   const BAND: StepBand = { top: 100, rowHeight: 96, padY: 3, minBandH: 10 }
   const mk = (steps: [number, number?][], method = 'gain') => {
@@ -156,10 +160,10 @@ describe('stepSegments — one segment per step, over absolute cycles', () => {
 describe('stepAxis — the knob range, widened to every step', () => {
   // A stand-in with `knobRangeFor`'s contract: a known control widens only to the
   // ONE value it is handed.
-  const knownGain: RangeFor = (_m, v) => ({ min: Math.min(0, v), max: Math.max(1, v), scale: 'linear' })
+  const knownGain: RangeFor = (_m, v) => ({ min: Math.min(0, v), max: Math.max(1, v), step: 0.01, scale: 'linear' })
 
   it('uses the control range when every step fits inside it', () => {
-    expect(stepAxis(stepped([[0.2], [0.8]]), knownGain)).toEqual({ lo: 0, hi: 1, scale: 'linear' })
+    expect(stepAxis(stepped([[0.2], [0.8]]), knownGain)).toEqual({ lo: 0, hi: 1, scale: 'linear', step: 0.01 })
   })
 
   it('widens to the LARGEST step — asking with one step would clip the rest', () => {
@@ -174,40 +178,48 @@ describe('stepAxis — the knob range, widened to every step', () => {
   })
 
   it('keeps a log axis for a frequency control, and drops it when a step is not positive', () => {
-    const freq: RangeFor = (_m, v) => ({ min: Math.min(20, v), max: Math.max(20000, v), scale: 'log' })
-    expect(stepAxis(stepped([[200], [2000]], 'lpf'), freq)).toEqual({ lo: 20, hi: 20000, scale: 'log' })
+    const freq: RangeFor = (_m, v) => ({ min: Math.min(20, v), max: Math.max(20000, v), step: 1, scale: 'log' })
+    expect(stepAxis(stepped([[200], [2000]], 'lpf'), freq)).toEqual({ lo: 20, hi: 20000, scale: 'log', step: 1 })
     expect(stepAxis(stepped([[0], [2000]], 'lpf'), freq).scale).toBe('linear')
   })
 
   it('asks with the method the user TYPED — the knob table is keyed on it', () => {
     const asked: string[] = []
-    stepAxis(stepped([[200], [2000]], 'lpf'), (m, v) => (asked.push(m), { min: 0, max: v, scale: 'linear' }))
+    stepAxis(stepped([[200], [2000]], 'lpf'), (m, v) => (asked.push(m), { min: 0, max: v, step: 1, scale: 'linear' }))
     expect(new Set(asked)).toEqual(new Set(['lpf']))
+  })
+
+  it('takes the FINER quantum when the two askings disagree (#1578)', () => {
+    // An unknown control's step is derived from the value it is asked with: 0.5
+    // gets 0.01, 40 gets 1. A drag snapped to 1 could never write back the 0.5.
+    const unknown: RangeFor = (_m, v) => ({ min: 0, max: Math.max(1, v * 2), step: v <= 1 ? 0.01 : 1, scale: 'linear' })
+    expect(stepAxis(stepped([[0.5], [40]], 'wobble'), unknown).step).toBe(0.01)
+    expect(stepAxis(stepped([[40], [0.5]], 'wobble'), unknown).step).toBe(0.01)
   })
 })
 
 describe('unitOnAxis', () => {
   it('maps linearly between the bounds and clamps outside them', () => {
-    const axis = { lo: 0, hi: 1, scale: 'linear' } as const
+    const axis = { lo: 0, hi: 1, scale: 'linear', step: 0.01 } as const
     expect(unitOnAxis(0.25, axis)).toBe(0.25)
     expect(unitOnAxis(-1, axis)).toBe(0)
     expect(unitOnAxis(2, axis)).toBe(1)
   })
 
   it('maps a log axis by ratio — 200 sits a third of the way from 20 to 20000', () => {
-    const axis = { lo: 20, hi: 20000, scale: 'log' } as const
+    const axis = { lo: 20, hi: 20000, scale: 'log', step: 1 } as const
     expect(unitOnAxis(200, axis)).toBeCloseTo(1 / 3, 10)
     expect(unitOnAxis(2000, axis)).toBeCloseTo(2 / 3, 10)
   })
 
   it('returns the floor for a degenerate axis or a non-finite value', () => {
-    expect(unitOnAxis(0.5, { lo: 1, hi: 1, scale: 'linear' })).toBe(0)
-    expect(unitOnAxis(Number.NaN, { lo: 0, hi: 1, scale: 'linear' })).toBe(0)
+    expect(unitOnAxis(0.5, { lo: 1, hi: 1, scale: 'linear', step: 0.01 })).toBe(0)
+    expect(unitOnAxis(Number.NaN, { lo: 0, hi: 1, scale: 'linear', step: 0.01 })).toBe(0)
   })
 })
 
 describe('stepEdit — what typed text may become (Stage 3)', () => {
-  const LIN: StepAxis = { lo: 0, hi: 1, scale: 'linear' }
+  const LIN: StepAxis = { lo: 0, hi: 1, scale: 'linear', step: 0.01 }
   const automation: SteppedAutomation = {
     trackId: 'd1',
     paramKey: 'gain',
@@ -252,5 +264,71 @@ describe('stepEdit — what typed text may become (Stage 3)', () => {
 
   it('passes the writer\'s refusal through rather than inventing an edit', () => {
     expect(stepEdit(hit, '0.8', () => null)).toBeNull()
+  })
+})
+
+describe('the drag geometry — a level that follows the pointer (#1578)', () => {
+  const LIN: StepAxis = { lo: 0, hi: 1, scale: 'linear', step: 0.01 }
+  const LOG: StepAxis = { lo: 20, hi: 20000, scale: 'log', step: 1 }
+  // A 96px expanded row at y=100, 3px pad → a 90px band.
+  const BAND: StepBand = { top: 100, rowHeight: 96, padY: 3, minBandH: 10 }
+
+  it('valueAtUnit is unitOnAxis backwards, on both scales', () => {
+    for (const v of [0, 0.25, 0.5, 0.8, 1]) expect(valueAtUnit(unitOnAxis(v, LIN), LIN)).toBeCloseTo(v, 10)
+    for (const v of [20, 200, 2000, 20000]) expect(valueAtUnit(unitOnAxis(v, LOG), LOG)).toBeCloseTo(v, 6)
+    // A third of the way up a 20…20000 log axis is 200, not 6680.
+    expect(valueAtUnit(1 / 3, LOG)).toBeCloseTo(200, 6)
+    expect(valueAtUnit(-1, LIN)).toBe(0)
+    expect(valueAtUnit(2, LIN)).toBe(1)
+  })
+
+  it('snaps to the knob\'s quantum and spells it without float noise', () => {
+    // The control: the multiply alone DOES leave noise for this pair.
+    expect(Math.round(0.3 / 0.1) * 0.1).not.toBe(0.3)
+    expect(snapToStep(0.3, 0.1)).toBe(0.3)
+    expect(snapToStep(0.4312, 0.01)).toBe(0.43)
+    expect(String(snapToStep(0.43000000000000005, 0.01))).toBe('0.43')
+    expect(snapToStep(1234.6, 1)).toBe(1235)
+    expect(snapToStep(0.8, 0.25)).toBe(0.75)
+    expect(snapToStep(0.4312, 0)).toBe(0.4312)
+  })
+
+  it('moves the value by the pointer\'s TRAVEL — no travel, no change, whatever the press height', () => {
+    expect(stepDragValue(0.8, 0, LIN, BAND)).toBe(0.8)
+    // Up is louder: 9px of a 90px band is a tenth of the axis.
+    expect(stepDragValue(0.8, -9, LIN, BAND)).toBe(0.9)
+    expect(stepDragValue(0.8, 9, LIN, BAND)).toBe(0.7)
+  })
+
+  it('the drawn level lands where the pointer went — on a log axis too', () => {
+    // The pair the gesture depends on: value from travel, then the staircase's own y.
+    for (const [axis, start] of [[LIN, 0.5], [LOG, 200]] as const) {
+      for (const dy of [-30, -12, 15, 30]) {
+        const moved = stepY(stepDragValue(start, dy, axis, BAND), axis, BAND)
+        // Within the snap: 1Hz near 200Hz and 0.01 of 90px are both under a pixel.
+        expect(Math.abs(moved - (stepY(start, axis, BAND) + dy)), `${axis.scale} dy=${dy}`).toBeLessThan(1)
+      }
+    }
+  })
+
+  it('stops at the axis — a drag cannot widen it', () => {
+    expect(stepDragValue(0.8, -1000, LIN, BAND)).toBe(1)
+    expect(stepDragValue(0.8, 1000, LIN, BAND)).toBe(0)
+    expect(stepDragValue(200, 1000, LOG, BAND)).toBe(20)
+  })
+
+  it('previews ONE step of ONE automation, matched by identity, and keeps every axis', () => {
+    const a = stepped([[0.2], [0.8]])
+    const twin = stepped([[0.2], [0.8]], 'room')
+    const entries = [{ automation: a, axis: LIN }, { automation: twin, axis: LOG }]
+    const out = withStepValue(entries, a, 1, 0.4)
+    expect(out[0].automation.steps.map((s) => s.value)).toEqual([0.2, 0.4])
+    expect(out[0].axis).toBe(LIN)
+    // The document's automation is not mutated — the preview is a copy.
+    expect(a.steps.map((s) => s.value)).toEqual([0.2, 0.8])
+    // Equal steps on another parameter are a different automation.
+    expect(out[1]).toBe(entries[1])
+    // An index that does not exist changes nothing.
+    expect(withStepValue(entries, a, 5, 0.4)[0]).toBe(entries[0])
   })
 })

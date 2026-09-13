@@ -324,3 +324,121 @@ test('a step retyped on the lane changes what the engine plays, in every bar tha
 
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
+
+// ── #1578: drag a step's level ───────────────────────────────────────────────
+
+/** Rows (in CSS px of the canvas) where column `x` differs by more than the
+ *  stroke threshold between two frames. */
+function changedRowsAt(
+  a: { W: number; H: number; blue: number[] },
+  b: { W: number; H: number; blue: number[] },
+  cssX: number,
+  cssW: number,
+): number {
+  const x = Math.round(cssX * (a.W / cssW))
+  let rows = 0
+  for (let y = 0; y < a.H; y++) if (Math.abs(a.blue[y * a.W + x] - b.blue[y * a.W + x]) > 60) rows++
+  return rows
+}
+
+test('a step dragged on the lane previews without writing, then changes what the engine plays in every bar that plays it (#1578)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+
+  await bootShell(page)
+  await setSongAndEval(page, EDIT_SONG)
+  await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
+  await page.waitForTimeout(500)
+
+  // (0) THE INSTRUMENT READS THE STEPS AT ALL.
+  await expect.poll(() => gainsByBar(page), { timeout: 10_000 })
+    .toEqual({ 0: [0.2, 0.2], 1: [0.9, 0.9], 2: [0.2, 0.2], 3: [0.9, 0.9] })
+
+  const canvas = page.locator('[data-full-song-canvas]')
+  const grid = page.locator('[data-full-song="grid"]')
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error('no canvas')
+  const barX = (bar: number) => Math.round(box.width * ((bar + 0.5) / 4))
+
+  await page.mouse.dblclick(box.x + barX(2), box.y + 8)
+  await page.waitForTimeout(800)
+
+  // (1) FIND THE .9 LEVEL OVER BAR 1 BY WHAT THE CURSOR PROMISES — the hover
+  //     test is the press test, so the rows reading `ns-resize` are the level.
+  const drag: number[] = []
+  for (let y = 1; y <= 90; y++) {
+    await page.mouse.move(box.x + barX(1), box.y + y)
+    if ((await grid.evaluate((el) => (el as HTMLElement).style.cursor)) === 'ns-resize') drag.push(y)
+  }
+  expect(drag.length, 'no row over bar 1 promised a step drag').toBeGreaterThan(0)
+  const levelY = drag[Math.floor(drag.length / 2)]
+
+  const before = await readBlue(page)
+  const doc = await readDoc(page)
+
+  // (2) DRAG IT DOWN about a third of the band, and hold it there.
+  //
+  //     ⚠ THE TRAVEL IS READ OFF THE LANE, NEVER ASSUMED. The first version moved a
+  //     fixed 20px and the label read `gain 0`: in this layout an EXPANDED lane is
+  //     still 25px tall (the panel has no room to grow it), so the band is 19px and
+  //     18px of travel reaches the floor. Measured one pixel at a time before
+  //     anything changed — the level followed the pointer 1:1, 0.69 at the 4px
+  //     threshold. The product was right; the instrument's geometry was a guess.
+  const laneH = await page
+    .locator('[data-full-song-lane][data-expanded="true"]')
+    .first()
+    .evaluate((el) => parseFloat((el as HTMLElement).style.height))
+  const bandH = laneH - 6
+  const travel = Math.max(6, Math.round(bandH * 0.35))
+  await page.mouse.move(box.x + barX(1), box.y + levelY)
+  await page.mouse.down()
+  for (let dy = 1; dy <= travel; dy++) await page.mouse.move(box.x + barX(1), box.y + levelY + dy)
+  await page.waitForTimeout(300)
+
+  const label = page.locator('[data-full-song="automation-step-drag"]')
+  expect(await label.count(), 'no value shown while dragging').toBe(1)
+  const shown = (await label.textContent()) ?? ''
+  const value = Number(shown.split(' ')[1])
+  expect(shown.startsWith('gain '), `label: ${shown}`).toBe(true)
+  expect(value, `label: ${shown}`).toBeLessThan(0.9)
+  expect(value, `label: ${shown}`).toBeGreaterThan(0.2)
+
+  // (3) THE PREVIEW IS ON THE CANVAS, AND ONLY WHERE THE STEP PLAYS. Bars 1 and 3
+  //     play step 1 and their level moved; bars 0 and 2 play step 0 and did not.
+  const during = await readBlue(page)
+  const moved = [0, 1, 2, 3].map((bar) => changedRowsAt(before, during, barX(bar), box.width))
+  expect(moved[1], `bar 1 did not redraw: ${moved}`).toBeGreaterThan(0)
+  expect(moved[3], `bar 3 did not redraw: ${moved}`).toBeGreaterThan(0)
+  expect([moved[0], moved[2]], `a bar that plays the OTHER step redrew: ${moved}`).toEqual([0, 0])
+
+  // (4) …AND NOT IN THE DOCUMENT, while the pointer is still down.
+  expect(await readDoc(page), 'the drag wrote before release').toBe(doc)
+
+  // (5) RELEASE: one write, of the number the label showed.
+  await page.mouse.up()
+  await page.waitForTimeout(600)
+  const after = await readDoc(page)
+  expect(after, `the drag did not reach the document: ${after}`).toContain(`$: s("bd*2").gain("<.2 ${value}>")`)
+  expect(await label.count(), 'the value label lingered after release').toBe(0)
+  expect(await page.locator('[data-full-song="automation-step"]').count(), 'a drag opened the typed editor').toBe(0)
+
+  // (6) WHAT THE ENGINE PLAYS: bars 1 and 3 at the dragged value, 0 and 2 held.
+  await expect.poll(() => gainsByBar(page), { timeout: 10_000 })
+    .toEqual({ 0: [0.2, 0.2], 1: [value, value], 2: [0.2, 0.2], 3: [value, value] })
+
+  // (7) A CLICK IS STILL A CLICK — a press released in place opens the number.
+  expect(await openStepShowing(page, barX(3), String(value)), `no step editor showing ${value} opened over bar 3`).toBe(true)
+  await page.keyboard.press('Escape')
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})

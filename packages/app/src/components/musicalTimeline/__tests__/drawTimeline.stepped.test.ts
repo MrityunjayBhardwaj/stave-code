@@ -59,7 +59,7 @@ function stepped(steps: [number, number?][], method = 'gain'): SteppedAutomation
   })
   return { trackId: 'd1', paramKey: method, method, steps: built, periodCycles: at, offset: 0 }
 }
-const LINEAR: StepAxis = { lo: 0, hi: 1, scale: 'linear' }
+const LINEAR: StepAxis = { lo: 0, hi: 1, scale: 'linear', step: 0.01 }
 const entry = (a: SteppedAutomation, axis: StepAxis = LINEAR): SceneStepped => ({ automation: a, axis })
 
 const NO_SPANS = { shape: null, rate: null, range: null, chainEnd: null } as const
@@ -144,7 +144,7 @@ describe('stepped staircase — geometry', () => {
   })
 
   it('places a frequency control on its log axis', () => {
-    const axis: StepAxis = { lo: 20, hi: 20000, scale: 'log' }
+    const axis: StepAxis = { lo: 20, hi: 20000, scale: 'log', step: 1 }
     const { paths, yOf } = run([entry(stepped([[200], [2000]], 'cutoff'), axis)])
     const [[, , y0], [, , y1]] = runs(paths[0])
     expect(y0).toBeCloseTo(yOf(200, axis), 6)
