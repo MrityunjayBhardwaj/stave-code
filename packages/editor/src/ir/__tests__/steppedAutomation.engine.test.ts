@@ -144,6 +144,9 @@ describe('#1595 — a whole-track time change that keeps each bar on one step is
     ['a shift by a whole cycle', 's("bd*4").gain("<0.2 0.8>").late(1)', 4],
     ['a slow over a shift', 's("bd*4").gain("<0.2 0.8>").late(1).slow(2)', 2],
     ['a slow inside a section', 'arrange([3, s("bd*4").gain("<0.2 0.8>").slow(2)], [1, s("hh*4")])', 2],
+    // A later whole-cycle shift around an arrangement hands the section formula a
+    // NEGATIVE cycle before bar 1 — the engine's arrangement wraps it the same way.
+    ['a whole-cycle later shift around a section', 'arrange([2, s("bd*4").gain("<0.2 0.8 0.5>")], [1, s("hh*4")]).late(1)', 4],
   ])('%s', async (_label, code, perBar) => {
     const [a] = steppedAutomations(parseStrudel(code) as never)
     expect(a, 'the reader found no stepped parameter').toBeDefined()
