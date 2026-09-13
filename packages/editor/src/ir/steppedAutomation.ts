@@ -260,7 +260,8 @@ function slowFactor(el: KElement): number | null {
 /**
  * The nodes a stepped parameter may sit under and still play `cycle mod period`
  * (#1584). Anything else — a time transform, or a node the parser left opaque —
- * declines the parameter.
+ * declines the parameter, with one exception checked beside this list: an opaque
+ * call to one of Strudel's visualisers (`leavesTheCycle`, #1592).
  *
  * Every entry is an arm in `steppedAutomation.engine.test.ts`, which checks the
  * reader's prediction against what the engine plays; every time-changing shape it
