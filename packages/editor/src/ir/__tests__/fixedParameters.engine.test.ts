@@ -13,24 +13,12 @@ import { clearStringParser, installMiniStringParser } from '../../engine/stringP
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/** The value of `key` on every onset event in each cycle [0, cycles), via the real engine. */
 async function valuesPerCycle(code: string, key: string, cycles: number): Promise<unknown[][]> {
-  const core: any = await import('@strudel/core')
-  const mini: any = await import('@strudel/mini')
-  await core.evalScope(core, mini)
-  installMiniStringParser({ core, mini })
-  try {
-    const { transpiler }: any = await import('@strudel/transpiler')
-    const out = await core.evaluate(code, transpiler)
-    const pat = out.pattern ?? out
-    const rows: unknown[][] = []
-    for (let c = 0; c < cycles; c++) {
-      const haps = pat.queryArc(c, c + 1).filter((h: any) => h.hasOnset?.() ?? true)
-      rows.push(haps.map((h: any) => h.value?.[key]))
-    }
-    return rows
-  } finally {
-    clearStringParser({ core })
-  }
+  const pat = await evaluate(code)
+  return Array.from({ length: cycles }, (_, c) =>
+    pat.queryArc(c, c + 1).filter((h: any) => h.hasOnset?.() ?? true).map((h: any) => h.value?.[key]),
+  )
 }
 
 const apply = (src: string, e: { range: [number, number]; text: string }) =>
