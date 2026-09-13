@@ -375,10 +375,16 @@ export function wholeSongRepeat(
 
 /**
  * `repeatCycles` for an accepted `period`: the whole-song repeat, held to being a
- * whole number of display spans. A display span that is NOT a divisor of the
- * repeat came from a rule other than the per-lane max (an abstained lane, a
- * source-informed fold), and a bounce of a repeat that is not a whole number of
- * the view's own loops would contradict the view — so that reading is null too.
+ * whole number of display spans, because a bounce of a repeat that is not a whole
+ * number of the view's own loops would contradict the view.
+ *
+ * ⚠ NO PRODUCTION RULE REACHES THE NON-DIVISOR NULL. Every production span is one
+ * lane's own period, which divides the LCM. The two rules that look like they
+ * could differ cannot get here with a number: the abstaining rule answers only by
+ * skipping a lane with no loop (`detectDisplayPeriodAtCap`), and the
+ * source-informed retry runs only after the structural rules found none — both
+ * leave a lane without a period, so `wholeSongRepeat` is already null. The check
+ * guards the injected `detectPeriodFn` seam the sweeps pass candidates through.
  */
 function repeatBeside(
   events: readonly IREvent[],
