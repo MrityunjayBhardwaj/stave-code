@@ -539,6 +539,26 @@ describe('displayPeriodRule — source-informed exclusion + fold (#1465)', () =>
  * events, so stripping a key nothing carries is a no-op); the FOLD cannot,
  * because it is arithmetic on the IR and never looks at events.
  */
+describe('signalDimensionsOf — a curve inside a section repeats on the song clock, not its own (#1590)', () => {
+  // Each value is the period the engine's gains actually repeat at
+  // (`signalAutomation.engine.test.ts`); the unsectioned rate is 3, 4, 3.
+  const periods = (src: string) => signalDimensionsOf(parseStrudel(src) as never).periods
+
+  it.each([
+    ['a later section', '$: arrange([1, s("hh*8")], [3, s("bd*8").gain(saw.slow(3))])', [4]],
+    ['a section\'s second pass', '$: arrange([3, s("bd*8").gain(sine.slow(4))], [1, s("hh*8")])', [16]],
+    ['cat', '$: cat(s("hh*8"), s("bd*8").gain(saw.slow(3)))', [6]],
+  ])('%s', (_label, src, expected) => {
+    expect(periods(src)).toEqual(expected)
+  })
+
+  it('a curve the reader declines contributes no period — it still strips its key', () => {
+    const d = signalDimensionsOf(parseStrudel('$: s("bd*8").gain(saw.slow(3)).slow(2)') as never)
+    expect(d.periods).toEqual([])
+    expect([...d.keys]).toEqual(['gain'])
+  })
+})
+
 describe('signalDimensionsOf — muted tracks do not inform the period (#1488)', () => {
   const read = (src: string) => signalDimensionsOf(parseStrudel(src) as never)
 

@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../parseStrudel'
-import { signalAutomations, signalCarryingParamKeys, hasTruePeriod } from '../signalAutomation'
+import { signalAutomations, signalCarryingParamKeys, signalTimeAt, hasTruePeriod } from '../signalAutomation'
 
 const read = (src: string) => signalAutomations(parseStrudel(src) as never)
 
@@ -28,6 +28,8 @@ describe('signalAutomations — the three legs #1464 names', () => {
           range: { start: expect.any(Number), end: expect.any(Number) },
           chainEnd: expect.any(Number),
         },
+        // Under no section: one route, through none (#1590).
+        placements: [[]],
       },
     ])
   })
@@ -44,6 +46,60 @@ describe('signalAutomations — the three legs #1464 names', () => {
 
   it('composes several rate transforms multiplicatively', () => {
     expect(read('$: s("bd*4").gain(sine.slow(4).fast(2).range(0, 1))')[0].periodCycles).toBe(2)
+  })
+})
+
+describe('signalAutomations — only where the curve is handed a time a lane can draw (#1590)', () => {
+  // Each shape has an arm in `signalAutomation.engine.test.ts`: the declined ones
+  // play something other than the song-time curve, the read ones play exactly it.
+  const CURVE = '$: s("bd*8").gain(saw.slow(3))'
+
+  it.each([
+    ['slow', `${CURVE}.slow(2)`],
+    ['fast', `${CURVE}.fast(2)`],
+    ['early', `${CURVE}.early(0.5)`],
+    ['cpm', `${CURVE}.cpm(120)`],
+    ['every, with a time transform', `${CURVE}.every(2, x => x.fast(2))`],
+    ['jux, with a time transform', `${CURVE}.jux(x => x.late(.25))`],
+    ['a same-key call above it', `${CURVE}.gain(0.5)`],
+  ])('%s declines', (_label, src) => {
+    expect(read(src)).toEqual([])
+  })
+
+  it.each([
+    ['stack', '$: stack(s("bd*8").gain(saw.slow(3)), s("hh*8"))'],
+    ['mask', `${CURVE}.mask("<1 [1 0]>")`],
+    ['a visualiser', `${CURVE}._pianoroll()`],
+    // BELOW the parameter: the curve is applied after the fast, at song time.
+    ['a time transform on the receiver', '$: s("bd*8").fast(2).gain(saw.slow(3))'],
+  ])('%s is read, under no section', (_label, src) => {
+    const [a] = read(src)
+    expect(a?.paramKey).toBe('gain')
+    expect(a.placements).toEqual([[]])
+  })
+
+  it('a curve inside an arrangement section carries that section', () => {
+    const [a] = read('$: arrange([1, s("hh*8")], [3, s("bd*8").gain(saw.slow(3))])')
+    expect(a.placements).toEqual([[{ startCycle: 1, cycles: 3, total: 4 }]])
+  })
+
+  it('cat gives each arm one cycle of a pass', () => {
+    const [a] = read('$: cat(s("hh*8"), s("bd*8").gain(saw.slow(3)))')
+    expect(a.placements).toEqual([[{ startCycle: 1, cycles: 1, total: 2 }]])
+  })
+})
+
+describe('signalTimeAt — the time a curve is handed (#1590)', () => {
+  it('is the song time itself under no section', () => {
+    const [a] = read('$: s("bd*8").gain(saw.slow(3))')
+    expect([0, 1.25, 5.5].map((t) => signalTimeAt(a, t))).toEqual([0, 1.25, 5.5])
+  })
+
+  it('counts the section\'s own cycles, keeps the fraction, and is null where the section is silent', () => {
+    const [a] = read('$: arrange([1, s("hh*8")], [3, s("bd*8").gain(saw.slow(3))])')
+    // Pass 0: bar 0 is the hh section; bars 1-3 are the section's cycles 0-2.
+    // Pass 1: bar 4 is hh again; bar 5 is the section's cycle 3, not 5.
+    expect([0.5, 1.5, 3.25, 4.9, 5, 5.75].map((t) => signalTimeAt(a, t))).toEqual([null, 0.5, 2.25, null, 3, 3.75])
   })
 })
 

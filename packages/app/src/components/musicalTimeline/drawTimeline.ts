@@ -21,7 +21,7 @@
  * (`SongTimelineCanvas`) owns the surface, sizing, and dirty-flagged scheduling.
  */
 
-import type { TimelineScene, SceneLane, SceneNote, SceneClip, SceneStepped } from './timelineScene'
+import type { TimelineScene, SceneLane, SceneNote, SceneClip, SceneStepped, SceneSignal, SignalTimeAt } from './timelineScene'
 import { stepSegments, stepY, type StepBand } from './steppedLane'
 import { NO_VOICE } from './timelineScene'
 import type { LaneLayout, LaneBox } from './laneLayout'
@@ -746,9 +746,32 @@ function drawSteppedAutomation(
   ctx.restore()
 }
 
+/**
+ * The spans of song time in [firstCycle, lastCycle) where a curve plays, merged
+ * (#1590). A section plays whole cycles, so asking `timeAt` once per cycle is
+ * exact; a curve under no section is one run over the whole view.
+ */
+function playingRuns(
+  a: SignalAutomation,
+  timeAt: SignalTimeAt,
+  firstCycle: number,
+  lastCycle: number,
+): [number, number][] {
+  const out: [number, number][] = []
+  for (let c = Math.floor(firstCycle); c < lastCycle; c++) {
+    if (timeAt(a, c) === null) continue
+    const start = Math.max(c, firstCycle)
+    const end = Math.min(c + 1, lastCycle)
+    const prev = out[out.length - 1]
+    if (prev && prev[1] === start) prev[1] = end
+    else out.push([start, end])
+  }
+  return out
+}
+
 function drawAutomation(
   ctx: CanvasRenderingContext2D,
-  automations: readonly SignalAutomation[],
+  automations: readonly SceneSignal[],
   /** Curves AND staircases on this lane (`automationCountOnLane`, #1463/#1576).
    *  The colour rule's count: without the staircases a lane with one curve and
    *  one staircase would draw both in the theme colour, with nothing tying
@@ -783,11 +806,11 @@ function drawAutomation(
   ctx.lineJoin = 'round'
 
   const drawable = automations.filter(
-    (a) => a.periodCycles > 0 && Number.isFinite(a.periodCycles),
+    ({ automation: a }) => a.periodCycles > 0 && Number.isFinite(a.periodCycles),
   )
   // Too fast to draw cycle-by-cycle at this zoom (see the band comment below).
-  const tooFast = drawable.filter((a) => a.periodCycles * pxPerCycle < AUTOMATION_MIN_PERIOD_PX)
-  const curves = drawable.filter((a) => a.periodCycles * pxPerCycle >= AUTOMATION_MIN_PERIOD_PX)
+  const tooFast = drawable.filter(({ automation: a }) => a.periodCycles * pxPerCycle < AUTOMATION_MIN_PERIOD_PX)
+  const curves = drawable.filter(({ automation: a }) => a.periodCycles * pxPerCycle >= AUTOMATION_MIN_PERIOD_PX)
 
   /**
    * The curve's colour, and the same colour its caption gets (#1485).
@@ -818,14 +841,19 @@ function drawAutomation(
     const sliceH = bandH / tooFast.length
     ctx.save()
     ctx.globalAlpha = 0.18
-    tooFast.forEach((a, i) => {
+    tooFast.forEach(({ automation: a, timeAt }, i) => {
       ctx.fillStyle = colorOf(a)
-      ctx.fillRect(x0, top + AUTOMATION_PAD_Y + i * sliceH, x1 - x0, sliceH)
+      // Only over the bars the curve's section plays (#1590).
+      for (const [c0, c1] of playingRuns(a, timeAt, firstCycle, lastCycle)) {
+        const rx0 = Math.max(x0, toScreenX(c0))
+        const rx1 = Math.min(x1, toScreenX(c1))
+        if (rx1 > rx0) ctx.fillRect(rx0, top + AUTOMATION_PAD_Y + i * sliceH, rx1 - rx0, sliceH)
+      }
     })
     ctx.restore()
   }
 
-  for (const a of curves) {
+  for (const { automation: a, timeAt } of curves) {
     ctx.strokeStyle = colorOf(a)
     // ── DASHED means "indicative, not a literal trace" (#1486) ──────────────
     // Everything else on this lane is faithful: the marks are the real events,
@@ -838,13 +866,27 @@ function drawAutomation(
     // the path is not".
     ctx.setLineDash(isIndicativeKind(a.kind) ? AUTOMATION_INDICATIVE_DASH : [])
     ctx.beginPath()
-    let first = true
-    for (let x = x0; x <= x1; x += AUTOMATION_STEP_PX) {
-      const cycle = firstCycle + (x - toScreenX(firstCycle)) * cyclesPerPx
-      const unit = signalUnit(a.kind, cycle / a.periodCycles)
-      // Top of the band is the HIGH value — screen y grows downward.
-      const y = top + AUTOMATION_PAD_Y + (1 - Math.min(1, Math.max(0, unit))) * bandH
-      if (first) { ctx.moveTo(x, y); first = false } else { ctx.lineTo(x, y) }
+    // ⚠ AT THE TIME THE CURVE IS HANDED, NOT THE SONG'S (#1590). Inside an
+    // arrangement section the engine plays the curve at the section's own count, and
+    // over the bars the section is silent it plays nothing — so each run of playing
+    // bars is its own stroke, and the pen lifts between them.
+    for (const [c0, c1] of playingRuns(a, timeAt, firstCycle, lastCycle)) {
+      const rx0 = Math.max(x0, toScreenX(c0))
+      const rx1 = Math.min(x1, toScreenX(c1))
+      if (!(rx1 > rx0)) continue
+      let first = true
+      for (let x = rx0; ; x = Math.min(rx1, x + AUTOMATION_STEP_PX)) {
+        // Kept inside the run, so its last sample is still this run's value.
+        const cycle = Math.min(firstCycle + (x - toScreenX(firstCycle)) * cyclesPerPx, c1 - 1e-9)
+        const own = timeAt(a, cycle)
+        if (own !== null) {
+          const unit = signalUnit(a.kind, own / a.periodCycles)
+          // Top of the band is the HIGH value — screen y grows downward.
+          const y = top + AUTOMATION_PAD_Y + (1 - Math.min(1, Math.max(0, unit))) * bandH
+          if (first) { ctx.moveTo(x, y); first = false } else { ctx.lineTo(x, y) }
+        }
+        if (x >= rx1) break
+      }
     }
     ctx.stroke()
   }
@@ -875,7 +917,7 @@ function drawAutomation(
   // code supplied rather than one the user wrote — is decided there too.
   ctx.font = AUTOMATION_LABEL_FONT
   ctx.textBaseline = 'top'
-  for (const row of captionRows(automations, top, rowHeight, expanded)) {
+  for (const row of captionRows(automations.map((e) => e.automation), top, rowHeight, expanded)) {
     // THE TIE (#1485): a caption is drawn in its own curve's colour, which is
     // the only thing linking the two — the curves share a band and each is
     // normalised to its own range, so neither position nor height can say

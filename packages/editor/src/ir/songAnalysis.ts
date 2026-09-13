@@ -61,6 +61,7 @@ import type { PatternIR } from './PatternIR'
 import type { IREvent } from './IREvent'
 import { eventValueKey } from './eventValueKey'
 import { signalAutomations, signalCarryingParamKeys, hasTruePeriod } from './signalAutomation'
+import type { SectionWindow } from './parameterRoutes'
 
 /**
  * Lane (row) key for an event. Mirrors `groupEventsByTrack`'s key so analysis
@@ -531,11 +532,46 @@ export function signalDimensionsOf(ir: PatternIR | null | undefined): SignalDime
   const keys = new Set<string>()
   for (const t of audible) {
     for (const a of signalAutomations(t)) {
-      if (hasTruePeriod(a.kind) && a.periodCycles > 0) periods.push(a.periodCycles)
+      if (!hasTruePeriod(a.kind) || !(a.periodCycles > 0)) continue
+      const song = songPeriodOf(a)
+      if (song !== null) periods.push(song)
     }
     for (const k of signalCarryingParamKeys(t)) keys.add(k)
   }
   return { keys, periods }
+}
+
+/**
+ * How many SONG cycles a curve's value takes to come back round (#1590), or null
+ * when that cannot be said.
+ *
+ * Under no section it is the signal's own period. Inside a section it is longer:
+ * the curve advances only while its section plays, `cycles` per pass of `total`
+ * (`parameterRoutes.ts`, `sectionTimeAt`), so its value repeats after the smallest
+ * number of passes `m` with `m·cycles` a multiple of `P` — `total · lcm(cycles, P) /
+ * cycles` song cycles, applied from the innermost section out. Measured through the
+ * engine: `arrange([1, hh], [3, saw.slow(3)])` repeats at 4, not 3;
+ * `arrange([3, sine.slow(4)], [1, hh])` at 16, not 4; `cat(hh, saw.slow(3))` at 6.
+ *
+ * A binding arranged twice repeats at the LCM of its placements. A placement through
+ * an arm of weight 0 never plays and contributes nothing. A pair `rationalLcm` cannot
+ * resolve drops the period, the direction `PERIODIC_KINDS` already argues is safe.
+ */
+function songPeriodOf(a: { readonly periodCycles: number; readonly placements: readonly (readonly SectionWindow[])[] }): number | null {
+  let out: number | null = null
+  for (const placement of a.placements) {
+    if (placement.some((w) => w.cycles === 0)) continue
+    let p: number | null = a.periodCycles
+    for (let k = placement.length - 1; k >= 0 && p !== null; k--) {
+      const { cycles, total } = placement[k]
+      const l = rationalLcm(cycles, p)
+      p = l === null ? null : (total * l) / cycles
+    }
+    if (p === null) return null
+    out = out === null ? p : rationalLcm(out, p)
+    if (out === null) return null
+  }
+  return out
 }
 
 /**

@@ -963,6 +963,174 @@ function eventValueKey(ev) {
 }
 __name(eventValueKey, "eventValueKey");
 
+// src/engine/strudelVizMethods.ts
+var STRUDEL_VIZ_METHODS = {
+  pianoroll: "pianoroll",
+  punchcard: "pianoroll",
+  wordfall: "wordfall",
+  scope: "scope",
+  tscope: "scope",
+  fscope: "fscope",
+  spectrum: "spectrum",
+  spiral: "spiral",
+  pitchwheel: "pitchwheel"
+};
+
+// src/ir/parameterRoutes.ts
+var LEAVES_THE_CYCLE = /* @__PURE__ */ new Set([
+  "Track",
+  "Param",
+  "Stack",
+  "When",
+  "Struct",
+  "Degrade",
+  "Chop",
+  "Ply",
+  "Every",
+  "Choice"
+]);
+function leavesTheCycle(node) {
+  if (LEAVES_THE_CYCLE.has(node.tag)) return true;
+  if (node.tag !== "Code" || !node.via || !("method" in node.via)) return false;
+  return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, node.via.method.replace(/^_/, ""));
+}
+__name(leavesTheCycle, "leavesTheCycle");
+var SKIP_KEYS = /* @__PURE__ */ new Set(["loc", "keyLoc", "callSiteRange"]);
+function childNodes(node) {
+  const out = [];
+  const visit = /* @__PURE__ */ __name((value, depth) => {
+    if (!value || typeof value !== "object" || depth > 12) return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+    if (typeof value.tag === "string") {
+      out.push(value);
+      return;
+    }
+    for (const [key2, child] of Object.entries(value)) {
+      if (SKIP_KEYS.has(key2)) continue;
+      visit(child, depth + 1);
+    }
+  }, "visit");
+  for (const [key2, value] of Object.entries(node)) {
+    if (SKIP_KEYS.has(key2)) continue;
+    visit(value, 0);
+  }
+  return out;
+}
+__name(childNodes, "childNodes");
+function collect(node, overridden, timeMoved, sections, found, seen, ids) {
+  if (!node || typeof node !== "object") return;
+  const route = routeKey(sections, ids);
+  const state5 = `${timeMoved}|${[...overridden].sort().join(",")}|${route}`;
+  const states = seen.get(node) ?? /* @__PURE__ */ new Set();
+  if (states.has(state5)) return;
+  states.add(state5);
+  seen.set(node, states);
+  let passDown = overridden;
+  if (node.tag === "Param") {
+    const entry = found.get(node) ?? { clean: true, routes: /* @__PURE__ */ new Map() };
+    entry.clean = entry.clean && !timeMoved && !overridden.has(node.key);
+    entry.routes.set(route, sections);
+    found.set(node, entry);
+    passDown = new Set(overridden).add(node.key);
+  }
+  const visit = /* @__PURE__ */ __name((child, childSections, childTimeMoved2) => {
+    if (child.tag === "Track") return;
+    collect(child, passDown, childTimeMoved2, childSections, found, seen, ids);
+  }, "visit");
+  if (node.tag === "Arrange") {
+    const windows = sectionWindows(node);
+    node.arms.forEach(
+      (arm, i) => visit(
+        arm.pattern,
+        windows ? [...sections, { node, arm: i, window: windows[i] }] : sections,
+        timeMoved || windows === null
+      )
+    );
+    return;
+  }
+  const childTimeMoved = timeMoved || !leavesTheCycle(node);
+  for (const child of childNodes(node)) visit(child, sections, childTimeMoved);
+}
+__name(collect, "collect");
+function routeKey(sections, ids) {
+  return sections.map((s) => {
+    let id = ids.get(s.node);
+    if (id === void 0) {
+      id = ids.size;
+      ids.set(s.node, id);
+    }
+    return `${id}.${s.arm}`;
+  }).join("/");
+}
+__name(routeKey, "routeKey");
+function sectionWindows(node) {
+  const weights = node.arms.map((arm) => arm.weight);
+  if (!weights.every((w) => Number.isInteger(w) && w >= 0)) return null;
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  if (total === 0) return null;
+  let at = 0;
+  return weights.map((cycles) => {
+    const window2 = { startCycle: at, cycles, total };
+    at += cycles;
+    return window2;
+  });
+}
+__name(sectionWindows, "sectionWindows");
+function routesAreDisjoint(routes) {
+  const partAtAnArm = /* @__PURE__ */ __name((a, b) => {
+    for (let k = 0; k < Math.min(a.length, b.length); k++) {
+      if (a[k].node !== b[k].node) return false;
+      if (a[k].arm !== b[k].arm) return true;
+    }
+    return false;
+  }, "partAtAnArm");
+  return routes.every((a, i) => routes.slice(i + 1).every((b) => partAtAnArm(a, b)));
+}
+__name(routesAreDisjoint, "routesAreDisjoint");
+function playableParameters(ir) {
+  if (!ir) return [];
+  const roots = ir.tag === "Stack" ? ir.tracks : [ir];
+  const out = [];
+  for (const node of roots) {
+    if (node?.tag !== "Track") continue;
+    const trackId = node.trackId;
+    if (typeof trackId !== "string" || trackId.length === 0) continue;
+    const found = /* @__PURE__ */ new Map();
+    collect(node, /* @__PURE__ */ new Set(), false, [], found, /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map());
+    for (const [param, { clean, routes }] of found) {
+      if (!clean) continue;
+      const chains = [...routes.values()];
+      if (!routesAreDisjoint(chains)) continue;
+      out.push({ trackId, param, placements: chains.map((chain) => chain.map((s) => s.window)) });
+    }
+  }
+  return out;
+}
+__name(playableParameters, "playableParameters");
+function sectionTimeAt(placement, time) {
+  let c = Math.floor(time);
+  const fraction = time - c;
+  for (const { startCycle, cycles, total } of placement) {
+    const pass = Math.floor(c / total);
+    const q = c - pass * total;
+    if (q < startCycle || q >= startCycle + cycles) return null;
+    c = pass * cycles + (q - startCycle);
+  }
+  return c + fraction;
+}
+__name(sectionTimeAt, "sectionTimeAt");
+function placementsTimeAt(placements, time) {
+  for (const placement of placements) {
+    const own = sectionTimeAt(placement, time);
+    if (own !== null) return own;
+  }
+  return null;
+}
+__name(placementsTimeAt, "placementsTimeAt");
+
 // src/ir/signalAutomation.ts
 var UNBOUNDED = /* @__PURE__ */ new Set(["time", "cyclesPer", "per", "perCycle", "perx"]);
 function polarityOf(kind) {
@@ -971,7 +1139,7 @@ function polarityOf(kind) {
 }
 __name(polarityOf, "polarityOf");
 var CHAIN_TAGS = /* @__PURE__ */ new Set(["Range", "Slow", "Fast"]);
-var SKIP_KEYS = /* @__PURE__ */ new Set(["loc", "keyLoc", "callSiteRange"]);
+var SKIP_KEYS2 = /* @__PURE__ */ new Set(["loc", "keyLoc", "callSiteRange"]);
 function readChain(node) {
   let cur = node;
   let periodCycles = 1;
@@ -1031,7 +1199,7 @@ function spanOf(node) {
   return Number.isFinite(first.start) && Number.isFinite(first.end) ? first : null;
 }
 __name(spanOf, "spanOf");
-function childNodes(node) {
+function childNodes2(node) {
   const out = [];
   const visit = /* @__PURE__ */ __name((value, depth) => {
     if (!value || typeof value !== "object" || depth > 12) return;
@@ -1044,70 +1212,50 @@ function childNodes(node) {
       return;
     }
     for (const [key2, child] of Object.entries(value)) {
-      if (SKIP_KEYS.has(key2)) continue;
+      if (SKIP_KEYS2.has(key2)) continue;
       visit(child, depth + 1);
     }
   }, "visit");
   for (const [key2, value] of Object.entries(node)) {
-    if (SKIP_KEYS.has(key2)) continue;
+    if (SKIP_KEYS2.has(key2)) continue;
     visit(value, 0);
   }
   return out;
 }
-__name(childNodes, "childNodes");
-function collectFromTrack(trackId, root, out) {
-  const stack = [root];
-  const seen = /* @__PURE__ */ new Set();
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || typeof node !== "object" || seen.has(node)) continue;
-    seen.add(node);
-    if (node.tag === "Param") {
-      const value = node.value;
-      if (value && typeof value === "object" && typeof value.tag === "string") {
-        const read5 = readChain(value);
-        if (read5) {
-          const polarity = polarityOf(read5.signal.kind);
-          const ranged = read5.lo !== null && read5.hi !== null;
-          if (ranged || polarity !== "unbounded") {
-            const lo = ranged ? read5.lo : polarity === "bipolar" ? -1 : 0;
-            const hi = ranged ? read5.hi : 1;
-            const start = node.loc?.[0]?.start;
-            out.push({
-              trackId,
-              paramKey: node.key,
-              kind: read5.signal.kind,
-              periodCycles: read5.periodCycles,
-              lo,
-              hi,
-              ranged,
-              offset: typeof start === "number" && Number.isFinite(start) ? start : null,
-              spans: read5.spans
-            });
-          }
-        }
-      }
-    }
-    for (const child of childNodes(node)) {
-      if (child.tag === "Track") continue;
-      stack.push(child);
-    }
-  }
-}
-__name(collectFromTrack, "collectFromTrack");
+__name(childNodes2, "childNodes");
 function signalAutomations(ir) {
-  if (!ir) return [];
-  const roots = ir.tag === "Stack" ? ir.tracks : [ir];
   const out = [];
-  for (const node of roots) {
-    if (node?.tag !== "Track") continue;
-    const id = node.trackId;
-    if (typeof id !== "string" || id.length === 0) continue;
-    collectFromTrack(id, node, out);
+  for (const { trackId, param, placements } of playableParameters(ir)) {
+    const value = param.value;
+    if (!value || typeof value !== "object" || typeof value.tag !== "string") continue;
+    const read5 = readChain(value);
+    if (!read5) continue;
+    const polarity = polarityOf(read5.signal.kind);
+    const ranged = read5.lo !== null && read5.hi !== null;
+    if (!ranged && polarity === "unbounded") continue;
+    const lo = ranged ? read5.lo : polarity === "bipolar" ? -1 : 0;
+    const hi = ranged ? read5.hi : 1;
+    const start = param.loc?.[0]?.start;
+    out.push({
+      trackId,
+      paramKey: param.key,
+      kind: read5.signal.kind,
+      periodCycles: read5.periodCycles,
+      lo,
+      hi,
+      ranged,
+      offset: typeof start === "number" && Number.isFinite(start) ? start : null,
+      spans: read5.spans,
+      placements
+    });
   }
   return out;
 }
 __name(signalAutomations, "signalAutomations");
+function signalTimeAt(a, time) {
+  return placementsTimeAt(a.placements, time);
+}
+__name(signalTimeAt, "signalTimeAt");
 function signalCarryingParamKeys(ir) {
   const keys = /* @__PURE__ */ new Set();
   if (!ir) return keys;
@@ -1121,7 +1269,7 @@ function signalCarryingParamKeys(ir) {
       const value = node.value;
       if (value && typeof value === "object" && carriesSignal(value)) keys.add(node.key);
     }
-    for (const child of childNodes(node)) stack.push(child);
+    for (const child of childNodes2(node)) stack.push(child);
   }
   return keys;
 }
@@ -1132,7 +1280,7 @@ function carriesSignal(value, depth = 0) {
   const o = value;
   if (o.tag === "Signal") return true;
   for (const [key2, child] of Object.entries(o)) {
-    if (SKIP_KEYS.has(key2)) continue;
+    if (SKIP_KEYS2.has(key2)) continue;
     if (carriesSignal(child, depth + 1)) return true;
   }
   return false;
@@ -1284,13 +1432,32 @@ function signalDimensionsOf(ir) {
   const keys = /* @__PURE__ */ new Set();
   for (const t of audible) {
     for (const a of signalAutomations(t)) {
-      if (hasTruePeriod(a.kind) && a.periodCycles > 0) periods.push(a.periodCycles);
+      if (!hasTruePeriod(a.kind) || !(a.periodCycles > 0)) continue;
+      const song = songPeriodOf(a);
+      if (song !== null) periods.push(song);
     }
     for (const k of signalCarryingParamKeys(t)) keys.add(k);
   }
   return { keys, periods };
 }
 __name(signalDimensionsOf, "signalDimensionsOf");
+function songPeriodOf(a) {
+  let out = null;
+  for (const placement of a.placements) {
+    if (placement.some((w) => w.cycles === 0)) continue;
+    let p = a.periodCycles;
+    for (let k = placement.length - 1; k >= 0 && p !== null; k--) {
+      const { cycles, total } = placement[k];
+      const l = rationalLcm(cycles, p);
+      p = l === null ? null : total * l / cycles;
+    }
+    if (p === null) return null;
+    out = out === null ? p : rationalLcm(out, p);
+    if (out === null) return null;
+  }
+  return out;
+}
+__name(songPeriodOf, "songPeriodOf");
 function audibleTracks(ir) {
   if (!ir) return [];
   const roots = ir.tag === "Stack" ? ir.tracks : [ir];
@@ -1784,19 +1951,6 @@ function matchBracket(input, openPos) {
 }
 __name(matchBracket, "matchBracket");
 
-// src/engine/strudelVizMethods.ts
-var STRUDEL_VIZ_METHODS = {
-  pianoroll: "pianoroll",
-  punchcard: "pianoroll",
-  wordfall: "wordfall",
-  scope: "scope",
-  tscope: "scope",
-  fscope: "fscope",
-  spectrum: "spectrum",
-  spiral: "spiral",
-  pitchwheel: "pitchwheel"
-};
-
 // src/ir/steppedAutomation.ts
 var NUMBER = /^-?(?:\d+\.?\d*|\.\d+)$/;
 function readSteps(param) {
@@ -1862,167 +2016,27 @@ function slowFactor(el) {
   return Number.isInteger(n) && n >= 1 ? n : null;
 }
 __name(slowFactor, "slowFactor");
-var LEAVES_THE_CYCLE = /* @__PURE__ */ new Set([
-  "Track",
-  "Param",
-  "Stack",
-  "When",
-  "Struct",
-  "Degrade",
-  "Chop",
-  "Ply",
-  "Every",
-  "Choice"
-]);
-function leavesTheCycle(node) {
-  if (LEAVES_THE_CYCLE.has(node.tag)) return true;
-  if (node.tag !== "Code" || !node.via || !("method" in node.via)) return false;
-  return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, node.via.method.replace(/^_/, ""));
-}
-__name(leavesTheCycle, "leavesTheCycle");
-var SKIP_KEYS2 = /* @__PURE__ */ new Set(["loc", "keyLoc", "callSiteRange"]);
-function childNodes2(node) {
-  const out = [];
-  const visit = /* @__PURE__ */ __name((value, depth) => {
-    if (!value || typeof value !== "object" || depth > 12) return;
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item, depth + 1);
-      return;
-    }
-    if (typeof value.tag === "string") {
-      out.push(value);
-      return;
-    }
-    for (const [key2, child] of Object.entries(value)) {
-      if (SKIP_KEYS2.has(key2)) continue;
-      visit(child, depth + 1);
-    }
-  }, "visit");
-  for (const [key2, value] of Object.entries(node)) {
-    if (SKIP_KEYS2.has(key2)) continue;
-    visit(value, 0);
-  }
-  return out;
-}
-__name(childNodes2, "childNodes");
-function collect(node, overridden, timeMoved, sections, found, seen, ids) {
-  if (!node || typeof node !== "object") return;
-  const route = routeKey(sections, ids);
-  const state5 = `${timeMoved}|${[...overridden].sort().join(",")}|${route}`;
-  const states = seen.get(node) ?? /* @__PURE__ */ new Set();
-  if (states.has(state5)) return;
-  states.add(state5);
-  seen.set(node, states);
-  let passDown = overridden;
-  if (node.tag === "Param") {
-    const entry = found.get(node) ?? { clean: true, routes: /* @__PURE__ */ new Map() };
-    entry.clean = entry.clean && !timeMoved && !overridden.has(node.key);
-    entry.routes.set(route, sections);
-    found.set(node, entry);
-    passDown = new Set(overridden).add(node.key);
-  }
-  const visit = /* @__PURE__ */ __name((child, childSections, childTimeMoved2) => {
-    if (child.tag === "Track") return;
-    collect(child, passDown, childTimeMoved2, childSections, found, seen, ids);
-  }, "visit");
-  if (node.tag === "Arrange") {
-    const windows = sectionWindows(node);
-    node.arms.forEach(
-      (arm, i) => visit(
-        arm.pattern,
-        windows ? [...sections, { node, arm: i, window: windows[i] }] : sections,
-        timeMoved || windows === null
-      )
-    );
-    return;
-  }
-  const childTimeMoved = timeMoved || !leavesTheCycle(node);
-  for (const child of childNodes2(node)) visit(child, sections, childTimeMoved);
-}
-__name(collect, "collect");
-function routeKey(sections, ids) {
-  return sections.map((s) => {
-    let id = ids.get(s.node);
-    if (id === void 0) {
-      id = ids.size;
-      ids.set(s.node, id);
-    }
-    return `${id}.${s.arm}`;
-  }).join("/");
-}
-__name(routeKey, "routeKey");
-function sectionWindows(node) {
-  const weights = node.arms.map((arm) => arm.weight);
-  if (!weights.every((w) => Number.isInteger(w) && w >= 0)) return null;
-  const total = weights.reduce((sum, w) => sum + w, 0);
-  if (total === 0) return null;
-  let at = 0;
-  return weights.map((cycles) => {
-    const window2 = { startCycle: at, cycles, total };
-    at += cycles;
-    return window2;
-  });
-}
-__name(sectionWindows, "sectionWindows");
-function routesAreDisjoint(routes) {
-  const partAtAnArm = /* @__PURE__ */ __name((a, b) => {
-    for (let k = 0; k < Math.min(a.length, b.length); k++) {
-      if (a[k].node !== b[k].node) return false;
-      if (a[k].arm !== b[k].arm) return true;
-    }
-    return false;
-  }, "partAtAnArm");
-  return routes.every((a, i) => routes.slice(i + 1).every((b) => partAtAnArm(a, b)));
-}
-__name(routesAreDisjoint, "routesAreDisjoint");
 function steppedAutomations(ir) {
-  if (!ir) return [];
-  const roots = ir.tag === "Stack" ? ir.tracks : [ir];
   const out = [];
-  for (const node of roots) {
-    if (node?.tag !== "Track") continue;
-    const trackId = node.trackId;
-    if (typeof trackId !== "string" || trackId.length === 0) continue;
-    const found = /* @__PURE__ */ new Map();
-    collect(node, /* @__PURE__ */ new Set(), false, [], found, /* @__PURE__ */ new Map(), /* @__PURE__ */ new Map());
-    for (const [param, { clean, routes }] of found) {
-      if (!clean) continue;
-      const chains = [...routes.values()];
-      if (!routesAreDisjoint(chains)) continue;
-      const steps = readSteps(param);
-      if (!steps) continue;
-      const start = param.loc?.[0]?.start;
-      out.push({
-        trackId,
-        paramKey: param.key,
-        method: param.userMethod ?? param.key,
-        steps,
-        periodCycles: steps.reduce((sum, s) => sum + s.weight, 0),
-        offset: typeof start === "number" && Number.isFinite(start) ? start : null,
-        placements: chains.map((chain) => chain.map((s) => s.window))
-      });
-    }
+  for (const { trackId, param, placements } of playableParameters(ir)) {
+    const steps = readSteps(param);
+    if (!steps) continue;
+    const start = param.loc?.[0]?.start;
+    out.push({
+      trackId,
+      paramKey: param.key,
+      method: param.userMethod ?? param.key,
+      steps,
+      periodCycles: steps.reduce((sum, s) => sum + s.weight, 0),
+      offset: typeof start === "number" && Number.isFinite(start) ? start : null,
+      placements
+    });
   }
   return out;
 }
 __name(steppedAutomations, "steppedAutomations");
-function sectionCycleAt(placement, cycle) {
-  let c = Math.floor(cycle);
-  for (const { startCycle, cycles, total } of placement) {
-    const pass = Math.floor(c / total);
-    const q = c - pass * total;
-    if (q < startCycle || q >= startCycle + cycles) return null;
-    c = pass * cycles + (q - startCycle);
-  }
-  return c;
-}
-__name(sectionCycleAt, "sectionCycleAt");
 function stepIndexAtCycle(a, cycle) {
-  let own = null;
-  for (const placement of a.placements) {
-    own = sectionCycleAt(placement, cycle);
-    if (own !== null) break;
-  }
+  const own = placementsTimeAt(a.placements, Math.floor(cycle));
   if (own === null) return null;
   const period = a.periodCycles;
   const pos = (own % period + period) % period;
@@ -48061,6 +48075,7 @@ exports.shellStateKeyFor = shellStateKeyFor;
 exports.signalAutomations = signalAutomations;
 exports.signalCarryingParamKeys = signalCarryingParamKeys;
 exports.signalDimensionsOf = signalDimensionsOf;
+exports.signalTimeAt = signalTimeAt;
 exports.silenceArm = silenceArm;
 exports.songExtent = songExtent;
 exports.soundNameFromFilename = soundNameFromFilename;

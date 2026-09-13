@@ -95,9 +95,9 @@ import {
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
-import { signalAutomations, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, type SignalAutomation } from '@stave/editor'
+import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor } from '@stave/editor'
 import { stepAxis, stepDragValue, stepEdit, stepHitAt, stepY, withStepValue, type StepBand, type StepHit } from './musicalTimeline/steppedLane'
-import type { SceneStepped } from './musicalTimeline/timelineScene'
+import type { SceneSignal, SceneStepped } from './musicalTimeline/timelineScene'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import {
   markRegionValue,
@@ -1161,13 +1161,16 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // exactly like `trackOrder`: both are structural readings of the document, so
   // they refresh together and can never describe different documents.
   const automationsByTrack = useMemo(() => {
-    const by = new Map<string, SignalAutomation[]>()
-    for (const a of signalAutomations(props.ir ?? null)) {
-      const list = by.get(a.trackId)
-      if (list) list.push(a)
-      else by.set(a.trackId, [a])
+    // #1590 — each curve carries the clock it is drawn against, as a stepped entry
+    // carries `stepAt`: inside an arrangement section that is the section's own count.
+    const by = new Map<string, SceneSignal[]>()
+    for (const automation of signalAutomations(props.ir ?? null)) {
+      const entry: SceneSignal = { automation, timeAt: signalTimeAt }
+      const list = by.get(automation.trackId)
+      if (list) list.push(entry)
+      else by.set(automation.trackId, [entry])
     }
-    return by as ReadonlyMap<string, readonly SignalAutomation[]>
+    return by as ReadonlyMap<string, readonly SceneSignal[]>
   }, [props.ir])
   // Stepped automation per lane (#1463 Stage 2), memoised on the same `props.ir`
   // so the two classes can never describe different documents. The axis is
@@ -1629,7 +1632,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const box = layoutRef.current.boxes.find((b) => b.laneKey === laneKey)
       const lane = sceneRef.current.lanes.find((l) => l.laneKey === laneKey)
       if (!box || !lane) return null
-      const rows = captionRows(lane.automations, box.top, box.height, box.expanded)
+      const rows = captionRows(lane.automations.map((e) => e.automation), box.top, box.height, box.expanded)
       return captionHit(rows, clientX - rect.left, contentY, measureCaption)
     },
     [onEditAutomation],

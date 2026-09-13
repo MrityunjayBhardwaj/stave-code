@@ -69,7 +69,7 @@ vi.mock('@stave/editor', async () => {
   // or the component gets `undefined` and every case here dies in a useMemo —
   // the exact trap the `wholeWalkWindow` note below already describes. Real
   // function, from source: it is a pure IR walk, so there is nothing to stub.
-  const { signalAutomations } = await import('../../../../editor/src/ir/signalAutomation')
+  const { signalAutomations, signalTimeAt } = await import('../../../../editor/src/ir/signalAutomation')
   // #1463 Stage 2 — the same trap, twice more: the component now reads stepped
   // automation and resolves each one's axis. Both real, from source (the knob
   // table imports nothing but its own control list).
@@ -81,6 +81,7 @@ vi.mock('@stave/editor', async () => {
     ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : []
   return {
     signalAutomations,
+    signalTimeAt,
     steppedAutomations,
     stepValueEdit,
     stepIndexAtCycle,

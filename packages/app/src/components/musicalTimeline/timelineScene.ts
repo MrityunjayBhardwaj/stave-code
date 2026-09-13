@@ -35,7 +35,7 @@ export const NO_VOICE = '\0'
 
 /** One shared empty list, so the common case (a lane with no automation)
  *  allocates nothing per lane per rebuild. */
-const EMPTY_AUTOMATIONS: readonly SignalAutomation[] = []
+const EMPTY_AUTOMATIONS: readonly SceneSignal[] = []
 const EMPTY_STEPPED: readonly SceneStepped[] = []
 
 /** One stepped automation on a lane (#1463 Stage 2), with the value axis it is
@@ -44,6 +44,19 @@ const EMPTY_STEPPED: readonly SceneStepped[] = []
  *  the renderer import only types from `@stave/editor`. The step selection travels
  *  with it for the same reason (#1585). */
 export type SceneStepped = SteppedEntry
+
+/** The shape of `signalTimeAt` — the time a curve is handed at a song time, or null
+ *  where its arrangement section is silent (#1590). Injected by the caller that may
+ *  import `@stave/editor` at runtime, as `SteppedEntry.stepAt` is. */
+export type SignalTimeAt = (a: SignalAutomation, time: number) => number | null
+
+/** A continuous automation as a lane holds it: the curve, and the clock it is drawn
+ *  against (#1590). Required, like `stepAt`: a curve inside a section drawn on the
+ *  song's clock is the wrong curve, and nothing downstream would notice. */
+export interface SceneSignal {
+  readonly automation: SignalAutomation
+  readonly timeAt: SignalTimeAt
+}
 
 /** A single read-only mini-note mark within a lane. */
 export interface SceneNote {
@@ -210,7 +223,7 @@ export interface SceneLane {
    *  documents carry any). Drawn here; since #1464 Stage 2 a caption edits its
    *  bounds, through source spans the reader supplies — the scene itself still
    *  writes nothing. */
-  readonly automations: readonly SignalAutomation[]
+  readonly automations: readonly SceneSignal[]
   /** Stepped automation this track declares (#1463 Stage 2) — `.gain("<0.2 0.8>")`
    *  and its kin, each with its axis. Drawn in the SAME band as `automations`, and
    *  counted with them for colour, so a lane carrying both reads as one vocabulary.
@@ -383,7 +396,7 @@ export function buildTimelineScene(
    *  empty list and draws no curve, which is also what a document with no
    *  automation gets, so the two are indistinguishable to the renderer and there
    *  is no third state to handle. */
-  automationsByTrack?: ReadonlyMap<string, readonly SignalAutomation[]>,
+  automationsByTrack?: ReadonlyMap<string, readonly SceneSignal[]>,
   /** Stepped automation per track id (#1463 Stage 2), each already paired with
    *  its axis by the caller — passed in for the same reason `automationsByTrack`
    *  is. Absent → every lane gets an empty list and draws no staircase. */
