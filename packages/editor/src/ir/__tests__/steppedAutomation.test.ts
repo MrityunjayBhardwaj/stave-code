@@ -189,8 +189,8 @@ describe('steppedAutomations — the parsed node must be the whole literal (#158
 })
 
 describe('steppedAutomations — a whole-number `/n` stretches every step (#1579)', () => {
-  // The parse is `Param.value = Slow{factor, body: Cycle}`, the Slow's span being
-  // the operator alone. The engine test holds each of these against what plays.
+  // krill carries `/n` as one `stretch` op of type `slow` on the alternation. The
+  // engine test holds each of these against what plays.
   const stepsOf = (src: string) => read(src)[0]?.steps.map((s) => [s.value, s.weight, s.startCycle])
 
   it('each step holds n times its weight, and the period is the sum', () => {
@@ -246,12 +246,12 @@ describe('steppedAutomations — a whole-number `/n` stretches every step (#1579
     // The step changes inside a cycle (engine test).
     ['a fractional n', '<0.2 0.8>/1.5'],
     ['an n below one', '<0.2 0.8>/0.5'],
-    // The parser keeps ONE Slow of 2 and drops the rest; the engine plays /4, and /2 with no @3.
+    // Two ops (the engine plays /4), and a weight on the whole alternation.
     ['two divisions', '<0.2 0.8>/2/2'],
     ['a weight after the division', '<0.2 0.8>/2@3'],
-    // The Cycle's span starts inside the bracket — a missing lane, not a wrong one.
+    // A nested group, not the alternation itself — a missing lane, not a wrong one.
     ['a bracketed alternation', '[<0.2 0.8>]/2'],
-    // The parser drops these operators entirely, and the engine plays nothing.
+    // The engine plays nothing for either.
     ['zero', '<0.2 0.8>/0'],
     ['a negative n', '<0.2 0.8>/-2'],
     // Stretched, but still not held values.
@@ -282,6 +282,85 @@ describe('steppedAutomations — a whole-number `/n` stretches every step (#1579
       [0.2, 2, 0],
       [0.5, 2, 2],
     ])
+  })
+})
+
+describe('steppedAutomations — only what the engine plays one value per cycle (#1587)', () => {
+  const stepsOf = (literal: string) =>
+    read(`$: s("bd*2").gain("${literal}")`)[0]?.steps.map((s) => [s.value, s.weight, s.startCycle])
+
+  // The IR gave each of these a `Cycle` of numeric Plays; krill does not, and the
+  // engine test shows what each really plays.
+  it.each([
+    ['a random choice', '[1|1.5]'],
+    ['a random choice, slowed', '[0|0.05|0.1|0.15]/2'],
+    ['a bare random choice', '.4:3 | .7:2 | .4:-2'],
+    ['two layers', '<1 2 3 4 5 6, 5 4 3 4 2>'],
+    ['a colon atom', '<0.2 0.8:1>'],
+    ['a chain of colon atoms', '<.1:.5:.5 1 2>'],
+    ['a colon atom, slowed', '<0 1:5>/2'],
+    ['a bracketed copy', '<[0]!16 [700]!16>'],
+    ['a degraded step', '<0.2 0.8?>'],
+    // Each of these reaches exactly one guard; the engine test shows what plays.
+    ['an alternation followed by another step', '<0.2 0.8> 0.5'],
+    ['a polymeter', '{0.2 0.8}'],
+    ['a zero weight', '<0.2@0 0.8>'],
+  ])('%s declines', (_label, literal) => {
+    expect(read(`$: s("bd*2").gain("${literal}")`)).toEqual([])
+  })
+
+  it('`a!n` is ONE step held n cycles — the one number the user wrote', () => {
+    expect(stepsOf('<0.3!3 0.8>')).toEqual([
+      [0.3, 3, 0],
+      [0.8, 1, 3],
+    ])
+    expect(read('$: s("bd*2").gain("<0.3!3 0.8>")')[0].periodCycles).toBe(4)
+    expect(stepsOf('<0.3! 0.8>')).toEqual([
+      [0.3, 2, 0],
+      [0.8, 1, 2],
+    ])
+  })
+
+  it('a step holds the weight krill gives it, `@` and `!` together', () => {
+    // krill folds both into one field, and the engine follows it (engine test).
+    expect(stepsOf('<0.2!3@2 0.8>')).toEqual([
+      [0.2, 4, 0],
+      [0.8, 1, 4],
+    ])
+    expect(stepsOf('<0.2@2!3 0.8>')).toEqual([
+      [0.2, 3, 0],
+      [0.8, 1, 3],
+    ])
+  })
+
+  it('copies compose with `/n`', () => {
+    expect(stepsOf('<0!4 4!4>/4')).toEqual([
+      [0, 16, 0],
+      [4, 16, 16],
+    ])
+    expect(stepsOf('<.3!3 .4 >/2')).toEqual([
+      [0.3, 6, 0],
+      [0.4, 2, 6],
+    ])
+  })
+
+  it('the CONTROL — equal values written separately stay separate steps', () => {
+    expect(stepsOf('<0.5 0.5 0.8>')).toEqual([
+      [0.5, 1, 0],
+      [0.5, 1, 1],
+      [0.8, 1, 2],
+    ])
+  })
+
+  it('an edit to a copied step writes its one number, and the next step is the next index', () => {
+    const src = '$: s("bd*2").gain("<0.3!3 0.8>")'
+    const [a] = read(src)
+    expect(apply(src, stepValueEdit(a, 0, 0.5)!)).toBe('$: s("bd*2").gain("<0.5!3 0.8>")')
+    expect(apply(src, stepValueEdit(a, 1, 0.5)!)).toBe('$: s("bd*2").gain("<0.3!3 0.5>")')
+  })
+
+  it('a template literal with an interpolation declines', () => {
+    expect(read('$: s("bd*2").gain(`<${x} 0.8>`)')).toEqual([])
   })
 })
 

@@ -957,52 +957,15 @@ declare function signalAutomations(ir: PatternIR | null | undefined): readonly S
  */
 declare function signalCarryingParamKeys(ir: PatternIR | null | undefined): ReadonlySet<string>;
 
-/**
- * Stepped automation a track declares, read off the static IR (#1463 Stage 1).
- *
- * `.gain("<0.2 0.8>")` is a parameter that holds one value per cycle and moves
- * between them — the stepped class, next to #1464's continuous one. It already
- * parses completely: `Param{value: Cycle{items: [Play "0.2", Play "0.8"]}}`, with
- * an exact source span on every step. This module turns that into what a lane
- * needs to DRAW it, and into the one edit a lane may make to it.
- *
- * WHAT THE ENGINE DOES WITH IT, measured through the real evaluator before any of
- * this was written (#1463, the grounding comment on the issue):
- *
- *   `<a b>`        cycle n plays step (n mod 2)          → period 2
- *   `<a@2 b>`      a weighted step spans 2 cycles         → period 3
- *   `<a b>/2`      every step spans 2 cycles              → period 4   (#1579)
- *   `<a b>/1.5`    a step changes INSIDE a cycle          → not stepped
- *   `<a [b c]>`    the second step SUBDIVIDES its cycle   → not stepped
- *   `<a ~ b>`      the `~` step SILENCES THE TRACK        → not "no value"
- *
- * ⚠ A STEP IS ADDRESSED BY ITS INDEX, NOT BY A BAR. Step k plays in every cycle
- * where `cycle mod period` selects it, so an edit to step k changes every bar that
- * plays it — which is what the document says. A lane that pretended to change one
- * bar would be describing a document nobody wrote.
- *
- * ⚠ `cycle mod period` HOLDS ONLY WHERE NOTHING ABOVE THE PARAMETER MOVES TIME
- * (#1584). `.slow(2)`, `.early(1)`, `cat(…)` and an `arrange` section all hand the
- * parameter a different cycle than the song's — a section sees how many cycles IT
- * has played. This was once recorded as "an arrange arm follows the absolute
- * cycle", from `arrange([1, a], [2, b])`: a section two cycles behind per pass,
- * which a two-step pattern cannot tell apart. `[3, a], [1, b]` can. So the walk
- * admits a parameter only under nodes measured to leave the cycle alone.
- *
- * Mirrors `signalAutomation.ts`: pure and structural, no eval, no source
- * scanning, the same per-track attribution, and the same direction of error —
- * ABSTAIN rather than approximate. A missing lane shows less than it could; a
- * wrong one is the editor lying about what plays.
- */
-
 /** One step of a stepped parameter. */
 interface SteppedStep {
     /** The value this step holds, as a number. */
     readonly value: number;
     /**
-     * How many CYCLES the step holds for — its `@n` (else 1) times the literal's
-     * `/n` (else 1). A positive integer. Not the written `@n`: `<0.2@2 0.8>/2`
-     * holds its first step for 4 cycles (#1579).
+     * How many CYCLES the step holds for — krill's weight for it (`@n`, `_` and `!n`
+     * folded together; else 1) times the literal's `/n` (else 1). A positive
+     * integer. Not the written `@n`: `<0.2@2 0.8>/2` holds its first step for 4
+     * cycles (#1579), and `<0.3!3 0.8>` is two steps, the first held 3 (#1587).
      */
     readonly weight: number;
     /** The cycle, within one period, at which this step begins. */

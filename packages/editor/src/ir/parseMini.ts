@@ -42,16 +42,18 @@ export { bjorklund } from './euclid'
 // uniformly recursive — `pattern > element > (atom | pattern)` — and
 // `weight`/`reps`/`ops` are fields on EVERY element.
 // ---------------------------------------------------------------------------
+// Exported for `steppedAutomation.ts`, which reads a literal's steps off this AST
+// directly (#1587) — so this module stays the one place that knows its shape.
 interface KLoc { start: { offset: number }; end: { offset: number } }
-interface KAtom { type_: 'atom'; source_: string; location_?: KLoc }
-interface KOp { type_: string; arguments_?: Record<string, unknown> }
-interface KElement {
+export interface KAtom { type_: 'atom'; source_: string; location_?: KLoc }
+export interface KOp { type_: string; arguments_?: Record<string, unknown> }
+export interface KElement {
   type_: 'element'
   source_: KAtom | KPattern
   options_?: { weight?: number; reps?: number; ops?: KOp[] }
   location_?: KLoc
 }
-interface KPattern {
+export interface KPattern {
   type_: 'pattern'
   arguments_?: { alignment?: string }
   source_: KElement[]
@@ -74,7 +76,7 @@ const isRestAtom = (a: KAtom): boolean => a.source_ === '~' || a.source_ === '-'
  * start is skipped past whitespace onto the token, and the end comes from the
  * atom's own `source_.length`, never from krill's tiling `location_.end`.
  */
-const atomSpan = (a: KAtom, input: string): { start: number; end: number } => {
+export const atomSpan = (a: KAtom, input: string): { start: number; end: number } => {
   const start = firstNonWs(input, (a.location_?.start.offset ?? 1) - 1)
   return { start, end: start + a.source_.length }
 }

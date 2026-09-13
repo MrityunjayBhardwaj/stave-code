@@ -30,22 +30,27 @@
  * which a two-step pattern cannot tell apart. `[3, a], [1, b]` can. So the walk
  * admits a parameter only under nodes measured to leave the cycle alone.
  *
- * Mirrors `signalAutomation.ts`: pure and structural, no eval, no source
- * scanning, the same per-track attribution, and the same direction of error —
- * ABSTAIN rather than approximate. A missing lane shows less than it could; a
- * wrong one is the editor lying about what plays.
+ * Mirrors `signalAutomation.ts`: pure, no eval, the same per-track attribution,
+ * and the same direction of error — ABSTAIN rather than approximate. A missing
+ * lane shows less than it could; a wrong one is the editor lying about what
+ * plays. The walk over the track is structural, over the IR; a literal's STEPS are
+ * read off krill's parse of that literal, the parse the engine itself runs, because
+ * the IR's lowering flattens what decides them (#1587, `stepsOfLiteral`).
  */
+import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import type { PatternIR } from './PatternIR'
 import type { SourceLocation } from './IREvent'
+import { atomSpan, type KElement, type KPattern } from './parseMini'
 
 /** One step of a stepped parameter. */
 export interface SteppedStep {
   /** The value this step holds, as a number. */
   readonly value: number
   /**
-   * How many CYCLES the step holds for — its `@n` (else 1) times the literal's
-   * `/n` (else 1). A positive integer. Not the written `@n`: `<0.2@2 0.8>/2`
-   * holds its first step for 4 cycles (#1579).
+   * How many CYCLES the step holds for — krill's weight for it (`@n`, `_` and `!n`
+   * folded together; else 1) times the literal's `/n` (else 1). A positive
+   * integer. Not the written `@n`: `<0.2@2 0.8>/2` holds its first step for 4
+   * cycles (#1579), and `<0.3!3 0.8>` is two steps, the first held 3 (#1587).
    */
   readonly weight: number
   /** The cycle, within one period, at which this step begins. */
@@ -91,26 +96,6 @@ const NUMBER = /^-?(?:\d+\.?\d*|\.\d+)$/
  * lane can own.
  */
 function readSteps(param: PatternIR & { tag: 'Param' }): SteppedStep[] | null {
-  const value = param.value
-  if (!value || typeof value !== 'object') return null
-  // `<…>/n` (#1579): the parser wraps the alternation in ONE `Slow`, whose span is
-  // the operator alone. A whole-number n stretches every step to `n` times its
-  // weight and nothing more — measured through the engine for /2, /3, a weighted
-  // step and three steps. A fractional n (`/1.5`, `/0.5`) changes the step INSIDE
-  // a cycle, so there is no per-cycle value to draw and the parameter declines.
-  //
-  // ⚠ NO "n ≥ 1" CLAUSE, AND THAT WAS MEASURED. The parser builds a `Slow` only for
-  // a positive factor: `/0`, `/0.0`, `/00`, `/-1`, `/-2.0` all parse to the bare
-  // `Cycle`, which the whole-literal check below refuses (the engine plays nothing
-  // for any of them). A `< 1` clause was written and broken alone; nothing went red.
-  let stretch = 1
-  let cycle: PatternIR = value
-  if (value.tag === 'Slow') {
-    if (!Number.isInteger(value.factor)) return null
-    stretch = value.factor
-    cycle = value.body
-  }
-  if (cycle.tag !== 'Cycle') return null
   const raw = param.rawArgs.trim()
   const quote = raw[0]
   // ONE literal: the next quote after the opening one is the LAST character.
@@ -122,74 +107,128 @@ function readSteps(param: PatternIR & { tag: 'Param' }): SteppedStep[] | null {
   if ((quote !== '"' && quote !== '`' && quote !== "'") || raw.indexOf(quote, 1) !== raw.length - 1) {
     return null
   }
-  // From the `<` to the end of the `/n` when there is one — the `Slow`'s own span
-  // starts at the operator, so the alternation supplies the start.
-  if (!spansWholeLiteral(param, cycle, value)) return null
+  const lit = literalOf(param)
+  return lit ? stepsOfLiteral(lit.inner, lit.start) : null
+}
+
+/**
+ * The text inside the argument's quotes, UNTRIMMED, and the source offset of its
+ * first character — or null.
+ *
+ * Positions come from the parser: the call site runs from the `.` to past the
+ * `)`, and `rawArgs` is everything between the parentheses, untrimmed — so the
+ * argument begins `rawArgs.length + 1` before the call's end. The inner text keeps
+ * its whitespace because krill's offsets count it (`" <0.2 0.8> "` is steps).
+ */
+function literalOf(param: PatternIR & { tag: 'Param' }): { inner: string; start: number } | null {
+  const call = param.loc?.[0]
+  if (!call) return null
+  const raw = param.rawArgs
+  const start = call.end - 1 - raw.length + (raw.length - raw.trimStart().length) + 1
+  return { inner: raw.trim().slice(1, -1), start }
+}
+
+/**
+ * The steps of one literal, read off KRILL's tree — the parse the engine runs on
+ * the same string — or null.
+ *
+ * ⚠ NOT OFF THE IR (#1587). `parseStrudel` lowers krill's tree into PatternIR, and
+ * the lowering flattens exactly what decides whether a literal holds one value per
+ * cycle. Each of these came out as a `Cycle` of numeric Plays, and each plays
+ * something else (engine test): `[1|1.5]` is a RANDOM pick, `<1 2, 3 4>` is two
+ * layers, `<0.2 0.8:1>` plays the array `[0.8, 1]`. `<0.3!3 0.8>` became three
+ * Plays on ONE span, so an edit to one of them moved all three copies' bars. The IR
+ * also kept one `/2` of `/2/2` (which plays `/4`) and dropped `/0` entirely.
+ * krill names every one of these. A check of the text between the IR's spans was
+ * drafted first and set aside: it would have been a second copy of the grammar.
+ *
+ * The accepted shape, dumped from `@strudel/mini@1.2.6` rather than read off the
+ * grammar:
+ *
+ *   fastcat ── ONE element: weight 1, reps 1, and no op but one `/n` (`slowFactor`)
+ *    └ polymeter_slowcat ── ONE child (a second one is a `,` layer)
+ *       └ fastcat ── one element per STEP: an atom whose token is a number
+ *
+ * A step holds `weight` cycles — krill folds `@n`, `_` and `!n` into that one
+ * field, and the engine follows it: `<0.2!3@2 0.8>` has weight 4 and plays 0.2 for
+ * four cycles (measured). Its only op may be `replicate`; anything else rides on the
+ * step (`:` tail, `?` degrade, `(3,8)`, a per-step `*`) and changes what it plays.
+ * `!n` is therefore ONE step — the one number the user wrote — and an edit to it
+ * moves every cycle it holds.
+ */
+function stepsOfLiteral(inner: string, innerStart: number): SteppedStep[] | null {
+  let root: KPattern
+  try {
+    root = krillParse('"' + inner + '"') as KPattern
+  } catch {
+    return null
+  }
+  // ⚠ ONE ELEMENT, NOT "A FASTCAT": `<0.2 0.8> 0.5` is a fastcat of two and plays two
+  // values a cycle. A root that is not a fastcat (`a | b`, `a, b`) holds PATTERNS,
+  // not elements, and fails the alternation checks below on its own — an alignment
+  // clause here was broken alone and turned nothing red.
+  if (root?.type_ !== 'pattern' || root.source_.length !== 1) return null
+  const whole = root.source_[0]
+  const stretch = slowFactor(whole)
+  if (stretch === null || (whole.options_?.weight ?? 1) !== 1 || (whole.options_?.reps ?? 1) !== 1) return null
+
+  const alt = whole.source_
+  if (alt.type_ !== 'pattern' || alt.arguments_?.alignment !== 'polymeter_slowcat' || alt.source_.length !== 1) return null
+  // A slowcat's child is a PATTERN, not an element (the krill AST reference), and
+  // always a fastcat: `<0.2|0.8>` and `<0.2 . 0.8>` do not parse at all, in krill or
+  // in the engine. A check of the child's alignment turned nothing red when broken.
+  const arms = alt.source_[0] as unknown as KPattern
 
   const steps: SteppedStep[] = []
   let at = 0
-  for (const item of cycle.items) {
-    let weight = 1
-    let body: PatternIR = item
-    if (item.tag === 'Elongate') {
-      // A fractional weight has no whole-cycle start, and the per-cycle reading
-      // this lane exists to draw would have to invent one.
-      if (!Number.isInteger(item.factor) || item.factor < 1) return null
-      weight = item.factor
-      body = item.body
-    }
-    // `~` silences the track and `[a b]` subdivides the cycle: neither is a
-    // value held for a cycle, so the whole parameter declines rather than a lane
-    // drawing a step the engine does not play.
+  for (const el of arms.source_) {
+    const atom = el.source_
+    // `~` silences the track and `[a b]` subdivides the cycle: neither is a value
+    // held for a cycle, so the whole parameter declines.
     //
-    // ⚠ This line NARROWS; the numeric test below is what DECLINES. A `Sleep` or
-    // `Seq` carries no numeric `note`, so the number check refuses both on its
-    // own — measured by breaking this line, which turned no arm red. It stays
-    // because without it `.note`/`.loc` are not known to exist on `body`.
-    if (body.tag !== 'Play') return null
-    const text = String(body.note)
-    if (!NUMBER.test(text)) return null
-    const span = body.loc?.[0]
-    if (!span || !Number.isFinite(span.start) || !Number.isFinite(span.end)) return null
-    steps.push({ value: Number(text), weight: weight * stretch, startCycle: at, valueSpan: span })
-    at += weight * stretch
+    // ⚠ The number test is what DECLINES a group; the atom test only NARROWS. A
+    // group's `source_` is an array, which no number matches — measured by breaking
+    // the atom test, which turned nothing red. It stays so `source_` is a string.
+    if (atom.type_ !== 'atom' || !NUMBER.test(atom.source_)) return null
+    const weight = el.options_?.weight ?? 1
+    // A fractional weight has no whole-cycle start, and the per-cycle reading this
+    // lane exists to draw would have to invent one.
+    if (!Number.isInteger(weight) || weight < 1) return null
+    if (!(el.options_?.ops ?? []).every((op) => op.type_ === 'replicate')) return null
+    const span = atomSpan(atom, inner)
+    const held = weight * stretch
+    steps.push({
+      value: Number(atom.source_),
+      weight: held,
+      startCycle: at,
+      valueSpan: { start: innerStart + span.start, end: innerStart + span.end },
+    })
+    at += held
   }
   return steps.length > 0 ? steps : null
 }
 
 /**
- * Whether the text from `first`'s start to `last`'s end is the WHOLE text inside
- * the argument's quotes (#1584). For a plain alternation both are the `Cycle`;
- * for `<…>/n` the start is the `Cycle`'s and the end is the `Slow`'s (#1579).
+ * The whole-number `n` of a `<…>/n` on the literal, 1 for no op, or null (#1579).
  *
- * ⚠ THE PARSER CAN DROP AN OPERATOR AND KEEP THE ALTERNATION. `"<0.2 0.8>/[2]"`
- * and `"<0.2 0.8>/<2 1>"` both parse to the bare `Cycle` of `"<0.2 0.8>"`, with no
- * trace of the division, and the engine still divides (engine test). The quote
- * check above cannot see it — both are one literal. The node's own span can: it
- * ends at the `>`, short of the text.
- *
- * ⚠ AND IT CAN DROP ONE OPERATOR OF TWO. `"<0.2 0.8>/2/2"` parses to ONE `Slow`
- * of 2 — the engine plays `/4` — and `"<0.2 0.8>/2@3"` to the same `Slow` with
- * the `@3` gone. Both `Slow`s end at the first `/2`, short of the text, so the
- * same check refuses them; `[<0.2 0.8>]/2` starts short at the `[` and is refused
- * too, a missing lane rather than a wrong one.
- *
- * Positions come from the parser, not from re-reading the mini grammar: the call
- * site runs from the `.` to past the `)`, and `rawArgs` is everything between the
- * parentheses, untrimmed — so the argument begins `rawArgs.length + 1` before the
- * call's end. Whitespace inside the quotes is allowed on either side; the engine
- * plays `" <0.2 0.8> "` as steps.
+ * A whole-number n stretches every step to `n` times its weight and nothing more —
+ * measured through the engine for /2, /3, a weighted step and three steps. A
+ * fractional n (`/1.5`, `/0.5`) and every `*n` change the value INSIDE a cycle, a
+ * patterned amount (`/[2]`, `/<2 1>`) changes it per cycle, and two divisions
+ * (`/2/2`) are two ops — each declines. `/0` and `/-2` play nothing at all, which
+ * is what `n >= 1` refuses.
  */
-function spansWholeLiteral(param: PatternIR & { tag: 'Param' }, first: PatternIR, last: PatternIR): boolean {
-  const call = param.loc?.[0]
-  const from = first.loc?.[0]
-  const to = last.loc?.[0]
-  if (!call || !from || !to) return false
-  const raw = param.rawArgs
-  const inner = raw.trim().slice(1, -1)
-  const start =
-    call.end - 1 - raw.length + (raw.length - raw.trimStart().length) + 1 + (inner.length - inner.trimStart().length)
-  return from.start === start && to.end === start + inner.trim().length
+function slowFactor(el: KElement): number | null {
+  const ops = el.options_?.ops ?? []
+  if (ops.length === 0) return 1
+  if (ops.length !== 1) return null
+  // `slow` is only ever a `stretch`'s type (dump), and a patterned amount (`/[2]`)
+  // has an array `source_`, which is no number — so neither needs a clause of its
+  // own. Both were written, broken alone, and turned nothing red.
+  const args = ops[0].arguments_ as { type?: string; amount?: { source_?: unknown } } | undefined
+  if (args?.type !== 'slow') return null
+  const n = Number(args.amount?.source_)
+  return Number.isInteger(n) && n >= 1 ? n : null
 }
 
 /**

@@ -1589,58 +1589,266 @@ function songExtent(ir) {
   return { kind: "arranged", cycles: best };
 }
 __name(songExtent, "songExtent");
+var bjorklund = /* @__PURE__ */ __name((k, n) => {
+  if (n <= 0) return [];
+  if (k === 0) return Array(n).fill(false);
+  if (Math.abs(k) >= n) return Array(n).fill(k > 0);
+  return euclid_mjs.bjorklund(k, n).map((x) => x === 1);
+}, "bjorklund");
+var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
+  const n = pattern.length;
+  if (n === 0) return pattern;
+  const k = (-rot % n + n) % n;
+  return pattern.slice(k).concat(pattern.slice(0, k));
+}, "rotateEuclid");
+
+// src/ir/parseMini.ts
+var isAtom = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
+var isRestAtom = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
+var atomSpan = /* @__PURE__ */ __name((a, input) => {
+  const start = firstNonWs(input, (a.location_?.start.offset ?? 1) - 1);
+  return { start, end: start + a.source_.length };
+}, "atomSpan");
+var argAtom = /* @__PURE__ */ __name((arg) => {
+  const n = arg;
+  if (!n || typeof n !== "object") return null;
+  const inner = n.type_ === "element" ? n.source_ : n;
+  return inner && inner.type_ === "atom" ? inner : null;
+}, "argAtom");
+function parseMini(input, isSample = false, baseOffset = 0) {
+  if (!input.trim()) return IR.pure();
+  let ast;
+  try {
+    ast = krillParser_js.parse('"' + input + '"');
+  } catch {
+    return IR.code(input);
+  }
+  try {
+    const node = patternToNode(
+      ast,
+      [{ start: baseOffset, end: baseOffset + input.length }],
+      isSample,
+      baseOffset,
+      input
+    );
+    return node ?? IR.pure();
+  } catch {
+    return IR.code(input);
+  }
+}
+__name(parseMini, "parseMini");
+function patternToNode(pat, loc, isSample, baseOffset, input) {
+  const align = pat.arguments_?.alignment;
+  const voices = pat.source_;
+  if (align === "polymeter_slowcat" || align === "rand") {
+    const items = [];
+    for (const v of voices) items.push(...buildSeq(v?.source_ ?? [], isSample, baseOffset, input));
+    return items.length === 0 ? null : { tag: "Cycle", items, loc };
+  }
+  if (align === "stack" || align === "polymeter") {
+    const tracks = voices.map((v) => buildSeq(v?.source_ ?? [], isSample, baseOffset, input)).filter((s) => s.length > 0).map((s) => s.length === 1 ? s[0] : IR.seq(...s));
+    if (tracks.length === 0) return null;
+    return tracks.length === 1 ? tracks[0] : { tag: "Stack", tracks, loc };
+  }
+  const children = buildSeq(pat.source_, isSample, baseOffset, input);
+  if (children.length === 0) return null;
+  return children.length === 1 ? children[0] : { tag: "Seq", children, loc };
+}
+__name(patternToNode, "patternToNode");
+function buildSeq(elements, isSample, baseOffset, input) {
+  const out = [];
+  for (const el of elements) {
+    const node = buildElement(el, isSample, baseOffset, input);
+    if (!node) continue;
+    const reps = el.options_?.reps ?? 1;
+    if (reps > 1) for (let r = 0; r < reps; r++) out.push(node);
+    else out.push(node);
+  }
+  return out;
+}
+__name(buildSeq, "buildSeq");
+function buildElement(el, isSample, baseOffset, input) {
+  const src = el.source_;
+  const ops = el.options_?.ops ?? [];
+  const weight = el.options_?.weight ?? 1;
+  const reps = el.options_?.reps ?? 1;
+  let node;
+  let contentStart;
+  let afterContent;
+  if (isAtom(src)) {
+    const span = atomSpan(src, input);
+    contentStart = span.start;
+    afterContent = span.end;
+    const loc = [{ start: baseOffset + span.start, end: baseOffset + span.end }];
+    if (isRestAtom(src)) {
+      node = IR.sleep(1, { loc });
+    } else {
+      const params = isSample ? { s: src.source_ } : {};
+      const tail = ops.find((o) => o.type_ === "tail");
+      const tailAtom = tail ? argAtom(tail.arguments_?.element) : null;
+      if (tailAtom) {
+        const idx = parseInt(tailAtom.source_, 10);
+        if (!isNaN(idx) && idx >= 0) params.slice = idx;
+        afterContent = atomSpan(tailAtom, input).end;
+      }
+      node = IR.play(src.source_, isSample ? 1 : 0.25, params, loc);
+    }
+  } else {
+    const group = buildGroup(src, isSample, baseOffset, input, el);
+    if (!group) return null;
+    node = group.node;
+    contentStart = group.openPos;
+    afterContent = group.closePos + 1;
+  }
+  const euclid = ops.find((o) => o.type_ === "bjorklund");
+  if (euclid && isAtom(src) && !isRestAtom(src)) {
+    const expanded = expandEuclid(node, euclid, baseOffset, contentStart, input);
+    if (expanded) {
+      node = expanded.node;
+      afterContent = expanded.closeParen;
+    }
+  }
+  const stretch = ops.find((o) => o.type_ === "stretch");
+  if (stretch) {
+    const amt = argAtom(stretch.arguments_?.amount);
+    const factor = amt ? Number(amt.source_) : NaN;
+    if (amt && !isNaN(factor) && factor > 0) {
+      const s = atomSpan(amt, input);
+      const modLoc = [{ start: baseOffset + s.start - 1, end: baseOffset + s.end }];
+      node = stretch.arguments_?.type === "slow" ? IR.slow(factor, node, { loc: modLoc }) : IR.fast(factor, node, { loc: modLoc });
+    }
+  }
+  if (ops.some((o) => o.type_ === "degradeBy")) {
+    const modLoc = [{ start: baseOffset + afterContent, end: baseOffset + afterContent + 1 }];
+    node = IR.choice(0.5, node, IR.pure(), { loc: modLoc });
+  }
+  if (reps <= 1 && weight > 1 && input[afterContent] === "@") {
+    let j = afterContent + 1;
+    while (j < input.length && /[0-9.]/.test(input[j])) j++;
+    const modLoc = [{ start: baseOffset + afterContent, end: baseOffset + j }];
+    node = IR.elongate(weight, node, { loc: modLoc });
+  }
+  return node;
+}
+__name(buildElement, "buildElement");
+function buildGroup(pat, isSample, baseOffset, input, el) {
+  const openPos = firstNonWs(input, (el.location_?.start.offset ?? 1) - 1);
+  const closePos = matchBracket(input, openPos);
+  const loc = [{ start: baseOffset + openPos, end: baseOffset + closePos + 1 }];
+  const node = patternToNode(pat, loc, isSample, baseOffset, input);
+  return node ? { node, openPos, closePos } : null;
+}
+__name(buildGroup, "buildGroup");
+function expandEuclid(play, op, baseOffset, contentStart, input) {
+  const pulse = argAtom(op.arguments_?.pulse);
+  const step = argAtom(op.arguments_?.step);
+  if (!pulse || !step) return null;
+  const k = Number(pulse.source_);
+  const n = Number(step.source_);
+  if (isNaN(k) || isNaN(n)) return null;
+  const rotArg = op.arguments_?.rotation == null ? null : argAtom(op.arguments_?.rotation);
+  const rot = rotArg ? Number(rotArg.source_) : 0;
+  let mask = bjorklund(k, n);
+  if (rot) mask = rotateEuclid(mask, rot);
+  const restSlot = IR.sleep(1);
+  const slots = mask.map((on) => on ? play : restSlot);
+  const closeParen = atomSpan(rotArg ?? step, input).end + 1;
+  if (slots.length === 1) return { node: slots[0], closeParen };
+  return {
+    node: {
+      tag: "Seq",
+      children: slots,
+      loc: [{ start: baseOffset + contentStart, end: baseOffset + closeParen }]
+    },
+    closeParen
+  };
+}
+__name(expandEuclid, "expandEuclid");
+function firstNonWs(input, from) {
+  let i = from;
+  while (i < input.length && /\s/.test(input[i])) i++;
+  return i;
+}
+__name(firstNonWs, "firstNonWs");
+function matchBracket(input, openPos) {
+  let depth = 0;
+  for (let i = openPos; i < input.length; i++) {
+    const c = input[i];
+    if (c === "[" || c === "{" || c === "<") depth++;
+    else if (c === "]" || c === "}" || c === ">") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return input.length - 1;
+}
+__name(matchBracket, "matchBracket");
 
 // src/ir/steppedAutomation.ts
 var NUMBER = /^-?(?:\d+\.?\d*|\.\d+)$/;
 function readSteps(param) {
-  const value = param.value;
-  if (!value || typeof value !== "object") return null;
-  let stretch = 1;
-  let cycle = value;
-  if (value.tag === "Slow") {
-    if (!Number.isInteger(value.factor)) return null;
-    stretch = value.factor;
-    cycle = value.body;
-  }
-  if (cycle.tag !== "Cycle") return null;
   const raw = param.rawArgs.trim();
   const quote = raw[0];
   if (quote !== '"' && quote !== "`" && quote !== "'" || raw.indexOf(quote, 1) !== raw.length - 1) {
     return null;
   }
-  if (!spansWholeLiteral(param, cycle, value)) return null;
+  const lit = literalOf(param);
+  return lit ? stepsOfLiteral(lit.inner, lit.start) : null;
+}
+__name(readSteps, "readSteps");
+function literalOf(param) {
+  const call = param.loc?.[0];
+  if (!call) return null;
+  const raw = param.rawArgs;
+  const start = call.end - 1 - raw.length + (raw.length - raw.trimStart().length) + 1;
+  return { inner: raw.trim().slice(1, -1), start };
+}
+__name(literalOf, "literalOf");
+function stepsOfLiteral(inner, innerStart) {
+  let root;
+  try {
+    root = krillParser_js.parse('"' + inner + '"');
+  } catch {
+    return null;
+  }
+  if (root?.type_ !== "pattern" || root.source_.length !== 1) return null;
+  const whole = root.source_[0];
+  const stretch = slowFactor(whole);
+  if (stretch === null || (whole.options_?.weight ?? 1) !== 1 || (whole.options_?.reps ?? 1) !== 1) return null;
+  const alt = whole.source_;
+  if (alt.type_ !== "pattern" || alt.arguments_?.alignment !== "polymeter_slowcat" || alt.source_.length !== 1) return null;
+  const arms = alt.source_[0];
   const steps = [];
   let at = 0;
-  for (const item of cycle.items) {
-    let weight = 1;
-    let body = item;
-    if (item.tag === "Elongate") {
-      if (!Number.isInteger(item.factor) || item.factor < 1) return null;
-      weight = item.factor;
-      body = item.body;
-    }
-    if (body.tag !== "Play") return null;
-    const text = String(body.note);
-    if (!NUMBER.test(text)) return null;
-    const span = body.loc?.[0];
-    if (!span || !Number.isFinite(span.start) || !Number.isFinite(span.end)) return null;
-    steps.push({ value: Number(text), weight: weight * stretch, startCycle: at, valueSpan: span });
-    at += weight * stretch;
+  for (const el of arms.source_) {
+    const atom = el.source_;
+    if (atom.type_ !== "atom" || !NUMBER.test(atom.source_)) return null;
+    const weight = el.options_?.weight ?? 1;
+    if (!Number.isInteger(weight) || weight < 1) return null;
+    if (!(el.options_?.ops ?? []).every((op) => op.type_ === "replicate")) return null;
+    const span = atomSpan(atom, inner);
+    const held = weight * stretch;
+    steps.push({
+      value: Number(atom.source_),
+      weight: held,
+      startCycle: at,
+      valueSpan: { start: innerStart + span.start, end: innerStart + span.end }
+    });
+    at += held;
   }
   return steps.length > 0 ? steps : null;
 }
-__name(readSteps, "readSteps");
-function spansWholeLiteral(param, first, last) {
-  const call = param.loc?.[0];
-  const from = first.loc?.[0];
-  const to = last.loc?.[0];
-  if (!call || !from || !to) return false;
-  const raw = param.rawArgs;
-  const inner = raw.trim().slice(1, -1);
-  const start = call.end - 1 - raw.length + (raw.length - raw.trimStart().length) + 1 + (inner.length - inner.trimStart().length);
-  return from.start === start && to.end === start + inner.trim().length;
+__name(stepsOfLiteral, "stepsOfLiteral");
+function slowFactor(el) {
+  const ops = el.options_?.ops ?? [];
+  if (ops.length === 0) return 1;
+  if (ops.length !== 1) return null;
+  const args = ops[0].arguments_;
+  if (args?.type !== "slow") return null;
+  const n = Number(args.amount?.source_);
+  return Number.isInteger(n) && n >= 1 ? n : null;
 }
-__name(spansWholeLiteral, "spansWholeLiteral");
+__name(slowFactor, "slowFactor");
 var LEAVES_THE_CYCLE = /* @__PURE__ */ new Set([
   "Track",
   "Param",
@@ -2105,200 +2313,6 @@ function requireObject(node, key2, path) {
   }
 }
 __name(requireObject, "requireObject");
-var bjorklund = /* @__PURE__ */ __name((k, n) => {
-  if (n <= 0) return [];
-  if (k === 0) return Array(n).fill(false);
-  if (Math.abs(k) >= n) return Array(n).fill(k > 0);
-  return euclid_mjs.bjorklund(k, n).map((x) => x === 1);
-}, "bjorklund");
-var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
-  const n = pattern.length;
-  if (n === 0) return pattern;
-  const k = (-rot % n + n) % n;
-  return pattern.slice(k).concat(pattern.slice(0, k));
-}, "rotateEuclid");
-
-// src/ir/parseMini.ts
-var isAtom = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
-var isRestAtom = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
-var atomSpan = /* @__PURE__ */ __name((a, input) => {
-  const start = firstNonWs(input, (a.location_?.start.offset ?? 1) - 1);
-  return { start, end: start + a.source_.length };
-}, "atomSpan");
-var argAtom = /* @__PURE__ */ __name((arg) => {
-  const n = arg;
-  if (!n || typeof n !== "object") return null;
-  const inner = n.type_ === "element" ? n.source_ : n;
-  return inner && inner.type_ === "atom" ? inner : null;
-}, "argAtom");
-function parseMini(input, isSample = false, baseOffset = 0) {
-  if (!input.trim()) return IR.pure();
-  let ast;
-  try {
-    ast = krillParser_js.parse('"' + input + '"');
-  } catch {
-    return IR.code(input);
-  }
-  try {
-    const node = patternToNode(
-      ast,
-      [{ start: baseOffset, end: baseOffset + input.length }],
-      isSample,
-      baseOffset,
-      input
-    );
-    return node ?? IR.pure();
-  } catch {
-    return IR.code(input);
-  }
-}
-__name(parseMini, "parseMini");
-function patternToNode(pat, loc, isSample, baseOffset, input) {
-  const align = pat.arguments_?.alignment;
-  const voices = pat.source_;
-  if (align === "polymeter_slowcat" || align === "rand") {
-    const items = [];
-    for (const v of voices) items.push(...buildSeq(v?.source_ ?? [], isSample, baseOffset, input));
-    return items.length === 0 ? null : { tag: "Cycle", items, loc };
-  }
-  if (align === "stack" || align === "polymeter") {
-    const tracks = voices.map((v) => buildSeq(v?.source_ ?? [], isSample, baseOffset, input)).filter((s) => s.length > 0).map((s) => s.length === 1 ? s[0] : IR.seq(...s));
-    if (tracks.length === 0) return null;
-    return tracks.length === 1 ? tracks[0] : { tag: "Stack", tracks, loc };
-  }
-  const children = buildSeq(pat.source_, isSample, baseOffset, input);
-  if (children.length === 0) return null;
-  return children.length === 1 ? children[0] : { tag: "Seq", children, loc };
-}
-__name(patternToNode, "patternToNode");
-function buildSeq(elements, isSample, baseOffset, input) {
-  const out = [];
-  for (const el of elements) {
-    const node = buildElement(el, isSample, baseOffset, input);
-    if (!node) continue;
-    const reps = el.options_?.reps ?? 1;
-    if (reps > 1) for (let r = 0; r < reps; r++) out.push(node);
-    else out.push(node);
-  }
-  return out;
-}
-__name(buildSeq, "buildSeq");
-function buildElement(el, isSample, baseOffset, input) {
-  const src = el.source_;
-  const ops = el.options_?.ops ?? [];
-  const weight = el.options_?.weight ?? 1;
-  const reps = el.options_?.reps ?? 1;
-  let node;
-  let contentStart;
-  let afterContent;
-  if (isAtom(src)) {
-    const span = atomSpan(src, input);
-    contentStart = span.start;
-    afterContent = span.end;
-    const loc = [{ start: baseOffset + span.start, end: baseOffset + span.end }];
-    if (isRestAtom(src)) {
-      node = IR.sleep(1, { loc });
-    } else {
-      const params = isSample ? { s: src.source_ } : {};
-      const tail = ops.find((o) => o.type_ === "tail");
-      const tailAtom = tail ? argAtom(tail.arguments_?.element) : null;
-      if (tailAtom) {
-        const idx = parseInt(tailAtom.source_, 10);
-        if (!isNaN(idx) && idx >= 0) params.slice = idx;
-        afterContent = atomSpan(tailAtom, input).end;
-      }
-      node = IR.play(src.source_, isSample ? 1 : 0.25, params, loc);
-    }
-  } else {
-    const group = buildGroup(src, isSample, baseOffset, input, el);
-    if (!group) return null;
-    node = group.node;
-    contentStart = group.openPos;
-    afterContent = group.closePos + 1;
-  }
-  const euclid = ops.find((o) => o.type_ === "bjorklund");
-  if (euclid && isAtom(src) && !isRestAtom(src)) {
-    const expanded = expandEuclid(node, euclid, baseOffset, contentStart, input);
-    if (expanded) {
-      node = expanded.node;
-      afterContent = expanded.closeParen;
-    }
-  }
-  const stretch = ops.find((o) => o.type_ === "stretch");
-  if (stretch) {
-    const amt = argAtom(stretch.arguments_?.amount);
-    const factor = amt ? Number(amt.source_) : NaN;
-    if (amt && !isNaN(factor) && factor > 0) {
-      const s = atomSpan(amt, input);
-      const modLoc = [{ start: baseOffset + s.start - 1, end: baseOffset + s.end }];
-      node = stretch.arguments_?.type === "slow" ? IR.slow(factor, node, { loc: modLoc }) : IR.fast(factor, node, { loc: modLoc });
-    }
-  }
-  if (ops.some((o) => o.type_ === "degradeBy")) {
-    const modLoc = [{ start: baseOffset + afterContent, end: baseOffset + afterContent + 1 }];
-    node = IR.choice(0.5, node, IR.pure(), { loc: modLoc });
-  }
-  if (reps <= 1 && weight > 1 && input[afterContent] === "@") {
-    let j = afterContent + 1;
-    while (j < input.length && /[0-9.]/.test(input[j])) j++;
-    const modLoc = [{ start: baseOffset + afterContent, end: baseOffset + j }];
-    node = IR.elongate(weight, node, { loc: modLoc });
-  }
-  return node;
-}
-__name(buildElement, "buildElement");
-function buildGroup(pat, isSample, baseOffset, input, el) {
-  const openPos = firstNonWs(input, (el.location_?.start.offset ?? 1) - 1);
-  const closePos = matchBracket(input, openPos);
-  const loc = [{ start: baseOffset + openPos, end: baseOffset + closePos + 1 }];
-  const node = patternToNode(pat, loc, isSample, baseOffset, input);
-  return node ? { node, openPos, closePos } : null;
-}
-__name(buildGroup, "buildGroup");
-function expandEuclid(play, op, baseOffset, contentStart, input) {
-  const pulse = argAtom(op.arguments_?.pulse);
-  const step = argAtom(op.arguments_?.step);
-  if (!pulse || !step) return null;
-  const k = Number(pulse.source_);
-  const n = Number(step.source_);
-  if (isNaN(k) || isNaN(n)) return null;
-  const rotArg = op.arguments_?.rotation == null ? null : argAtom(op.arguments_?.rotation);
-  const rot = rotArg ? Number(rotArg.source_) : 0;
-  let mask = bjorklund(k, n);
-  if (rot) mask = rotateEuclid(mask, rot);
-  const restSlot = IR.sleep(1);
-  const slots = mask.map((on) => on ? play : restSlot);
-  const closeParen = atomSpan(rotArg ?? step, input).end + 1;
-  if (slots.length === 1) return { node: slots[0], closeParen };
-  return {
-    node: {
-      tag: "Seq",
-      children: slots,
-      loc: [{ start: baseOffset + contentStart, end: baseOffset + closeParen }]
-    },
-    closeParen
-  };
-}
-__name(expandEuclid, "expandEuclid");
-function firstNonWs(input, from) {
-  let i = from;
-  while (i < input.length && /\s/.test(input[i])) i++;
-  return i;
-}
-__name(firstNonWs, "firstNonWs");
-function matchBracket(input, openPos) {
-  let depth = 0;
-  for (let i = openPos; i < input.length; i++) {
-    const c = input[i];
-    if (c === "[" || c === "{" || c === "<") depth++;
-    else if (c === "]" || c === "}" || c === ">") {
-      depth--;
-      if (depth === 0) return i;
-    }
-  }
-  return input.length - 1;
-}
-__name(matchBracket, "matchBracket");
 
 // src/ir/trackId.ts
 function trackIdFromLabel(label, index) {
