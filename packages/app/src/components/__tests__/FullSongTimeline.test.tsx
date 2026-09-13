@@ -1535,8 +1535,12 @@ describe('FullSongTimeline — edit a STEP on a stepped lane (#1463 Stage 3)', (
   }
   const stepEditor = (c: HTMLElement) =>
     c.querySelector('[data-full-song="automation-step"]') as HTMLInputElement | null
-  const press = (grid: HTMLElement, x: number, y: number) =>
+  /** A CLICK — down and up at one point. Since #1578 a press on a step is pending
+   *  until release: travel makes it a drag, no travel opens the typed editor. */
+  const press = (grid: HTMLElement, x: number, y: number) => {
     fireEvent.pointerDown(grid, { clientX: x, clientY: y, pointerId: 1 })
+    fireEvent.pointerUp(grid, { clientX: x, clientY: y, pointerId: 1 })
+  }
 
   /** Canvas y of `value`'s level on `bd`, from the lane's RENDERED height:
    *  `stepY` over the 0…1 gain axis, inset 3 top and bottom. Collapsed or
@@ -1699,5 +1703,111 @@ describe('FullSongTimeline — edit a STEP on a stepped lane (#1463 Stage 3)', (
     await expandBd(container)
     press(grid, 300, levelY(container, 0.8))
     expect(stepEditor(container)).toBeNull()
+  })
+
+  // ── #1578: drag a step's level ─────────────────────────────────────────────
+  const down = (grid: HTMLElement, x: number, y: number) =>
+    fireEvent.pointerDown(grid, { clientX: x, clientY: y, pointerId: 1 })
+  const move = (grid: HTMLElement, x: number, y: number) =>
+    fireEvent.pointerMove(grid, { clientX: x, clientY: y, pointerId: 1 })
+  const up = (grid: HTMLElement, x: number, y: number) =>
+    fireEvent.pointerUp(grid, { clientX: x, clientY: y, pointerId: 1 })
+  const dragLabel = (c: HTMLElement) => c.querySelector('[data-full-song="automation-step-drag"]')
+
+  it('a drag writes that step ONCE, on release, by the pointer\'s travel — with ONLY the automation handler wired', async () => {
+    const onEditAutomation = vi.fn()
+    const { grid, container } = renderStepped({ onEditAutomation })
+    await expandBd(container)
+    // Grab the line 3px BELOW it, inside the hit tolerance. The value must follow
+    // the TRAVEL: an absolute reading of the release height would give 0.87.
+    const from = levelY(container, 0.8) + 3
+    const to = levelY(container, 0.9) + 3
+    down(grid, 300, from)
+    move(grid, 300, from - 5)
+    move(grid, 300, to)
+    expect(onEditAutomation, 'the drag wrote before release — a write per pixel').not.toHaveBeenCalled()
+    expect(dragLabel(container)?.textContent, 'no value shown while dragging').toContain('0.9')
+    up(grid, 300, to)
+    expect(onEditAutomation).toHaveBeenCalledTimes(1)
+    expect(onEditAutomation).toHaveBeenCalledWith({ range: [44, 47], text: '0.9' }, 'automation gain step 1')
+    expect(dragLabel(container), 'the value label lingered after release').toBeNull()
+    expect(stepEditor(container), 'a drag also opened the typed editor').toBeNull()
+  })
+
+  it('a press released without travel — or with less than the threshold — opens the typed editor and writes nothing', async () => {
+    const onEditAutomation = vi.fn()
+    const { grid, container } = renderStepped({ onEditAutomation })
+    await expandBd(container)
+    const y = levelY(container, 0.8)
+    down(grid, 300, y)
+    expect(stepEditor(container), 'the editor opened on press, before the gesture resolved').toBeNull()
+    move(grid, 300, y - 2)
+    expect(dragLabel(container), 'a 2px tremble started a drag').toBeNull()
+    up(grid, 300, y - 2)
+    expect(stepEditor(container)?.value).toBe('0.8')
+    expect(onEditAutomation).not.toHaveBeenCalled()
+  })
+
+  it('a drag that comes back to where it began writes nothing, and a cancelled one writes nothing', async () => {
+    const onEditAutomation = vi.fn()
+    const { grid, container } = renderStepped({ onEditAutomation })
+    await expandBd(container)
+    const y = levelY(container, 0.8)
+    down(grid, 300, y)
+    move(grid, 300, y - 20)
+    move(grid, 300, y)
+    up(grid, 300, y)
+    expect(onEditAutomation, 'a drag back to the start rewrote the step').not.toHaveBeenCalled()
+    expect(stepEditor(container), 'a drag back to the start opened the editor').toBeNull()
+
+    down(grid, 300, y)
+    move(grid, 300, y - 20)
+    expect(dragLabel(container)).not.toBeNull()
+    fireEvent.pointerCancel(grid, { clientX: 300, clientY: y - 20, pointerId: 1 })
+    expect(onEditAutomation, 'a cancelled drag wrote').not.toHaveBeenCalled()
+    expect(dragLabel(container)).toBeNull()
+    expect(stepEditor(container), 'a cancelled drag opened the editor').toBeNull()
+  })
+
+  it('a second release behind the first commits nothing more', async () => {
+    const onEditAutomation = vi.fn()
+    const { grid, container } = renderStepped({ onEditAutomation })
+    await expandBd(container)
+    const y = levelY(container, 0.8)
+    down(grid, 300, y)
+    move(grid, 300, levelY(container, 0.5))
+    // Both releases inside ONE act, so the second runs before any re-render —
+    // two separate fireEvents could not show a missing once-only guard. jsdom has
+    // no PointerEvent, so the id rides on a MouseEvent as an own property, which
+    // is where React reads it from.
+    const release = () =>
+      Object.assign(new MouseEvent('pointerup', { bubbles: true, clientX: 300, clientY: levelY(container, 0.5) }), { pointerId: 1 })
+    act(() => {
+      grid.dispatchEvent(release())
+      grid.dispatchEvent(release())
+    })
+    expect(onEditAutomation).toHaveBeenCalledTimes(1)
+    expect(onEditAutomation.mock.calls[0][0]).toEqual({ range: [44, 47], text: '0.5' })
+  })
+
+  it('stops at the axis — a drag cannot write past the knob\'s range', async () => {
+    const onEditAutomation = vi.fn()
+    const { grid, container } = renderStepped({ onEditAutomation })
+    await expandBd(container)
+    const y = levelY(container, 0.8)
+    down(grid, 300, y)
+    move(grid, 300, y - 1000)
+    up(grid, 300, y - 1000)
+    expect(onEditAutomation.mock.calls.map((c) => c[0])).toEqual([{ range: [44, 47], text: '1' }])
+  })
+
+  it('the cursor promises a vertical drag over a level, and not off it', async () => {
+    const { grid, container } = renderStepped({ onEditAutomation: vi.fn() })
+    await expandBd(container)
+    move(grid, 300, levelY(container, 0.8))
+    expect(grid.style.cursor, 'no drag cursor over a step\'s level').toBe('ns-resize')
+    // The CONTROL, same arm: the same bar at a height the staircase does not hold.
+    move(grid, 300, levelY(container, 0.5))
+    expect(grid.style.cursor).not.toBe('ns-resize')
   })
 })

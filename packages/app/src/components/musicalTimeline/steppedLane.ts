@@ -4,9 +4,10 @@
  * A stepped parameter holds one value per cycle and repeats with a period
  * (`steppedAutomations`, editor). Drawing it is not a curve sample: it is a
  * staircase of flat segments, one per run of cycles that play the same step. This
- * module turns an automation plus the visible cycle span into those segments, and
- * a value into a height, and nothing else — the canvas calls live in
- * `drawTimeline`, the edit in Stage 3.
+ * module turns an automation plus the visible cycle span into those segments, a
+ * value into a height and a pointer's travel back into a value (#1578), and a
+ * press into the step it names. The canvas calls live in `drawTimeline`; the
+ * gestures that use this geometry live in `FullSongTimeline`.
  *
  * ⚠ A SEGMENT IS ONE STEP, NOT ONE VALUE. Two adjacent steps that happen to hold
  * the same number (`<0.5 0.5 0.8>`) are two segments, because they are two
@@ -27,13 +28,16 @@ export interface StepAxis {
   readonly hi: number
   /** `log` for frequency controls (`cutoff`, `hcutoff`, …), as the mixer knobs are. */
   readonly scale: 'linear' | 'log'
+  /** The knob's quantum (`gain` 0.01, `cutoff` 1 Hz, `crush` 1) — what a dragged
+   *  level snaps to, so a drag writes `0.43` and never `0.4312…` (#1578). */
+  readonly step: number
 }
 
 /** The shape of `knobRangeFor` — injected, see the header. */
 export type RangeFor = (
   method: string,
   value: number,
-) => { readonly min: number; readonly max: number; readonly scale: 'linear' | 'log' }
+) => { readonly min: number; readonly max: number; readonly step: number; readonly scale: 'linear' | 'log' }
 
 /**
  * The axis for one stepped automation: the mixer knob's range for this control,
@@ -54,7 +58,10 @@ export function stepAxis(a: SteppedAutomation, rangeFor: RangeFor): StepAxis {
   // A log axis needs a positive floor; a document that writes 0 or less on a
   // frequency control falls back to linear rather than drawing -Infinity.
   const scale = low.scale === 'log' && lo > 0 ? 'log' : 'linear'
-  return { lo, hi, scale }
+  // The finer of the two quanta: an unknown control's step is derived from the
+  // value it was asked with, and the finer one can spell every step of both.
+  const step = Math.min(low.step, high.step)
+  return { lo, hi, scale, step }
 }
 
 /** Where `value` sits on the axis, 0 (floor) … 1 (ceiling), clamped. */
@@ -66,6 +73,85 @@ export function unitOnAxis(value: number, axis: StepAxis): number {
       ? Math.log(value / lo) / Math.log(hi / lo)
       : (value - lo) / (hi - lo)
   return Math.min(1, Math.max(0, t))
+}
+
+/**
+ * The value at `unit` (0 floor … 1 ceiling, clamped) — `unitOnAxis` run
+ * backwards (#1578).
+ *
+ * ⚠ THE SAME MAP, INVERTED, NOT A SECOND MAP. A drag reads the level under the
+ * pointer through this and the staircase draws the result through `stepY`; if the
+ * two disagreed about the log axis the line would slide away from the pointer
+ * while it moved. The pair is pinned by a round-trip arm over both scales.
+ */
+export function valueAtUnit(unit: number, axis: StepAxis): number {
+  const { lo, hi, scale } = axis
+  const t = Math.min(1, Math.max(0, Number.isFinite(unit) ? unit : 0))
+  if (scale === 'log' && lo > 0 && hi > lo) return lo * Math.pow(hi / lo, t)
+  return lo + t * (hi - lo)
+}
+
+/**
+ * `value` on the grid of `step`, spelled without float noise.
+ *
+ * The rule the mixer knob applies to its own drag (`Knob.fromPosition`): round to
+ * a whole number of quanta, then cut to the step's own decimal places, because
+ * `3 * 0.1` is `0.30000000000000004` and that is the text a write would carry.
+ */
+export function snapToStep(value: number, step: number): number {
+  if (!(step > 0) || !Number.isFinite(value)) return value
+  const decimals = (String(step).split('.')[1] ?? '').length
+  return Number((Math.round(value / step) * step).toFixed(decimals))
+}
+
+/**
+ * The value a step's level holds after the pointer has travelled `dyPx` from
+ * where the drag began (#1578). `dyPx` is screen travel: positive is DOWN the
+ * lane and lowers the value, as pulling a fader down does.
+ *
+ * ⚠ RELATIVE TO THE PRESS, NOT THE POINTER'S ABSOLUTE HEIGHT. A press counts
+ * anywhere within `STEP_HIT_TOLERANCE_PX` of the level, so reading the absolute y
+ * would jump the value by up to that much on the first pixel of travel — a press
+ * that grabbed the line from just below it would pull it down before the user
+ * moved.
+ *
+ * ⚠ THE AXIS AND BAND ARE THE ONES FROZEN AT POINTER-DOWN. `stepAxis` widens to
+ * the steps the document holds, so re-deriving it from a previewed value would
+ * rescale the lane under the pointer and the drag would run away from it.
+ * Clamped to that axis: a typed value can still widen it, a drag cannot.
+ */
+export function stepDragValue(startValue: number, dyPx: number, axis: StepAxis, band: StepBand): number {
+  const bandH = band.rowHeight - band.padY * 2
+  if (!(bandH > 0)) return startValue
+  const unit = unitOnAxis(startValue, axis) - dyPx / bandH
+  return snapToStep(valueAtUnit(unit, axis), axis.step)
+}
+
+/**
+ * `entries` with step `index` of `automation` holding `value` — the drawn
+ * preview of a drag, never the document (#1578).
+ *
+ * Matches the automation by IDENTITY, and keeps its axis: two parameters on one
+ * lane can hold equal steps, and a preview that rescaled the band would move every
+ * other staircase on it.
+ */
+export function withStepValue(
+  entries: readonly { readonly automation: SteppedAutomation; readonly axis: StepAxis }[],
+  automation: SteppedAutomation,
+  index: number,
+  value: number,
+): { automation: SteppedAutomation; axis: StepAxis }[] {
+  return entries.map((entry) =>
+    entry.automation !== automation || !automation.steps[index]
+      ? entry
+      : {
+          axis: entry.axis,
+          automation: {
+            ...automation,
+            steps: automation.steps.map((s, k) => (k === index ? { ...s, value } : s)),
+          },
+        },
+  )
 }
 
 /** The band a lane's automation is drawn in — the same inset and floor the curves use. */
