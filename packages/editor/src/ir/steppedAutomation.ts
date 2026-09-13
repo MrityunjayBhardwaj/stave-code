@@ -48,6 +48,7 @@ import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import type { PatternIR } from './PatternIR'
 import type { SourceLocation } from './IREvent'
 import { atomSpan, type KElement, type KPattern } from './parseMini'
+import { STRUDEL_VIZ_METHODS } from '../engine/strudelVizMethods'
 
 /** One step of a stepped parameter. */
 export interface SteppedStep {
@@ -297,6 +298,23 @@ const LEAVES_THE_CYCLE: ReadonlySet<string> = new Set([
   'Choice',
 ])
 
+/**
+ * Whether a node leaves the cycle alone: a tag in `LEAVES_THE_CYCLE`, or an opaque
+ * call to one of Strudel's visualisers (#1592).
+ *
+ * The parser has no node for `._pianoroll()`, `.scope()` and their kin, so each
+ * arrives as a `Code` wrapper naming its method. Stave's engine installs every name
+ * in `STRUDEL_VIZ_METHODS` itself, in both spellings, and each returns the pattern
+ * it was called on (`StrudelEngine.ts`, the loop over that list) — a track ending in
+ * `._pianoroll()` plays what it plays without it. `.viz(name)` is not one of them: it
+ * chains to Strudel's own `.viz` when that is loaded, which nothing here can see.
+ */
+function leavesTheCycle(node: PatternIR): boolean {
+  if (LEAVES_THE_CYCLE.has(node.tag)) return true
+  if (node.tag !== 'Code' || !node.via || !('method' in node.via)) return false
+  return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, node.via.method.replace(/^_/, ''))
+}
+
 const SKIP_KEYS: ReadonlySet<string> = new Set(['loc', 'keyLoc', 'callSiteRange'])
 
 /** Every child IR node of `node`, found by reflection — the walk
@@ -399,7 +417,7 @@ function collect(
     )
     return
   }
-  const childTimeMoved = timeMoved || !LEAVES_THE_CYCLE.has(node.tag)
+  const childTimeMoved = timeMoved || !leavesTheCycle(node)
   for (const child of childNodes(node)) visit(child, sections, childTimeMoved)
 }
 

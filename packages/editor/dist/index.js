@@ -1758,6 +1758,19 @@ function matchBracket(input, openPos) {
 }
 __name(matchBracket, "matchBracket");
 
+// src/engine/strudelVizMethods.ts
+var STRUDEL_VIZ_METHODS = {
+  pianoroll: "pianoroll",
+  punchcard: "pianoroll",
+  wordfall: "wordfall",
+  scope: "scope",
+  tscope: "scope",
+  fscope: "fscope",
+  spectrum: "spectrum",
+  spiral: "spiral",
+  pitchwheel: "pitchwheel"
+};
+
 // src/ir/steppedAutomation.ts
 var NUMBER = /^-?(?:\d+\.?\d*|\.\d+)$/;
 function readSteps(param) {
@@ -1835,6 +1848,12 @@ var LEAVES_THE_CYCLE = /* @__PURE__ */ new Set([
   "Every",
   "Choice"
 ]);
+function leavesTheCycle(node) {
+  if (LEAVES_THE_CYCLE.has(node.tag)) return true;
+  if (node.tag !== "Code" || !node.via || !("method" in node.via)) return false;
+  return Object.prototype.hasOwnProperty.call(STRUDEL_VIZ_METHODS, node.via.method.replace(/^_/, ""));
+}
+__name(leavesTheCycle, "leavesTheCycle");
 var SKIP_KEYS2 = /* @__PURE__ */ new Set(["loc", "keyLoc", "callSiteRange"]);
 function childNodes2(node) {
   const out = [];
@@ -1891,7 +1910,7 @@ function collect(node, overridden, timeMoved, sections, found, seen, ids) {
     );
     return;
   }
-  const childTimeMoved = timeMoved || !LEAVES_THE_CYCLE.has(node.tag);
+  const childTimeMoved = timeMoved || !leavesTheCycle(node);
   for (const child of childNodes2(node)) visit(child, sections, childTimeMoved);
 }
 __name(collect, "collect");
@@ -8196,17 +8215,6 @@ function extractVizName(rawArg) {
   return out === "" ? void 0 : out;
 }
 __name(extractVizName, "extractVizName");
-var STRUDEL_VIZ_METHODS = {
-  pianoroll: "pianoroll",
-  punchcard: "pianoroll",
-  wordfall: "wordfall",
-  scope: "scope",
-  tscope: "scope",
-  fscope: "fscope",
-  spectrum: "spectrum",
-  spiral: "spiral",
-  pitchwheel: "pitchwheel"
-};
 var MANIFEST_DEADLINE_MS = 3e3;
 var MANIFEST_BUDGET_MS = 4e3;
 var INIT_BUDGET_MS = 6e3;
