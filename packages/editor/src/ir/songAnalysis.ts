@@ -135,6 +135,19 @@ export interface SongAnalysis {
   /** The span to show and what it means — the single answer for every consumer
    *  deciding geometry, wrapping, or what to tell the user. */
   readonly displaySpan: DisplaySpan
+  /**
+   * The cycles after which EVERY lane has come back round (#1599), or null where
+   * that cannot be vouched for. A LENGTH, for a consumer asking how long one pass
+   * of the audio is — a bounce. A consumer drawing the view wants `displaySpan`,
+   * which spans the longest single lane so lanes of different lengths phase
+   * inside it (#488): a 4-cycle lane beside a 3-cycle lane views at 4 and repeats
+   * at 12. For lanes of one length the two are equal.
+   *
+   * Always a whole number of `periodCycles` when it is a number. Null when there
+   * is no period, a lane has no loop of its own, or the repeat runs past the cap
+   * — see `wholeSongRepeat`.
+   */
+  readonly repeatCycles: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +338,57 @@ function eventsByLane(events: readonly IREvent[]): Map<string, IREvent[]> {
     bucket.push(ev)
   }
   return byLane
+}
+
+/**
+ * The cycles after which every lane has come back round: the LCM of each lane's
+ * own period, as `detectDisplayPeriod` detects it (#1599). Null when a lane has no
+ * loop in `horizon`, when there are no lanes, or when the LCM passes `cap`.
+ *
+ * ⚠ EXACT, NOT AN ESTIMATE. Every lane's SMALLEST period divides any period of the
+ * whole song, so the least common multiple of those periods is the whole song's
+ * smallest period — no wider horizon is needed to confirm it, only the per-lane
+ * periods the display rule already requires to have looped twice.
+ *
+ * ⚠ PAST THE CAP IT IS NULL, never a span the audio does not repeat at. The same
+ * direction the source-informed fold takes for the same reason
+ * (`foldWithSignalPeriods`): a true period nobody can bounce is not a length to
+ * offer, and the caller keeps the span it already had.
+ */
+export function wholeSongRepeat(
+  events: readonly IREvent[],
+  horizon: number,
+  cap: number,
+): number | null {
+  const byLane = eventsByLane(events)
+  if (byLane.size === 0) return null
+  let repeat = 1
+  for (const laneEvents of byLane.values()) {
+    const p = detectPeriod(cycleFingerprints(laneEvents, horizon))
+    if (p === null) return null
+    const next = rationalLcm(repeat, p)
+    if (next === null || !Number.isFinite(next) || next > cap) return null
+    repeat = next
+  }
+  return repeat
+}
+
+/**
+ * `repeatCycles` for an accepted `period`: the whole-song repeat, held to being a
+ * whole number of display spans. A display span that is NOT a divisor of the
+ * repeat came from a rule other than the per-lane max (an abstained lane, a
+ * source-informed fold), and a bounce of a repeat that is not a whole number of
+ * the view's own loops would contradict the view — so that reading is null too.
+ */
+function repeatBeside(
+  events: readonly IREvent[],
+  horizon: number,
+  cap: number,
+  period: number | null,
+): number | null {
+  if (period === null) return null
+  const repeat = wholeSongRepeat(events, horizon, cap)
+  return repeat !== null && repeat % period === 0 ? repeat : null
 }
 
 /**
@@ -883,6 +947,9 @@ export function analyzeEvents(
   // the cap gets the cap's rule (#1104). `analyzeSong` always passes its own
   // rule explicitly, so this only governs direct callers.
   detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null,
+  // #1599 — the cap a whole-song repeat may not pass. `analyzeSong` passes its
+  // own; a direct caller gets the production default.
+  capCycles: number = DEFAULT_CAP,
 ): SongAnalysis {
   // ONE rule for direct callers too ([[P403]]): `displayPeriodRule` with the cap
   // placed so `horizon >= cap` is true exactly when the caller says it hit the
@@ -904,7 +971,8 @@ export function analyzeEvents(
     periodCycles != null
       ? { kind: 'loop', cycles: periodCycles }
       : { kind: reachedCap ? 'capped' : 'horizon', cycles: horizon }
-  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan }
+  const repeatCycles = repeatBeside(events, horizon, capCycles, periodCycles)
+  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan, repeatCycles }
 }
 
 // ---------------------------------------------------------------------------
@@ -1118,16 +1186,19 @@ export async function analyzeSong(
         lanes,
         sections,
         displaySpan: { kind: 'loop', cycles: period },
+        // #1599 — over the full collection horizon, where every lane's period was
+        // detected, NOT the trimmed one-loop span (one loop has no repetition).
+        repeatCycles: repeatBeside(events, horizon, cap, period),
       }
     }
     if (horizon >= cap) {
-      return analyzeEvents(events, cap, true, periodRule)
+      return analyzeEvents(events, cap, true, periodRule, cap)
     }
     horizon = Math.min(horizon * 2, cap)
   }
 
   // Aborted path — analyze what was collected.
-  return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule)
+  return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap)
 }
 
 // ---------------------------------------------------------------------------

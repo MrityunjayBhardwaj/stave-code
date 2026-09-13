@@ -85,6 +85,7 @@ const analysis: SongAnalysis = {
   periodCycles: 2,
   horizonCycles: 4,
   displaySpan: { kind: 'loop', cycles: 2 },
+  repeatCycles: 2,
   lanes: [{ laneKey: 'drums', onsetsByCycle: [3, 0] }],
   sections: [{ startCycle: 0, endCycle: 2, laneKeys: ['drums'] }],
 }

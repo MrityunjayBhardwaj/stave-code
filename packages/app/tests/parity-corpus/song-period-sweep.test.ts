@@ -112,10 +112,13 @@ interface BaselineRow {
   span: number
   reachedCap: boolean
   lanes: number
+  /** #1599 — the whole-song repeat a bounce offers; pinned so a document whose
+   *  bounce length moves is named here, beside a span that must not. */
+  repeat: number | null
 }
 
 function rowOf(v: PeriodVerdict): BaselineRow {
-  return { period: v.period, span: v.span, reachedCap: v.reachedCap, lanes: v.lanes }
+  return { period: v.period, span: v.span, reachedCap: v.reachedCap, lanes: v.lanes, repeat: v.repeat }
 }
 
 /**
