@@ -973,12 +973,19 @@ declare function signalCarryingParamKeys(ir: PatternIR | null | undefined): Read
  *   `<a@2 b>`      a weighted step spans 2 cycles         → period 3
  *   `<a [b c]>`    the second step SUBDIVIDES its cycle   → not stepped
  *   `<a ~ b>`      the `~` step SILENCES THE TRACK        → not "no value"
- *   inside an `arrange` arm, the step is still chosen by the ABSOLUTE cycle
  *
- * ⚠ THE LAST LINE IS WHY A STEP IS ADDRESSED BY ITS INDEX, NOT BY A BAR. Step k
- * plays in every cycle where `cycle mod period` selects it, so an edit to step k
- * changes every bar that plays it — which is what the document says. A lane that
- * pretended to change one bar would be describing a document nobody wrote.
+ * ⚠ A STEP IS ADDRESSED BY ITS INDEX, NOT BY A BAR. Step k plays in every cycle
+ * where `cycle mod period` selects it, so an edit to step k changes every bar that
+ * plays it — which is what the document says. A lane that pretended to change one
+ * bar would be describing a document nobody wrote.
+ *
+ * ⚠ `cycle mod period` HOLDS ONLY WHERE NOTHING ABOVE THE PARAMETER MOVES TIME
+ * (#1584). `.slow(2)`, `.early(1)`, `cat(…)` and an `arrange` section all hand the
+ * parameter a different cycle than the song's — a section sees how many cycles IT
+ * has played. This was once recorded as "an arrange arm follows the absolute
+ * cycle", from `arrange([1, a], [2, b])`: a section two cycles behind per pass,
+ * which a two-step pattern cannot tell apart. `[3, a], [1, b]` can. So the walk
+ * admits a parameter only under nodes measured to leave the cycle alone.
  *
  * Mirrors `signalAutomation.ts`: pure and structural, no eval, no source
  * scanning, the same per-track attribution, and the same direction of error —

@@ -60,8 +60,8 @@ describe('steppedAutomations — the simple shape', () => {
     expect(keys.sort()).toEqual(['room', 'velocity'])
   })
 
-  it('attributes to the track that declares it, inside arrangement arms and stacks too', () => {
-    expect(read('lead: arrange([1, s("bd*2").gain("<0.2 0.8>")], [2, s("hh*2")])')[0].trackId).toBe('lead')
+  it('attributes to the track that declares it, inside a stack too', () => {
+    expect(read('lead: stack(s("bd*2").gain("<0.2 0.8>"), s("hh*2"))')[0].trackId).toBe('lead')
     expect(read('$: stack(s("bd*2").gain("<0.2 0.8>"), s("hh*4"))')[0].trackId).toBe('d1')
   })
 
@@ -129,6 +129,63 @@ describe('steppedAutomations — abstains rather than drawing what does not play
 
   it('an EARLIER same-key call does not hide a later stepped one', () => {
     expect(read('$: s("bd*2").gain(0.5).gain("<0.2 0.8>")').map((a) => a.paramKey)).toEqual(['gain'])
+  })
+})
+
+describe('steppedAutomations — only where nothing above the parameter moves time (#1584)', () => {
+  // Each shape here has an arm in the engine test: the declined ones play
+  // something other than `cycle mod period`, the read ones play exactly that.
+  it.each([
+    ['slow', '$: s("bd*2").gain("<0.2 0.8>").slow(2)'],
+    ['fast', '$: s("bd*2").gain("<0.2 0.8>").fast(2)'],
+    ['early', '$: s("bd*2").gain("<0.2 0.8>").early(1)'],
+    ['off', '$: s("bd*2").gain("<0.2 0.8>").off(0.25, x => x.speed(2))'],
+    ['cat', '$: cat(s("bd*2").gain("<0.2 0.8>"), s("hh*2"))'],
+    // A section counts its OWN cycles — drawing it that way is #1585.
+    ['an arrange section', 'lead: arrange([3, s("bd*2").gain("<0.2 0.8>")], [1, s("hh*2")])'],
+    ['every, with a time transform', '$: s("bd*2").gain("<0.2 0.8>").every(2, x => x.fast(2))'],
+    ['sometimesBy, with a time transform', '$: s("bd*2").gain("<0.2 0.8>").sometimesBy(0.5, x => x.late(0.25))'],
+    // The plain channel reaches the parameter cleanly; the other reaches the SAME
+    // node through a Fast. One dirty route is enough.
+    ['jux, with a time transform', '$: s("bd*2").gain("<0.2 0.8>").jux(x => x.fast(2))'],
+  ])('%s declines', (_label, src) => {
+    expect(read(src)).toEqual([])
+  })
+
+  it.each([
+    ['an effect chain', '$: s("bd*2").gain("<0.2 0.8>").room(0.5).lpf(800)'],
+    ['stack', '$: stack(s("bd*2").gain("<0.2 0.8>"), s("hh*2"))'],
+    ['layer', '$: s("bd*2").gain("<0.2 0.8>").layer(x => x.speed(2))'],
+    ['mask', '$: s("bd*2").gain("<0.2 0.8>").mask("<1 [1 0]>")'],
+    ['degradeBy', '$: s("bd*2").gain("<0.2 0.8>").degradeBy(0.3)'],
+    ['struct', '$: s("bd*2").gain("<0.2 0.8>").struct("x ~ x x")'],
+    ['chop', '$: s("bd*2").gain("<0.2 0.8>").chop(2)'],
+    ['ply', '$: s("bd*2").gain("<0.2 0.8>").ply(2)'],
+    ['every, with a transform that leaves time alone', '$: s("bd*2").gain("<0.2 0.8>").every(2, x => x.speed(2))'],
+    ['sometimesBy, with a transform that leaves time alone', '$: s("bd*2").gain("<0.2 0.8>").sometimesBy(0.5, x => x.speed(2))'],
+    // BELOW the parameter: the steps are applied after the fast, at song time.
+    ['a time transform on the receiver', '$: s("bd*2").fast(2).gain("<0.2 0.8>")'],
+  ])('%s is read', (_label, src) => {
+    expect(read(src).map((a) => a.paramKey)).toEqual(['gain'])
+  })
+
+  it('an opaque call declines even where it would have been harmless — a missing lane, never a wrong one', () => {
+    // `superimpose` parses to an opaque Code. The engine happens to keep the steps
+    // (measured), but nothing in the tree says so.
+    expect(read('$: s("bd*2").gain("<0.2 0.8>").superimpose(x => x.speed(2))')).toEqual([])
+  })
+})
+
+describe('steppedAutomations — the parsed node must be the whole literal (#1584)', () => {
+  // The parser reads each of these as the bare `<0.2 0.8>` and drops the operator;
+  // the engine does not (engine test).
+  it.each(['<0.2 0.8>/[2]', '<0.2 0.8>/<2 1>', '<0.2 0.8>*<8 16>'])('"%s" declines', (literal) => {
+    expect(read(`$: s("bd*2").gain("${literal}")`)).toEqual([])
+  })
+
+  it('the CONTROL — whitespace inside the quotes or around the argument is still the whole literal', () => {
+    expect(read('$: s("bd*2").gain(" <0.2 0.8> ")').map((a) => a.paramKey)).toEqual(['gain'])
+    expect(read('$: s("bd*2").gain( "<0.2 0.8>" )').map((a) => a.paramKey)).toEqual(['gain'])
   })
 })
 

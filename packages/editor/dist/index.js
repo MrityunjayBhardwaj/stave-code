@@ -1574,6 +1574,7 @@ function readSteps(param) {
   if (quote !== '"' && quote !== "`" && quote !== "'" || raw.indexOf(quote, 1) !== raw.length - 1) {
     return null;
   }
+  if (!spansWholeLiteral(param, value)) return null;
   const steps = [];
   let at = 0;
   for (const item of value.items) {
@@ -1595,6 +1596,28 @@ function readSteps(param) {
   return steps.length > 0 ? steps : null;
 }
 __name(readSteps, "readSteps");
+function spansWholeLiteral(param, node) {
+  const call = param.loc?.[0];
+  const span = node.loc?.[0];
+  if (!call || !span) return false;
+  const raw = param.rawArgs;
+  const inner = raw.trim().slice(1, -1);
+  const start = call.end - 1 - raw.length + (raw.length - raw.trimStart().length) + 1 + (inner.length - inner.trimStart().length);
+  return span.start === start && span.end === start + inner.trim().length;
+}
+__name(spansWholeLiteral, "spansWholeLiteral");
+var LEAVES_THE_CYCLE = /* @__PURE__ */ new Set([
+  "Track",
+  "Param",
+  "Stack",
+  "When",
+  "Struct",
+  "Degrade",
+  "Chop",
+  "Ply",
+  "Every",
+  "Choice"
+]);
 var SKIP_KEYS2 = /* @__PURE__ */ new Set(["loc", "keyLoc", "callSiteRange"]);
 function childNodes2(node) {
   const out = [];
@@ -1620,30 +1643,22 @@ function childNodes2(node) {
   return out;
 }
 __name(childNodes2, "childNodes");
-function collect(trackId, node, overridden, out, seen) {
-  if (!node || typeof node !== "object" || seen.has(node)) return;
-  seen.add(node);
+function collect(node, overridden, timeMoved, clean, seen) {
+  if (!node || typeof node !== "object") return;
+  const state5 = `${timeMoved}|${[...overridden].sort().join(",")}`;
+  const states = seen.get(node) ?? /* @__PURE__ */ new Set();
+  if (states.has(state5)) return;
+  states.add(state5);
+  seen.set(node, states);
   let passDown = overridden;
   if (node.tag === "Param") {
-    if (!overridden.has(node.key)) {
-      const steps = readSteps(node);
-      if (steps) {
-        const start = node.loc?.[0]?.start;
-        out.push({
-          trackId,
-          paramKey: node.key,
-          method: node.userMethod ?? node.key,
-          steps,
-          periodCycles: steps.reduce((sum, s) => sum + s.weight, 0),
-          offset: typeof start === "number" && Number.isFinite(start) ? start : null
-        });
-      }
-    }
+    clean.set(node, (clean.get(node) ?? true) && !timeMoved && !overridden.has(node.key));
     passDown = new Set(overridden).add(node.key);
   }
+  const childTimeMoved = timeMoved || !LEAVES_THE_CYCLE.has(node.tag);
   for (const child of childNodes2(node)) {
     if (child.tag === "Track") continue;
-    collect(trackId, child, passDown, out, seen);
+    collect(child, passDown, childTimeMoved, clean, seen);
   }
 }
 __name(collect, "collect");
@@ -1653,9 +1668,24 @@ function steppedAutomations(ir) {
   const out = [];
   for (const node of roots) {
     if (node?.tag !== "Track") continue;
-    const id = node.trackId;
-    if (typeof id !== "string" || id.length === 0) continue;
-    collect(id, node, /* @__PURE__ */ new Set(), out, /* @__PURE__ */ new Set());
+    const trackId = node.trackId;
+    if (typeof trackId !== "string" || trackId.length === 0) continue;
+    const clean = /* @__PURE__ */ new Map();
+    collect(node, /* @__PURE__ */ new Set(), false, clean, /* @__PURE__ */ new Map());
+    for (const [param, ok] of clean) {
+      if (!ok) continue;
+      const steps = readSteps(param);
+      if (!steps) continue;
+      const start = param.loc?.[0]?.start;
+      out.push({
+        trackId,
+        paramKey: param.key,
+        method: param.userMethod ?? param.key,
+        steps,
+        periodCycles: steps.reduce((sum, s) => sum + s.weight, 0),
+        offset: typeof start === "number" && Number.isFinite(start) ? start : null
+      });
+    }
   }
   return out;
 }

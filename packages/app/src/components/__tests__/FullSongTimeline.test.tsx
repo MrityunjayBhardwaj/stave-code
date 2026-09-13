@@ -1495,6 +1495,14 @@ describe('FullSongTimeline — edit a STEP on a stepped lane (#1463 Stage 3)', (
   // product was right: those arms' haps carry a `trackId`, these have none, and
   // this lane expands to 96px. `gain`'s knob axis is 0…1. The period (4) fits
   // 800px → 200px/cycle, and `<0.2 0.8>` plays 0.2 in even cycles, 0.8 in odd.
+  //
+  // ⚠ EVERY SPAN IS ONE `parseStrudel` WOULD GIVE, AND THEY AGREE WITH EACH OTHER
+  // (#1584). The reader now checks that the `Cycle` was parsed from the whole
+  // literal, located from the call site and `rawArgs`. These are the offsets the
+  // real parser gave `.gain("<0.2 0.8>")` at offset 9 (call 9–27, value 16–25,
+  // steps 17–20 and 21–24), moved to put the steps at 40 and 44. The first draft
+  // had no value span and a call site two characters off, which nothing read
+  // until then.
   const STEPPED_IR = {
     tag: 'Stack',
     tracks: [
@@ -1505,9 +1513,10 @@ describe('FullSongTimeline — edit a STEP on a stepped lane (#1463 Stage 3)', (
           tag: 'Param',
           key: 'gain',
           rawArgs: '"<0.2 0.8>"',
-          loc: [{ start: 30, end: 49 }],
+          loc: [{ start: 32, end: 50 }],
           value: {
             tag: 'Cycle',
+            loc: [{ start: 39, end: 48 }],
             items: [
               { tag: 'Play', note: '0.2', loc: [{ start: 40, end: 43 }] },
               { tag: 'Play', note: '0.8', loc: [{ start: 44, end: 47 }] },
