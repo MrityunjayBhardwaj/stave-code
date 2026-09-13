@@ -212,6 +212,76 @@ describe('#1579 — a whole-number `/n` plays what the reader predicts, and the 
   }, 60_000)
 })
 
+describe('#1587 — the IR read these as steps, and the engine does not play them as steps', () => {
+  // Each is a `Cycle` of numeric Plays in the IR. What plays is a random pick, two
+  // layers, or an array value — never the rotation those Plays describe.
+  it.each([
+    ['a random choice', 's("bd*4").gain("[1|1.5]")'],
+    ['a random choice, slowed', 's("bd*4").gain("[0|0.05|0.1|0.15]/2")'],
+    ['a bare random choice of colon atoms', 's("bd*4").gain(".4:3 | .7:2 | .4:-2")'],
+    ['two layers', 's("bd*4").gain("<1 2 3 4 5 6, 5 4 3 4 2>")'],
+    ['a colon atom', 's("bd*4").gain("<0.2 0.8:1>")'],
+    ['a chain of colon atoms', 's("bd*4").gain("<.1:.5:.5 1 2>")'],
+  ])('%s declines, and the engine plays something other than the rotation', async (_label, code) => {
+    expect(steppedAutomations(parseStrudel(code) as never)).toEqual([])
+    const rows = await valuesPerCycle(code, 'gain', 12)
+    const find = (n: any): any =>
+      n?.tag === 'Cycle' ? n : n && typeof n === 'object' ? Object.values(n).map(find).find(Boolean) : null
+    const notes = find(parseStrudel(code)).items.map((it: any) => Number(it.note))
+    const rotation = rows.map((_, c) => notes[c % notes.length])
+    const plays = rows.map((row) => (new Set(row.map((v) => JSON.stringify(v))).size === 1 ? row[0] : row))
+    expect(plays, JSON.stringify(rows)).not.toEqual(rotation)
+  }, 60_000)
+
+  it.each([
+    ['copies', 's("bd*4").gain("<0.3!3 0.8>")'],
+    ['a bare copy', 's("bd*4").gain("<0.3! 0.8>")'],
+    ['copies then a weight', 's("bd*4").gain("<0.2!3@2 0.8>")'],
+    ['a weight then copies', 's("bd*4").gain("<0.2@2!3 0.8>")'],
+    ['copies of both steps, slowed', 's("bd*4").gain("<0!4 4!4>/4")'],
+    ['copies with trailing whitespace, slowed', 's("bd*4").gain("<.3!3 .4 >/2")'],
+  ])('%s reads as one step per written number, and predicts the engine', async (_label, code) => {
+    const [a] = steppedAutomations(parseStrudel(code) as never)
+    expect(a, 'the reader declined').toBeDefined()
+    const cycles = a.periodCycles * 2
+    expect(await valuesPerCycle(code, 'gain', cycles)).toEqual(predicted(a, 4, cycles))
+  }, 60_000)
+
+  it('an alternation with another step after it, and a polymeter, play two values in a cycle', async () => {
+    for (const code of ['s("bd*4").gain("<0.2 0.8> 0.5")', 's("bd*4").gain("{0.2 0.8}")']) {
+      expect(steppedAutomations(parseStrudel(code) as never)).toEqual([])
+      const rows = await valuesPerCycle(code, 'gain', 4)
+      expect(rows.every((row) => new Set(row).size === 2), `${code}: ${JSON.stringify(rows)}`).toBe(true)
+    }
+  }, 60_000)
+
+  it('a zero weight declines — the engine plays the step as if it had weight 1', async () => {
+    const code = 's("bd*4").gain("<0.2@0 0.8>")'
+    expect(steppedAutomations(parseStrudel(code) as never)).toEqual([])
+    // A reading that took the weight at its word would hold 0.2 for no cycles.
+    expect((await valuesPerCycle(code, 'gain', 4)).map((row) => row[0])).toEqual([0.2, 0.8, 0.2, 0.8])
+  }, 60_000)
+
+  it('`/0` and `/-2` decline — the engine plays nothing for either', async () => {
+    for (const code of ['s("bd*4").gain("<0.2 0.8>/0")', 's("bd*4").gain("<0.2 0.8>/-2")']) {
+      expect(steppedAutomations(parseStrudel(code) as never)).toEqual([])
+      expect((await valuesPerCycle(code, 'gain', 4)).flat()).toEqual([])
+    }
+  }, 60_000)
+
+  it('editing a step written with `!3` moves all three of its cycles and not the other step\'s', async () => {
+    const code = 's("bd*2").gain("<0.3!3 0.8>")'
+    const [a] = steppedAutomations(parseStrudel(code) as never)
+    expect(a.steps).toHaveLength(2)
+    const next = apply(code, stepValueEdit(a, 0, 0.6)!)
+    expect(next).toBe('s("bd*2").gain("<0.6!3 0.8>")')
+    const after = await valuesPerCycle(next, 'gain', 8)
+    expect(after.map((row) => row[0])).toEqual([0.6, 0.6, 0.6, 0.8, 0.6, 0.6, 0.6, 0.8])
+    const [b] = steppedAutomations(parseStrudel(next) as never)
+    expect(after).toEqual(predicted(b, 2, 8))
+  }, 60_000)
+})
+
 describe('#1463 — an edit changes exactly the cycles its step owns', () => {
   it('editing the weighted step moves every cycle it plays, and no other', async () => {
     const code = 's("bd*2").gain("<0.2@2 0.8>")'
