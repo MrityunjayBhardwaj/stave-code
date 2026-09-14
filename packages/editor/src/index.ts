@@ -16,7 +16,7 @@ export { parseMini, parseStrudel, classifyLiteralRhs } from './ir'
 
 // #1464 Stage 1's IR reader, re-exported for the timeline lane that draws it
 // (moved out of @stave/app by #1489 so `songAnalysis` can reach it too).
-export { signalAutomations, signalCarryingParamKeys, signalTimeAt, shapeAlternatives } from './ir'
+export { signalAutomations, signalCarryingParamKeys, signalTimeAt, shapeAlternatives, crossClassShapes } from './ir'
 export type { SignalAutomation, SignalKind, SignalSpans } from './ir'
 // #1463 Stage 1 — the stepped class, for the same lane.
 export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './ir'
@@ -27,6 +27,9 @@ export type { FixedParameter } from './ir'
 // #1602 — a stepped parameter's step count, and the song length it would give.
 export { stepCountEdit, previewRepeat, songPeriodOf } from './ir'
 export type { StepCountEdit, LanePeriod } from './ir'
+// #1611 — a shape swap across periodicity, and the song it would give.
+export { previewShapeSwap } from './ir'
+export type { ShapeSwap } from './ir'
 
 // Phase 19-07 (#79) — parser stage helpers. PK10 propagation: re-exported
 // from the top-level barrel so the app can `import { runRawStage, ... }

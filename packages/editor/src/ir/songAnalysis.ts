@@ -60,7 +60,7 @@
 import type { PatternIR } from './PatternIR'
 import type { IREvent } from './IREvent'
 import { eventValueKey } from './eventValueKey'
-import { signalAutomations, signalCarryingParamKeys, hasTruePeriod } from './signalAutomation'
+import { signalAutomations, signalCarryingParamKeys, hasTruePeriod, isNoiseKind, type SignalAutomation, type SignalKind } from './signalAutomation'
 import { isSectionWindow, type TimeStep } from './parameterRoutes'
 import { steppedAutomations } from './steppedAutomation'
 
@@ -463,6 +463,119 @@ export function previewRepeat(
   return repeatOf([...others, mine.restCycles, ...paramPeriods], cap)
 }
 
+/** A curve read as another shape (#1611), named by where its shape is spelled —
+ *  `SignalAutomation.spans.shape.start`, the offset the source and every read of it
+ *  agree on. */
+export interface ShapeSwap {
+  readonly at: number
+  readonly kind: SignalKind
+}
+
+/** The grain a stand-in phase is counted in: the millionth of a cycle
+ *  `cycleFingerprints` rounds an onset's offset to, so two onsets it places at one point
+ *  in the cycle get one phase. */
+const PHASE_GRAIN = 1e6
+
+/**
+ * The song as it would be analysed with curve `a` switched to shape `next` (#1611),
+ * before anything is written — or null when that cannot be said.
+ *
+ * ⚠ THE SWAPPED DOCUMENT IS NOT EVALUATED, AND DOES NOT NEED TO BE. What a shape decides
+ * about a song's length is only WHEN its values come round again, never what they are,
+ * and the analysis asks nothing else of them: it compares cycles for identity
+ * (`cycleFingerprints`) and folds in the periods of the signals that repeat
+ * (`signalDimensionsOf`). So this runs the PRODUCTION analysis over the events the
+ * document already plays, with the automated control on the curve's lane replaced by a
+ * stand-in that comes round exactly as `next` does —
+ *  - noise never comes back: a value unique to the onset's song time;
+ *  - a waveform comes back once per song period (`songPeriodOf`, which a swap leaves
+ *    alone — the rate and the placements stay as written): the onset's phase in it;
+ * — and with the signals read as `next`. Every rule that picks the length (the veto
+ * below the cap, abstention at it, the source-informed fold, the whole-song repeat) is
+ * then the one that will run after the edit, and not a second copy of it.
+ *
+ * Measured against the swapped SOURCE through the engine and the same analysis, 16 of 16
+ * hand-picked swaps agreed — a 16-bar sweep beside a 4-bar line (16 → 4, and back),
+ * alone (16 → 1), beside a 2-bar line (16 → 2), under a whole-track slow, inside an
+ * arrangement section, on a lane that loops by itself — see `shapeSwap.engine.test.ts`.
+ *
+ * Null for a curve whose shape is not spelled, a `next` that is neither noise nor a
+ * waveform, a song period that is not an exact fraction, or no collector. `opts` are the
+ * caller's own collector and presence check: the ones its analysis runs with.
+ */
+export async function previewShapeSwap(
+  ir: PatternIR | null,
+  a: SignalAutomation,
+  next: SignalKind,
+  opts: Pick<AnalyzeSongOptions, 'collectFn' | 'hasUnheardTrack' | 'signal' | 'yieldFn'>,
+): Promise<SongAnalysis | null> {
+  const at = a.spans.shape?.start
+  const collect = opts.collectFn
+  if (at === undefined || !collect) return null
+  const standIn = standInFor(a, next)
+  if (standIn === null) return null
+  if (hasTruePeriod(next) && sharesItsControl(ir, a)) return null
+  const key = a.paramKey
+  return analyzeSong(ir, {
+    ...opts,
+    collectFn: (start, end) =>
+      collect(start, end).map((ev) => (laneKeyOf(ev) === a.trackId ? withValue(ev, key, standIn(ev)) : ev)),
+    signals: signalDimensionsOf(ir, { at, kind: next }),
+  })
+}
+
+/**
+ * Does anything else on `a`'s lane move the control `a` moves — another curve, or steps?
+ *
+ * ⚠ A STAND-IN CANNOT TELL WHOSE EVENT IT IS REPLACING. An event carries the control's
+ * value and nothing says which writer gave it, so `previewShapeSwap` replaces every value
+ * of the key on the lane. Toward noise that is still exact: one writer that never comes
+ * back keeps the lane from repeating, whatever the others do. Toward a waveform it is not
+ * — the other writers' noise, or their own periods, are overwritten by the new curve's
+ * phase. Found on an archive document whose drop stacks four `perlin` gains in one track:
+ * switching one to `sine` leaves the song at 7 bars, and a stand-in over all four named 40
+ * and 120.
+ *
+ * A fixed value is not counted. A constant comes round with the structure the lane already
+ * repeats at, so overwriting it with the new curve's phase moves no period — a hand-built
+ * pair (noise and a fixed cutoff in one `cat`) agreed with the engine.
+ */
+function sharesItsControl(ir: PatternIR | null, a: SignalAutomation): boolean {
+  if (!ir) return false
+  const same = (b: { readonly trackId: string; readonly paramKey: string }) =>
+    b.trackId === a.trackId && b.paramKey === a.paramKey
+  return signalAutomations(ir).filter(same).length > 1 || steppedAutomations(ir).some(same)
+}
+
+/** What `next` gives the onset `ev`, as far as identity can tell — `previewShapeSwap`'s
+ *  stand-in. Null when `next` is neither noise nor a waveform, or its period is not an
+ *  exact fraction (`rationalLcm` could not fold it either). */
+function standInFor(a: SignalAutomation, next: SignalKind): ((ev: IREvent) => string | number) | null {
+  if (!hasTruePeriod(next)) return isNoiseKind(next) ? (ev) => `noise@${ev.begin}` : null
+  const song = songPeriodOf({ periodCycles: a.periodCycles, placements: a.placements })
+  const f = song === null ? null : asFraction(song)
+  if (f === null) return null
+  // In ticks of 1/(d·PHASE_GRAIN) cycle, so a period of n/d is a whole n·PHASE_GRAIN
+  // and the phase is integer arithmetic — a float `%` would put an onset a hair before
+  // the wrap at the far end of the period instead of at 0.
+  const [n, d] = f
+  const ticks = n * PHASE_GRAIN
+  return (ev) => {
+    const t = Math.round(ev.begin * d * PHASE_GRAIN)
+    return ((t % ticks) + ticks) % ticks
+  }
+}
+
+/** `ev` with `key` set to `value`, in whichever half of the value partition holds it —
+ *  `withoutKeys`' partition. An event not carrying `key` is returned as it is: a
+ *  stand-in replaces what the curve gives and adds nothing it does not. */
+function withValue(ev: IREvent, key: string, value: unknown): IREvent {
+  const rec = ev as unknown as Record<string, unknown>
+  if (rec[key] !== undefined) return { ...rec, [key]: value } as unknown as IREvent
+  if (ev.params && key in ev.params) return { ...ev, params: { ...ev.params, [key]: value } } as IREvent
+  return ev
+}
+
 /**
  * `repeatCycles` for an accepted `period`: the whole-song repeat, held to being a
  * whole number of display spans, because a bounce of a repeat that is not a whole
@@ -684,14 +797,20 @@ export interface SignalDimensions {
  * Only the TOP level is scoped, which is the level muting exists at: a `_$:`
  * silences a whole statement, and nothing inside a sounding track is muted
  * independently.
+ *
+ * `swap` reads one curve as another shape (#1611) — the document a shape menu's
+ * preview is asking about, before it is written (`previewShapeSwap`).
  */
-export function signalDimensionsOf(ir: PatternIR | null | undefined): SignalDimensions {
+export function signalDimensionsOf(ir: PatternIR | null | undefined, swap?: ShapeSwap): SignalDimensions {
   const audible = audibleTracks(ir)
   const periods: number[] = []
   const keys = new Set<string>()
   for (const t of audible) {
     for (const a of signalAutomations(t)) {
-      if (!hasTruePeriod(a.kind) || !(a.periodCycles > 0)) continue
+      // Its key stays in `keys` whichever shape it is read as: noise and a waveform
+      // both move the control.
+      const kind = swap !== undefined && a.spans.shape?.start === swap.at ? swap.kind : a.kind
+      if (!hasTruePeriod(kind) || !(a.periodCycles > 0)) continue
       const song = songPeriodOf(a)
       if (song !== null) periods.push(song)
     }
