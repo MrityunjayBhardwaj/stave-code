@@ -763,9 +763,12 @@ interface ShapeSwap {
  * (`signalDimensionsOf`). So this runs the PRODUCTION analysis over the events the
  * document already plays, with the automated control on the curve's lane replaced by a
  * stand-in that comes round exactly as `next` does —
- *  - noise never comes back: a value unique to the onset's song time;
  *  - a waveform comes back once per song period (`songPeriodOf`, which a swap leaves
  *    alone — the rate and the placements stay as written): the onset's phase in it;
+ *  - noise comes back too, once per `NOISE_SEED_CYCLES` of its own time, so its stand-in
+ *    is the onset's phase in THAT song period. The first reading here, "noise never comes
+ *    back", was wrong on an archive document sweeping at `sine.slow(0.015)`: switched to
+ *    perlin it repeats at 36, and a never-repeating stand-in said 12;
  * — and with the signals read as `next`. Every rule that picks the length (the veto
  * below the cap, abstention at it, the source-informed fold, the whole-song repeat) is
  * then the one that will run after the edit, and not a second copy of it.

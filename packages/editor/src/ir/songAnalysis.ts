@@ -477,6 +477,17 @@ export interface ShapeSwap {
 const PHASE_GRAIN = 1e6
 
 /**
+ * How many of its own cycles a noise signal takes to come back round. Strudel's default
+ * random signals seed from `frac(t / 300)` (`@strudel/core@1.2.6/signal.mjs:244`, under
+ * `RNG_MODE = 'legacy'`, the default at `:260`). Measured through the engine: `rand`,
+ * `perlin` and `berlin` agree at t and t+300 and t+600, and at none of 1, 100, 150, 299
+ * or 301 — so `perlin.slow(0.05)` repeats every 15 song cycles and `perlin.slow(16)` far
+ * past the cap. A document that calls `useRNG('precise')` never repeats; the preview does
+ * not read that switch.
+ */
+const NOISE_SEED_CYCLES = 300
+
+/**
  * The song as it would be analysed with curve `a` switched to shape `next` (#1611),
  * before anything is written — or null when that cannot be said.
  *
@@ -487,9 +498,12 @@ const PHASE_GRAIN = 1e6
  * (`signalDimensionsOf`). So this runs the PRODUCTION analysis over the events the
  * document already plays, with the automated control on the curve's lane replaced by a
  * stand-in that comes round exactly as `next` does —
- *  - noise never comes back: a value unique to the onset's song time;
  *  - a waveform comes back once per song period (`songPeriodOf`, which a swap leaves
  *    alone — the rate and the placements stay as written): the onset's phase in it;
+ *  - noise comes back too, once per `NOISE_SEED_CYCLES` of its own time, so its stand-in
+ *    is the onset's phase in THAT song period. The first reading here, "noise never comes
+ *    back", was wrong on an archive document sweeping at `sine.slow(0.015)`: switched to
+ *    perlin it repeats at 36, and a never-repeating stand-in said 12;
  * — and with the signals read as `next`. Every rule that picks the length (the veto
  * below the cap, abstention at it, the source-informed fold, the whole-song repeat) is
  * then the one that will run after the edit, and not a second copy of it.
@@ -514,7 +528,11 @@ export async function previewShapeSwap(
   if (at === undefined || !collect) return null
   const standIn = standInFor(a, next)
   if (standIn === null) return null
-  if (hasTruePeriod(next) && sharesItsControl(ir, a)) return null
+  // Toward noise that only comes back past the cap, the other writers cannot matter: the
+  // lane repeats within no horizon either way (`sharesItsControl`).
+  const standInPeriod = standInPeriodOf(a, next)
+  const pastCap = !hasTruePeriod(next) && standInPeriod !== null && standInPeriod > DEFAULT_CAP
+  if (!pastCap && sharesItsControl(ir, a)) return null
   const key = a.paramKey
   return analyzeSong(ir, {
     ...opts,
@@ -529,10 +547,10 @@ export async function previewShapeSwap(
  *
  * ⚠ A STAND-IN CANNOT TELL WHOSE EVENT IT IS REPLACING. An event carries the control's
  * value and nothing says which writer gave it, so `previewShapeSwap` replaces every value
- * of the key on the lane. Toward noise that is still exact: one writer that never comes
- * back keeps the lane from repeating, whatever the others do. Toward a waveform it is not
- * — the other writers' noise, or their own periods, are overwritten by the new curve's
- * phase. Found on an archive document whose drop stacks four `perlin` gains in one track:
+ * of the key on the lane, and the other writers' noise or periods are overwritten by the
+ * new shape's phase. The one direction where that is still exact is noise that comes back
+ * only past the analysis cap (`NOISE_SEED_CYCLES`): the lane then repeats within no
+ * horizon, whatever the others do. Faster noise repeats, and the others count again. Found on an archive document whose drop stacks four `perlin` gains in one track:
  * switching one to `sine` leaves the song at 7 bars, and a stand-in over all four named 40
  * and 120.
  *
@@ -547,12 +565,20 @@ function sharesItsControl(ir: PatternIR | null, a: SignalAutomation): boolean {
   return signalAutomations(ir).filter(same).length > 1 || steppedAutomations(ir).some(same)
 }
 
+/** How many song cycles `next`'s values take to come back round on curve `a`'s route:
+ *  its rate for a waveform, `NOISE_SEED_CYCLES` times its rate for noise. Null for any
+ *  other kind, or a route `songPeriodOf` cannot resolve. */
+function standInPeriodOf(a: SignalAutomation, next: SignalKind): number | null {
+  const own = hasTruePeriod(next) ? a.periodCycles : isNoiseKind(next) ? NOISE_SEED_CYCLES * a.periodCycles : null
+  return own === null ? null : songPeriodOf({ periodCycles: own, placements: a.placements })
+}
+
 /** What `next` gives the onset `ev`, as far as identity can tell — `previewShapeSwap`'s
- *  stand-in. Null when `next` is neither noise nor a waveform, or its period is not an
- *  exact fraction (`rationalLcm` could not fold it either). */
-function standInFor(a: SignalAutomation, next: SignalKind): ((ev: IREvent) => string | number) | null {
-  if (!hasTruePeriod(next)) return isNoiseKind(next) ? (ev) => `noise@${ev.begin}` : null
-  const song = songPeriodOf({ periodCycles: a.periodCycles, placements: a.placements })
+ *  stand-in: the onset's phase in the period `next` comes back at. Null when `next` is
+ *  neither noise nor a waveform, or that period is not an exact fraction (`rationalLcm`
+ *  could not fold it either). */
+function standInFor(a: SignalAutomation, next: SignalKind): ((ev: IREvent) => number) | null {
+  const song = standInPeriodOf(a, next)
   const f = song === null ? null : asFraction(song)
   if (f === null) return null
   // In ticks of 1/(d·PHASE_GRAIN) cycle, so a period of n/d is a whole n·PHASE_GRAIN

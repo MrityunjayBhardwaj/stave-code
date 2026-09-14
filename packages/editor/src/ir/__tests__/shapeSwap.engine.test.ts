@@ -167,6 +167,30 @@ describe('#1611 — where the stand-in cannot tell whose value it replaces', () 
   }, 180_000)
 })
 
+describe('#1611 — fast noise comes back round', () => {
+  // Strudel's default noise seeds from frac(t / 300), so it repeats every 300 of its own
+  // cycles: `perlin.slow(0.05)` every 15. Found on an archive document sweeping at
+  // `sine.slow(0.015)`: switched to perlin it repeats at 36, and a stand-in that never
+  // came back said 12.
+  it.each([
+    ['a fast sine alone → perlin', [SWEEP('sine', '.slow(0.05)')], 'perlin'],
+    ['a fast sine beside a 4-bar line → rand', [SWEEP('sine', '.slow(0.05)'), LOOP4], 'rand'],
+    ['fast rand alone → sine', [SWEEP('rand', '.slow(0.1)')], 'sine'],
+  ] as const)('%s', async (_label, tracks, next) => {
+    const r = await swap(tracks, next)
+    // Not vacuous: the fast noise on one side really does repeat within the cap.
+    const lengths = [lengthOf(r.current), lengthOf(r.truth)]
+    expect(lengths.every((l) => typeof l === 'number'), `lengths ${JSON.stringify(lengths)}`).toBe(true)
+    expect(lengthOf(r.preview), `the preview for ${r.swappedCode}`).toBe(lengthOf(r.truth))
+  }, 180_000)
+
+  it('toward fast noise, another curve on the same control counts again: no preview', async () => {
+    const r = await swap(['stack(s("bd*8").gain(sine.slow(0.05)), s("hh*8").gain(saw.slow(4)))', LOOP4], 'perlin')
+    expect(typeof lengthOf(r.truth), 'the engine gives this song a length').toBe('number')
+    expect(r.preview, `a preview was offered for ${r.swappedCode}`).toBeNull()
+  }, 180_000)
+})
+
 describe('#1611 — what the menu may offer across classes', () => {
   it('pairs unipolar waveforms with noise, and offers nothing to a bipolar or unbounded curve', () => {
     expect(crossClassShapes('sine')).toEqual(['perlin', 'rand'])

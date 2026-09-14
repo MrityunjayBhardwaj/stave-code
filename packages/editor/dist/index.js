@@ -1785,13 +1785,16 @@ function previewRepeat(analysis, laneKey, paramPeriods, cap = DEFAULT_CAP) {
 }
 __name(previewRepeat, "previewRepeat");
 var PHASE_GRAIN = 1e6;
+var NOISE_SEED_CYCLES = 300;
 async function previewShapeSwap(ir, a, next, opts) {
   const at = a.spans.shape?.start;
   const collect2 = opts.collectFn;
   if (at === void 0 || !collect2) return null;
   const standIn = standInFor(a, next);
   if (standIn === null) return null;
-  if (hasTruePeriod(next) && sharesItsControl(ir, a)) return null;
+  const standInPeriod = standInPeriodOf(a, next);
+  const pastCap = !hasTruePeriod(next) && standInPeriod !== null && standInPeriod > DEFAULT_CAP;
+  if (!pastCap && sharesItsControl(ir, a)) return null;
   const key2 = a.paramKey;
   return analyzeSong(ir, {
     ...opts,
@@ -1806,9 +1809,13 @@ function sharesItsControl(ir, a) {
   return signalAutomations(ir).filter(same).length > 1 || steppedAutomations(ir).some(same);
 }
 __name(sharesItsControl, "sharesItsControl");
+function standInPeriodOf(a, next) {
+  const own = hasTruePeriod(next) ? a.periodCycles : isNoiseKind(next) ? NOISE_SEED_CYCLES * a.periodCycles : null;
+  return own === null ? null : songPeriodOf({ periodCycles: own, placements: a.placements });
+}
+__name(standInPeriodOf, "standInPeriodOf");
 function standInFor(a, next) {
-  if (!hasTruePeriod(next)) return isNoiseKind(next) ? (ev) => `noise@${ev.begin}` : null;
-  const song = songPeriodOf({ periodCycles: a.periodCycles, placements: a.placements });
+  const song = standInPeriodOf(a, next);
   const f = song === null ? null : asFraction(song);
   if (f === null) return null;
   const [n, d] = f;

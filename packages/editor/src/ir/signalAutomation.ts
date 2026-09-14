@@ -610,8 +610,9 @@ export function crossClassShapes(kind: SignalKind): readonly SignalKind[] {
   return isNoiseKind(kind) ? REPEATING_SHAPES : []
 }
 
-/** Is `kind` one of the noise signals a curve may be switched away from — a value that
- *  never comes back round? The same set the menus offer from (`NOISE_KINDS`). */
+/** Is `kind` one of the noise signals a curve may be switched away from — values with no
+ *  waveform period (they do come back, but only after 300 of their own cycles: see
+ *  `songAnalysis`' `NOISE_SEED_CYCLES`)? The same set the menus offer from (`NOISE_KINDS`). */
 export function isNoiseKind(kind: SignalKind): boolean {
   return NOISE_KINDS.has(kind)
 }
