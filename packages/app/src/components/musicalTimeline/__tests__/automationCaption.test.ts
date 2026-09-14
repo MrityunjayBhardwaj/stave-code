@@ -194,7 +194,7 @@ describe('captionEdit — the three things it exists to enforce', () => {
     expect(captionEdit(hitOn(a, 'lo'), '')).toBeNull()
   })
 
-  it('refuses an inverted or degenerate range — a curve the engine would not play', () => {
+  it('refuses a bound that turns the curve over, or leaves it spanning nothing (#1613)', () => {
     const a = auto({ lo: 200, hi: 2000, spans: RANGED })
     expect(captionEdit(hitOn(a, 'hi'), '100')).toBeNull()   // hi below lo
     expect(captionEdit(hitOn(a, 'hi'), '200')).toBeNull()   // hi equal to lo
@@ -208,6 +208,35 @@ describe('captionEdit — the three things it exists to enforce', () => {
   it('the parameter name is a menu anchor, not a typed field', () => {
     const a = auto({ spans: RANGED })
     expect(captionEdit(hitOn(a, 'param'), 'gain')).toBeNull()
+  })
+})
+
+describe('a range written high-to-low keeps its direction (#1613)', () => {
+  const RANGED = { shape: null, rate: null, range: { start: 30, end: 46 }, chainEnd: 46 }
+  const hitOn = (a: SignalAutomation, kind: 'lo' | 'hi') => {
+    const rows = captionRows([a], 0, 60, true)
+    return { row: rows[0], field: rows[0].fields.find((f) => f.kind === kind)!, box: { x: 0, y: 0, w: 0, h: 0 } }
+  }
+  const turned = auto({ kind: 'tri', lo: 0.7, hi: 0.3, spans: RANGED })
+
+  it('can be retyped, and stays high-to-low', () => {
+    expect(captionEdit(hitOn(turned, 'hi'), '0.1')).toEqual({ range: [30, 46], text: '.range(0.7,0.1)' })
+    expect(captionEdit(hitOn(turned, 'lo'), '0.9')).toEqual({ range: [30, 46], text: '.range(0.9,0.3)' })
+  })
+
+  it('refuses a bound that would turn it over, or leave it spanning nothing', () => {
+    expect(captionEdit(hitOn(turned, 'hi'), '0.8')).toBeNull()
+    expect(captionEdit(hitOn(turned, 'hi'), '0.7')).toBeNull()
+    // Control: the upright curve refuses the mirror of that, and takes its own direction.
+    const upright = auto({ kind: 'tri', lo: 0.3, hi: 0.7, spans: RANGED })
+    expect(captionEdit(hitOn(upright, 'hi'), '0.2')).toBeNull()
+    expect(captionEdit(hitOn(upright, 'hi'), '0.9')).toEqual({ range: [30, 46], text: '.range(0.3,0.9)' })
+  })
+
+  it('a flat range has no direction yet, so it widens either way', () => {
+    const flat = auto({ lo: 5, hi: 5, spans: RANGED })
+    expect(captionEdit(hitOn(flat, 'hi'), '6')).toEqual({ range: [30, 46], text: '.range(5,6)' })
+    expect(captionEdit(hitOn(flat, 'hi'), '4')).toEqual({ range: [30, 46], text: '.range(5,4)' })
   })
 })
 

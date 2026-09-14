@@ -201,6 +201,19 @@ describe('automation curve — the three legs visibly change it', () => {
     expect(turns(1)).toBeGreaterThan(turns(4))
   })
 
+  it('RANGE: a range written high-to-low is drawn turned over — the mirror of the same range written low-to-high (#1613)', () => {
+    // A saw rises through each period, so on screen (y grows downward) its points go UP
+    // the band; written `range(0.7, 0.3)` the engine plays it falling (measured).
+    const upright = run([auto({ kind: 'saw', lo: 0.3, hi: 0.7 })]).paths[0].points.map((p) => p.y)
+    const turned = run([auto({ kind: 'saw', lo: 0.7, hi: 0.3 })]).paths[0].points.map((p) => p.y)
+    expect(turned.length).toBe(upright.length)
+    expect(Math.sign(upright[5] - upright[1]), 'the upright saw climbs the band').toBe(-1)
+    expect(Math.sign(turned[5] - turned[1]), 'the turned saw falls down it').toBe(1)
+    // Point by point the two sit either side of the band's middle, the same distance out.
+    const sums = upright.map((y, i) => y + turned[i])
+    expect(Math.max(...sums) - Math.min(...sums)).toBeLessThan(1e-9)
+  })
+
   it('RANGE: the bounds are stated on an expanded lane', () => {
     const { texts } = run([auto({ paramKey: 'cutoff', lo: 200, hi: 2000 })], true)
     expect(texts.map((t) => t.text)).toContain('cutoff 200→2000 ~1 bar')
