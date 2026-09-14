@@ -89,6 +89,7 @@ import {
   type WindowAnalysis,
 } from '@stave/editor'
 import { FullSongTimeline } from './FullSongTimeline'
+import { showConfirm } from '../dialogs/host'
 import { createSongCollector } from './musicalTimeline/songCollector'
 import { createWaveformSource } from '../audio/waveformSource'
 import { subscribeWaveformsReady } from '../audio/waveformWarm'
@@ -1144,6 +1145,7 @@ export function MusicalTimeline(
           getDrawerOpen={props.getDrawerOpen}
           getActiveTabId={props.getActiveTabId}
           onEditAutomation={handleEditAutomation}
+          onConfirm={(req) => showConfirm({ ...req, danger: true })}
           onTrimClip={handleTrimClip}
           onTrimRegion={handleTrimRegion}
           onDeleteClip={handleDeleteClip}

@@ -93,6 +93,83 @@ test('a loop whose tracks repeat at different lengths is offered its whole repea
   expect(cycles, `one repeat is ${cycles} cycles, not the whole song's 12 (labels: ${labels.join(' | ')})`).toBe(12)
 })
 
+/**
+ * #1602 — the lane's step-count chip says what a count does to the song BEFORE it
+ * writes, and the bounce then agrees with what it said. Two steps of gain beside a
+ * 4-cycle track repeat at 4; three make the song repeat at 12. The arm reads the
+ * bounce's first offer on both sides of the edit, so a label that merely rendered,
+ * or an offer that was 12 all along, both fail it.
+ */
+const TWO_STEP_SONG = 'setcps(130/240)\n$: s("<bd sd cp hh>")\n$: s("hh*4").gain("<0.2 0.8>")'
+
+/** The bounce modal's first offer, in whole cycles at the document's tempo, or null. */
+async function firstOfferCycles(page: Page): Promise<number | null> {
+  await openBounceModal(page)
+  const offers = page.getByTestId('bounce-song-offers')
+  await expect(offers).toBeVisible({ timeout: 15000 })
+  const labels = await offers.getByRole('button').allTextContents()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: 'Bounce to WAV' })).toBeHidden()
+  const first = /(\d+):(\d\d)/.exec(labels[0] ?? '')
+  return first ? Math.round((Number(first[1]) * 60 + Number(first[2])) / CYCLE_SECONDS) : null
+}
+
+async function readDoc(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const eds = ((window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getValue: () => string; getLanguageId?: () => string } | null }> } } }).monaco?.editor?.getEditors?.()) ?? []
+    const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+    return t?.getModel()?.getValue() ?? ''
+  })
+}
+
+test('a step count chosen on the lane previews the song\'s new length, and the bounce then offers it (#1602)', async ({ page }) => {
+  test.setTimeout(120_000)
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:bottomPanel.height', '340')
+      localStorage.setItem('stave:bottomPanel.open', 'true')
+      localStorage.setItem('stave:bottomPanel.activeTabId', 'musical-timeline')
+    } catch {
+      /* ignore */
+    }
+  })
+  await boot(page)
+  await page.locator('.monaco-editor').first().click()
+  await page.evaluate((code) => {
+    const eds = ((window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { setValue: (s: string) => void; getLanguageId?: () => string } | null }> } } }).monaco?.editor?.getEditors?.()) ?? []
+    const target = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+    target?.getModel()?.setValue(code)
+  }, TWO_STEP_SONG)
+  await playOnce(page)
+
+  // (0) BEFORE: the song repeats at 4, and the bounce says so.
+  expect(await firstOfferCycles(page), 'the two-step song is not offered its 4').toBe(4)
+
+  // (1) THE HAT LANE, EXPANDED, OFFERS THE CHIP — and opening it writes nothing.
+  await page.locator('[data-full-song-lane-expand]').nth(1).click()
+  const chip = page.locator('[data-full-song-lane-steps]')
+  await expect(chip).toHaveCount(1)
+  await chip.click()
+  const menu = page.locator('[data-full-song="step-count"]')
+  await expect(menu).toHaveCount(1)
+  const labels = await menu.locator('option').allTextContents()
+  const three = '3 steps · song repeats every 12 bars (was 4)'
+  expect(labels, labels.join(' | ')).toContain(three)
+  expect(await readDoc(page), 'opening the chip wrote').toBe(TWO_STEP_SONG)
+
+  // (2) CHOOSING WRITES THE CONTINUED STEPS.
+  await menu.selectOption({ label: three })
+  await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe(TWO_STEP_SONG.replace('<0.2 0.8>', '<0.2 0.8 0.2>'))
+  await expect(menu).toHaveCount(0)
+
+  // (3) THE BOUNCE AGREES WITH THE PREVIEW once the edit has played.
+  await expect.poll(() => firstOfferCycles(page), { timeout: 30_000, intervals: [2_000] }).toBe(12)
+
+  expect(errors, errors.join(' | ')).toEqual([])
+})
+
 test('the modal offers repeats of the song, costed at the document tempo', async ({
   page,
 }) => {

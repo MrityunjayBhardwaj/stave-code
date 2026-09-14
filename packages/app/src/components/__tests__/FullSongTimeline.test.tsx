@@ -79,6 +79,9 @@ vi.mock('@stave/editor', async () => {
   const { knobRangeFor, hasKnownKnobRange } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
   // #1601 — the lane's automate menu reads fixed values and writes them as steps.
   const { fixedParameters, fixedToStepsEdit } = await import('../../../../editor/src/ir/fixedParameters')
+  // #1602 — the lane's step-count chip builds its options and its edit from these.
+  const { stepCountEdit } = await import('../../../../editor/src/ir/stepCount')
+  const { previewRepeat, songPeriodOf } = await import('../../../../editor/src/ir/songAnalysis')
   const eventsForIr = (ir: { bare?: boolean; nested?: boolean } | null) =>
     ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : []
   return {
@@ -91,6 +94,9 @@ vi.mock('@stave/editor', async () => {
     hasKnownKnobRange,
     fixedParameters,
     fixedToStepsEdit,
+    stepCountEdit,
+    previewRepeat,
+    songPeriodOf,
     collectCycles: (ir: { bare?: boolean; nested?: boolean } | null) => eventsForIr(ir),
     structuralWalk: (ir: { bare?: boolean; nested?: boolean } | null, window: { originCycle: number; spanCycles: number }) =>
       skeletonsFromEvents(eventsForIr(ir), window),
@@ -1954,6 +1960,204 @@ describe('FullSongTimeline — automate a fixed value from its lane (#1601)', ()
     fireEvent.keyDown(await open(), { key: 'Escape' })
     expect(menu(container), 'Escape did not close the menu').toBeNull()
     fireEvent.blur(await open())
+    expect(menu(container), 'a blur did not close the menu').toBeNull()
+    expect(onEditAutomation).not.toHaveBeenCalled()
+  })
+})
+
+describe('FullSongTimeline — change a stepped parameter\'s step count from its lane (#1602)', () => {
+  // One stepped `gain` on `bd`, spelled at the offsets `parseStrudel` gives
+  // `s("bd*2").gain("<…>")`: the call from the `.` at 9 to the end, the literal's
+  // `<` at 16, each step at its own offset from 17 (the Stage 3 fixture's numbers).
+  // The analysis gives `bd` a 2-cycle period that is 1 without its gain, beside a
+  // 4-cycle `hh`: the song repeats at 4, and 3 steps would make it 12.
+  const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)) })
+  const analysis: SongAnalysis = {
+    ...analysisFixture,
+    lanePeriods: [
+      { laneKey: 'bd', periodCycles: 2, restCycles: 1 },
+      { laneKey: 'hh', periodCycles: 4, restCycles: 4 },
+    ],
+  }
+  async function renderSteps(
+    steps: readonly string[],
+    extra: Partial<React.ComponentProps<typeof FullSongTimeline>>,
+    expand = true,
+  ) {
+    const inner = steps.join(' ')
+    const source = `s("bd*2").gain("<${inner}>")`
+    let at = 17
+    const items = steps.map((note) => {
+      const item = { tag: 'Play', note, loc: [{ start: at, end: at + note.length }] }
+      at += note.length + 1
+      return item
+    })
+    const ir = {
+      tag: 'Stack',
+      tracks: [
+        {
+          tag: 'Track',
+          trackId: 'bd',
+          body: {
+            tag: 'Param',
+            key: 'gain',
+            rawArgs: `"<${inner}>"`,
+            loc: [{ start: 9, end: source.length }],
+            value: { tag: 'Cycle', loc: [{ start: 16, end: 16 + inner.length + 2 }], items },
+            body: { tag: 'Play', note: 'bd' },
+          },
+        },
+      ],
+    }
+    const props = { ir: ir as never, source, analysis, ...extra }
+    const utils = renderFull(props)
+    await settle()
+    if (expand) {
+      await act(async () => {
+        ;(utils.container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement).click()
+      })
+    }
+    /** Re-render with the document text changed and everything else as it was. */
+    const retype = (next: string) =>
+      utils.rerender(
+        <FullSongTimeline
+          getSongPosition={() => null}
+          onSeek={utils.onSeek}
+          getDrawerOpen={() => true}
+          getActiveTabId={() => 'musical-timeline'}
+          {...props}
+          source={next}
+        />,
+      )
+    return { ...utils, source, retype }
+  }
+  const chip = (c: HTMLElement) => c.querySelector('[data-full-song-lane-steps="bd"]') as HTMLElement | null
+  const menu = (c: HTMLElement) => c.querySelector('[data-full-song="step-count"]') as HTMLSelectElement | null
+  const open = async (c: HTMLElement) => {
+    await act(async () => {
+      chip(c)!.click()
+    })
+    return menu(c)!
+  }
+  const choose = async (c: HTMLElement, value: string) => {
+    const m = await open(c)
+    await act(async () => {
+      fireEvent.change(m, { target: { value } })
+    })
+    await settle()
+  }
+
+  it('lists the counts that fit first, each saying what it does to the song, and writes the chosen one in one edit', async () => {
+    const onEditAutomation = vi.fn()
+    const { container } = await renderSteps(['0.2', '0.8'], { onEditAutomation, onConfirm: vi.fn() })
+    expect(chip(container), 'no step-count chip on the expanded lane').not.toBeNull()
+    const m = await open(container)
+    expect(m, 'the menu did not open').not.toBeNull()
+    const labels = Array.from(m.options).map((o) => o.textContent)
+    expect(labels.slice(0, 7)).toEqual([
+      'steps…',
+      '1 step · removes written steps',
+      '4 steps · plays the same',
+      '8 steps · plays the same',
+      '12 steps · plays the same',
+      '16 steps · plays the same',
+      '3 steps · song repeats every 12 bars (was 4)',
+    ])
+    expect(m.querySelector('optgroup')?.getAttribute('label')).toBe('gain')
+    expect(onEditAutomation, 'opening the menu wrote').not.toHaveBeenCalled()
+    await act(async () => {
+      fireEvent.change(m, { target: { value: '0:4' } })
+    })
+    await settle()
+    expect(onEditAutomation).toHaveBeenCalledTimes(1)
+    expect(onEditAutomation).toHaveBeenCalledWith({ range: [17, 24], text: '0.2 0.8 0.2 0.8' }, 'automation gain step count 4')
+    expect(menu(container), 'the menu lingered after its commit').toBeNull()
+  })
+
+  it('asks before a cut removes written steps, and writes nothing when the answer is no', async () => {
+    const onEditAutomation = vi.fn()
+    const answers = [false, true]
+    const onConfirm = vi.fn(async () => answers.shift()!)
+    const { container } = await renderSteps(['0.2', '0.8', '0.5', '0.9'], { onEditAutomation, onConfirm })
+    await choose(container, '0:2')
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(onConfirm.mock.calls[0]).toEqual([expect.objectContaining({ title: 'Remove steps from gain?', confirmLabel: 'Remove steps' })])
+    expect(onEditAutomation, 'a declined cut wrote').not.toHaveBeenCalled()
+    await choose(container, '0:2')
+    expect(onEditAutomation).toHaveBeenCalledTimes(1)
+    expect(onEditAutomation).toHaveBeenCalledWith({ range: [17, 32], text: '0.2 0.8' }, 'automation gain step count 2')
+  })
+
+  it('refuses a confirmed cut when the document changed while the question was open', async () => {
+    const onEditAutomation = vi.fn()
+    let answer: (ok: boolean) => void = () => {}
+    const onConfirm = vi.fn(() => new Promise<boolean>((resolve) => { answer = resolve }))
+    const { container, source, retype } = await renderSteps(['0.2', '0.8', '0.5', '0.9'], { onEditAutomation, onConfirm })
+    await choose(container, '0:2')
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      retype(`${source}\n`)
+    })
+    await act(async () => {
+      answer(true)
+    })
+    await settle()
+    expect(onEditAutomation, 'a cut computed against the old text was written over the new one').not.toHaveBeenCalled()
+  })
+
+  it('asks nothing for a cut whose removed steps repeat the ones kept', async () => {
+    // The control on the confirmation: the same cut, the same spans, nothing written lost.
+    const onEditAutomation = vi.fn()
+    const onConfirm = vi.fn(async () => false)
+    const { container } = await renderSteps(['0.2', '0.8', '0.2', '0.8'], { onEditAutomation, onConfirm })
+    await choose(container, '0:2')
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(onEditAutomation).toHaveBeenCalledWith({ range: [17, 32], text: '0.2 0.8' }, 'automation gain step count 2')
+  })
+
+  it('without a way to ask, a cut that removes written steps cannot be chosen', async () => {
+    const onEditAutomation = vi.fn()
+    const { container } = await renderSteps(['0.2', '0.8', '0.5', '0.9'], { onEditAutomation })
+    const m = await open(container)
+    const option = (value: string) => Array.from(m.options).find((o) => o.value === value)!
+    expect(option('0:2').disabled, 'the cut was offered as choosable').toBe(true)
+    expect(option('0:8').disabled, 'a growth was disabled too').toBe(false)
+    await act(async () => {
+      fireEvent.change(m, { target: { value: '0:2' } })
+    })
+    await settle()
+    expect(onEditAutomation).not.toHaveBeenCalled()
+  })
+
+  it('offers no chip on a collapsed lane, without a write handler, or on a lane with no stepped parameter', async () => {
+    const onEditAutomation = vi.fn()
+    expect(chip((await renderSteps(['0.2', '0.8'], { onEditAutomation }, false)).container), 'collapsed').toBeNull()
+    cleanup()
+    expect(chip((await renderSteps(['0.2', '0.8'], {})).container), 'no handler').toBeNull()
+    cleanup()
+    const fixed = renderFull({
+      ir: { tag: 'Stack', tracks: [{ tag: 'Track', trackId: 'bd', body: { tag: 'Param', key: 'gain', rawArgs: '.8', value: 0.8, loc: [{ start: 9, end: 18 }], body: { tag: 'Play', note: 'bd' } } }] } as never,
+      source: 's("bd*2").gain(.8)',
+      analysis,
+      onEditAutomation,
+    })
+    await settle()
+    await act(async () => {
+      ;(fixed.container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement).click()
+    })
+    expect(chip(fixed.container), 'a fixed value').toBeNull()
+    cleanup()
+    // Control: the same render with steps DOES offer it.
+    expect(chip((await renderSteps(['0.2', '0.8'], { onEditAutomation })).container), 'stepped').not.toBeNull()
+    expect(onEditAutomation).not.toHaveBeenCalled()
+  })
+
+  it('Escape and a blur close the menu without writing', async () => {
+    const onEditAutomation = vi.fn()
+    const { container } = await renderSteps(['0.2', '0.8'], { onEditAutomation })
+    fireEvent.keyDown(await open(container), { key: 'Escape' })
+    expect(menu(container), 'Escape did not close the menu').toBeNull()
+    fireEvent.blur(await open(container))
     expect(menu(container), 'a blur did not close the menu').toBeNull()
     expect(onEditAutomation).not.toHaveBeenCalled()
   })

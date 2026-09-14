@@ -38,6 +38,9 @@ vi.mock('@stave/editor', async () => {
   const { knobRangeFor, hasKnownKnobRange } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
   // #1601 — the lane's automate menu reads fixed values and writes them as steps.
   const { fixedParameters, fixedToStepsEdit } = await import('../../../../editor/src/ir/fixedParameters')
+  // #1602 — the lane's step-count chip builds its options and its edit from these.
+  const { stepCountEdit } = await import('../../../../editor/src/ir/stepCount')
+  const { previewRepeat, songPeriodOf } = await import('../../../../editor/src/ir/songAnalysis')
   return {
     signalAutomations,
     signalTimeAt,
@@ -47,6 +50,9 @@ vi.mock('@stave/editor', async () => {
     hasKnownKnobRange,
     fixedParameters,
     fixedToStepsEdit,
+    stepCountEdit,
+    previewRepeat,
+    songPeriodOf,
     structuralWalk: (_ir: unknown, window: { originCycle: number; spanCycles: number }) =>
       skeletonsFromEvents(DRUM_EVENTS, window),
     wholeWalkWindow,

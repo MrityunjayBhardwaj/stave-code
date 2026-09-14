@@ -95,9 +95,10 @@ import {
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
-import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange } from '@stave/editor'
+import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf } from '@stave/editor'
 import type { FixedParameter } from '@stave/editor'
 import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepY, withStepValue, type StepBand, type StepHit } from './musicalTimeline/steppedLane'
+import { stepCountOptions, type StepCountGroup } from './musicalTimeline/stepCountMenu'
 import type { SceneSignal, SceneStepped } from './musicalTimeline/timelineScene'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import {
@@ -278,6 +279,10 @@ export interface FullSongTimelineProps {
    *  the captions stay read-only, exactly as Stage 1 left them, and no caption
    *  claims a pointer. */
   readonly onEditAutomation?: (edit: OffsetEdit, gesture: string) => void
+  /** Ask the musician before an edit that removes something they wrote (#1602 — a
+   *  step-count cut). Resolves true to go ahead. Optional — without it, the edits
+   *  that would need it are offered but cannot be chosen. */
+  readonly onConfirm?: (req: { title: string; description: string; confirmLabel: string }) => Promise<boolean>
   /** Trim a clip by dragging its right edge (Phase 5b, #437). Receives the
    *  clip's lane source anchor (an offset inside the combinator call), its arm
    *  index, and the new whole-cycle weight. The parent parses the arrangement at
@@ -1650,6 +1655,43 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     },
     [choosingAutomation, onEditAutomation, source],
   )
+  // #1602 — the step-count chip. Its options are built when it OPENS, like the
+  // automate menu's, so every label describes the document the musician is looking
+  // at. The edit is rebuilt from the source at commit, and a document that changed
+  // while the confirmation was open is refused rather than written over.
+  const { onConfirm } = props
+  const sourceRef = useRef(source)
+  sourceRef.current = source
+  const [choosingStepCount, setChoosingStepCount] = useState<{
+    laneKey: string
+    rect: DOMRect
+    groups: readonly StepCountGroup[]
+  } | null>(null)
+  const commitStepCount = React.useCallback(
+    async (value: string): Promise<void> => {
+      const hit = choosingStepCount
+      setChoosingStepCount(null)
+      if (!hit || !onEditAutomation || value === '') return
+      const [g, n] = value.split(':').map(Number)
+      const a = hit.groups[g]?.automation
+      const current = sourceRef.current
+      if (!a || current == null) return
+      const r = stepCountEdit(a, n, current)
+      if (!r) return
+      if (r.dropsWritten) {
+        if (!onConfirm) return
+        const cut = a.steps.length - n
+        const ok = await onConfirm({
+          title: `Remove steps from ${a.method}?`,
+          description: `${a.method} goes from ${a.steps.length} steps to ${n}. The last ${cut === 1 ? 'step is' : `${cut} steps are`} removed, and they are not a repeat of the steps that stay.`,
+          confirmLabel: 'Remove steps',
+        })
+        if (!ok || sourceRef.current !== current) return
+      }
+      onEditAutomation(r.edit, `automation ${a.paramKey} step count ${n}`)
+    },
+    [choosingStepCount, onEditAutomation, onConfirm],
+  )
   const [editingCaption, setEditingCaption] = useState<CaptionHit | null>(null)
 
   /** The caption field under a client point, or null. X is VIEWPORT-relative and
@@ -3004,6 +3046,34 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                         ∿
                       </button>
                     )}
+                    {box.expanded && onEditAutomation && source != null && (steppedByTrack.get(box.laneKey)?.length ?? 0) > 0 && (
+                      <button
+                        type="button"
+                        data-full-song-lane-steps={box.laneKey}
+                        aria-label={`Change how many steps a parameter of ${displayName} has`}
+                        title={`${displayName} — change a parameter's step count`}
+                        onClick={(e) => {
+                          // Opens the menu only — not the header's jump (#610).
+                          e.stopPropagation()
+                          setChoosingStepCount({
+                            laneKey: box.laneKey,
+                            rect: e.currentTarget.getBoundingClientRect(),
+                            groups: stepCountOptions({
+                              automations: (steppedByTrack.get(box.laneKey) ?? []).map((entry) => entry.automation),
+                              laneKey: box.laneKey,
+                              analysis,
+                              laneCycles: loopCyclesRef.current,
+                              source,
+                              canConfirm: onConfirm != null,
+                              deps: { stepCountEdit, previewRepeat, songPeriodOf },
+                            }),
+                          })
+                        }}
+                        style={styles.laneCaret}
+                      >
+                        #
+                      </button>
+                    )}
                     {colorPickerEnabled ? (
                       <button
                         type="button"
@@ -3136,6 +3206,37 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               <option key={`${f.offset}:${i}`} value={String(i)}>
                 {`${f.method} ${f.valueText}`}
               </option>
+            ))}
+          </select>
+        )}
+        {choosingStepCount && (
+          <select
+            data-full-song="step-count"
+            autoFocus
+            aria-label="Change a parameter's step count"
+            defaultValue=""
+            style={{ ...styles.automateMenu, left: choosingStepCount.rect.left, top: choosingStepCount.rect.bottom + 2 }}
+            // No propagation guard, for the automate menu's reason: this is mounted
+            // beside the grid, and nothing above it acts on a plain key or a press.
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setChoosingStepCount(null)
+            }}
+            onChange={(e) => {
+              void commitStepCount(e.currentTarget.value)
+            }}
+            onBlur={() => setChoosingStepCount(null)}
+          >
+            <option value="" disabled>
+              steps…
+            </option>
+            {choosingStepCount.groups.map((group, g) => (
+              <optgroup key={`${group.automation.offset}:${g}`} label={group.automation.method}>
+                {group.options.map((o) => (
+                  <option key={o.steps} value={`${g}:${o.steps}`} disabled={o.disabled}>
+                    {o.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         )}
