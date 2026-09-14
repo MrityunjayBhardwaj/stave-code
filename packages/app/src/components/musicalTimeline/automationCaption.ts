@@ -48,12 +48,12 @@ export const AUTOMATION_LABEL_TEXT_H = 10
 
 /** Which leg of the automation a caption field names.
  *
- *  ⚠ `param` IS GEOMETRY ONLY — it is where a future signal-kind menu would
- *  hang, since the kind has no glyph of its own in the caption, and it is
- *  reported so a caller can tell "on the name" from "on a number". Nothing can
- *  be typed into it, so nothing may open an editor over it: a field that accepts
- *  text and then discards it is worse than an inert label. `captionEdit` returns
- *  null for it, and the timeline declines to open on it at all. */
+ *  ⚠ `param` IS NOT A TYPED FIELD. It is where the shape menu hangs (#1464),
+ *  since the kind has no glyph of its own in the caption, and it is reported so a
+ *  caller can tell "on the name" from "on a number". Nothing can be typed into it,
+ *  so no text editor may open over it: a field that accepts text and then discards
+ *  it is worse than an inert label. `captionEdit` returns null for it; a shape is
+ *  written by `shapeEdit`, and only where `shapeOptions` offers one. */
 export type CaptionFieldKind = 'param' | 'lo' | 'hi' | 'rate'
 
 export interface CaptionField {

@@ -1717,15 +1717,16 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     [onEditAutomation],
   )
 
-  /** The caption fields a press may actually EDIT — the two bounds.
+  /** The caption fields a press may TYPE into — the two bounds and the rate.
    *
    *  ⚠ The parameter NAME is part of the caption and is reported by the
    *  hit-test, but nothing can be typed into it: `captionEdit` returns null for
-   *  it, so an editor opened there would take text and silently drop it, which
-   *  is worse than an inert label. Excluding it here also means a press on the
-   *  name keeps reaching the gestures it always reached. Both the press and the
-   *  double-press ask this, so they cannot disagree about which pixels are
-   *  claimed. */
+   *  it, so a text editor opened there would take text and silently drop it,
+   *  which is worse than an inert label. The name opens the SHAPE menu instead
+   *  (`shapeCaptionAt`, #1464), and only where the curve has a shape to switch to;
+   *  elsewhere a press on it keeps reaching the gestures it always reached. Both
+   *  the press and the double-press ask this, so they cannot disagree about which
+   *  pixels are claimed. */
   const editableCaptionAt = React.useCallback(
     (clientX: number, clientY: number): CaptionHit | null => {
       const hit = captionAt(clientX, clientY)
