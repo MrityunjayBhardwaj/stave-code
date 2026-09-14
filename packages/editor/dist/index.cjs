@@ -1343,6 +1343,15 @@ function hasTruePeriod(kind) {
   return PERIODIC_KINDS.has(kind);
 }
 __name(hasTruePeriod, "hasTruePeriod");
+var REPEATING_SHAPES = ["sine", "tri", "saw", "cosine", "square", "isaw", "itri"];
+var REPEATING_BIPOLAR_SHAPES = ["sine2", "tri2", "saw2", "cosine2", "square2", "isaw2", "itri2"];
+var NOISE_SHAPES = ["perlin", "rand"];
+var NOISE_KINDS = /* @__PURE__ */ new Set(["perlin", "rand", "berlin", "brand"]);
+function shapeAlternatives(kind) {
+  const family = hasTruePeriod(kind) ? polarityOf(kind) === "bipolar" ? REPEATING_BIPOLAR_SHAPES : REPEATING_SHAPES : NOISE_KINDS.has(kind) ? NOISE_SHAPES : [];
+  return family.filter((k) => k !== kind);
+}
+__name(shapeAlternatives, "shapeAlternatives");
 var bjorklund = /* @__PURE__ */ __name((k, n) => {
   if (n <= 0) return [];
   if (k === 0) return Array(n).fill(false);
@@ -48272,6 +48281,7 @@ exports.setWeight = setWeight;
 exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
 exports.sha256Hex = sha256Hex;
+exports.shapeAlternatives = shapeAlternatives;
 exports.shellStateKeyFor = shellStateKeyFor;
 exports.signalAutomations = signalAutomations;
 exports.signalCarryingParamKeys = signalCarryingParamKeys;

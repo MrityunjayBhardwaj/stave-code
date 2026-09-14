@@ -512,3 +512,35 @@ const PERIODIC_KINDS: ReadonlySet<string> = new Set([
 export function hasTruePeriod(kind: SignalKind): boolean {
   return PERIODIC_KINDS.has(kind)
 }
+
+/** The shapes a curve can be switched between, most used first (558 archive documents:
+ *  sine 113, tri 21, saw 14, cosine 2, square 1, isaw 1; perlin 82, rand 60). */
+const REPEATING_SHAPES: readonly SignalKind[] = ['sine', 'tri', 'saw', 'cosine', 'square', 'isaw', 'itri']
+const REPEATING_BIPOLAR_SHAPES: readonly SignalKind[] = ['sine2', 'tri2', 'saw2', 'cosine2', 'square2', 'isaw2', 'itri2']
+const NOISE_SHAPES: readonly SignalKind[] = ['perlin', 'rand']
+/** Noise a curve may be switched AWAY from. `rand2` is left out: no other noise has a
+ *  bipolar spelling, so it has nothing to switch to. */
+const NOISE_KINDS: ReadonlySet<string> = new Set(['perlin', 'rand', 'berlin', 'brand'])
+
+/**
+ * The shapes a curve of `kind` can be switched to by replacing its identifier and nothing
+ * else (#1464), most used first, never `kind` itself. Empty when there is none.
+ *
+ * ⚠ ONE CLASS AT A TIME, and each half of the class is load-bearing:
+ *  - SAME POLARITY. `range(lo, hi)` is `mul(hi − lo).add(lo)` and assumes 0..1 input
+ *    (`pattern.mjs:1771`), so `sine2.range(200, 2000)` plays −1600..2000 (measured).
+ *    A swap across polarity moves the output the caption promises.
+ *  - SAME PERIODICITY. The song's length folds in the period of every signal that
+ *    repeats and nothing from noise (`signalDimensionsOf`): `sine.slow(4)` folds `[4]`,
+ *    `perlin.slow(4)` folds `[]`. A swap between the two can change how long the song
+ *    is, which a menu must say before it writes, and this one cannot yet.
+ * Inside one class the range, the rate and the song's length all stay as they were.
+ *
+ * `time` and the mouse signals are their own classes and offer nothing.
+ */
+export function shapeAlternatives(kind: SignalKind): readonly SignalKind[] {
+  const family = hasTruePeriod(kind)
+    ? polarityOf(kind) === 'bipolar' ? REPEATING_BIPOLAR_SHAPES : REPEATING_SHAPES
+    : NOISE_KINDS.has(kind) ? NOISE_SHAPES : []
+  return family.filter((k) => k !== kind)
+}
