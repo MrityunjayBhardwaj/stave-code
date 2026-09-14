@@ -1081,6 +1081,11 @@ async function captionEditorsOpened(page: Page): Promise<string[]> {
 }
 
 test('a bipolar curve under a range offers no bound to type, while its rate and a unipolar control still open (#1610)', async ({ page }) => {
+  // Two walks of the caption line, each up to 79 presses with an Escape per editor that
+  // opens. Passing took 32.9s against the default 30s budget, and on a tree where the
+  // bipolar caption DOES open bounds the extra Escapes timed out mid-walk, before the
+  // assertion that names the defect could run. The budget has to fit the failing case.
+  test.setTimeout(90_000)
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
   page.on('console', (m) => {
