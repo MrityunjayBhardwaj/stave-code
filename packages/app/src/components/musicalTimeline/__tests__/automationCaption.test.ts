@@ -21,10 +21,13 @@ import {
   captionHit,
   captionText,
   captionEdit,
+  rateEditable,
   CAPTION_PAD_X,
   AUTOMATION_PAD_Y,
   AUTOMATION_LABEL_LINE_H,
 } from '../automationCaption'
+import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
+import { signalAutomations } from '../../../../../editor/src/ir/signalAutomation'
 
 /** One character = 5px. Not the real face — a face whose arithmetic is legible,
  *  so `x=CAPTION_PAD_X + 5*n` names character n without a screenshot. */
@@ -34,7 +37,7 @@ const measure = (s: string): number => s.length * CHAR_W
 const NO_SPANS = { shape: null, rate: null, range: null, chainEnd: null } as const
 
 const auto = (over: Partial<SignalAutomation> = {}): SignalAutomation => ({
-  trackId: 'd1', paramKey: 'cutoff', kind: 'sine', periodCycles: 1,
+  trackId: 'd1', paramKey: 'cutoff', kind: 'sine', periodCycles: 1, lanePeriodCycles: 1,
   lo: 200, hi: 2000, ranged: true, offset: 0, spans: NO_SPANS, placements: [[]], ...over,
 })
 
@@ -43,16 +46,17 @@ const xOf = (n: number): number => CAPTION_PAD_X + n * CHAR_W
 
 describe('captionText — what the lane actually says', () => {
   it('names the parameter and its two bounds', () => {
-    expect(captionText(auto())).toBe('cutoff 200→2000')
+    // … and, since #1464 Stage 3, the bars one period spans (a bare signal: `~1 bar`).
+    expect(captionText(auto())).toBe('cutoff 200→2000 ~1 bar')
   })
 
   it('marks a bound this code SUPPLIED with ~, so it is never read as the user\'s', () => {
     expect(captionText(auto({ paramKey: 'pan', lo: 0, hi: 1, ranged: false })))
-      .toBe('pan ~0→1')
+      .toBe('pan ~0→1 ~1 bar')
   })
 
   it('rounds for display only', () => {
-    expect(captionText(auto({ lo: 0.30001, hi: 1 }))).toBe('cutoff 0.3→1')
+    expect(captionText(auto({ lo: 0.30001, hi: 1 }))).toBe('cutoff 0.3→1 ~1 bar')
   })
 })
 
@@ -79,7 +83,7 @@ describe('captionRows — the three abstentions the draw path already made', () 
     // and carries all three fields, because an empty array was the old answer.
     const rows = captionRows([auto()], 0, 25, true)
     expect(rows).toHaveLength(1)
-    expect(rows[0].text).toBe('cutoff 200→2000')
+    expect(rows[0].text).toBe('cutoff 200→2000 ~1 bar')
     expect(rows[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi'])
   })
 
@@ -108,7 +112,7 @@ describe('captionRows — the three abstentions the draw path already made', () 
 })
 
 describe('captionHit — a click resolves to one leg', () => {
-  const rows = captionRows([auto()], 0, 60, true) // 'cutoff 200→2000'
+  const rows = captionRows([auto()], 0, 60, true) // 'cutoff 200→2000 ~1 bar'
   //                                                 0123456789...
 
   it('lands on the parameter name', () => {
@@ -159,7 +163,7 @@ describe('captionEdit — the three things it exists to enforce', () => {
     // The caption reads `0.3→1`; the document holds 0.30001. Editing the HIGH
     // bound must not rewrite the low one to the rounded string beside it.
     const a = auto({ lo: 0.30001, hi: 1, spans: RANGED })
-    expect(captionText(a)).toBe('cutoff 0.3→1')
+    expect(captionText(a)).toBe('cutoff 0.3→1 ~1 bar')
     expect(captionEdit(hitOn(a, 'hi'), '2')).toEqual({
       range: [30, 46], text: '.range(0.30001,2)',
     })
@@ -202,5 +206,107 @@ describe('captionEdit — the three things it exists to enforce', () => {
   it('the parameter name is a menu anchor, not a typed field', () => {
     const a = auto({ spans: RANGED })
     expect(captionEdit(hitOn(a, 'param'), 'gain')).toBeNull()
+  })
+})
+
+describe('the rate field — what it says and where it can be clicked (#1464 Stage 3)', () => {
+  const SLOWED = { shape: null, rate: { start: 20, end: 28 }, range: null, chainEnd: 40 }
+
+  it('says the bars one period spans on the lane, and marks a rate the signal does not write', () => {
+    expect(captionText(auto({ periodCycles: 4, lanePeriodCycles: 4, spans: SLOWED }))).toBe('cutoff 200→2000 4 bars')
+    // Under a whole-track slow(2) the lane shows 8, not the 4 the signal spells.
+    expect(captionText(auto({ periodCycles: 4, lanePeriodCycles: 8, spans: SLOWED }))).toBe('cutoff 200→2000 8 bars')
+    expect(captionText(auto({ lanePeriodCycles: 1 }))).toBe('cutoff 200→2000 ~1 bar')
+    // Routes that disagree have no one number to show.
+    expect(captionText(auto({ lanePeriodCycles: null }))).toBe('cutoff 200→2000')
+  })
+
+  it('a click on the number lands on the rate; the unit is not a field', () => {
+    const rows = captionRows([auto({ periodCycles: 4, lanePeriodCycles: 4, spans: SLOWED })], 0, 60, true)
+    // 'cutoff 200→2000 4 bars' — the rate number is character 16, the unit 18..21.
+    expect(captionHit(rows, xOf(16), AUTOMATION_PAD_Y + 1, measure)?.field).toEqual({ kind: 'rate', text: '4', from: 16, to: 17 })
+    expect(captionHit(rows, xOf(19), AUTOMATION_PAD_Y + 1, measure)).toBeNull()
+  })
+
+  it('shows two composing rates without offering a field over them', () => {
+    const ambiguous = auto({ periodCycles: 2, lanePeriodCycles: 2, spans: { shape: null, rate: null, range: null, chainEnd: 40 } })
+    expect(captionText(ambiguous)).toBe('cutoff 200→2000 2 bars')
+    expect(rateEditable(ambiguous)).toBe(false)
+    expect(captionRows([ambiguous], 0, 60, true)[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi'])
+    // Control: the same automation with one spelled rate does offer it.
+    expect(captionRows([auto({ periodCycles: 2, lanePeriodCycles: 2, spans: SLOWED })], 0, 60, true)[0].fields.map((f) => f.kind))
+      .toEqual(['param', 'lo', 'hi', 'rate'])
+  })
+})
+
+describe('captionEdit on the rate — what a typed number writes (#1464 Stage 3)', () => {
+  const SLOWED = { shape: null, rate: { start: 20, end: 28 }, range: null, chainEnd: 40 }
+  const rateHit = (a: SignalAutomation) => {
+    const rows = captionRows([a], 0, 60, true)
+    const field = rows[0].fields.find((f) => f.kind === 'rate')
+    if (!field) throw new Error('no rate field on this fixture')
+    return { row: rows[0], field, box: { x: 0, y: 0, w: 0, h: 0 } }
+  }
+  const spelled = auto({ periodCycles: 4, lanePeriodCycles: 4, spans: SLOWED })
+
+  it('replaces the spelled rate with the typed bars', () => {
+    expect(captionEdit(rateHit(spelled), '8')).toEqual({ range: [20, 28], text: '.slow(8)' })
+  })
+
+  it('writes a whole-number speed-up as fast, and anything else as slow', () => {
+    expect(captionEdit(rateHit(spelled), '0.5')).toEqual({ range: [20, 28], text: '.fast(2)' })
+    expect(captionEdit(rateHit(spelled), '1.5')).toEqual({ range: [20, 28], text: '.slow(1.5)' })
+    expect(captionEdit(rateHit(spelled), '0.4')).toEqual({ range: [20, 28], text: '.slow(0.4)' })
+  })
+
+  it('divides the route\'s time change back out: 8 bars under a whole-track slow(2) writes slow(4)', () => {
+    const a = auto({ periodCycles: 2, lanePeriodCycles: 4, spans: SLOWED })
+    expect(captionEdit(rateHit(a), '8')).toEqual({ range: [20, 28], text: '.slow(4)' })
+  })
+
+  it('inserts a rate the signal does not write, at chainEnd', () => {
+    const a = auto({ lanePeriodCycles: 1, spans: { shape: null, rate: null, range: null, chainEnd: 40 } })
+    expect(captionEdit(rateHit(a), '4')).toEqual({ range: [40, 40], text: '.slow(4)' })
+  })
+
+  it('writes nothing for an unchanged, empty, zero, negative or non-numeric rate', () => {
+    for (const typed of ['4', '4.0', ' 4 ', '', ' ', '0', '-2', 'fast']) {
+      expect(captionEdit(rateHit(spelled), typed), JSON.stringify(typed)).toBeNull()
+    }
+  })
+
+  it('writes nothing it cannot spell exactly: 2 bars under a whole-track slow(3)', () => {
+    const a = auto({ periodCycles: 1, lanePeriodCycles: 3, spans: SLOWED })
+    expect(captionEdit(rateHit(a), '2')).toBeNull()
+    // Control: under the same slow, a number it can spell.
+    expect(captionEdit(rateHit(a), '6')).toEqual({ range: [20, 28], text: '.slow(2)' })
+  })
+})
+
+describe('the rate field through the real parser: written, then read back (#1464 Stage 3)', () => {
+  const apply = (src: string, e: { range: [number, number]; text: string }) => src.slice(0, e.range[0]) + e.text + src.slice(e.range[1])
+  const readOne = (src: string) => signalAutomations(parseStrudel(src) as never)[0]
+  const retype = (src: string, typed: string): string | null => {
+    const a = readOne(src)
+    expect(a, `no automation read from ${src}`).toBeDefined()
+    const rows = captionRows([a], 0, 60, true)
+    const field = rows[0].fields.find((f) => f.kind === 'rate')
+    if (!field) return null
+    const edit = captionEdit({ row: rows[0], field, box: { x: 0, y: 0, w: 0, h: 0 } }, typed)
+    return edit && apply(src, edit)
+  }
+
+  it.each([
+    ['a spelled slow', '$: s("bd*8").cutoff(saw.slow(4).range(200, 2000))', '8', '$: s("bd*8").cutoff(saw.slow(8).range(200, 2000))'],
+    ['a spelled fast, sped up further', '$: s("bd*8").cutoff(sine.fast(2).range(200, 2000))', '0.25', '$: s("bd*8").cutoff(sine.fast(4).range(200, 2000))'],
+    ['no rate at all', '$: s("bd*8").cutoff(saw.range(200, 2000))', '4', '$: s("bd*8").cutoff(saw.range(200, 2000).slow(4))'],
+    ['under a whole-track slow', '$: s("bd*8").cutoff(saw.slow(4).range(200, 2000)).slow(2)', '4', '$: s("bd*8").cutoff(saw.slow(2).range(200, 2000)).slow(2)'],
+  ])('%s: writes only the rate call, and reads back as the bars typed', (_label, src, typed, out) => {
+    expect(retype(src, typed)).toBe(out)
+    expect(readOne(out).lanePeriodCycles).toBe(Number(typed))
+  })
+
+  it('offers no field on two composing rates', () => {
+    expect(retype('$: s("bd*8").cutoff(sine.slow(2).fast(4).range(200, 2000))', '4')).toBeNull()
   })
 })

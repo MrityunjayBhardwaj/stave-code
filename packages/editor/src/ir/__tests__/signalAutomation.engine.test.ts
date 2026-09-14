@@ -132,6 +132,18 @@ describe('#1595 — a whole-track time change is applied: the curve plays at the
       expect(off, 'the reversed composition agrees — this input tells nothing apart').toBe(true)
     }
   }, 60_000)
+
+  it('the period the lane shows is the one the engine repeats at, and the signal\'s own is not (#1464 Stage 3)', async () => {
+    const code = 's("bd*8").gain(saw.slow(3)).slow(2)'
+    const [a] = signalAutomations(parseStrudel(code) as never)
+    expect(a.lanePeriodCycles).toBe(6)
+    const events = await bdOnsets(code)
+    const gainAt = new Map(events.map((e) => [e.t, e.gain]))
+    const pairs = (d: number) => events.filter((e) => gainAt.has(e.t + d)).map((e) => [e.gain, gainAt.get(e.t + d) as number])
+    expect(pairs(6).length, 'no onset has a partner one lane period later').toBeGreaterThan(0)
+    expect(worst(pairs(6).map(([x, y]) => Math.abs(x - y))), 'it does not repeat at the lane period').toBeLessThan(1e-9)
+    expect(worst(pairs(3).map(([x, y]) => Math.abs(x - y))), 'the rival: it repeats at the signal\'s own period').toBeGreaterThan(0.1)
+  }, 60_000)
 })
 
 describe('#1595 — a later shift declines: before bar `o` the engine plays the curve at negative time', () => {
