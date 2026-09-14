@@ -3114,14 +3114,14 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             aria-label="Automate a parameter"
             defaultValue=""
             style={{ ...styles.automateMenu, left: choosingAutomation.rect.left, top: choosingAutomation.rect.bottom + 2 }}
-            onPointerDown={(e) => e.stopPropagation()}
-            // ⚠ NO `stopPropagation` HERE, unlike the part chooser, and on purpose. That
-            // chooser is mounted INSIDE the grid, so a Backspace bubbles to the clip
-            // delete. This menu is mounted beside the grid, so nothing it bubbles to
-            // deletes anything: the only listeners above it are the app's global
-            // shortcuts, and every one needs ⌘/Ctrl — ⌘Z should still undo with the
-            // menu open. Removing the guard turned no arm red (break test), because
-            // no input reached it.
+            // ⚠ NO `stopPropagation` HERE, on pointer or key events, unlike the part
+            // chooser — and on purpose. That chooser is mounted INSIDE the grid, whose
+            // handlers select, drag and delete clips. This menu is mounted in the body
+            // BESIDE the grid: the pointer handlers above it belong to the ruler, which
+            // closes before the body opens, and the key listeners above it are the
+            // app's global shortcuts, every one needing ⌘/Ctrl (⌘Z should still undo
+            // with the menu open). Removing either guard turned no arm red, because no
+            // input reached it.
             onKeyDown={(e) => {
               if (e.key === 'Escape') setChoosingAutomation(null)
             }}
