@@ -32,7 +32,8 @@ vi.mock('@stave/editor', async () => {
   // the exact trap the `wholeWalkWindow` note below already describes. Real
   // function, from source: it is a pure IR walk, so there is nothing to stub.
   // #1464 — the caption's shape menu reads its options from `shapeAlternatives`.
-  const { signalAutomations, signalTimeAt, shapeAlternatives } = await import('../../../../editor/src/ir/signalAutomation')
+  // #1611 — and its cross-class options from `crossClassShapes`.
+  const { signalAutomations, signalTimeAt, shapeAlternatives, crossClassShapes } = await import('../../../../editor/src/ir/signalAutomation')
   // #1463 Stage 2 — the component also reads stepped automation and its axis.
   // #1585 — and each lane entry carries `stepIndexAtCycle`.
   const { steppedAutomations, stepIndexAtCycle } = await import('../../../../editor/src/ir/steppedAutomation')
@@ -46,6 +47,7 @@ vi.mock('@stave/editor', async () => {
     signalAutomations,
     signalTimeAt,
     shapeAlternatives,
+    crossClassShapes,
     steppedAutomations,
     stepIndexAtCycle,
     knobRangeFor,

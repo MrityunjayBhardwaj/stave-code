@@ -84,6 +84,9 @@ import {
   pickSplitArm,
   analyzeSong,
   analyzeWindow,
+  previewShapeSwap,
+  type SignalAutomation,
+  type SignalKind,
   useSilencedTrackNames,
   type SongAnalysis,
   type WindowAnalysis,
@@ -664,6 +667,24 @@ export function MusicalTimeline(
     [writeArrange],
   )
 
+  // #1611 — the song after a shape swap across classes, for the menu to say before it
+  // writes. Here because the collector is: the preview reads the events THIS document
+  // plays, through the same factory and key space as the song's own analysis, so the two
+  // cannot disagree about what an onset is or which lane it is on.
+  const handlePreviewShape = React.useCallback(
+    (automation: SignalAutomation, next: SignalKind, signal: { aborted: boolean }): Promise<SongAnalysis | null> => {
+      const ir = snapshotRef.current?.ir ?? null
+      if (!ir) return Promise.resolve(null)
+      const { collectFn, hasUnheardTrack } = createSongCollector(ir, {
+        getTimelineEvents: getTimelineEventsRef.current,
+        getTimelineEventsBand: getTimelineEventsBandRef.current,
+        getSongTrackIds: getSongTrackIdsRef.current,
+      })
+      return previewShapeSwap(ir, automation, next, { collectFn, hasUnheardTrack, signal })
+    },
+    [],
+  )
+
   // Trim a clip on the Song canvas (Phase 5b, #437): the timeline hands up the
   // dragged clip's source anchor (a lane offset inside the combinator call), its
   // arm index, and the new whole-cycle weight. We parse the arrangement at that
@@ -1145,6 +1166,7 @@ export function MusicalTimeline(
           getDrawerOpen={props.getDrawerOpen}
           getActiveTabId={props.getActiveTabId}
           onEditAutomation={handleEditAutomation}
+          onPreviewShape={handlePreviewShape}
           onConfirm={(req) => showConfirm({ ...req, danger: true })}
           onTrimClip={handleTrimClip}
           onTrimRegion={handleTrimRegion}

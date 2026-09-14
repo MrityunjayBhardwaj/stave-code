@@ -321,13 +321,79 @@ export function captionEdit(hit: CaptionHit, nextText: string): OffsetEdit | nul
  *  `@stave/editor` (the app's tests hand it in from source). */
 export type ShapeAlternatives = (kind: SignalKind) => readonly SignalKind[]
 
+/** The two editor readers a shape menu offers from, injected for the same reason: the
+ *  same-class shapes (#1464) and the cross-class ones (#1611, `crossClassShapes`). */
+export interface ShapeDeps {
+  readonly alternatives: ShapeAlternatives
+  readonly crossClass: ShapeAlternatives
+}
+
 /**
- * #1464 — the shapes the caption's name opens a menu of: the editor's same-class
- * alternatives, or none when the document spells no shape to replace. An empty list
- * means no menu opens, and a press on the name reaches what it always reached.
+ * #1464 — the shapes the caption's name can switch a curve to: the editor's same-class
+ * alternatives, then (#1611) the cross-class ones, or none when the document spells no
+ * shape to replace. An empty list means no menu opens, and a press on the name reaches
+ * what it always reached.
  */
-export function shapeOptions(a: SignalAutomation, alternatives: ShapeAlternatives): readonly SignalKind[] {
-  return a.spans.shape === null ? [] : alternatives(a.kind)
+export function shapeOptions(a: SignalAutomation, deps: ShapeDeps): readonly SignalKind[] {
+  return a.spans.shape === null ? [] : [...deps.alternatives(a.kind), ...deps.crossClass(a.kind)]
+}
+
+/**
+ * #1611 — what the menu knows about the song after a swap across classes: still being
+ * measured, or measured — the bars one pass lasts, or null for no loop.
+ *
+ * ONE preview serves every cross-class shape on the menu. A swap to noise gives each
+ * noise shape the same song (none comes back), and a swap to a waveform gives each
+ * waveform the same song (the rate is untouched, so is the period) — so the menu asks
+ * once, for the first.
+ */
+export type SwapPreview =
+  | { readonly state: 'pending' }
+  | { readonly state: 'done'; readonly cycles: number | null }
+
+/** One shape the menu offers. */
+export interface ShapeOption {
+  readonly kind: SignalKind
+  /** `perlin · song repeats every 4 bars (was 16)` — the shape, then what it does. */
+  readonly label: string
+  /** A cross-class shape whose song length is still being measured. */
+  readonly disabled: boolean
+}
+
+const barsText = (n: number): string => `${n} ${n === 1 ? 'bar' : 'bars'}`
+
+/**
+ * #1611 — the menu's options, each labelled with what choosing it does to the song.
+ *
+ * Same-class shapes change nothing about the length and are named bare. Cross-class
+ * shapes are offered only with a preview (`null` → none offered: an owner that cannot
+ * measure the song cannot say what the swap does to it), and cannot be chosen while it
+ * is measuring — the step-count chip's rule, that the length is said BEFORE the write.
+ * `was` is the song's length now, read the same way (`songLoopCycles`).
+ */
+export function shapeMenuOptions(
+  a: SignalAutomation,
+  deps: ShapeDeps,
+  preview: SwapPreview | null,
+  was: number | null,
+): readonly ShapeOption[] {
+  if (a.spans.shape === null) return []
+  const same = deps.alternatives(a.kind).map((kind) => ({ kind, label: kind, disabled: false }))
+  if (preview === null) return same
+  const note =
+    preview.state === 'pending'
+      ? 'measuring song length…'
+      : preview.cycles === null
+        ? 'song length unknown'
+        : preview.cycles === was
+          ? 'same song length'
+          : `song repeats every ${barsText(preview.cycles)}${was === null ? '' : ` (was ${was})`}`
+  const across = deps.crossClass(a.kind).map((kind) => ({
+    kind,
+    label: `${kind} · ${note}`,
+    disabled: preview.state === 'pending',
+  }))
+  return [...same, ...across]
 }
 
 /**
@@ -336,7 +402,9 @@ export function shapeOptions(a: SignalAutomation, alternatives: ShapeAlternative
  *
  * ⚠ THE CLASS RULE IS ENFORCED HERE, not left to the menu that calls this. A shape the
  * editor does not offer for `a.kind` writes nothing: across polarity it moves the
- * bounds the caption shows, across periodicity the song's length (`shapeAlternatives`).
+ * bounds the caption shows (`shapeAlternatives`). Across periodicity it moves the song's
+ * length, which is offered (#1611) — but only through `shapeMenuOptions`, which will not
+ * let it be chosen before the length is said.
  *
  * ⚠ AND A DOCUMENT THAT MOVED WRITES NOTHING. The menu captures its automation when it
  * opens; if the bytes at the span no longer spell that shape, the offsets belong to
@@ -346,11 +414,11 @@ export function shapeEdit(
   a: SignalAutomation,
   next: string,
   source: string,
-  alternatives: ShapeAlternatives,
+  deps: ShapeDeps,
 ): OffsetEdit | null {
   const span = a.spans.shape
   if (span === null) return null
-  if (!alternatives(a.kind).some((k) => k === next)) return null
+  if (!shapeOptions(a, deps).some((k) => k === next)) return null
   if (source.slice(span.start, span.end) !== a.kind) return null
   return { range: [span.start, span.end], text: next }
 }

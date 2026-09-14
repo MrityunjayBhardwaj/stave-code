@@ -197,17 +197,8 @@ export async function measureSongLength(
     return { kind: 'unknown', why: 'no-period' }
   }
 
-  if (analysis.displaySpan.kind === 'loop' && analysis.displaySpan.cycles > 0) {
-    // #1599 — a repeat is the length after which EVERY track has come back
-    // round, not the view's span. The view spans the longest single track so
-    // tracks of different lengths phase inside it (#488), and a bounce of that
-    // span cut `<bd sd cp hh>` beside a 3-step gain at 4 cycles of a 12-cycle
-    // song. Where no whole-song repeat could be vouched for (a track with no
-    // loop of its own, or an LCM past the cap) the offer stays on the span it
-    // always offered, rather than inventing a number.
-    const cycles = analysis.repeatCycles !== null ? analysis.repeatCycles : analysis.displaySpan.cycles
-    return { kind: 'loop', periodCycles: cycles }
-  }
+  const cycles = songLoopCycles(analysis)
+  if (cycles !== null) return { kind: 'loop', periodCycles: cycles }
 
   // `capped` and `horizon` are both places the analysis STOPPED, not lengths.
   // Distinguish an empty document from an unmeasurable one so the modal can say
@@ -216,6 +207,24 @@ export async function measureSongLength(
     l.onsetsByCycle.some((n) => n > 0),
   )
   return { kind: 'unknown', why: heardAnything ? 'no-period' : 'silent' }
+}
+
+/**
+ * The bars one pass of a looping song lasts, read off its analysis, or null when the
+ * analysis found no loop. ONE reading for every place that says how long the song is —
+ * the bounce offer above and the shape menu's preview (#1611): two readings of one
+ * analysis could label a swap with a length the bounce would then not offer.
+ *
+ * #1599 — a repeat is the length after which EVERY track has come back round, not the
+ * view's span. The view spans the longest single track so tracks of different lengths
+ * phase inside it (#488), and a bounce of that span cut `<bd sd cp hh>` beside a 3-step
+ * gain at 4 cycles of a 12-cycle song. Where no whole-song repeat could be vouched for (a
+ * track with no loop of its own, or an LCM past the cap) the reading stays on the span,
+ * rather than inventing a number.
+ */
+export function songLoopCycles(analysis: SongAnalysis): number | null {
+  if (analysis.displaySpan.kind !== 'loop' || !(analysis.displaySpan.cycles > 0)) return null
+  return analysis.repeatCycles !== null ? analysis.repeatCycles : analysis.displaySpan.cycles
 }
 
 /** Seconds a span of `cycles` occupies at `cps`, or `null` if tempo is unknown. */

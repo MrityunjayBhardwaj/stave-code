@@ -23,13 +23,16 @@ import {
   captionEdit,
   rateEditable,
   shapeEdit,
+  shapeMenuOptions,
   shapeOptions,
   CAPTION_PAD_X,
   AUTOMATION_PAD_Y,
   AUTOMATION_LABEL_LINE_H,
 } from '../automationCaption'
 import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
-import { signalAutomations, shapeAlternatives } from '../../../../../editor/src/ir/signalAutomation'
+import { signalAutomations, shapeAlternatives, crossClassShapes } from '../../../../../editor/src/ir/signalAutomation'
+
+const SHAPE_DEPS = { alternatives: shapeAlternatives, crossClass: crossClassShapes }
 
 /** One character = 5px. Not the real face — a face whose arithmetic is legible,
  *  so `x=CAPTION_PAD_X + 5*n` names character n without a screenshot. */
@@ -401,13 +404,13 @@ describe('the shape menu — what the caption\'s name offers and writes (#1464)'
   const apply = (src: string, e: { range: [number, number]; text: string }) => src.slice(0, e.range[0]) + e.text + src.slice(e.range[1])
 
   it('offers the editor\'s alternatives where the document spells a shape, and none where it does not', () => {
-    expect(shapeOptions(readOne(SRC), shapeAlternatives)).toEqual(shapeAlternatives('saw'))
-    expect(shapeOptions(auto({ kind: 'saw', spans: NO_SPANS }), shapeAlternatives)).toEqual([])
+    expect(shapeOptions(readOne(SRC), SHAPE_DEPS)).toEqual([...shapeAlternatives('saw'), ...crossClassShapes('saw')])
+    expect(shapeOptions(auto({ kind: 'saw', spans: NO_SPANS }), SHAPE_DEPS)).toEqual([])
   })
 
   it('replaces the identifier and no other byte, and reads back as the new shape with the same bounds and rate', () => {
     const a = readOne(SRC)
-    const edit = shapeEdit(a, 'tri', SRC, shapeAlternatives)
+    const edit = shapeEdit(a, 'tri', SRC, SHAPE_DEPS)
     expect(edit).not.toBeNull()
     const out = apply(SRC, edit!)
     expect(out).toBe('$: s("bd*8").cutoff(tri.slow(4).range(200, 2000))')
@@ -419,21 +422,52 @@ describe('the shape menu — what the caption\'s name offers and writes (#1464)'
   it('writes nothing for the same shape, or a shape the editor does not offer', () => {
     const a = readOne(SRC)
     // Control first: an offered shape does write.
-    expect(shapeEdit(a, 'sine', SRC, shapeAlternatives)).not.toBeNull()
-    for (const next of ['saw', 'saw2', 'perlin', 'time', 'cutoff', '']) {
-      expect(shapeEdit(a, next, SRC, shapeAlternatives), next).toBeNull()
+    expect(shapeEdit(a, 'sine', SRC, SHAPE_DEPS)).not.toBeNull()
+    // `perlin` is offered since #1611 — the menu, not this function, holds it until the
+    // song length is said (`shapeMenuOptions`).
+    expect(shapeEdit(a, 'perlin', SRC, SHAPE_DEPS)).not.toBeNull()
+    for (const next of ['saw', 'saw2', 'rand2', 'time', 'cutoff', '']) {
+      expect(shapeEdit(a, next, SRC, SHAPE_DEPS), next).toBeNull()
     }
   })
 
   it('writes nothing where the document spells no shape', () => {
-    expect(shapeEdit(auto({ kind: 'saw', spans: NO_SPANS }), 'tri', SRC, shapeAlternatives)).toBeNull()
+    expect(shapeEdit(auto({ kind: 'saw', spans: NO_SPANS }), 'tri', SRC, SHAPE_DEPS)).toBeNull()
+  })
+
+  it('#1611 — offers noise only once it can say what the swap does to the song\'s length', () => {
+    const a = readOne(SRC)
+    const labels = (preview: Parameters<typeof shapeMenuOptions>[2], was: number | null) =>
+      shapeMenuOptions(a, SHAPE_DEPS, preview, was).map((o) => `${o.label}${o.disabled ? ' [disabled]' : ''}`)
+    const same = shapeAlternatives('saw')
+
+    // No owner to measure with: the waveforms only, as before.
+    expect(labels(null, 16)).toEqual(same)
+    // Measuring: offered, and cannot be chosen yet.
+    expect(labels({ state: 'pending' }, 16)).toEqual([...same, 'perlin · measuring song length… [disabled]', 'rand · measuring song length… [disabled]'])
+    // Measured: the new length, the same one, or none to be said.
+    expect(labels({ state: 'done', cycles: 4 }, 16)).toEqual([...same, 'perlin · song repeats every 4 bars (was 16)', 'rand · song repeats every 4 bars (was 16)'])
+    expect(labels({ state: 'done', cycles: 16 }, 16)).toEqual([...same, 'perlin · same song length', 'rand · same song length'])
+    expect(labels({ state: 'done', cycles: null }, 16)).toEqual([...same, 'perlin · song length unknown', 'rand · song length unknown'])
+    expect(labels({ state: 'done', cycles: 1 }, null)).toEqual([...same, 'perlin · song repeats every 1 bar', 'rand · song repeats every 1 bar'])
+    // Nothing spelled, nothing offered.
+    expect(shapeMenuOptions(auto({ kind: 'saw', spans: NO_SPANS }), SHAPE_DEPS, { state: 'done', cycles: 4 }, 16)).toEqual([])
+  })
+
+  it('#1611 — noise offers the waveforms, with the same labels', () => {
+    const src = '$: s("bd*8").cutoff(perlin.slow(16).range(200, 2000))'
+    const a = readOne(src)
+    const options = shapeMenuOptions(a, SHAPE_DEPS, { state: 'done', cycles: 16 }, 4)
+    expect(options.map((o) => o.label)).toEqual(['rand', ...crossClassShapes('perlin').map((k) => `${k} · song repeats every 16 bars (was 4)`)])
+    const edit = shapeEdit(a, 'sine', src, SHAPE_DEPS)
+    expect(apply(src, edit!)).toBe('$: s("bd*8").cutoff(sine.slow(16).range(200, 2000))')
   })
 
   it('writes nothing when the document moved under the open menu', () => {
     const a = readOne(SRC)
     // Two characters inserted before the curve: the captured offsets now land on `(s`.
-    expect(shapeEdit(a, 'tri', `  ${SRC}`, shapeAlternatives)).toBeNull()
+    expect(shapeEdit(a, 'tri', `  ${SRC}`, SHAPE_DEPS)).toBeNull()
     // Control: the same bytes at the same place still write.
-    expect(shapeEdit(a, 'tri', SRC, shapeAlternatives)).not.toBeNull()
+    expect(shapeEdit(a, 'tri', SRC, SHAPE_DEPS)).not.toBeNull()
   })
 })
