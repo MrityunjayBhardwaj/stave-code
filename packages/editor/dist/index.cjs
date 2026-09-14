@@ -942,10 +942,16 @@ var VALUE_SLOTS = [
   "velocity",
   "color"
 ];
+var VALUE_QUANTUM = 1e-6;
+function quantised(x) {
+  if (!Number.isFinite(x)) return x;
+  return Math.round(x / VALUE_QUANTUM) * VALUE_QUANTUM;
+}
+__name(quantised, "quantised");
 function stableValue(v) {
   if (v === void 0) return "~";
   try {
-    return JSON.stringify(v, (_k, x) => typeof x === "function" ? "[fn]" : x) ?? "~";
+    return JSON.stringify(v, (_k, x) => typeof x === "function" ? "[fn]" : typeof x === "number" ? quantised(x) : x) ?? "~";
   } catch {
     return "[unserializable]";
   }

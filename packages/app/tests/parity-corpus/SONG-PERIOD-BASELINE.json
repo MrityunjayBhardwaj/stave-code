@@ -21,8 +21,8 @@
     "repeat": null
   },
   "0/-1poFQwaznQK": {
-    "period": 32,
-    "span": 32,
+    "period": 48,
+    "span": 48,
     "reachedCap": false,
     "lanes": 8,
     "repeat": null
@@ -123,7 +123,7 @@
     "span": 2,
     "reachedCap": false,
     "lanes": 2,
-    "repeat": null
+    "repeat": 2
   },
   "0/-A4RqH2KfssX": {
     "period": 3,
@@ -434,8 +434,8 @@
     "repeat": 1
   },
   "250/0zQIrn0Y36Iu": {
-    "period": 23,
-    "span": 23,
+    "period": 60,
+    "span": 60,
     "reachedCap": false,
     "lanes": 5,
     "repeat": null
@@ -504,8 +504,8 @@
     "repeat": null
   },
   "250/15ZGIgs3OLQr": {
-    "period": 75,
-    "span": 75,
+    "period": 6,
+    "span": 6,
     "reachedCap": false,
     "lanes": 9,
     "repeat": null
@@ -676,7 +676,7 @@
     "span": 16,
     "reachedCap": false,
     "lanes": 5,
-    "repeat": null
+    "repeat": 16
   },
   "500/35S2vhVOTWjF": {
     "period": null,
@@ -749,8 +749,8 @@
     "repeat": 8
   },
   "500/38eh7DdPyYBP": {
-    "period": 48,
-    "span": 48,
+    "period": 60,
+    "span": 60,
     "reachedCap": false,
     "lanes": 11,
     "repeat": null
@@ -823,7 +823,7 @@
     "span": 60,
     "reachedCap": false,
     "lanes": 1,
-    "repeat": null
+    "repeat": 60
   },
   "500/3K-5zWzb3iJC": {
     "period": 12,
@@ -889,11 +889,11 @@
     "repeat": null
   },
   "500/3OH2P5x4J4fc": {
-    "period": 96,
-    "span": 96,
+    "period": 32,
+    "span": 32,
     "reachedCap": false,
     "lanes": 3,
-    "repeat": null
+    "repeat": 96
   },
   "500/3Ovw-13Yt0-4": {
     "period": 1,

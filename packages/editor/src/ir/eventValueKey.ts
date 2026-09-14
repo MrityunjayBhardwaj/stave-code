@@ -80,6 +80,40 @@ export const PROVENANCE_FIELDS = [
 ] as const
 
 /**
+ * The step a number is rounded to before it joins the key (#1617).
+ *
+ * ⚠ A CONTINUOUS SIGNAL NEVER REPEATS BIT FOR BIT. `sine.slow(16)` sampled on the same
+ * beat in two passes differs in its last bits, so a key built from raw floats made every
+ * cycle of a swept track differ: its track never got a period, the whole-song repeat came
+ * back empty, and `sine.slow(16)` beside a 4-bar line reported a song length of 4 where
+ * the engine repeats at 16.
+ *
+ * ⚠ THE STEP IS LOAD-BEARING, AND 1e-6 IS MEASURED, NOT CHOSEN. The noise is not a fixed
+ * few ulps: the float for one beat depends on the query window it is converted from.
+ * Over the events `analyzeSong` itself collects, for every archive document with a
+ * repeating signal, 160 lanes repeat at 1e-4; 1e-9 already finds 157, 1e-8 two more and
+ * 1e-7 the last, and 1e-6 finds all 160. The largest real deviation between matching
+ * values is 1.3e-8. A fine step also fails where the noise is TINY: two of the three
+ * lanes 1e-9 missed carry only ~1e-11 of noise, but their values sit on a grid line, so
+ * one pass rounds up and the next rounds down — a flip is about noise/step likely, so the
+ * step must sit well above the worst noise, not just above the typical. 1e-6 is 77× the
+ * worst measured, and it is the quantum `cycleFingerprints` already rounds an onset's
+ * offset to, so a fingerprint now has one grain. Nothing a control encodes is audible
+ * below a millionth.
+ *
+ * It is an ABSOLUTE step, not a relative one: a relative step would keep a `1e-17` beside
+ * a `0` and fake the same difference near zero.
+ */
+const VALUE_QUANTUM = 1e-6
+
+/** `x` on the `VALUE_QUANTUM` grid. `-0` lands on `0` through JSON, and a non-finite
+ *  number stays non-finite (JSON writes it as `null`, as it always has). */
+function quantised(x: number): number {
+  if (!Number.isFinite(x)) return x
+  return Math.round(x / VALUE_QUANTUM) * VALUE_QUANTUM
+}
+
+/**
  * Serialise one value unambiguously and without ever throwing.
  *
  * `JSON.stringify` is the right primitive because it separates the shapes that
@@ -98,7 +132,7 @@ export const PROVENANCE_FIELDS = [
 function stableValue(v: unknown): string {
   if (v === undefined) return '~'
   try {
-    return JSON.stringify(v, (_k, x) => (typeof x === 'function' ? '[fn]' : x)) ?? '~'
+    return JSON.stringify(v, (_k, x) => (typeof x === 'function' ? '[fn]' : typeof x === 'number' ? quantised(x) : x)) ?? '~'
   } catch {
     return '[unserializable]'
   }

@@ -14,9 +14,17 @@
  * and that comparison would read "0 changed" forever. It is now the shape its
  * sibling `song-period-abstention.test.ts` uses: sweep the DEFAULT detector —
  * production, reached through `AnalyzeSongOptions.signals` exactly as the app
- * passes it — and compare against `SONG-PERIOD-BASELINE-PRE-1465.json`, frozen
- * at the state the decision was made in. Pointing this at the live baseline
- * would silently change what every row below means the moment production moved.
+ * passes it — and compare against the same tree swept WITHOUT the rule: a detector
+ * that asks `displayPeriodRule` exactly what production asks, minus `signals`.
+ *
+ * ⚠ IT USED TO COMPARE AGAINST `SONG-PERIOD-BASELINE-PRE-1465.json`, frozen at the
+ * state the decision was made in, and that stopped isolating the rule the moment
+ * anything BENEATH it changed (#1617). Rounding the cycle fingerprint's values let
+ * swept tracks repeat, which moved documents this file then charged to #1465 —
+ * `0/-1poFQwaznQK` 32->48 read as "changed below the cap" and "lengthened", two
+ * things the rule cannot do. Sweeping both arms on one tree holds every property
+ * below true by construction, whatever the fingerprint is. The frozen file is kept
+ * as the record of the state #1465 was decided in.
  *
  * ── WHY THE ASSERTIONS ARE ABOUT THE INSTRUMENT, NOT THE VERDICT ─────────────
  * Kept from the pricing form, because the properties are what make the numbers
@@ -40,19 +48,17 @@
  * which is the one failure mode a file like this cannot afford.
  */
 import { describe, it, expect } from 'vitest'
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { hasCorpusArchive, sweepCorpus, documentContext } from './songPeriodSweep'
+import { hasCorpusArchive, sweepCorpus, documentContext, type SweepDetector } from './songPeriodSweep'
+import { displayPeriodRule } from '../../../editor/src/ir/songAnalysis'
 import { loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
 
-const HERE = path.dirname(fileURLToPath(import.meta.url))
-/**
- * The PRE-DECISION baseline, frozen deliberately — see the header. The live
- * per-document pin is `SONG-PERIOD-BASELINE.json`, owned by
- * `song-period-sweep.test.ts`, and it now records the rule WITH this change in.
- */
-const BASELINE = path.join(HERE, 'SONG-PERIOD-BASELINE-PRE-1465.json')
+/** The cap `analyzeSong` runs with, so the without-signals arm asks its rule at the same place. */
+const CAP = 256
+
+/** Production's period rule with the #1465 channel closed: identical call, `signals` undefined. */
+const withoutSignals: SweepDetector = {
+  perDocument: (ctx) => (events, horizon) => displayPeriodRule(events, horizon, CAP, ctx.hasUnheardTrack(), undefined),
+}
 
 interface Row {
   period: number | null
@@ -61,18 +67,26 @@ interface Row {
   lanes: number
 }
 
-/** Recovered by the shipped rule, as measured when it shipped. Pinned as a set
+/** Recovered by the shipped rule — 19 when it shipped, 15 since #1617 rounded the
+ *  value key: four documents it used to rescue now resolve WITHOUT it, because one of
+ *  their lanes genuinely loops once float noise stops hiding it (`0/-9BuEqUq3uzT` 2,
+ *  `500/3JxiZ8teItUk` 60, `500/3OH2P5x4J4fc` 32, `250/15ZGIgs3OLQr` 6), and none was
+ *  gained. No period was lost: each is resolved earlier, by a rule the fold defers to.
+ *  Pinned as a set
  *  rather than a count so a swap — one document lost, another gained — cannot
  *  read as no change at all. */
-const RECOVERED = 19
-const SINGLE_LANE_RECOVERIES = 5
+const RECOVERED = 15
+const SINGLE_LANE_RECOVERIES = 4
 
 describe('Song display period — source-informed exclusion + fold (#1465)', () => {
   it.skipIf(!hasCorpusArchive())(
     'recovers a period for documents whose only aperiodicity was a modulated control',
     async () => {
-      const base: Record<string, Row> = JSON.parse(fs.readFileSync(BASELINE, 'utf8'))
       const swept = await sweepCorpus()
+      const base: Record<string, Row> = {}
+      for (const v of await sweepCorpus(withoutSignals)) {
+        if (v.ok) base[v.name] = { period: v.period, span: v.span, reachedCap: v.reachedCap, lanes: v.lanes }
+      }
       const ok = swept.filter((v) => v.ok)
       const missing = Object.keys(base).filter((n) => !ok.some((v) => v.name === n))
 
@@ -154,9 +168,9 @@ describe('Song display period — source-informed exclusion + fold (#1465)', () 
       expect(brokeAPeriod, `destroyed a period: ${brokeAPeriod.join(', ')}`).toEqual([])
       expect(lengthened, `lengthened a period, which this rule cannot do: ${lengthened.join(', ')}`).toEqual([])
       expect(recovered.length, 'the shipped rule no longer recovers what it shipped recovering').toBe(RECOVERED)
-      // Every incommensurate case must be one the cap explains. Two documents
-      // fold to 792c and 1801800c; anything else here is the fold failing at
-      // the one job it has.
+      // Every incommensurate case must be one the cap explains. One document
+      // (`250/0zGIYzShEPbP`, 72c against an 11-cycle LFO, so the honest fold is 792c)
+      // does since #1617; anything past two here is the fold failing at the one job it has.
       expect(
         incommensurate.length,
         `a recovered period is not a whole number of its own audible LFO periods: ${incommensurate.join(', ')}`,
