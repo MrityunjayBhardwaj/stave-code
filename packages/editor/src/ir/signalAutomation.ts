@@ -261,6 +261,8 @@ function readChain(node: PatternIR): ChainRead | null {
     if (cur.tag === 'Range') {
       // A range whose bounds are not numbers maps its input somewhere this module
       // cannot say, and every range outside it inherits that — so the curve abstains.
+      // Latent today: the parser builds a `Range` only from two numeric literals
+      // (`parseStrudel.ts`, `isNumericLiteral`) and leaves anything else opaque.
       if (!Number.isFinite(cur.lo) || !Number.isFinite(cur.hi)) return null
       // The first one met is the outermost: the call a typed bound replaces.
       if (ranges.length === 0) rangeSpan = spanOf(cur)
@@ -301,9 +303,10 @@ function readChain(node: PatternIR): ChainRead | null {
  * `captionEdit` writes the untouched bound from it — so the second form would put a
  * number nobody typed into the document on the next edit of the other bound.
  *
- * ⚠ An UNBOUNDED signal has no natural range. Under a range it keeps the reading it
- * always had, the arguments of the innermost range as if it entered 0..1 — a claim the
- * engine does not bear out for `time` (#1614), left as it was rather than widened here.
+ * ⚠ An UNBOUNDED signal has no natural range. Under a range it is folded as if it
+ * entered 0..1, which keeps the reading it always had for one range — that range's
+ * arguments. The engine does not bear that out for `time` (#1614); it is left as it
+ * was rather than widened here.
  */
 function boundsOf(
   polarity: Polarity,

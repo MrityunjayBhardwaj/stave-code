@@ -1077,6 +1077,14 @@ test('a bipolar curve under a range offers no bound to type, while its rate and 
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
   })
+  // `barsOnView` reads the marks probe, which exists only with this flag set.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
   await bootShell(page)
   const canvas = page.locator('[data-full-song-canvas]')
 
