@@ -19,7 +19,7 @@
  * function, so the draw path can use its own canvas context and a hit-test can
  * use another, while the field arithmetic stays in one place.
  */
-import type { SignalAutomation, OffsetEdit } from '@stave/editor'
+import type { SignalAutomation, SignalKind, OffsetEdit } from '@stave/editor'
 
 /** 9px monospace, matching the rest of the lane's small type. */
 export const AUTOMATION_LABEL_FONT = '9px ui-monospace, SFMono-Regular, Menlo, monospace'
@@ -307,6 +307,44 @@ export function captionEdit(hit: CaptionHit, nextText: string): OffsetEdit | nul
   const at = a.spans.chainEnd
   if (at === null) return null
   return { range: [at, at], text: call }
+}
+
+/** The editor's `shapeAlternatives`, injected so this module stays type-only on
+ *  `@stave/editor` (the app's tests hand it in from source). */
+export type ShapeAlternatives = (kind: SignalKind) => readonly SignalKind[]
+
+/**
+ * #1464 — the shapes the caption's name opens a menu of: the editor's same-class
+ * alternatives, or none when the document spells no shape to replace. An empty list
+ * means no menu opens, and a press on the name reaches what it always reached.
+ */
+export function shapeOptions(a: SignalAutomation, alternatives: ShapeAlternatives): readonly SignalKind[] {
+  return a.spans.shape === null ? [] : alternatives(a.kind)
+}
+
+/**
+ * #1464 — "switch this curve to `next`" as an edit, or nothing. It replaces the
+ * signal's identifier and no other byte, so the range and the rate stay as written.
+ *
+ * ⚠ THE CLASS RULE IS ENFORCED HERE, not left to the menu that calls this. A shape the
+ * editor does not offer for `a.kind` writes nothing: across polarity it moves the
+ * bounds the caption shows, across periodicity the song's length (`shapeAlternatives`).
+ *
+ * ⚠ AND A DOCUMENT THAT MOVED WRITES NOTHING. The menu captures its automation when it
+ * opens; if the bytes at the span no longer spell that shape, the offsets belong to
+ * another document and replacing them would corrupt it.
+ */
+export function shapeEdit(
+  a: SignalAutomation,
+  next: string,
+  source: string,
+  alternatives: ShapeAlternatives,
+): OffsetEdit | null {
+  const span = a.spans.shape
+  if (span === null) return null
+  if (!alternatives(a.kind).some((k) => k === next)) return null
+  if (source.slice(span.start, span.end) !== a.kind) return null
+  return { range: [span.start, span.end], text: next }
 }
 
 /** The most significant digits a written rate may carry — `0.25` and `1.5` pass,
