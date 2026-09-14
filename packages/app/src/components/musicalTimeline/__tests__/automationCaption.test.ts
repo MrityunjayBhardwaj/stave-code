@@ -281,6 +281,18 @@ describe('captionEdit on the rate — what a typed number writes (#1464 Stage 3)
     // Control: under the same slow, a number it can spell.
     expect(captionEdit(rateHit(a), '6')).toEqual({ range: [20, 28], text: '.slow(2)' })
   })
+
+  it('writes nothing that would read back as a different number of bars, even in few digits', () => {
+    // Under a whole-track fast(5) a 0.25-cycle signal shows 0.05 bars. Typing 0.85 means
+    // `.slow(4.25)`, six digits or fewer, but 4.25 × 0.2 reads back as 0.8500000000000001,
+    // so the next edit would see a changed number the user never typed. Found by a search
+    // over whole-track scales and typed bars, not by reasoning: the precision rule alone
+    // lets 28,515 of 1,378,007 such inputs through.
+    const a = auto({ periodCycles: 0.25, lanePeriodCycles: 0.25 * (1 / 5), spans: SLOWED })
+    expect(captionEdit(rateHit(a), '0.85')).toBeNull()
+    // Control: under the same fast, a number that reads back exactly.
+    expect(captionEdit(rateHit(a), '1')).toEqual({ range: [20, 28], text: '.slow(5)' })
+  })
 })
 
 describe('the rate field through the real parser: written, then read back (#1464 Stage 3)', () => {
