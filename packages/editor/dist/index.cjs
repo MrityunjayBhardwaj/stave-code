@@ -1331,485 +1331,6 @@ function hasTruePeriod(kind) {
   return PERIODIC_KINDS.has(kind);
 }
 __name(hasTruePeriod, "hasTruePeriod");
-
-// src/ir/songAnalysis.ts
-function laneKeyOf(ev) {
-  return ev.trackId ?? ev.s ?? "$default";
-}
-__name(laneKeyOf, "laneKeyOf");
-function accumulateLanes(events, horizon) {
-  return accumulateLanesInWindow(events, 0, horizon);
-}
-__name(accumulateLanes, "accumulateLanes");
-function accumulateLanesInWindow(events, originCycle, spanCycles, pinnedLaneKeys) {
-  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
-  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
-  const order = [];
-  const byLane = /* @__PURE__ */ new Map();
-  const ensure = /* @__PURE__ */ __name((key2) => {
-    let counts = byLane.get(key2);
-    if (!counts) {
-      counts = new Array(span).fill(0);
-      byLane.set(key2, counts);
-      order.push(key2);
-    }
-    return counts;
-  }, "ensure");
-  if (pinnedLaneKeys) for (const key2 of pinnedLaneKeys) ensure(key2);
-  for (const ev of events) {
-    const cycle = Math.floor(ev.begin);
-    if (!Number.isFinite(cycle) || cycle < origin || cycle >= origin + span) continue;
-    ensure(laneKeyOf(ev))[cycle - origin] += 1;
-  }
-  return order.map((laneKey) => ({ laneKey, onsetsByCycle: byLane.get(laneKey) }));
-}
-__name(accumulateLanesInWindow, "accumulateLanesInWindow");
-function cycleFingerprints(events, horizon) {
-  const perCycle = Array.from({ length: horizon }, () => []);
-  for (const ev of events) {
-    const cycle = Math.floor(ev.begin);
-    if (!Number.isFinite(cycle) || cycle < 0 || cycle >= horizon) continue;
-    const offset = Math.round((ev.begin - cycle) * 1e6);
-    perCycle[cycle].push(`${laneKeyOf(ev)}@${offset}:${eventValueKey(ev)}`);
-  }
-  return perCycle.map((tokens) => tokens.sort().join("|"));
-}
-__name(cycleFingerprints, "cycleFingerprints");
-function detectPeriod(fingerprints) {
-  const len = fingerprints.length;
-  if (fingerprints.every((fp) => fp === "")) return null;
-  for (let p = 1; p <= Math.floor(len / 2); p++) {
-    let repeats = true;
-    for (let c = 0; c + p < len; c++) {
-      if (fingerprints[c] !== fingerprints[c + p]) {
-        repeats = false;
-        break;
-      }
-    }
-    if (repeats) return p;
-  }
-  return null;
-}
-__name(detectPeriod, "detectPeriod");
-function detectDisplayPeriod(events, horizon) {
-  const byLane = eventsByLane(events);
-  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
-  let maxPeriod = 0;
-  for (const laneEvents of byLane.values()) {
-    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
-    if (p === null) return null;
-    if (p > maxPeriod) maxPeriod = p;
-  }
-  return maxPeriod > 0 ? maxPeriod : null;
-}
-__name(detectDisplayPeriod, "detectDisplayPeriod");
-function eventsByLane(events) {
-  const byLane = /* @__PURE__ */ new Map();
-  for (const ev of events) {
-    const key2 = laneKeyOf(ev);
-    let bucket2 = byLane.get(key2);
-    if (!bucket2) {
-      bucket2 = [];
-      byLane.set(key2, bucket2);
-    }
-    bucket2.push(ev);
-  }
-  return byLane;
-}
-__name(eventsByLane, "eventsByLane");
-function wholeSongRepeat(events, horizon, cap) {
-  const byLane = eventsByLane(events);
-  if (byLane.size === 0) return null;
-  let repeat = 1;
-  for (const laneEvents of byLane.values()) {
-    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
-    if (p === null) return null;
-    const next = rationalLcm(repeat, p);
-    if (next === null || !Number.isFinite(next) || next > cap) return null;
-    repeat = next;
-  }
-  return repeat;
-}
-__name(wholeSongRepeat, "wholeSongRepeat");
-function repeatBeside(events, horizon, cap, period) {
-  if (period === null) return null;
-  const repeat = wholeSongRepeat(events, horizon, cap);
-  return repeat !== null && repeat % period === 0 ? repeat : null;
-}
-__name(repeatBeside, "repeatBeside");
-var MIN_ABSTAINED_PERIOD = 4;
-function detectDisplayPeriodAtCap(events, horizon) {
-  const byLane = eventsByLane(events);
-  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
-  let maxPeriod = 0;
-  let answered = 0;
-  let abstained = false;
-  for (const laneEvents of byLane.values()) {
-    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
-    if (p === null) {
-      abstained = true;
-      continue;
-    }
-    answered++;
-    if (p > maxPeriod) maxPeriod = p;
-  }
-  if (answered === 0 || maxPeriod <= 0) return null;
-  if (abstained && maxPeriod < MIN_ABSTAINED_PERIOD) return null;
-  return maxPeriod;
-}
-__name(detectDisplayPeriodAtCap, "detectDisplayPeriodAtCap");
-function spanCoversEveryLane(events, period) {
-  const inSpan = /* @__PURE__ */ new Set();
-  const all = /* @__PURE__ */ new Set();
-  for (const ev of events) {
-    const key2 = laneKeyOf(ev);
-    all.add(key2);
-    const cycle = Math.floor(ev.begin);
-    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period) inSpan.add(key2);
-  }
-  for (const key2 of all) if (!inSpan.has(key2)) return false;
-  return true;
-}
-__name(spanCoversEveryLane, "spanCoversEveryLane");
-function signalDimensionsOf(ir) {
-  const audible = audibleTracks(ir);
-  const periods = [];
-  const keys = /* @__PURE__ */ new Set();
-  for (const t of audible) {
-    for (const a of signalAutomations(t)) {
-      if (!hasTruePeriod(a.kind) || !(a.periodCycles > 0)) continue;
-      const song = songPeriodOf(a);
-      if (song !== null) periods.push(song);
-    }
-    for (const k of signalCarryingParamKeys(t)) keys.add(k);
-  }
-  return { keys, periods };
-}
-__name(signalDimensionsOf, "signalDimensionsOf");
-function songPeriodOf(a) {
-  let out = null;
-  for (const placement of a.placements) {
-    if (placement.some((w) => isSectionWindow(w) && w.cycles === 0)) continue;
-    let p = a.periodCycles;
-    for (let k = placement.length - 1; k >= 0 && p !== null; k--) {
-      const step = placement[k];
-      if (!isSectionWindow(step)) {
-        p = p * step.per / step.times;
-        continue;
-      }
-      const { cycles, total } = step;
-      const l = rationalLcm(cycles, p);
-      p = l === null ? null : total * l / cycles;
-    }
-    if (p === null) return null;
-    out = out === null ? p : rationalLcm(out, p);
-    if (out === null) return null;
-  }
-  return out;
-}
-__name(songPeriodOf, "songPeriodOf");
-function audibleTracks(ir) {
-  if (!ir) return [];
-  const roots = ir.tag === "Stack" ? ir.tracks : [ir];
-  const tracks = roots.filter((n) => n?.tag === "Track");
-  if (tracks.length === 0) return [ir];
-  return tracks.filter((t) => t.tag !== "Track" || t.muted !== true);
-}
-__name(audibleTracks, "audibleTracks");
-function withoutKeys(ev, keys) {
-  if (keys.size === 0) return ev;
-  const rec = ev;
-  let touched = false;
-  let copy = null;
-  for (const k of keys) {
-    if (rec[k] === void 0) continue;
-    copy ?? (copy = { ...rec });
-    copy[k] = void 0;
-    touched = true;
-  }
-  const params = ev.params;
-  if (params) {
-    let dropped = false;
-    const next = {};
-    for (const [k, v] of Object.entries(params)) {
-      if (keys.has(k)) {
-        dropped = true;
-        continue;
-      }
-      next[k] = v;
-    }
-    if (dropped) {
-      copy ?? (copy = { ...rec });
-      copy.params = next;
-      touched = true;
-    }
-  }
-  return touched && copy ? copy : rec;
-}
-__name(withoutKeys, "withoutKeys");
-var gcdInt = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcdInt(b, a % b), "gcdInt");
-function asFraction(x, maxDen = 1024) {
-  if (!Number.isFinite(x) || x <= 0) return null;
-  for (let d = 1; d <= maxDen; d++) {
-    const n = x * d;
-    if (Math.abs(n - Math.round(n)) < 1e-9) {
-      const num = Math.round(n);
-      const g = gcdInt(num, d);
-      return [num / g, d / g];
-    }
-  }
-  return null;
-}
-__name(asFraction, "asFraction");
-function rationalLcm(x, y) {
-  const fx = asFraction(x);
-  const fy = asFraction(y);
-  if (!fx || !fy) return null;
-  const [a, b] = fx;
-  const [c, d] = fy;
-  const lcmNum = a * c / gcdInt(a, c);
-  return lcmNum / gcdInt(b, d);
-}
-__name(rationalLcm, "rationalLcm");
-function foldWithSignalPeriods(period, periods, cap) {
-  let folded = period;
-  for (const q of periods) {
-    const next = rationalLcm(folded, q);
-    if (next === null || !Number.isFinite(next) || next > cap) return period;
-    folded = next;
-  }
-  return folded;
-}
-__name(foldWithSignalPeriods, "foldWithSignalPeriods");
-function displayPeriodRule(events, horizon, cap, hasUnheardTrack, signals) {
-  const period = horizon >= cap ? detectDisplayPeriodAtCap(events, horizon) : detectDisplayPeriod(events, horizon);
-  if (period !== null) {
-    if (hasUnheardTrack && horizon < cap) return null;
-    if (!spanCoversEveryLane(events, period)) return null;
-    return period;
-  }
-  return signalInformedPeriod(events, horizon, cap, signals);
-}
-__name(displayPeriodRule, "displayPeriodRule");
-function signalInformedPeriod(events, horizon, cap, signals) {
-  if (horizon < cap) return null;
-  if (!signals || signals.keys.size === 0) return null;
-  const stripped = events.map((ev) => withoutKeys(ev, signals.keys));
-  const structural = detectDisplayPeriodAtCap(stripped, horizon);
-  if (structural === null) return null;
-  const folded = foldWithSignalPeriods(structural, signals.periods, cap);
-  if (!spanCoversEveryLane(events, folded)) return null;
-  return folded;
-}
-__name(signalInformedPeriod, "signalInformedPeriod");
-function computeSections(lanes, horizon) {
-  return computeSectionsInWindow(lanes, 0, horizon);
-}
-__name(computeSections, "computeSections");
-function computeSectionsInWindow(lanes, originCycle, spanCycles) {
-  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
-  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
-  if (span <= 0) return [];
-  const signatureAt = /* @__PURE__ */ __name((index) => lanes.filter((l) => (l.onsetsByCycle[index] ?? 0) > 0).map((l) => l.laneKey).sort(), "signatureAt");
-  const sections = [];
-  let start = 0;
-  let sig = signatureAt(0);
-  let sigKey = sig.join("|");
-  for (let i = 1; i < span; i++) {
-    const nextSig = signatureAt(i);
-    const nextKey = nextSig.join("|");
-    if (nextKey !== sigKey) {
-      sections.push({ startCycle: origin + start, endCycle: origin + i, laneKeys: sig });
-      start = i;
-      sig = nextSig;
-      sigKey = nextKey;
-    }
-  }
-  sections.push({ startCycle: origin + start, endCycle: origin + span, laneKeys: sig });
-  return sections;
-}
-__name(computeSectionsInWindow, "computeSectionsInWindow");
-function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn, capCycles = DEFAULT_CAP) {
-  const periodOf = detectPeriodFn ?? ((evs, h) => displayPeriodRule(evs, h, reachedCap ? h : Number.POSITIVE_INFINITY, false));
-  const lanes = accumulateLanes(events, horizon);
-  const periodCycles = periodOf(events, horizon);
-  const sections = computeSections(lanes, horizon);
-  const displaySpan = periodCycles != null ? { kind: "loop", cycles: periodCycles } : { kind: reachedCap ? "capped" : "horizon", cycles: horizon };
-  const repeatCycles = repeatBeside(events, horizon, capCycles, periodCycles);
-  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan, repeatCycles };
-}
-__name(analyzeEvents, "analyzeEvents");
-var DEFAULT_HINT = 8;
-var DEFAULT_CAP = 256;
-var DEFAULT_SLICE = 4;
-var DEFAULT_BUDGET_MS = 10;
-function defaultNow() {
-  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
-}
-__name(defaultNow, "defaultNow");
-function defaultYield() {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-__name(defaultYield, "defaultYield");
-async function analyzeSong(ir, opts = {}) {
-  const hint = Math.max(1, Math.floor(opts.hintCycles ?? DEFAULT_HINT));
-  const cap = Math.max(hint, Math.floor(opts.capCycles ?? DEFAULT_CAP));
-  const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE));
-  const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS;
-  const collectFn = opts.collectFn ?? (() => []);
-  const now2 = opts.now ?? defaultNow;
-  const yieldFn = opts.yieldFn ?? defaultYield;
-  const signal = opts.signal;
-  const periodRule = /* @__PURE__ */ __name((evs, h) => opts.detectPeriodFn ? opts.detectPeriodFn(evs, h) : displayPeriodRule(evs, h, cap, opts.hasUnheardTrack ? opts.hasUnheardTrack() : false, opts.signals), "periodRule");
-  const events = [];
-  let collectedTo = 0;
-  let horizon = hint;
-  let lastYield = now2();
-  const collectUpTo = /* @__PURE__ */ __name(async (target) => {
-    while (collectedTo < target) {
-      if (signal?.aborted) return false;
-      const sliceEnd = Math.min(collectedTo + slice, target);
-      events.push(...collectFn(collectedTo, sliceEnd));
-      collectedTo = sliceEnd;
-      if (now2() - lastYield >= budgetMs && collectedTo < target) {
-        await yieldFn();
-        lastYield = now2();
-      }
-    }
-    return true;
-  }, "collectUpTo");
-  while (true) {
-    const ok = await collectUpTo(horizon);
-    if (!ok) break;
-    if (events.length === 0) return analyzeEvents([], 0, false, periodRule);
-    const period = periodRule(events, horizon);
-    if (period !== null) {
-      const lanes = accumulateLanes(events, period);
-      const sections = computeSections(lanes, period);
-      return {
-        periodCycles: period,
-        horizonCycles: period,
-        lanes,
-        sections,
-        displaySpan: { kind: "loop", cycles: period },
-        // #1599 — over the full collection horizon, where every lane's period was
-        // detected, NOT the trimmed one-loop span (one loop has no repetition).
-        repeatCycles: repeatBeside(events, horizon, cap, period)
-      };
-    }
-    if (horizon >= cap) {
-      return analyzeEvents(events, cap, true, periodRule, cap);
-    }
-    horizon = Math.min(horizon * 2, cap);
-  }
-  return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap);
-}
-__name(analyzeSong, "analyzeSong");
-async function analyzeWindow(originCycle, spanCycles, opts = {}) {
-  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
-  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
-  const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE));
-  const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS;
-  const collectFn = opts.collectFn ?? (() => []);
-  const now2 = opts.now ?? defaultNow;
-  const yieldFn = opts.yieldFn ?? defaultYield;
-  const signal = opts.signal;
-  const events = [];
-  let collectedTo = origin;
-  let lastYield = now2();
-  let complete = true;
-  while (collectedTo < origin + span) {
-    if (signal?.aborted) {
-      complete = false;
-      break;
-    }
-    const sliceEnd = Math.min(collectedTo + slice, origin + span);
-    events.push(...collectFn(collectedTo, sliceEnd));
-    collectedTo = sliceEnd;
-    if (now2() - lastYield >= budgetMs && collectedTo < origin + span) {
-      await yieldFn();
-      lastYield = now2();
-    }
-  }
-  const lanes = accumulateLanesInWindow(events, origin, span, opts.pinnedLaneKeys);
-  const sections = computeSectionsInWindow(lanes, origin, span);
-  return { originCycle: origin, spanCycles: span, lanes, sections, complete };
-}
-__name(analyzeWindow, "analyzeWindow");
-
-// src/ir/songExtent.ts
-function scaled(cycles, factor) {
-  return factor > 0 && Number.isFinite(factor) ? cycles * factor : cycles;
-}
-__name(scaled, "scaled");
-function songExtent(ir) {
-  if (ir == null) return { kind: "loop" };
-  let best = 0;
-  let found = false;
-  let tainted = false;
-  const walk5 = /* @__PURE__ */ __name((node, factor, opaque) => {
-    if (!node || typeof node !== "object") return;
-    switch (node.tag) {
-      case "Arrange": {
-        found = true;
-        if (opaque) {
-          tainted = true;
-          return;
-        }
-        const sum = node.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
-        if (sum > 0) best = Math.max(best, scaled(sum, factor));
-        return;
-      }
-      case "NamedPick": {
-        const sel = node.selector;
-        if (!sel || sel.tag !== "Cycle") return;
-        if (!sel.items.some((i) => i != null && i.tag === "Elongate")) return;
-        found = true;
-        if (opaque) {
-          tainted = true;
-          return;
-        }
-        const sum = sel.items.reduce(
-          (acc, i) => acc + (i != null && i.tag === "Elongate" && i.factor > 0 && Number.isFinite(i.factor) ? i.factor : 1),
-          0
-        );
-        if (sum > 0) best = Math.max(best, scaled(sum, factor));
-        return;
-      }
-      case "Stack":
-        for (const t of node.tracks) walk5(t, factor, opaque);
-        return;
-      case "Track":
-      case "Loop":
-        walk5(node.body, factor, opaque);
-        return;
-      case "Slow":
-        walk5(node.body, scaled(factor, node.factor), opaque);
-        return;
-      case "Fast":
-        walk5(node.body, node.factor > 0 && Number.isFinite(node.factor) ? factor / node.factor : factor, opaque);
-        return;
-      case "Range":
-        walk5(node.body, factor, opaque);
-        return;
-      case "Code": {
-        const via = node.via;
-        if (via && "inner" in via) walk5(via.inner, factor, true);
-        return;
-      }
-      default: {
-        const body = node.body;
-        if (body && typeof body === "object") walk5(body, factor, true);
-        return;
-      }
-    }
-  }, "walk");
-  walk5(ir, 1, false);
-  if (!found) return { kind: "loop" };
-  if (tainted || best <= 0) return { kind: "opaque" };
-  return { kind: "arranged", cycles: best };
-}
-__name(songExtent, "songExtent");
 var bjorklund = /* @__PURE__ */ __name((k, n) => {
   if (n <= 0) return [];
   if (k === 0) return Array(n).fill(false);
@@ -2115,6 +1636,516 @@ function stepValueEdit(a, index, value) {
 }
 __name(stepValueEdit, "stepValueEdit");
 
+// src/ir/songAnalysis.ts
+function laneKeyOf(ev) {
+  return ev.trackId ?? ev.s ?? "$default";
+}
+__name(laneKeyOf, "laneKeyOf");
+function accumulateLanes(events, horizon) {
+  return accumulateLanesInWindow(events, 0, horizon);
+}
+__name(accumulateLanes, "accumulateLanes");
+function accumulateLanesInWindow(events, originCycle, spanCycles, pinnedLaneKeys) {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
+  const order = [];
+  const byLane = /* @__PURE__ */ new Map();
+  const ensure = /* @__PURE__ */ __name((key2) => {
+    let counts = byLane.get(key2);
+    if (!counts) {
+      counts = new Array(span).fill(0);
+      byLane.set(key2, counts);
+      order.push(key2);
+    }
+    return counts;
+  }, "ensure");
+  if (pinnedLaneKeys) for (const key2 of pinnedLaneKeys) ensure(key2);
+  for (const ev of events) {
+    const cycle = Math.floor(ev.begin);
+    if (!Number.isFinite(cycle) || cycle < origin || cycle >= origin + span) continue;
+    ensure(laneKeyOf(ev))[cycle - origin] += 1;
+  }
+  return order.map((laneKey) => ({ laneKey, onsetsByCycle: byLane.get(laneKey) }));
+}
+__name(accumulateLanesInWindow, "accumulateLanesInWindow");
+function cycleFingerprints(events, horizon) {
+  const perCycle = Array.from({ length: horizon }, () => []);
+  for (const ev of events) {
+    const cycle = Math.floor(ev.begin);
+    if (!Number.isFinite(cycle) || cycle < 0 || cycle >= horizon) continue;
+    const offset = Math.round((ev.begin - cycle) * 1e6);
+    perCycle[cycle].push(`${laneKeyOf(ev)}@${offset}:${eventValueKey(ev)}`);
+  }
+  return perCycle.map((tokens) => tokens.sort().join("|"));
+}
+__name(cycleFingerprints, "cycleFingerprints");
+function detectPeriod(fingerprints) {
+  const len = fingerprints.length;
+  if (fingerprints.every((fp) => fp === "")) return null;
+  for (let p = 1; p <= Math.floor(len / 2); p++) {
+    let repeats = true;
+    for (let c = 0; c + p < len; c++) {
+      if (fingerprints[c] !== fingerprints[c + p]) {
+        repeats = false;
+        break;
+      }
+    }
+    if (repeats) return p;
+  }
+  return null;
+}
+__name(detectPeriod, "detectPeriod");
+function detectDisplayPeriod(events, horizon) {
+  const byLane = eventsByLane(events);
+  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
+  let maxPeriod = 0;
+  for (const laneEvents of byLane.values()) {
+    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
+    if (p === null) return null;
+    if (p > maxPeriod) maxPeriod = p;
+  }
+  return maxPeriod > 0 ? maxPeriod : null;
+}
+__name(detectDisplayPeriod, "detectDisplayPeriod");
+function eventsByLane(events) {
+  const byLane = /* @__PURE__ */ new Map();
+  for (const ev of events) {
+    const key2 = laneKeyOf(ev);
+    let bucket2 = byLane.get(key2);
+    if (!bucket2) {
+      bucket2 = [];
+      byLane.set(key2, bucket2);
+    }
+    bucket2.push(ev);
+  }
+  return byLane;
+}
+__name(eventsByLane, "eventsByLane");
+var NO_STEPPED_KEYS = /* @__PURE__ */ new Map();
+function lanePeriodsOf(events, horizon, steppedKeys) {
+  const out = [];
+  for (const [laneKey, laneEvents] of eventsByLane(events)) {
+    const periodCycles = detectPeriod(cycleFingerprints(laneEvents, horizon));
+    const keys = steppedKeys.get(laneKey);
+    const restCycles = keys && keys.size > 0 ? detectPeriod(cycleFingerprints(laneEvents.map((ev) => withoutKeys(ev, keys)), horizon)) : periodCycles;
+    out.push({ laneKey, periodCycles, restCycles });
+  }
+  return out;
+}
+__name(lanePeriodsOf, "lanePeriodsOf");
+function repeatOf(periods, cap) {
+  if (periods.length === 0) return null;
+  let repeat = 1;
+  for (const p of periods) {
+    if (p === null) return null;
+    const next = rationalLcm(repeat, p);
+    if (next === null || !Number.isFinite(next) || next > cap) return null;
+    repeat = next;
+  }
+  return repeat;
+}
+__name(repeatOf, "repeatOf");
+function steppedKeysByLane(ir) {
+  const by = /* @__PURE__ */ new Map();
+  for (const a of steppedAutomations(ir)) {
+    let keys = by.get(a.trackId);
+    if (!keys) by.set(a.trackId, keys = /* @__PURE__ */ new Set());
+    keys.add(a.paramKey);
+  }
+  return by;
+}
+__name(steppedKeysByLane, "steppedKeysByLane");
+function previewRepeat(analysis, laneKey, paramPeriods, cap = DEFAULT_CAP) {
+  const mine = analysis.lanePeriods.find((l) => l.laneKey === laneKey);
+  if (!mine) return null;
+  const others = analysis.lanePeriods.filter((l) => l !== mine).map((l) => l.periodCycles);
+  return repeatOf([...others, mine.restCycles, ...paramPeriods], cap);
+}
+__name(previewRepeat, "previewRepeat");
+function repeatBeside(lanePeriods, cap, period) {
+  if (period === null) return null;
+  const repeat = repeatOf(lanePeriods.map((l) => l.periodCycles), cap);
+  return repeat !== null && repeat % period === 0 ? repeat : null;
+}
+__name(repeatBeside, "repeatBeside");
+var MIN_ABSTAINED_PERIOD = 4;
+function detectDisplayPeriodAtCap(events, horizon) {
+  const byLane = eventsByLane(events);
+  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
+  let maxPeriod = 0;
+  let answered = 0;
+  let abstained = false;
+  for (const laneEvents of byLane.values()) {
+    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
+    if (p === null) {
+      abstained = true;
+      continue;
+    }
+    answered++;
+    if (p > maxPeriod) maxPeriod = p;
+  }
+  if (answered === 0 || maxPeriod <= 0) return null;
+  if (abstained && maxPeriod < MIN_ABSTAINED_PERIOD) return null;
+  return maxPeriod;
+}
+__name(detectDisplayPeriodAtCap, "detectDisplayPeriodAtCap");
+function spanCoversEveryLane(events, period) {
+  const inSpan = /* @__PURE__ */ new Set();
+  const all = /* @__PURE__ */ new Set();
+  for (const ev of events) {
+    const key2 = laneKeyOf(ev);
+    all.add(key2);
+    const cycle = Math.floor(ev.begin);
+    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period) inSpan.add(key2);
+  }
+  for (const key2 of all) if (!inSpan.has(key2)) return false;
+  return true;
+}
+__name(spanCoversEveryLane, "spanCoversEveryLane");
+function signalDimensionsOf(ir) {
+  const audible = audibleTracks(ir);
+  const periods = [];
+  const keys = /* @__PURE__ */ new Set();
+  for (const t of audible) {
+    for (const a of signalAutomations(t)) {
+      if (!hasTruePeriod(a.kind) || !(a.periodCycles > 0)) continue;
+      const song = songPeriodOf(a);
+      if (song !== null) periods.push(song);
+    }
+    for (const k of signalCarryingParamKeys(t)) keys.add(k);
+  }
+  return { keys, periods };
+}
+__name(signalDimensionsOf, "signalDimensionsOf");
+function songPeriodOf(a) {
+  let out = null;
+  for (const placement of a.placements) {
+    if (placement.some((w) => isSectionWindow(w) && w.cycles === 0)) continue;
+    let p = a.periodCycles;
+    for (let k = placement.length - 1; k >= 0 && p !== null; k--) {
+      const step = placement[k];
+      if (!isSectionWindow(step)) {
+        p = p * step.per / step.times;
+        continue;
+      }
+      const { cycles, total } = step;
+      const l = rationalLcm(cycles, p);
+      p = l === null ? null : total * l / cycles;
+    }
+    if (p === null) return null;
+    out = out === null ? p : rationalLcm(out, p);
+    if (out === null) return null;
+  }
+  return out;
+}
+__name(songPeriodOf, "songPeriodOf");
+function audibleTracks(ir) {
+  if (!ir) return [];
+  const roots = ir.tag === "Stack" ? ir.tracks : [ir];
+  const tracks = roots.filter((n) => n?.tag === "Track");
+  if (tracks.length === 0) return [ir];
+  return tracks.filter((t) => t.tag !== "Track" || t.muted !== true);
+}
+__name(audibleTracks, "audibleTracks");
+function withoutKeys(ev, keys) {
+  if (keys.size === 0) return ev;
+  const rec = ev;
+  let touched = false;
+  let copy = null;
+  for (const k of keys) {
+    if (rec[k] === void 0) continue;
+    copy ?? (copy = { ...rec });
+    copy[k] = void 0;
+    touched = true;
+  }
+  const params = ev.params;
+  if (params) {
+    let dropped = false;
+    const next = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (keys.has(k)) {
+        dropped = true;
+        continue;
+      }
+      next[k] = v;
+    }
+    if (dropped) {
+      copy ?? (copy = { ...rec });
+      copy.params = next;
+      touched = true;
+    }
+  }
+  return touched && copy ? copy : rec;
+}
+__name(withoutKeys, "withoutKeys");
+var gcdInt = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcdInt(b, a % b), "gcdInt");
+function asFraction(x, maxDen = 1024) {
+  if (!Number.isFinite(x) || x <= 0) return null;
+  for (let d = 1; d <= maxDen; d++) {
+    const n = x * d;
+    if (Math.abs(n - Math.round(n)) < 1e-9) {
+      const num = Math.round(n);
+      const g = gcdInt(num, d);
+      return [num / g, d / g];
+    }
+  }
+  return null;
+}
+__name(asFraction, "asFraction");
+function rationalLcm(x, y) {
+  const fx = asFraction(x);
+  const fy = asFraction(y);
+  if (!fx || !fy) return null;
+  const [a, b] = fx;
+  const [c, d] = fy;
+  const lcmNum = a * c / gcdInt(a, c);
+  return lcmNum / gcdInt(b, d);
+}
+__name(rationalLcm, "rationalLcm");
+function foldWithSignalPeriods(period, periods, cap) {
+  let folded = period;
+  for (const q of periods) {
+    const next = rationalLcm(folded, q);
+    if (next === null || !Number.isFinite(next) || next > cap) return period;
+    folded = next;
+  }
+  return folded;
+}
+__name(foldWithSignalPeriods, "foldWithSignalPeriods");
+function displayPeriodRule(events, horizon, cap, hasUnheardTrack, signals) {
+  const period = horizon >= cap ? detectDisplayPeriodAtCap(events, horizon) : detectDisplayPeriod(events, horizon);
+  if (period !== null) {
+    if (hasUnheardTrack && horizon < cap) return null;
+    if (!spanCoversEveryLane(events, period)) return null;
+    return period;
+  }
+  return signalInformedPeriod(events, horizon, cap, signals);
+}
+__name(displayPeriodRule, "displayPeriodRule");
+function signalInformedPeriod(events, horizon, cap, signals) {
+  if (horizon < cap) return null;
+  if (!signals || signals.keys.size === 0) return null;
+  const stripped = events.map((ev) => withoutKeys(ev, signals.keys));
+  const structural = detectDisplayPeriodAtCap(stripped, horizon);
+  if (structural === null) return null;
+  const folded = foldWithSignalPeriods(structural, signals.periods, cap);
+  if (!spanCoversEveryLane(events, folded)) return null;
+  return folded;
+}
+__name(signalInformedPeriod, "signalInformedPeriod");
+function computeSections(lanes, horizon) {
+  return computeSectionsInWindow(lanes, 0, horizon);
+}
+__name(computeSections, "computeSections");
+function computeSectionsInWindow(lanes, originCycle, spanCycles) {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
+  if (span <= 0) return [];
+  const signatureAt = /* @__PURE__ */ __name((index) => lanes.filter((l) => (l.onsetsByCycle[index] ?? 0) > 0).map((l) => l.laneKey).sort(), "signatureAt");
+  const sections = [];
+  let start = 0;
+  let sig = signatureAt(0);
+  let sigKey = sig.join("|");
+  for (let i = 1; i < span; i++) {
+    const nextSig = signatureAt(i);
+    const nextKey = nextSig.join("|");
+    if (nextKey !== sigKey) {
+      sections.push({ startCycle: origin + start, endCycle: origin + i, laneKeys: sig });
+      start = i;
+      sig = nextSig;
+      sigKey = nextKey;
+    }
+  }
+  sections.push({ startCycle: origin + start, endCycle: origin + span, laneKeys: sig });
+  return sections;
+}
+__name(computeSectionsInWindow, "computeSectionsInWindow");
+function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn, capCycles = DEFAULT_CAP, steppedKeys = NO_STEPPED_KEYS) {
+  const periodOf = detectPeriodFn ?? ((evs, h) => displayPeriodRule(evs, h, reachedCap ? h : Number.POSITIVE_INFINITY, false));
+  const lanes = accumulateLanes(events, horizon);
+  const periodCycles = periodOf(events, horizon);
+  const sections = computeSections(lanes, horizon);
+  const displaySpan = periodCycles != null ? { kind: "loop", cycles: periodCycles } : { kind: reachedCap ? "capped" : "horizon", cycles: horizon };
+  const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys);
+  const repeatCycles = repeatBeside(lanePeriods, capCycles, periodCycles);
+  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan, repeatCycles, lanePeriods };
+}
+__name(analyzeEvents, "analyzeEvents");
+var DEFAULT_HINT = 8;
+var DEFAULT_CAP = 256;
+var DEFAULT_SLICE = 4;
+var DEFAULT_BUDGET_MS = 10;
+function defaultNow() {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+}
+__name(defaultNow, "defaultNow");
+function defaultYield() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+__name(defaultYield, "defaultYield");
+async function analyzeSong(ir, opts = {}) {
+  const hint = Math.max(1, Math.floor(opts.hintCycles ?? DEFAULT_HINT));
+  const cap = Math.max(hint, Math.floor(opts.capCycles ?? DEFAULT_CAP));
+  const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE));
+  const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS;
+  const collectFn = opts.collectFn ?? (() => []);
+  const now2 = opts.now ?? defaultNow;
+  const yieldFn = opts.yieldFn ?? defaultYield;
+  const signal = opts.signal;
+  const steppedKeys = steppedKeysByLane(ir);
+  const periodRule = /* @__PURE__ */ __name((evs, h) => opts.detectPeriodFn ? opts.detectPeriodFn(evs, h) : displayPeriodRule(evs, h, cap, opts.hasUnheardTrack ? opts.hasUnheardTrack() : false, opts.signals), "periodRule");
+  const events = [];
+  let collectedTo = 0;
+  let horizon = hint;
+  let lastYield = now2();
+  const collectUpTo = /* @__PURE__ */ __name(async (target) => {
+    while (collectedTo < target) {
+      if (signal?.aborted) return false;
+      const sliceEnd = Math.min(collectedTo + slice, target);
+      events.push(...collectFn(collectedTo, sliceEnd));
+      collectedTo = sliceEnd;
+      if (now2() - lastYield >= budgetMs && collectedTo < target) {
+        await yieldFn();
+        lastYield = now2();
+      }
+    }
+    return true;
+  }, "collectUpTo");
+  while (true) {
+    const ok = await collectUpTo(horizon);
+    if (!ok) break;
+    if (events.length === 0) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys);
+    const period = periodRule(events, horizon);
+    if (period !== null) {
+      const lanes = accumulateLanes(events, period);
+      const sections = computeSections(lanes, period);
+      const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys);
+      return {
+        periodCycles: period,
+        horizonCycles: period,
+        lanes,
+        sections,
+        displaySpan: { kind: "loop", cycles: period },
+        // #1599 — over the full collection horizon, where every lane's period was
+        // detected, NOT the trimmed one-loop span (one loop has no repetition).
+        repeatCycles: repeatBeside(lanePeriods, cap, period),
+        lanePeriods
+      };
+    }
+    if (horizon >= cap) {
+      return analyzeEvents(events, cap, true, periodRule, cap, steppedKeys);
+    }
+    horizon = Math.min(horizon * 2, cap);
+  }
+  return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap, steppedKeys);
+}
+__name(analyzeSong, "analyzeSong");
+async function analyzeWindow(originCycle, spanCycles, opts = {}) {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
+  const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE));
+  const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS;
+  const collectFn = opts.collectFn ?? (() => []);
+  const now2 = opts.now ?? defaultNow;
+  const yieldFn = opts.yieldFn ?? defaultYield;
+  const signal = opts.signal;
+  const events = [];
+  let collectedTo = origin;
+  let lastYield = now2();
+  let complete = true;
+  while (collectedTo < origin + span) {
+    if (signal?.aborted) {
+      complete = false;
+      break;
+    }
+    const sliceEnd = Math.min(collectedTo + slice, origin + span);
+    events.push(...collectFn(collectedTo, sliceEnd));
+    collectedTo = sliceEnd;
+    if (now2() - lastYield >= budgetMs && collectedTo < origin + span) {
+      await yieldFn();
+      lastYield = now2();
+    }
+  }
+  const lanes = accumulateLanesInWindow(events, origin, span, opts.pinnedLaneKeys);
+  const sections = computeSectionsInWindow(lanes, origin, span);
+  return { originCycle: origin, spanCycles: span, lanes, sections, complete };
+}
+__name(analyzeWindow, "analyzeWindow");
+
+// src/ir/songExtent.ts
+function scaled(cycles, factor) {
+  return factor > 0 && Number.isFinite(factor) ? cycles * factor : cycles;
+}
+__name(scaled, "scaled");
+function songExtent(ir) {
+  if (ir == null) return { kind: "loop" };
+  let best = 0;
+  let found = false;
+  let tainted = false;
+  const walk5 = /* @__PURE__ */ __name((node, factor, opaque) => {
+    if (!node || typeof node !== "object") return;
+    switch (node.tag) {
+      case "Arrange": {
+        found = true;
+        if (opaque) {
+          tainted = true;
+          return;
+        }
+        const sum = node.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
+        if (sum > 0) best = Math.max(best, scaled(sum, factor));
+        return;
+      }
+      case "NamedPick": {
+        const sel = node.selector;
+        if (!sel || sel.tag !== "Cycle") return;
+        if (!sel.items.some((i) => i != null && i.tag === "Elongate")) return;
+        found = true;
+        if (opaque) {
+          tainted = true;
+          return;
+        }
+        const sum = sel.items.reduce(
+          (acc, i) => acc + (i != null && i.tag === "Elongate" && i.factor > 0 && Number.isFinite(i.factor) ? i.factor : 1),
+          0
+        );
+        if (sum > 0) best = Math.max(best, scaled(sum, factor));
+        return;
+      }
+      case "Stack":
+        for (const t of node.tracks) walk5(t, factor, opaque);
+        return;
+      case "Track":
+      case "Loop":
+        walk5(node.body, factor, opaque);
+        return;
+      case "Slow":
+        walk5(node.body, scaled(factor, node.factor), opaque);
+        return;
+      case "Fast":
+        walk5(node.body, node.factor > 0 && Number.isFinite(node.factor) ? factor / node.factor : factor, opaque);
+        return;
+      case "Range":
+        walk5(node.body, factor, opaque);
+        return;
+      case "Code": {
+        const via = node.via;
+        if (via && "inner" in via) walk5(via.inner, factor, true);
+        return;
+      }
+      default: {
+        const body = node.body;
+        if (body && typeof body === "object") walk5(body, factor, true);
+        return;
+      }
+    }
+  }, "walk");
+  walk5(ir, 1, false);
+  if (!found) return { kind: "loop" };
+  if (tainted || best <= 0) return { kind: "opaque" };
+  return { kind: "arranged", cycles: best };
+}
+__name(songExtent, "songExtent");
+
 // src/ir/fixedParameters.ts
 var NUMBER2 = /^-?(?:\d+\.?\d*|\.\d+)$/;
 function numberOf(raw) {
@@ -2175,6 +2206,35 @@ function fixedToStepsEdit(f, steps, source) {
   return { range: [f.argSpan.start, f.argSpan.end], text: `${q}<${Array(steps).fill(num.text).join(" ")}>${q}` };
 }
 __name(fixedToStepsEdit, "fixedToStepsEdit");
+
+// src/ir/stepCount.ts
+var sameStep = /* @__PURE__ */ __name((a, b) => a.value === b.value && a.weight === b.weight, "sameStep");
+function stepCountEdit(a, n, source) {
+  const steps = a.steps;
+  const len = steps.length;
+  if (!Number.isInteger(n) || n < 1 || n === len || len === 0) return null;
+  for (const step of steps) {
+    const text = source.slice(step.valueSpan.start, step.valueSpan.end);
+    if (text === "" || Number(text) !== step.value) return null;
+  }
+  const last = steps[len - 1];
+  const close = source.indexOf(">", last.valueSpan.end);
+  if (close < 0) return null;
+  const texts = steps.map(
+    (step, i) => source.slice(step.valueSpan.start, i + 1 < len ? steps[i + 1].valueSpan.start : close).trimEnd()
+  );
+  const next = Array.from({ length: n }, (_, i) => i % len);
+  const dropsWritten = n < len && steps.slice(n).some((step, k) => !sameStep(step, steps[(n + k) % n]));
+  const keepsSound = n > len ? n % len === 0 : len % n === 0 && !dropsWritten;
+  return {
+    edit: { range: [steps[0].valueSpan.start, close], text: next.map((i) => texts[i]).join(" ") },
+    steps: n,
+    periodCycles: next.reduce((sum, i) => sum + steps[i].weight, 0),
+    keepsSound,
+    dropsWritten
+  };
+}
+__name(stepCountEdit, "stepCountEdit");
 
 // src/ir/serialize.ts
 var PATTERN_IR_SCHEMA_VERSION = "1.0";
@@ -48090,6 +48150,7 @@ exports.pitchToMidi = pitchToMidi;
 exports.placeNote = placeNote;
 exports.planAssetImport = planAssetImport;
 exports.previewProviderRegistry = previewProviderRegistry;
+exports.previewRepeat = previewRepeat;
 exports.pruneEphemeralArtifacts = pruneEphemeralArtifacts;
 exports.pruneTrackMetaForCode = pruneTrackMetaForCode;
 exports.pruneZoneOverrides = pruneZoneOverrides;
@@ -48206,6 +48267,7 @@ exports.signalDimensionsOf = signalDimensionsOf;
 exports.signalTimeAt = signalTimeAt;
 exports.silenceArm = silenceArm;
 exports.songExtent = songExtent;
+exports.songPeriodOf = songPeriodOf;
 exports.soundNameFromFilename = soundNameFromFilename;
 exports.soundfontGroupLabel = soundfontGroupLabel;
 exports.splitArm = splitArm;
@@ -48213,6 +48275,7 @@ exports.startAudition = startAudition;
 exports.startHistoryDriver = startHistoryDriver;
 exports.startSampleSound = startSampleSound;
 exports.statementOffsetForSource = statementOffsetForSource;
+exports.stepCountEdit = stepCountEdit;
 exports.stepIndexAtCycle = stepIndexAtCycle;
 exports.stepValueEdit = stepValueEdit;
 exports.steppedAutomations = steppedAutomations;

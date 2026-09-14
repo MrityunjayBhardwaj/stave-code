@@ -13,7 +13,7 @@ const analysis: SongAnalysis = {
   periodCycles: 8,
   horizonCycles: 8,
   displaySpan: { kind: 'loop', cycles: 8 },
-  repeatCycles: 8,
+  repeatCycles: 8, lanePeriods: [],
   lanes: [{ laneKey: 'drums', onsetsByCycle: [1, 1, 1, 1, 1, 1, 1, 1] }],
   sections: [],
 }

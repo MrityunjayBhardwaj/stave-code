@@ -62,6 +62,7 @@ import type { IREvent } from './IREvent'
 import { eventValueKey } from './eventValueKey'
 import { signalAutomations, signalCarryingParamKeys, hasTruePeriod } from './signalAutomation'
 import { isSectionWindow, type TimeStep } from './parameterRoutes'
+import { steppedAutomations } from './steppedAutomation'
 
 /**
  * Lane (row) key for an event. Mirrors `groupEventsByTrack`'s key so analysis
@@ -148,6 +149,27 @@ export interface SongAnalysis {
    * — see `wholeSongRepeat`.
    */
   readonly repeatCycles: number | null
+  /**
+   * Each lane's own period, and its period with its stepped parameters left out
+   * (#1602), over the horizon the periods were detected on. The repeat is built
+   * from these, so the two can never disagree about a lane.
+   *
+   * `restCycles` exists for a preview: a lane's period already folds its stepped
+   * parameter in, and a least common multiple cannot be taken apart again, so a
+   * song length after a step-count change has to start from what the lane plays
+   * WITHOUT that parameter — see `previewRepeat`.
+   */
+  readonly lanePeriods: readonly LanePeriod[]
+}
+
+/** One lane's periods (#1602). Null where the lane has no loop within the horizon. */
+export interface LanePeriod {
+  readonly laneKey: string
+  /** The lane's smallest period over everything it plays. */
+  readonly periodCycles: number | null
+  /** The same, with the lane's stepped parameters left out. Always divides
+   *  `periodCycles` when both are numbers; equal to it on a lane with none. */
+  readonly restCycles: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -360,17 +382,85 @@ export function wholeSongRepeat(
   horizon: number,
   cap: number,
 ): number | null {
-  const byLane = eventsByLane(events)
-  if (byLane.size === 0) return null
+  return repeatOf(lanePeriodsOf(events, horizon, NO_STEPPED_KEYS).map((l) => l.periodCycles), cap)
+}
+
+/** No lane carries a stepped parameter — the rest period is the lane's own. */
+const NO_STEPPED_KEYS: ReadonlyMap<string, ReadonlySet<string>> = new Map()
+
+/**
+ * Every lane's periods, in first-seen order (#1602): its own, and its own with the
+ * keys `steppedKeys` names for it stripped from every event before fingerprinting.
+ *
+ * ⚠ THE REST PERIOD IS FOUND ON THE SAME HORIZON. Leaving a dimension out can only
+ * make more cycles equal, so the rest period divides the lane's own and has already
+ * repeated twice wherever that one has.
+ */
+function lanePeriodsOf(
+  events: readonly IREvent[],
+  horizon: number,
+  steppedKeys: ReadonlyMap<string, ReadonlySet<string>>,
+): LanePeriod[] {
+  const out: LanePeriod[] = []
+  for (const [laneKey, laneEvents] of eventsByLane(events)) {
+    const periodCycles = detectPeriod(cycleFingerprints(laneEvents, horizon))
+    const keys = steppedKeys.get(laneKey)
+    const restCycles =
+      keys && keys.size > 0
+        ? detectPeriod(cycleFingerprints(laneEvents.map((ev) => withoutKeys(ev, keys)), horizon))
+        : periodCycles
+    out.push({ laneKey, periodCycles, restCycles })
+  }
+  return out
+}
+
+/** The least common multiple of `periods`, or null for none, a null period, or a
+ *  result past `cap` — the one fold both the repeat and its preview use. */
+function repeatOf(periods: readonly (number | null)[], cap: number): number | null {
+  if (periods.length === 0) return null
   let repeat = 1
-  for (const laneEvents of byLane.values()) {
-    const p = detectPeriod(cycleFingerprints(laneEvents, horizon))
+  for (const p of periods) {
     if (p === null) return null
     const next = rationalLcm(repeat, p)
     if (next === null || !Number.isFinite(next) || next > cap) return null
     repeat = next
   }
   return repeat
+}
+
+/** The canonical key of every stepped parameter, by the lane (track) that plays it. */
+function steppedKeysByLane(ir: PatternIR | null): ReadonlyMap<string, ReadonlySet<string>> {
+  const by = new Map<string, Set<string>>()
+  for (const a of steppedAutomations(ir)) {
+    let keys = by.get(a.trackId)
+    if (!keys) by.set(a.trackId, (keys = new Set()))
+    keys.add(a.paramKey)
+  }
+  return by
+}
+
+/**
+ * The song's repeat if lane `laneKey`'s stepped parameters came back round at
+ * `paramPeriods` song cycles (#1602), or null when that cannot be said.
+ *
+ * A preview, before any edit is evaluated: the other lanes as measured, this lane
+ * WITHOUT its stepped parameters, and the stepped parameters' song periods as the
+ * edit would leave them — every stepped parameter on the lane, the edited one
+ * replaced (`songPeriodOf`). Starting from this lane's own period instead reads the
+ * old steps back in: `s("hh*4").gain("<.2 .8 .5>")` beside a 4-cycle lane, cut to
+ * two steps, repeats at 4, and lcm(4, 3, 2) says 12. Measured through the engine on
+ * 2, 4 and 5 steps: this reading matched every time, and that one never did.
+ */
+export function previewRepeat(
+  analysis: SongAnalysis,
+  laneKey: string,
+  paramPeriods: readonly number[],
+  cap: number = DEFAULT_CAP,
+): number | null {
+  const mine = analysis.lanePeriods.find((l) => l.laneKey === laneKey)
+  if (!mine) return null
+  const others = analysis.lanePeriods.filter((l) => l !== mine).map((l) => l.periodCycles)
+  return repeatOf([...others, mine.restCycles, ...paramPeriods], cap)
 }
 
 /**
@@ -387,13 +477,12 @@ export function wholeSongRepeat(
  * guards the injected `detectPeriodFn` seam the sweeps pass candidates through.
  */
 function repeatBeside(
-  events: readonly IREvent[],
-  horizon: number,
+  lanePeriods: readonly LanePeriod[],
   cap: number,
   period: number | null,
 ): number | null {
   if (period === null) return null
-  const repeat = wholeSongRepeat(events, horizon, cap)
+  const repeat = repeatOf(lanePeriods.map((l) => l.periodCycles), cap)
   return repeat !== null && repeat % period === 0 ? repeat : null
 }
 
@@ -627,7 +716,7 @@ export function signalDimensionsOf(ir: PatternIR | null | undefined): SignalDime
  * an arm of weight 0 never plays and contributes nothing. A pair `rationalLcm` cannot
  * resolve drops the period, the direction `PERIODIC_KINDS` already argues is safe.
  */
-function songPeriodOf(a: { readonly periodCycles: number; readonly placements: readonly (readonly TimeStep[])[] }): number | null {
+export function songPeriodOf(a: { readonly periodCycles: number; readonly placements: readonly (readonly TimeStep[])[] }): number | null {
   let out: number | null = null
   for (const placement of a.placements) {
     if (placement.some((w) => isSectionWindow(w) && w.cycles === 0)) continue
@@ -956,6 +1045,9 @@ export function analyzeEvents(
   // #1599 — the cap a whole-song repeat may not pass. `analyzeSong` passes its
   // own; a direct caller gets the production default.
   capCycles: number = DEFAULT_CAP,
+  // #1602 — the stepped parameter keys each lane carries, for its rest period.
+  // `analyzeSong` reads them off the IR; a direct caller has no IR and gets none.
+  steppedKeys: ReadonlyMap<string, ReadonlySet<string>> = NO_STEPPED_KEYS,
 ): SongAnalysis {
   // ONE rule for direct callers too ([[P403]]): `displayPeriodRule` with the cap
   // placed so `horizon >= cap` is true exactly when the caller says it hit the
@@ -977,8 +1069,9 @@ export function analyzeEvents(
     periodCycles != null
       ? { kind: 'loop', cycles: periodCycles }
       : { kind: reachedCap ? 'capped' : 'horizon', cycles: horizon }
-  const repeatCycles = repeatBeside(events, horizon, capCycles, periodCycles)
-  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan, repeatCycles }
+  const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys)
+  const repeatCycles = repeatBeside(lanePeriods, capCycles, periodCycles)
+  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan, repeatCycles, lanePeriods }
 }
 
 // ---------------------------------------------------------------------------
@@ -1116,6 +1209,7 @@ export async function analyzeSong(
   const now = opts.now ?? defaultNow
   const yieldFn = opts.yieldFn ?? defaultYield
   const signal = opts.signal
+  const steppedKeys = steppedKeysByLane(ir)
   /**
    * The period rule for a given horizon — ONE definition, used by the loop and
    * by every terminal `analyzeEvents`, so the decision that ends the analysis
@@ -1164,7 +1258,7 @@ export async function analyzeSong(
     // Nothing playing at all (null IR / fully silent pattern) → nothing to
     // analyze. Short-circuit to an empty analysis rather than growing the
     // horizon to the cap over empty cycles.
-    if (events.length === 0) return analyzeEvents([], 0, false, periodRule)
+    if (events.length === 0) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys)
     // The DISPLAY period = the longest single lane's loop (#488). Differing-
     // length tracks phase; the view spans the longest one. `null` until EVERY
     // active lane has looped at least twice within the horizon, so we keep
@@ -1186,6 +1280,8 @@ export async function analyzeSong(
       // [0, period) would find null, since one loop has no internal repetition).
       const lanes = accumulateLanes(events, period)
       const sections = computeSections(lanes, period)
+      // Over the FULL horizon, like the repeat: one trimmed loop has no repetition.
+      const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys)
       return {
         periodCycles: period,
         horizonCycles: period,
@@ -1194,17 +1290,18 @@ export async function analyzeSong(
         displaySpan: { kind: 'loop', cycles: period },
         // #1599 — over the full collection horizon, where every lane's period was
         // detected, NOT the trimmed one-loop span (one loop has no repetition).
-        repeatCycles: repeatBeside(events, horizon, cap, period),
+        repeatCycles: repeatBeside(lanePeriods, cap, period),
+        lanePeriods,
       }
     }
     if (horizon >= cap) {
-      return analyzeEvents(events, cap, true, periodRule, cap)
+      return analyzeEvents(events, cap, true, periodRule, cap, steppedKeys)
     }
     horizon = Math.min(horizon * 2, cap)
   }
 
   // Aborted path — analyze what was collected.
-  return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap)
+  return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap, steppedKeys)
 }
 
 // ---------------------------------------------------------------------------
