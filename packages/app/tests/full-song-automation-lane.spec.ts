@@ -1054,10 +1054,13 @@ test('a rate typed on the caption reaches the document, and the lane draws the n
 
 // ── #1610: bounds that are not the range call's arguments ───────────────────
 
-/** Walk the caption line and name every editor that opens, as `label=value`. Each is
- *  closed with Escape, so the walk writes nothing. */
+/** Walk the caption line and name every editor that opens, as `label=value`, and the
+ *  shape menu as `shape menu`. Each is closed with Escape, so the walk writes nothing.
+ *  ⚠ The NAME opens the shape menu (#1464); left open, it blocks the next click on
+ *  the code editor, so it is closed like the rest and checked to have closed. */
 async function captionEditorsOpened(page: Page): Promise<string[]> {
   const editor = page.locator('[data-full-song="automation-bound"]')
+  const menu = page.locator('[data-full-song="automation-shape"]')
   const seen = new Set<string>()
   for (let x = 6; x <= 240; x += 3) {
     await clickCanvasAt(page, x, 8)
@@ -1066,6 +1069,12 @@ async function captionEditorsOpened(page: Page): Promise<string[]> {
       seen.add(`${(await editor.getAttribute('aria-label')) ?? ''}=${await editor.inputValue()}`)
       await page.keyboard.press('Escape')
       await page.waitForTimeout(40)
+    }
+    if (await menu.count()) {
+      seen.add('shape menu')
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(40)
+      expect(await menu.count(), 'Escape did not close the shape menu').toBe(0)
     }
   }
   return [...seen]
