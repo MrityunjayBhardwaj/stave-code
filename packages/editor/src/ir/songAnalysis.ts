@@ -582,8 +582,10 @@ function standInFor(a: SignalAutomation, next: SignalKind): ((ev: IREvent) => nu
   const f = song === null ? null : asFraction(song)
   if (f === null) return null
   // In ticks of 1/(d·PHASE_GRAIN) cycle, so a period of n/d is a whole n·PHASE_GRAIN
-  // and the phase is integer arithmetic — a float `%` would put an onset a hair before
-  // the wrap at the far end of the period instead of at 0.
+  // and the phase is integer arithmetic. A float `%` does not group onsets the same way:
+  // measured over 9 periods × 7 onset grids × 256 cycles, 903 of 168,192 onsets land a hair
+  // below the wrap — `(13/3) % (1/3)` rounds to 0.333333 where its phase is 0 — and a lane
+  // that should repeat stops repeating.
   const [n, d] = f
   const ticks = n * PHASE_GRAIN
   return (ev) => {

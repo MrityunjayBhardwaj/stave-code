@@ -176,6 +176,13 @@ describe('#1611 — fast noise comes back round', () => {
     ['a fast sine alone → perlin', [SWEEP('sine', '.slow(0.05)')], 'perlin'],
     ['a fast sine beside a 4-bar line → rand', [SWEEP('sine', '.slow(0.05)'), LOOP4], 'rand'],
     ['fast rand alone → sine', [SWEEP('rand', '.slow(0.1)')], 'sine'],
+    // A period of a third of a cycle, on its own lane.
+    ['noise three times a cycle → sine: a period of a third', ['s("bd*6").cutoff(perlin.fast(3).range(200, 2000))'], 'sine'],
+    // The same period where the swept lane's own length decides the song. A float `%` phase
+    // lands a hair below the wrap on some onsets (13/3 against a third reads 0.333333, not 0),
+    // the lane stops repeating, and the fold hands back only its structure. Integer ticks
+    // keep the lane's 8 bars, so the song stays lcm(8, 3).
+    ['noise three times a cycle → sine, on an 8-bar line beside a 3-bar one', ['s("<bd sd cp hh rim oh lt ht>*6").cutoff(perlin.fast(3).range(200, 2000))', 's("<hh cp sd>")'], 'sine'],
   ] as const)('%s', async (_label, tracks, next) => {
     const r = await swap(tracks, next)
     // Not vacuous: the fast noise on one side really does repeat within the cap.
