@@ -172,6 +172,30 @@ function enginePeriod(events: { t: number; gain: number }[], cycles: number): nu
   return null
 }
 
+describe('#1610 — the bounds the reader reports are the ones the engine plays', () => {
+  // 16 onsets a bar under `.slow(4)` sample each waveform at 64 points a period, which
+  // lands exactly on its low and high points, so the extremes can be compared outright.
+  it.each([
+    ['sine.slow(4).range(0.2, 0.8)', true],
+    ['sine2.slow(4).range(0.2, 0.8)', false],
+    ['tri2.slow(4).range(0.2, 0.8)', false],
+    ['square2.slow(4).range(0.2, 0.8)', false],
+    ['sine.slow(4).range(0, 1).range(0.2, 0.8)', true],
+    ['sine.slow(4).range(0, 2).range(0.2, 0.8)', false],
+  ] as const)('%s', async (expr, asWritten) => {
+    const code = `s("bd*16").gain(${expr})`
+    const gains = (await bdOnsets(code, 16)).map((o) => o.gain)
+    const [a] = signalAutomations(parseStrudel(`$: ${code}`) as never)
+    expect(gains.length).toBe(256)
+    const round = (x: number) => Math.round(x * 1e9) / 1e9
+    const played = [round(Math.min(...gains)), round(Math.max(...gains))]
+    expect(played, 'the reader\'s bounds').toEqual([round(a.lo), round(a.hi)])
+    expect(a.boundsAsWritten).toBe(asWritten)
+    // The rival: the call's own arguments. They play exactly where the reader says they are the bounds.
+    expect(played[0] === 0.2 && played[1] === 0.8, 'the arguments are what plays').toBe(asWritten)
+  })
+})
+
 describe('#1590 — the period fold is told the period the engine repeats at', () => {
   it.each([
     ['no section (control)', 's("bd*8").gain(saw.slow(3))', 3],

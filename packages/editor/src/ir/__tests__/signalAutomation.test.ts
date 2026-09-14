@@ -21,7 +21,7 @@ describe('signalAutomations — the three legs #1464 names', () => {
     expect(read('$: s("bd*4").cutoff(saw.slow(4).range(200, 2000))')).toEqual([
       {
         trackId: 'd1', paramKey: 'cutoff', kind: 'saw', periodCycles: 4, lanePeriodCycles: 4,
-        lo: 200, hi: 2000, ranged: true, offset: expect.any(Number),
+        lo: 200, hi: 2000, ranged: true, boundsAsWritten: true, offset: expect.any(Number),
         spans: {
           shape: { start: expect.any(Number), end: expect.any(Number) },
           rate: { start: expect.any(Number), end: expect.any(Number) },
@@ -175,13 +175,43 @@ describe('signalAutomations — natural range comes from the signal, not a guess
     expect(read('$: s("bd*4").pan(sine2)')[0]).toMatchObject({ kind: 'sine2', lo: -1, hi: 1, ranged: false })
   })
 
-  it('an explicit .range() always wins over the natural one, and says so', () => {
-    expect(read('$: s("bd*4").pan(sine2.range(0, 1))')[0]).toMatchObject({ lo: 0, hi: 1, ranged: true })
+  it('an explicit .range() replaces the natural one, and says so', () => {
+    expect(read('$: s("bd*4").pan(sine.range(0.2, 0.8))')[0]).toMatchObject({ lo: 0.2, hi: 0.8, ranged: true, boundsAsWritten: true })
   })
 
-  it('the LAST-applied .range() wins — descent order is application order reversed', () => {
-    // `.range(0,1)` then `.range(2,3)`: the outer pair is what the signal emits.
-    expect(read('$: s("bd*4").pan(sine.range(0, 1).range(2, 3))')[0]).toMatchObject({ lo: 2, hi: 3 })
+  // #1610 — `range` is `mul(hi − lo).add(lo)` over what enters it (`pattern.mjs:1771`),
+  // so its arguments are its output only when that input runs 0..1. The engine arm in
+  // `signalAutomation.engine.test.ts` is the authority for every number below.
+  it('a bipolar signal under a range plays 2·lo − hi..hi, and a typed bound would not read back', () => {
+    expect(read('$: s("bd*4").cutoff(sine2.range(200, 2000))')[0]).toMatchObject({ lo: -1600, hi: 2000, ranged: true, boundsAsWritten: false })
+    expect(read('$: s("bd*4").pan(sine2.range(0, 1))')[0]).toMatchObject({ lo: -1, hi: 1, boundsAsWritten: false })
+    // Control: the same range on the unipolar spelling is its own arguments.
+    expect(read('$: s("bd*4").cutoff(sine.range(200, 2000))')[0]).toMatchObject({ lo: 200, hi: 2000, boundsAsWritten: true })
+  })
+
+  it('a bipolar signal with no range offers no bound either: an inserted range would meet −1..1', () => {
+    expect(read('$: s("bd*4").pan(sine2)')[0]).toMatchObject({ lo: -1, hi: 1, ranged: false, boundsAsWritten: false })
+    expect(read('$: s("bd*4").pan(sine)')[0]).toMatchObject({ lo: 0, hi: 1, ranged: false, boundsAsWritten: true })
+  })
+
+  it('ranges COMPOSE: the outer one maps what the inner one plays', () => {
+    // An inner 0..1 leaves the outer pair as what plays — descent order is application order reversed.
+    expect(read('$: s("bd*4").pan(sine.range(0, 1).range(2, 3))')[0]).toMatchObject({ lo: 2, hi: 3, boundsAsWritten: true })
+    // An inner 0..2 stretches it to 2..4, and typing into the outer range would not read back.
+    expect(read('$: s("bd*4").pan(sine.range(0, 2).range(2, 3))')[0]).toMatchObject({ lo: 2, hi: 4, boundsAsWritten: false })
+  })
+
+  it('where the arguments are the bounds, it reports EXACTLY the numbers written', () => {
+    // `lo + t·(hi − lo)` gives 0.30000000000000004 for `.range(0.1, 0.3)`, and `captionEdit`
+    // writes the untouched bound from this number. Swept, because float noise is not found by reading.
+    const xs = [0, 0.1, 0.2, 0.3, 0.7, 1, 1.5, 3, 200, 2000, -0.3, -1]
+    for (const lo of xs) {
+      for (const hi of xs) {
+        if (lo === hi) continue
+        const [a] = read(`$: s("bd*4").pan(sine.range(${lo}, ${hi}))`)
+        expect([a.lo, a.hi], `range(${lo}, ${hi})`).toEqual([lo, hi])
+      }
+    }
   })
 })
 

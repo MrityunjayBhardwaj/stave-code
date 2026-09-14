@@ -86,14 +86,22 @@ export interface SignalAutomation {
    *  disagree (one binding under two different time changes), which leaves no one
    *  number for a lane to show or a control to edit. */
   readonly lanePeriodCycles: number | null
-  /** The signal's RANGE — its output floor and ceiling. */
+  /** The signal's RANGE — the floor and ceiling the engine PLAYS, which is not always
+   *  what a `.range()` call spells (#1610, see `boundsOf`). `lo` is where the signal's
+   *  own low point lands, so a range written high-to-low reads `lo > hi`. */
   readonly lo: number
   readonly hi: number
-  /** True when `lo`/`hi` came from an explicit `.range(lo, hi)`; false when they
-   *  are the signal's natural polarity. Kept because it is the difference between
-   *  a number the user wrote and one this module supplied, and a lane that ever
-   *  labels the axis must not present the second as the first. */
+  /** True when the chain carries an explicit `.range()`; false when `lo`/`hi` are the
+   *  signal's natural polarity. Kept because it is the difference between a number the
+   *  user wrote and one this module supplied, and a lane that ever labels the axis must
+   *  not present the second as the first. */
   readonly ranged: boolean
+  /** True when a bound typed into this curve reads back as typed (#1610): the values
+   *  entering the range an edit writes — the outermost `.range()`, or one inserted at
+   *  `chainEnd` — run exactly 0..1, so that call's arguments ARE the curve's bounds.
+   *  False on a bipolar signal (`sine2.range(200, 2000)` plays −1600..2000) and under an
+   *  inner range that is not 0..1, where writing the typed pair plays another one. */
+  readonly boundsAsWritten: boolean
   /** Source offset of the `Param` call site, or null. The same coordinate the
    *  lanes already carry, so a later stage can bind this to the editor without a
    *  second provenance channel invented for it. */
@@ -177,8 +185,8 @@ const SKIP_KEYS: ReadonlySet<string> = new Set(['loc', 'keyLoc', 'callSiteRange'
 interface ChainRead {
   readonly signal: SignalNode
   readonly periodCycles: number
-  readonly lo: number | null
-  readonly hi: number | null
+  /** Every `.range(lo, hi)` in the chain, OUTERMOST FIRST (descent order). */
+  readonly ranges: readonly { readonly lo: number; readonly hi: number }[]
   /** #1464 Stage 2 — see `SignalSpans`. Collected on the same descent that
    *  reads the values, because the node carrying a value and the node carrying
    *  its source range are the same node; a second walk to find them again could
@@ -198,17 +206,16 @@ interface ChainRead {
  * form this module can plot, and must therefore fall out rather than be
  * approximated by whichever leg the walk happened to reach first.
  *
- * The OUTERMOST `Range` wins, which is also the last-applied one: in
- * `saw.range(0,1).slow(4)` the `Slow` is outermost and the range is the inner
- * `0..1`, while in `saw.slow(4).range(200,2000)` the range is the outer pair.
- * Taking the first `Range` met on the way DOWN gets both right without a special
- * case, because descent order is application order reversed.
+ * EVERY `Range` is kept, outermost first, because ranges COMPOSE rather than
+ * supersede (#1610): `range` is an affine map over what enters it, so
+ * `sine.range(0, 2).range(2, 3)` plays 2..4, not the outer 2..3 (measured).
+ * `boundsOf` folds them. The span is the outermost one's — the call an edit writes.
+ * Descent order is application order reversed, so the first met is the last applied.
  */
 function readChain(node: PatternIR): ChainRead | null {
   let cur: PatternIR = node
   let periodCycles = 1
-  let lo: number | null = null
-  let hi: number | null = null
+  const ranges: { lo: number; hi: number }[] = []
   let rangeSpan: SourceLocation | null = null
   // Every rate arm met, not the first — the count is what decides whether a
   // control may write one at all. See `SignalSpans.rate`.
@@ -240,8 +247,7 @@ function readChain(node: PatternIR): ChainRead | null {
       return {
         signal: cur as SignalNode,
         periodCycles,
-        lo,
-        hi,
+        ranges,
         spans: {
           shape: spanOf(cur),
           rate: rateArms === 1 && rateSpans.length === 1 ? rateSpans[0] : null,
@@ -253,14 +259,12 @@ function readChain(node: PatternIR): ChainRead | null {
     if (!CHAIN_TAGS.has(cur.tag)) return null
 
     if (cur.tag === 'Range') {
-      // First one met is the outermost; an inner one is already superseded.
-      if (lo === null && Number.isFinite(cur.lo) && Number.isFinite(cur.hi)) {
-        lo = cur.lo
-        hi = cur.hi
-        // The span follows the VALUES it belongs to, in the same branch, so the
-        // two can never end up describing different `.range()` calls.
-        rangeSpan = spanOf(cur)
-      }
+      // A range whose bounds are not numbers maps its input somewhere this module
+      // cannot say, and every range outside it inherits that — so the curve abstains.
+      if (!Number.isFinite(cur.lo) || !Number.isFinite(cur.hi)) return null
+      // The first one met is the outermost: the call a typed bound replaces.
+      if (ranges.length === 0) rangeSpan = spanOf(cur)
+      ranges.push({ lo: cur.lo, hi: cur.hi })
     } else if (cur.tag === 'Slow') {
       if (!Number.isFinite(cur.factor) || cur.factor <= 0) return null
       periodCycles *= cur.factor
@@ -280,6 +284,44 @@ function readChain(node: PatternIR): ChainRead | null {
     cur = body as PatternIR
   }
   return null
+}
+
+/**
+ * #1610 — the floor and ceiling the engine PLAYS, and whether a typed bound reads back.
+ *
+ * `range(lo, hi)` is `pat.mul(hi − lo).add(lo)` (`@strudel/core/pattern.mjs:1771`): an
+ * affine map over whatever enters it, whose own doc assumes that input runs 0..1. Its
+ * arguments are its output only then. So the signal's natural range is carried through
+ * every range in the chain, innermost first — measured through the engine,
+ * `sine2.range(200, 2000)` plays −1600..2000 and `sine.range(0, 2).range(2, 3)` 2..4.
+ *
+ * ⚠ WRITTEN `a·(1 − t) + b·t`, NOT `a + t·(b − a)`. The two agree as arithmetic and
+ * not as floats: at t = 1 the first is exactly `b`, while `0.1 + (0.3 − 0.1)` is
+ * `0.30000000000000004`. That noise would be the automation's own number, and
+ * `captionEdit` writes the untouched bound from it — so the second form would put a
+ * number nobody typed into the document on the next edit of the other bound.
+ *
+ * ⚠ An UNBOUNDED signal has no natural range. Under a range it keeps the reading it
+ * always had, the arguments of the innermost range as if it entered 0..1 — a claim the
+ * engine does not bear out for `time` (#1614), left as it was rather than widened here.
+ */
+function boundsOf(
+  polarity: Polarity,
+  ranges: readonly { readonly lo: number; readonly hi: number }[],
+): { lo: number; hi: number; boundsAsWritten: boolean } {
+  let lo = polarity === 'bipolar' ? -1 : 0
+  let hi = 1
+  // What enters the OUTERMOST range — or, with none, what an inserted one would meet.
+  let enteringLo = lo
+  let enteringHi = hi
+  for (let i = ranges.length - 1; i >= 0; i--) {
+    const r = ranges[i]
+    enteringLo = lo
+    enteringHi = hi
+    lo = r.lo * (1 - enteringLo) + r.hi * enteringLo
+    hi = r.lo * (1 - enteringHi) + r.hi * enteringHi
+  }
+  return { lo, hi, boundsAsWritten: enteringLo === 0 && enteringHi === 1 }
 }
 
 /** A node's own source range, or null. `loc` is an ARRAY because some nodes are
@@ -380,12 +422,11 @@ export function signalAutomations(ir: PatternIR | null | undefined): readonly Si
     const read = readChain(value as PatternIR)
     if (!read) continue
     const polarity = polarityOf(read.signal.kind)
-    const ranged = read.lo !== null && read.hi !== null
+    const ranged = read.ranges.length > 0
     // An unbounded signal with no explicit range has nothing to plot
     // BETWEEN, so it abstains rather than borrowing a plausible 0..1.
     if (!ranged && polarity === 'unbounded') continue
-    const lo = ranged ? (read.lo as number) : polarity === 'bipolar' ? -1 : 0
-    const hi = ranged ? (read.hi as number) : 1
+    const { lo, hi, boundsAsWritten } = boundsOf(polarity, read.ranges)
     const start = param.loc?.[0]?.start
     out.push({
       trackId,
@@ -396,6 +437,7 @@ export function signalAutomations(ir: PatternIR | null | undefined): readonly Si
       lo,
       hi,
       ranged,
+      boundsAsWritten,
       offset: typeof start === 'number' && Number.isFinite(start) ? start : null,
       spans: read.spans,
       placements,
