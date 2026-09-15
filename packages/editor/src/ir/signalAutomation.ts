@@ -58,14 +58,62 @@ export type SignalKind = SignalNode['kind']
  */
 type Polarity = 'unipolar' | 'bipolar' | 'unbounded'
 
-const UNBOUNDED: ReadonlySet<string> = new Set(['time', 'cyclesPer', 'per', 'perCycle', 'perx'])
+/**
+ * The kinds with no natural range: `time` grows, and `cyclesPer`/`per`/`perCycle`/`perx`
+ * are set by the rhythm they are applied to (`signal.mjs:986-1017`).
+ *
+ * A TYPE rather than a list, so both places that classify a kind — `POLARITY` below and
+ * the timeline's drawing table — have to agree on it when they compile (#1494). `Extract`
+ * drops a misspelt member, and `POLARITY` then refuses to call that kind unbounded.
+ */
+export type UnboundedSignalKind = Extract<SignalKind, 'time' | 'cyclesPer' | 'per' | 'perCycle' | 'perx'>
 
-function polarityOf(kind: string): Polarity {
-  if (UNBOUNDED.has(kind)) return 'unbounded'
-  // Every bipolar signal in signal.mjs is the `2`-suffixed spelling of a
-  // unipolar one, produced by `.toBipolar()`. `rand2`/`sine2`/`saw2`/`isaw2`/
-  // `tri2`/`square2`/`cosine2`/`itri2` — the whole set, no exceptions.
-  return kind.endsWith('2') ? 'bipolar' : 'unipolar'
+/**
+ * Every kind's polarity, WRITTEN OUT (#1494).
+ *
+ * This was a rule: unbounded if listed, bipolar if the name ends in `2`, unipolar
+ * otherwise. A rule answers for a kind nobody has looked at, and here in the worst
+ * direction — a new signal with no natural range, left off the list, would be read as
+ * 0..1 and drawn, the confident wrong curve #1614 removed. Keyed by `SignalKind`, a kind
+ * added to the IR does not compile until someone decides.
+ *
+ * Every bipolar signal in signal.mjs is the `2`-suffixed spelling of a unipolar one,
+ * produced by `.toBipolar()`: `sine2`/`cosine2`/`saw2`/`isaw2`/`tri2`/`itri2`/`square2`/
+ * `rand2`, the whole set.
+ */
+const POLARITY: { readonly [K in SignalKind]: K extends UnboundedSignalKind ? 'unbounded' : 'unipolar' | 'bipolar' } = {
+  sine: 'unipolar',
+  cosine: 'unipolar',
+  saw: 'unipolar',
+  isaw: 'unipolar',
+  tri: 'unipolar',
+  itri: 'unipolar',
+  square: 'unipolar',
+  sine2: 'bipolar',
+  cosine2: 'bipolar',
+  saw2: 'bipolar',
+  isaw2: 'bipolar',
+  tri2: 'bipolar',
+  itri2: 'bipolar',
+  square2: 'bipolar',
+  perlin: 'unipolar',
+  berlin: 'unipolar',
+  rand: 'unipolar',
+  brand: 'unipolar',
+  rand2: 'bipolar',
+  mousex: 'unipolar',
+  mousey: 'unipolar',
+  mouseX: 'unipolar',
+  mouseY: 'unipolar',
+  time: 'unbounded',
+  cyclesPer: 'unbounded',
+  per: 'unbounded',
+  perCycle: 'unbounded',
+  perx: 'unbounded',
+}
+
+function polarityOf(kind: SignalKind): Polarity {
+  return POLARITY[kind]
 }
 
 /** One drawable continuous automation: which track, which parameter, and the

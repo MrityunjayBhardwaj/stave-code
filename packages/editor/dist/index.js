@@ -1136,10 +1136,38 @@ function placementsTimeAt(placements, time) {
 __name(placementsTimeAt, "placementsTimeAt");
 
 // src/ir/signalAutomation.ts
-var UNBOUNDED = /* @__PURE__ */ new Set(["time", "cyclesPer", "per", "perCycle", "perx"]);
+var POLARITY = {
+  sine: "unipolar",
+  cosine: "unipolar",
+  saw: "unipolar",
+  isaw: "unipolar",
+  tri: "unipolar",
+  itri: "unipolar",
+  square: "unipolar",
+  sine2: "bipolar",
+  cosine2: "bipolar",
+  saw2: "bipolar",
+  isaw2: "bipolar",
+  tri2: "bipolar",
+  itri2: "bipolar",
+  square2: "bipolar",
+  perlin: "unipolar",
+  berlin: "unipolar",
+  rand: "unipolar",
+  brand: "unipolar",
+  rand2: "bipolar",
+  mousex: "unipolar",
+  mousey: "unipolar",
+  mouseX: "unipolar",
+  mouseY: "unipolar",
+  time: "unbounded",
+  cyclesPer: "unbounded",
+  per: "unbounded",
+  perCycle: "unbounded",
+  perx: "unbounded"
+};
 function polarityOf(kind) {
-  if (UNBOUNDED.has(kind)) return "unbounded";
-  return kind.endsWith("2") ? "bipolar" : "unipolar";
+  return POLARITY[kind];
 }
 __name(polarityOf, "polarityOf");
 var CHAIN_TAGS = /* @__PURE__ */ new Set(["Range", "Slow", "Fast"]);

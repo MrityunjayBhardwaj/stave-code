@@ -78,7 +78,7 @@ export type { SongExtent } from './songExtent'
 // nothing else — and because `songAnalysis` needs it too, which a module in
 // `@stave/app` could not serve (the dependency only runs app -> editor).
 export { signalAutomations, signalCarryingParamKeys, signalTimeAt, shapeAlternatives, crossClassShapes } from './signalAutomation'
-export type { SignalAutomation, SignalKind, SignalSpans } from './signalAutomation'
+export type { SignalAutomation, SignalKind, SignalSpans, UnboundedSignalKind } from './signalAutomation'
 // Stepped automation (#1463) — the per-cycle class beside #1464's continuous one.
 export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './steppedAutomation'
 export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp } from './steppedAutomation'
