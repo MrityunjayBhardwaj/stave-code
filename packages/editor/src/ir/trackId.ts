@@ -1,7 +1,7 @@
 /**
  * trackId — the SINGLE rule that turns a track's source label into its stable
- * IR identity (`trackId`), shared by both parse paths (`parseStrudel` and the
- * staged `parseStrudelStages`).
+ * IR identity (`trackId`), read by `parseStrudel` — and so by the Inspector's
+ * views, which are derived from its record since #1387.
  *
  * Two properties, both load-bearing for the Song timeline's lane identity:
  *

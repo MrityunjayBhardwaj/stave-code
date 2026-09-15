@@ -80,7 +80,7 @@ describe("#1558 — the final pass is the parser's, not the staged pipeline's", 
       "CHAIN-APPLIED",
       FINAL_PASS_NAME,
     ]);
-    // The Inspector's intermediate tabs are still the staged pipeline's — this
+    // The Inspector's intermediate tabs still come from `runStages` — this
     // change does not bypass the debugger, it stops the song depending on it.
     expect(passes.slice(0, 3).every((p) => p.ir === FROM_STAGES)).toBe(true);
   });

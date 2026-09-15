@@ -2,7 +2,8 @@
  * Full-song view: a BARE (non-`$:`) pattern preceded by a prelude statement
  * (`setcps(…)`) must still produce timeline rows (#113).
  *
- * The bug: the staged parse pipeline that feeds the IR snapshot (`runRawStage`)
+ * The bug: the staged parse pipeline that then fed the IR snapshot (`runRawStage`,
+ * removed in #1387)
  * lifted the WHOLE source as one opaque Code node when there was no `$:` label,
  * so a leading `setcps(120/240)` made `s("bd hh sd")` parse as a trailing
  * fragment of one expression → zero events → an empty timeline (the pattern

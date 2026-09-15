@@ -31,11 +31,12 @@ export type { StepCountEdit, LanePeriod } from './ir'
 export { previewShapeSwap } from './ir'
 export type { ShapeSwap } from './ir'
 
-// Phase 19-07 (#79) — parser stage helpers. PK10 propagation: re-exported
-// from the top-level barrel so the app can `import { runRawStage, ... }
-// from "@stave/editor"`. Phase 19-02 hit this exact bug — runPasses was
-// added to the sub-barrel only and was missing from dist/index.cjs.
-export { runRawStage, runMiniExpandedStage, runChainAppliedStage, runFinalStage } from './ir'
+// #1387 — the IR Inspector's intermediate views, derived from parseStrudel.
+// Re-exported from the top-level barrel so the app can import it from
+// "@stave/editor" — Phase 19-02 hit a sub-barrel-only export missing from
+// dist/index.cjs. Replaces the four `run*Stage` passes (#79).
+export { parseStrudelStages } from './ir'
+export type { NamedStage } from './ir'
 
 // Pass runner — runtime-neutral IR→IR transform machinery
 export type { Pass } from './ir'

@@ -10,7 +10,7 @@
  * resolver arm stays green, and the symptom is the original complaint unchanged
  * — clips captioned `bd`.
  *
- * So this drives the REAL staged pipeline over REAL source, the same route
+ * So this drives the REAL parser over REAL source, the same route
  * `collectNoteMarks.stackArms.test.ts` takes, and asserts on the far end.
  *
  * Only the haps are synthetic. Their offsets are real ones from the document.
@@ -31,24 +31,10 @@ import { collectNoteMarks } from '../timelineMarks'
 import { buildTimelineScene } from '../timelineScene'
 import { wholeSongWindow } from '../songAxis'
 import { IR, type PatternIR } from '../../../../../editor/src/ir/PatternIR'
-import {
-  runRawStage,
-  runMiniExpandedStage,
-  runChainAppliedStage,
-  runFinalStage,
-} from '../../../../../editor/src/ir/parseStrudelStages'
-import { runPasses, type Pass } from '../../../../../editor/src/ir/passes'
+import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
 
-const PASSES: readonly Pass<PatternIR>[] = [
-  { name: 'RAW', run: runRawStage },
-  { name: 'MINI-EXPANDED', run: runMiniExpandedStage },
-  { name: 'CHAIN-APPLIED', run: runChainAppliedStage },
-  { name: 'Parsed', run: runFinalStage },
-]
-const pipeline = (code: string): PatternIR => {
-  const passes = runPasses(IR.code(code), PASSES)
-  return passes[passes.length - 1].ir
-}
+// The tree the song is drawn from: `parseStrudel` (since #1558).
+const pipeline = (code: string): PatternIR => parseStrudel(code)
 
 // This document has no `$:` prefix, and until #1392 that was FORCED rather than
 // chosen: with `$:` in front, both parsers left every arm an opaque `Code`, so

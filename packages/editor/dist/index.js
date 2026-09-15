@@ -3035,26 +3035,50 @@ function buildBindingMap(body, baseOffset, numbers) {
 }
 __name(buildBindingMap, "buildBindingMap");
 function parseStrudel(code, _opts) {
+  return parseDocument(code, _opts);
+}
+__name(parseStrudel, "parseStrudel");
+function parseStrudelRecorded(code) {
+  const bodies = [];
+  const ir = parseDocument(code, void 0, bodies);
+  return { ir, bodies };
+}
+__name(parseStrudelRecorded, "parseStrudelRecorded");
+function parseDocument(code, opts, record) {
   if (!code.trim()) return IR.pure();
-  const opts = _opts;
   try {
     const tracks = extractTracks(code);
     const numbers = collectNumericBindings(code);
+    const top = /* @__PURE__ */ __name((text, offset, bindings) => {
+      if (!record) return parseExpression(text, offset, void 0, bindings, opts, numbers);
+      const staged = parseExpressionStaged(text, offset, void 0, bindings, opts, numbers);
+      record.push({
+        raw: IR.code(text, { loc: [{ start: offset, end: offset + text.length }] }),
+        mini: staged.root
+      });
+      return staged.ir;
+    }, "top");
+    const silent = /* @__PURE__ */ __name(() => {
+      record?.push({ raw: IR.pure(), mini: IR.pure() });
+      return IR.pure();
+    }, "silent");
     const trackBindings = tracks.length > 0 ? collectTopLevelBindings(code, 0, numbers)?.bindings ?? void 0 : void 0;
     if (tracks.length === 0) {
       const stripped = stripParserPrelude(code);
       if (!stripped.body.trim()) {
-        return IR.track("d1", IR.pure());
+        return IR.track("d1", silent());
       }
       const bodyTrimStart = stripped.body.search(/\S/);
       const innerOffset = stripped.offset + (bodyTrimStart >= 0 ? bodyTrimStart : 0);
       const bound = buildBindingMap(stripped.body, stripped.offset, numbers);
       if (bound) {
-        const inner2 = parseExpression(bound.finalExpr, bound.finalOffset, void 0, bound.bindings, opts, numbers);
+        const mark = record?.length ?? 0;
+        const inner2 = top(bound.finalExpr, bound.finalOffset, bound.bindings);
         const innerIsBareCode = inner2.tag === "Code" && inner2.via === void 0;
         if (!innerIsBareCode) {
           return IR.track("d1", inner2);
         }
+        if (record) record.length = mark;
       }
       const bareStmts = stripSideEffectStatements(
         splitTopLevelStatements(stripped.body, stripped.offset)
@@ -3077,7 +3101,7 @@ function parseStrudel(code, _opts) {
                 // resolves in EVERY statement of the tail. `undefined` for a
                 // document that declares none, which is what this passed
                 // unconditionally before.
-                parseExpression(s.text, s.offset, void 0, collected?.bindings, opts, numbers),
+                top(s.text, s.offset, collected?.bindings),
                 {
                   loc: [{ start: s.offset, end: s.offset + s.text.length }]
                 }
@@ -3092,15 +3116,15 @@ function parseStrudel(code, _opts) {
           "d1",
           // `collected?.bindings` — undefined where there is no map, exactly
           // what the multi-statement split above passes.
-          parseExpression(only.text, only.offset, void 0, collected?.bindings, opts, numbers)
+          top(only.text, only.offset, collected?.bindings)
         );
       }
-      const inner = parseExpression(stripped.body.trim(), innerOffset, void 0, void 0, opts, numbers);
+      const inner = top(stripped.body.trim(), innerOffset, void 0);
       return IR.track("d1", inner);
     }
     if (tracks.length === 1) {
       const t = tracks[0];
-      const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, trackBindings, opts, numbers);
+      const body = t.commented ? silent() : top(t.expr, t.offset, trackBindings);
       const trackId0 = trackIdFromLabel(t.label, 0);
       return IR.track(trackId0, body, {
         loc: [{ start: t.dollarStart, end: t.end }]
@@ -3108,7 +3132,7 @@ function parseStrudel(code, _opts) {
     }
     return IR.stack(
       ...tracks.map((t, i) => {
-        const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, void 0, trackBindings, opts, numbers);
+        const body = t.commented ? silent() : top(t.expr, t.offset, trackBindings);
         const trackId = trackIdFromLabel(t.label, i);
         return IR.track(trackId, body, {
           loc: [{ start: t.dollarStart, end: t.end }]
@@ -3116,10 +3140,11 @@ function parseStrudel(code, _opts) {
       })
     );
   } catch {
+    if (record) record.length = 0;
     return IR.code(code);
   }
 }
-__name(parseStrudel, "parseStrudel");
+__name(parseDocument, "parseDocument");
 function lexStateAt(code, idx) {
   let depth = 0;
   let inString = false;
@@ -3368,12 +3393,12 @@ function skipWhitespaceAndLineComments(src, pos) {
   return i;
 }
 __name(skipWhitespaceAndLineComments, "skipWhitespaceAndLineComments");
-function parseExpression(expr, baseOffset = 0, isSampleKey, bindings, opts, numbers) {
-  if (!expr.trim()) return IR.pure();
+function parseExpressionStaged(expr, baseOffset = 0, isSampleKey, bindings, opts, numbers) {
+  if (!expr.trim()) return unstaged(IR.pure());
   if (bindings) {
     const bareId = expr.trim();
     if (/^[A-Za-z_$][\w$]*$/.test(bareId) && bindings.has(bareId)) {
-      return bindings.get(bareId);
+      return unstaged(bindings.get(bareId));
     }
   }
   try {
@@ -3383,17 +3408,25 @@ function parseExpression(expr, baseOffset = 0, isSampleKey, bindings, opts, numb
     const rootIR = parseRoot(root, trimmedOffset, isSampleKey, bindings, opts, numbers);
     const rootIsBareCode = rootIR.tag === "Code" && rootIR.via === void 0;
     if (rootIsBareCode && !chain.trim()) {
-      return IR.code(expr);
+      return unstaged(IR.code(expr));
     }
     if (rootIsBareCode) {
-      return IR.code(expr);
+      return unstaged(IR.code(expr));
     }
     const chainOffset = trimmedOffset + root.length;
     const ir = applyChain(rootIR, chain, chainOffset, bindings, numbers);
-    return ir;
+    return { root: rootIR, ir };
   } catch {
-    return IR.code(expr);
+    return unstaged(IR.code(expr));
   }
+}
+__name(parseExpressionStaged, "parseExpressionStaged");
+function unstaged(node) {
+  return { root: node, ir: node };
+}
+__name(unstaged, "unstaged");
+function parseExpression(expr, baseOffset = 0, isSampleKey, bindings, opts, numbers) {
+  return parseExpressionStaged(expr, baseOffset, isSampleKey, bindings, opts, numbers).ir;
 }
 __name(parseExpression, "parseExpression");
 function evalNumericNode(node, numbers) {
@@ -4379,307 +4412,28 @@ function splitFirstArg(argsStr) {
 __name(splitFirstArg, "splitFirstArg");
 
 // src/ir/parseStrudelStages.ts
-function runRawStage(input) {
-  if (input.tag !== "Code") {
-    return input;
+function parseStrudelStages(code) {
+  const { ir, bodies } = parseStrudelRecorded(code);
+  return [
+    { name: "RAW", ir: withBodies(ir, bodies, (b) => b.raw) },
+    { name: "MINI-EXPANDED", ir: withBodies(ir, bodies, (b) => b.mini) },
+    { name: "CHAIN-APPLIED", ir }
+  ];
+}
+__name(parseStrudelStages, "parseStrudelStages");
+function withBodies(ir, bodies, pick) {
+  if (ir.tag === "Track") {
+    return bodies.length === 1 ? { ...ir, body: pick(bodies[0]) } : ir;
   }
-  const code = input.code;
-  if (!code.trim()) {
+  if (ir.tag === "Stack" && ir.tracks.length === bodies.length && ir.tracks.every((t) => t.tag === "Track")) {
     return {
-      tag: "Code",
-      code: "",
-      lang: "strudel",
-      loc: [{ start: 0, end: code.length }]
+      ...ir,
+      tracks: ir.tracks.map((t, i) => ({ ...t, body: pick(bodies[i]) }))
     };
   }
-  const docNumbers = collectNumericBindings(code);
-  const numberMeta = docNumbers ? { trackNumbers: docNumbers } : {};
-  const tracks = extractTracks(code);
-  if (tracks.length === 0) {
-    const stripped = stripParserPrelude(code);
-    if (!stripped.body.trim()) {
-      return {
-        tag: "Code",
-        code: "",
-        lang: "strudel",
-        loc: [{ start: stripped.offset, end: code.length }]
-      };
-    }
-    const bareStmts = stripSideEffectStatements(
-      splitTopLevelStatements(stripped.body, stripped.offset)
-    );
-    const declaresBinding = bareStmts.some((st) => BINDING_RE.test(st.text));
-    const collected = declaresBinding ? collectTopLevelBindings(stripped.body, stripped.offset, docNumbers) : null;
-    const trackStmts = collected ? collected.tail : declaresBinding ? [] : bareStmts;
-    const playable = trackStmts.filter((st) => !NON_EXPRESSION_HEAD_RE.test(st.text));
-    if (playable.length > 1) {
-      return {
-        tag: "Stack",
-        tracks: playable.map((st) => ({
-          tag: "Code",
-          code: st.text,
-          lang: "strudel",
-          loc: [{ start: st.offset, end: st.offset + st.text.length }],
-          // #1523 — the document's bindings, same map on every statement. And
-          // `numberMeta` alongside, because the monolithic side passes its
-          // numeric map to every one of these statements; without it a
-          // `[M*8, …]` arm would resolve THERE and not HERE, which is the
-          // divergence #1514 closed on the single-statement arm.
-          ...collected ? { trackBindings: collected.bindings } : {},
-          ...numberMeta,
-          // The statement's OWN range, threaded through the EXISTING
-          // dollarStart/dollarEnd channel so CHAIN-APPLIED builds
-          // `Track(d{i+1}, …, {loc})` with no new metadata path.
-          // `trackLabel` stays undefined → `trackIdFromLabel` yields d{i+1},
-          // matching parseStrudel.ts's `IR.track(\`d${i + 1}\`, …)`.
-          dollarStart: st.offset,
-          dollarEnd: st.offset + st.text.length
-          // `unknown` hop — the same idiom the labelled-track lifts below use,
-          // and it became necessary here for the same reason they need it: once
-          // `trackBindings` is in the object, the literal no longer overlaps
-          // `PatternIR` enough for a direct assertion. ⚠ Only the tsup dts build
-          // says so; the whole vitest suite was green with the direct cast.
-        })),
-        loc: [{ start: 0, end: code.length }]
-        // userMethod intentionally undefined — synthetic-from-RAW wrapper,
-        // same as the multi-`$:` return below.
-      };
-    }
-    if (trackStmts.length > 1 && playable.length === 1) {
-      const only = playable[0];
-      return {
-        tag: "Code",
-        code: only.text,
-        lang: "strudel",
-        loc: [{ start: only.offset, end: only.offset + only.text.length }],
-        ...collected ? { trackBindings: collected.bindings } : {},
-        ...numberMeta
-      };
-    }
-    const bodyTrimStart = stripped.body.search(/\S/);
-    const start = stripped.offset + (bodyTrimStart >= 0 ? bodyTrimStart : 0);
-    return {
-      tag: "Code",
-      code: stripped.body.trim(),
-      lang: "strudel",
-      loc: [{ start, end: code.length }],
-      // #1514 — a BARE document resolves its own pattern bindings in
-      // MINI-EXPANDED (`buildBindingMap`), but the numeric map is built from
-      // the whole source, so it travels the same meta channel as every other
-      // shape rather than being re-derived in one arm.
-      ...numberMeta
-    };
-  }
-  const docBindings = collectTopLevelBindings(code, 0, docNumbers)?.bindings;
-  const bindingMeta = { ...docBindings ? { trackBindings: docBindings } : {}, ...numberMeta };
-  if (tracks.length === 1) {
-    const t = tracks[0];
-    return {
-      tag: "Code",
-      code: t.expr,
-      lang: "strudel",
-      loc: [{ start: t.offset, end: t.offset + t.expr.length }],
-      ...bindingMeta,
-      // #671 — a lone `name: …` / `$:` track threads its label AND its
-      // `$:`-line range so CHAIN-APPLIED's single-track wrap mirrors
-      // parseStrudel.ts:857 exactly: `trackId = label` (not synthetic `d1`)
-      // AND `loc = [{ dollarStart, end }]`. A lone `$:` carries label === '$'
-      // → d1 (unchanged); a bare pattern (tracks.length === 0) never reaches
-      // here so it stays loc-free, matching parseStrudel's no-`$:` branch.
-      trackLabel: t.label,
-      dollarStart: t.dollarStart,
-      dollarEnd: t.end
-      // `unknown` hop: the stage-meta stash is deliberately off-type (D-03
-      // narrow union), and `trackBindings` carries it past the point where a
-      // direct assertion still overlaps. Same idiom as `withTrackMeta` below.
-    };
-  }
-  const trackCodes = tracks.map((t) => ({
-    tag: "Code",
-    code: t.expr,
-    lang: "strudel",
-    loc: [{ start: t.offset, end: t.offset + t.expr.length }],
-    // #1392 — the document's bindings, same map on every track (see above).
-    ...bindingMeta,
-    // Phase 20-11 α-4 — stage-transition metadata. Stash the `$:` line
-    // range (dollarStart..end-of-track-body-slice) so runChainAppliedStage
-    // can construct the Track wrapper with the same loc parseStrudel main
-    // produces (line 0..15 for the first $:, 15..28 for the second, etc.).
-    // Additive narrow-union per D-03; mirrors `unresolvedChain` /
-    // `chainOffset` (PR-A precedent). Stripped from FINAL by stripStageMeta
-    // — the strip happens in applyOnTrack via stripStageMeta below + in
-    // the test-helper stripStageMeta the regression sentinel uses.
-    dollarStart: t.dollarStart,
-    dollarEnd: t.end,
-    // #671 — thread the `name:` label so CHAIN-APPLIED builds the Track
-    // wrapper with `trackId = label` (parseStrudel.ts:876), not a `d{N}`
-    // ordinal. Without this the full-song timeline (which consumes THIS
-    // staged pipeline, not monolithic parseStrudel) dropped labelled-track
-    // names → `d1/d2/d3`. `$:` carries label === '$' → d{N} unchanged.
-    trackLabel: t.label
-  }));
-  return {
-    tag: "Stack",
-    tracks: trackCodes,
-    loc: [{ start: 0, end: code.length }]
-    // userMethod intentionally undefined — synthetic-from-RAW outer
-    // wrapper. Projects to mini polymetric `{}` symbol per 19-06.
-  };
+  return ir;
 }
-__name(runRawStage, "runRawStage");
-function runMiniExpandedStage(input) {
-  if (input.tag === "Code") {
-    const base = input.loc?.[0]?.start ?? 0;
-    const cMeta = input;
-    const withTrackMeta = /* @__PURE__ */ __name((node) => cMeta.trackLabel === void 0 ? node : {
-      ...node,
-      trackLabel: cMeta.trackLabel,
-      ...cMeta.dollarStart !== void 0 && cMeta.dollarEnd !== void 0 ? { dollarStart: cMeta.dollarStart, dollarEnd: cMeta.dollarEnd } : {}
-    }, "withTrackMeta");
-    if (!input.code.trim()) return withTrackMeta(IR.pure());
-    if (cMeta.trackLabel === void 0 && cMeta.dollarStart === void 0) {
-      const bound = buildBindingMap(input.code, base, cMeta.trackNumbers);
-      if (bound) {
-        const boundParsed = parseRootWithChainMeta(
-          bound.finalExpr,
-          bound.finalOffset,
-          bound.bindings,
-          // #1514 — mirrors parseStrudel.ts:1007, which passes `numbers` on
-          // this same bare-document branch.
-          cMeta.trackNumbers
-        );
-        const isBareCode = boundParsed.tag === "Code" && boundParsed.via === void 0;
-        if (!isBareCode) return boundParsed;
-      }
-    }
-    return withTrackMeta(
-      parseRootWithChainMeta(input.code, base, cMeta.trackBindings, cMeta.trackNumbers)
-    );
-  }
-  if (input.tag === "Stack" && input.userMethod === void 0) {
-    const tracks = input.tracks.map((t) => {
-      if (t.tag !== "Code") return t;
-      const tMeta = t;
-      const parsed = parseRootWithChainMeta(
-        t.code,
-        t.loc?.[0]?.start ?? 0,
-        tMeta.trackBindings,
-        tMeta.trackNumbers
-      );
-      if (tMeta.dollarStart !== void 0 && tMeta.dollarEnd !== void 0) {
-        return {
-          ...parsed,
-          dollarStart: tMeta.dollarStart,
-          dollarEnd: tMeta.dollarEnd,
-          // #671 — thread the label alongside the loc stage-meta.
-          ...tMeta.trackLabel !== void 0 ? { trackLabel: tMeta.trackLabel } : {}
-        };
-      }
-      return parsed;
-    });
-    return { ...input, tracks };
-  }
-  return input;
-}
-__name(runMiniExpandedStage, "runMiniExpandedStage");
-function parseRootWithChainMeta(expr, baseOffset, bindings, numbers) {
-  if (!expr.trim()) return IR.pure();
-  const leadingWs = expr.length - expr.trimStart().length;
-  const trimmedOffset = baseOffset + leadingWs;
-  const trimmed = expr.trim();
-  const { root, chain } = splitRootAndChain(trimmed);
-  const rootIR = parseRoot(root, trimmedOffset, void 0, bindings, void 0, numbers);
-  const rootIsBareCode = rootIR.tag === "Code" && rootIR.via === void 0;
-  if (rootIsBareCode) {
-    return IR.code(expr);
-  }
-  if (chain.trim()) {
-    const chainOffset = trimmedOffset + root.length;
-    return {
-      ...rootIR,
-      unresolvedChain: chain,
-      chainOffset,
-      ...bindings ? { unresolvedBindings: bindings } : {},
-      // #1547 — the NUMERIC map needs its own stash for the same reason the
-      // pattern map has one: CHAIN-APPLIED runs in a later stage and no longer
-      // holds the document. Without it `parseStrudel` resolves an arrange
-      // weight inside a chain argument and this pipeline does not, which is a
-      // divergence on exactly the documents the fix is for.
-      ...numbers ? { unresolvedNumbers: numbers } : {}
-    };
-  }
-  return rootIR;
-}
-__name(parseRootWithChainMeta, "parseRootWithChainMeta");
-function runChainAppliedStage(input) {
-  const kids = input.tag === "Stack" ? input.tracks : [];
-  const fromStatements = kids.length > 0 && kids.every((k) => k.dollarStart !== void 0);
-  if (input.tag === "Stack" && input.userMethod === void 0 && fromStatements) {
-    return IR.stack(
-      ...input.tracks.map((t, i) => {
-        const tMeta = t;
-        const applied = applyOnTrack(t);
-        const meta = tMeta.dollarStart !== void 0 && tMeta.dollarEnd !== void 0 ? { loc: [{ start: tMeta.dollarStart, end: tMeta.dollarEnd }] } : void 0;
-        const trackId = trackIdFromLabel(tMeta.trackLabel, i);
-        return IR.track(trackId, applied, meta, isMutedLabel(tMeta.trackLabel));
-      })
-    );
-  }
-  const sMeta = input;
-  const singleTrackId = trackIdFromLabel(sMeta.trackLabel, 0);
-  const singleMeta = sMeta.dollarStart !== void 0 && sMeta.dollarEnd !== void 0 ? { loc: [{ start: sMeta.dollarStart, end: sMeta.dollarEnd }] } : void 0;
-  return IR.track(singleTrackId, applyOnTrack(input), singleMeta, isMutedLabel(sMeta.trackLabel));
-}
-__name(runChainAppliedStage, "runChainAppliedStage");
-function applyOnTrack(node) {
-  const m = node;
-  if (m.unresolvedChain === void 0) {
-    return stripStageMeta(node);
-  }
-  const chain = m.unresolvedChain;
-  const chainOffset = m.chainOffset ?? 0;
-  const clean = stripStageMeta(node);
-  if (chain.trim()) {
-    return applyChain(clean, chain, chainOffset, m.unresolvedBindings, m.unresolvedNumbers);
-  }
-  return clean;
-}
-__name(applyOnTrack, "applyOnTrack");
-function stripStageMeta(node) {
-  const n = node;
-  if (!("unresolvedChain" in n) && !("unresolvedBindings" in n) && !("unresolvedNumbers" in n) && !("trackBindings" in n) && !("trackNumbers" in n) && !("chainOffset" in n) && !("dollarStart" in n) && !("dollarEnd" in n) && !("trackLabel" in n)) {
-    return node;
-  }
-  const {
-    unresolvedChain: _u,
-    unresolvedBindings: _ub,
-    // #1547 — the numeric map's chain-stage stash. Same lifecycle as _ub:
-    // consumed in CHAIN-APPLIED, stripped here so it never reaches FINAL.
-    // ⚠ Missing from EITHER the guard above or this list leaks it onto a
-    // FINAL node and reddens every parity assertion — which is the loud
-    // failure, and the reason both halves are edited together.
-    unresolvedNumbers: _un,
-    // #1392 — RAW's document-level binding map. Consumed in MINI-EXPANDED;
-    // stripped here so it can never reach a FINAL node body.
-    trackBindings: _tb,
-    // #1514 — RAW's document-level NUMERIC map. Same lifecycle as _tb:
-    // consumed in MINI-EXPANDED, stripped here so it never reaches FINAL.
-    trackNumbers: _tn,
-    chainOffset: _o,
-    dollarStart: _ds,
-    dollarEnd: _de,
-    // #671 — the label is CONSUMED as trackId in CHAIN-APPLIED; strip the
-    // meta so it never leaks onto a FINAL node body (keeps byte-equality).
-    trackLabel: _tl,
-    ...clean
-  } = n;
-  return clean;
-}
-__name(stripStageMeta, "stripStageMeta");
-function runFinalStage(input) {
-  return input;
-}
-__name(runFinalStage, "runFinalStage");
+__name(withBodies, "withBodies");
 
 // src/ir/passes.ts
 function runPasses(input, passes) {
@@ -47891,6 +47645,6 @@ function isPersistableTab(t) {
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_CENTRE_PAN, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterPanEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, readCurrentCycle, readMasterGain, readMasterMute, readMasterPan, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionControlEdit, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_CENTRE_PAN, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MainSignalSampler, Mixer, OfflineRenderer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterPanEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, readCurrentCycle, readMasterGain, readMasterMute, readMasterPan, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionControlEdit, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runPasses, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

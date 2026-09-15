@@ -1,11 +1,12 @@
 /**
  * An arrangement whose WEIGHT is an expression draws as an arrangement (#1514).
  *
- * ── WHY THIS EXISTS, AND WHY IT DRIVES THE STAGED PIPELINE ───────────────────
+ * ── WHY THIS EXISTS ──────────────────────────────────────────────────────────
  * `parseStrudel` has read `[M*8, …]` since #1468: it collects the document's
- * numeric bindings once and resolves the weight through them. The TIMELINE does
- * not run `parseStrudel` — it runs the four staged passes, and that copy
- * collected no numeric map at all. So `detectArrangeAt` reported two arms,
+ * numeric bindings once and resolves the weight through them. The TIMELINE did
+ * not run `parseStrudel` then — it ran the four staged passes, and that copy
+ * collected no numeric map at all (#1558 moved the song onto `parseStrudel`, and
+ * #1387 removed the copy). So `detectArrangeAt` reported two arms,
  * `songExtent` reported the right length, every serializer handled the input
  * correctly, and the timeline still drew ONE bare clip with `armIndex: -1`.
  * Every clip gesture keys off a real arm, so all of them declined at once —
@@ -17,8 +18,8 @@
  * the arm indices the gestures actually read.
  *
  * ⚠ AND THEY ARE WRITTEN IN BOTH SPELLINGS ON PURPOSE. The bare document and
- * the `$:` track take DIFFERENT branches through MINI-EXPANDED (`buildBindingMap`
- * vs the RAW binding meta), so a suite that only ever wrote one of them would
+ * the `$:` track take DIFFERENT branches through `parseStrudel` (`buildBindingMap`
+ * vs the document-level binding map), so a suite that only ever wrote one of them would
  * leave the other free to regress in silence — which is exactly how this defect
  * survived (#1517's lesson, applied while it is still cheap).
  */
@@ -37,24 +38,10 @@ vi.mock('@stave/editor', async () => ({
 import { collectNoteMarks } from '../timelineMarks'
 import { wholeSongWindow } from '../songAxis'
 import { IR, type PatternIR } from '../../../../../editor/src/ir/PatternIR'
-import {
-  runRawStage,
-  runMiniExpandedStage,
-  runChainAppliedStage,
-  runFinalStage,
-} from '../../../../../editor/src/ir/parseStrudelStages'
-import { runPasses, type Pass } from '../../../../../editor/src/ir/passes'
+import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
 
-const PASSES: readonly Pass<PatternIR>[] = [
-  { name: 'RAW', run: runRawStage },
-  { name: 'MINI-EXPANDED', run: runMiniExpandedStage },
-  { name: 'CHAIN-APPLIED', run: runChainAppliedStage },
-  { name: 'Parsed', run: runFinalStage },
-]
-const pipeline = (code: string): PatternIR => {
-  const passes = runPasses(IR.code(code), PASSES)
-  return passes[passes.length - 1].ir
-}
+// The tree the song is drawn from: `parseStrudel` (since #1558).
+const pipeline = (code: string): PatternIR => parseStrudel(code)
 
 /** Does the parsed IR contain an `Arrange` node at all? */
 function hasArrange(ir: PatternIR): boolean {

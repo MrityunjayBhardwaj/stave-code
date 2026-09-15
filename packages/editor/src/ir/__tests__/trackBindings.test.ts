@@ -27,26 +27,14 @@
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../parseStrudel'
-import { runPasses, type Pass } from '../passes'
 import { IR, type PatternIR } from '../PatternIR'
-import {
-  runRawStage,
-  runMiniExpandedStage,
-  runChainAppliedStage,
-  runFinalStage,
-} from '../parseStrudelStages'
+import { parseStrudelStages } from '../parseStrudelStages'
 
-const PASSES: readonly Pass<PatternIR>[] = [
-  { name: 'RAW', run: runRawStage },
-  { name: 'MINI-EXPANDED', run: runMiniExpandedStage },
-  { name: 'CHAIN-APPLIED', run: runChainAppliedStage },
-  { name: 'Parsed', run: runFinalStage },
-]
 
-/** The staged pipeline — the path the TIMELINE takes, not `parseStrudel`. */
+/** `parseStrudel` through its recording path — the Inspector's CHAIN-APPLIED view (#1387). */
 const staged = (code: string): PatternIR => {
-  const passes = runPasses(IR.code(code), PASSES)
-  return passes[passes.length - 1].ir
+  const stages = parseStrudelStages(code)
+  return stages[stages.length - 1].ir
 }
 
 /** Every unresolved `Code` node left in a tree. Empty is the whole claim. */
@@ -100,9 +88,8 @@ describe('#1392 — bindings resolve for every way a track is declared', () => {
   for (const [shape, code] of Object.entries(SHAPES)) {
     it(`leaves nothing opaque: ${shape}`, () => {
       expect(opaqueCode(parseStrudel(code))).toEqual([])
-      // The staged pipeline is the one the timeline reads, and it is where the
-      // mirrored gate lived — so it is asserted separately, not assumed from
-      // the line above.
+      // The recording path (#1387) is asserted separately too: the Inspector's
+      // views come from it, and it must not change the parse.
       expect(opaqueCode(staged(code))).toEqual([])
     })
   }

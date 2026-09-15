@@ -3,15 +3,17 @@
  *
  * ## The rule
  *
- * The Inspector's three INTERMEDIATE tabs are the staged pipeline's. The FINAL
- * tree is the PARSER's. Four tabs either way, same names.
+ * The Inspector's three INTERMEDIATE tabs are `parseStrudelStages` — since #1387
+ * derived from the parser's own record of each track body. The FINAL tree is the
+ * PARSER's. Four tabs either way, same names.
  *
  * ## Why it needed saying
  *
- * `parseStrudelStages.ts` is a parallel reimplementation of decisions
- * `parseStrudel` makes, kept in sync by hand. It exists so the Inspector can
- * show a parse in steps — `parseStrudel` does all of it in one pass and never
- * stops to show its work. That makes it a DEBUGGING affordance.
+ * `parseStrudelStages.ts` was a parallel reimplementation of decisions
+ * `parseStrudel` makes, kept in sync by hand (#1387 replaced it with a
+ * derivation). It existed so the Inspector could show a parse in steps —
+ * `parseStrudel` did all of it in one pass and never stopped to show its work.
+ * That made it a DEBUGGING affordance.
  *
  * But `MusicalTimeline` analyses `snapshot.ir`, and `snapshot.ir` was the
  * staged pipeline's output. So the song drank from the debugger's cup, and a
@@ -59,7 +61,8 @@
  *
  * ## Cost, measured over 558 documents
  *
- * `parseStrudel` 0.506ms/doc · staged 0.445ms/doc · both 0.951ms/doc — once per
+ * Measured before #1387: `parseStrudel` 0.506ms/doc · staged 0.445ms/doc · both
+ * 0.951ms/doc — once per
  * successful eval, on an already-debounced path.
  */
 import type { PatternIR } from "@stave/editor";
@@ -68,7 +71,7 @@ import type { PatternIR } from "@stave/editor";
 export type NamedPass = { readonly name: string; readonly ir: PatternIR };
 
 export interface StrudelPassDeps {
-  /** The staged pipeline's INTERMEDIATE views, in execution order. */
+  /** The Inspector's INTERMEDIATE views — RAW, MINI-EXPANDED, CHAIN-APPLIED — in order. */
   readonly runStages: (code: string) => readonly NamedPass[];
   /** The parser. Never throws — falls back to a whole-program Code node. */
   readonly parse: (code: string) => PatternIR;
@@ -79,7 +82,7 @@ export const FINAL_PASS_NAME = "Parsed";
 
 /**
  * Build the four passes for one document. The last entry is always the
- * parser's tree, whatever the staged pipeline said.
+ * parser's tree, whatever the intermediate views said.
  */
 export function buildStrudelPasses(
   code: string,

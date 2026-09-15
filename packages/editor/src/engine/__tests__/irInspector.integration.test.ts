@@ -1,77 +1,52 @@
 /**
- * Integration test for the parse → run chain that backs the IR Inspector.
- * Mirrors the production wire-up in StrudelEditorClient (Phase 19-07 — 4-stage
- * STRUDEL_PASSES) without going through the React/runtime layer: seed a known
- * Strudel string as a Code node, run it through the 4-stage pass list, and pin
- * the contract. Onset events come from Strudel's eval (queryArc) in production;
- * here the structural walk (walkLeafItems) covers the loc-propagation contract.
+ * Integration test for the parse → snapshot chain that backs the IR Inspector.
+ * Mirrors the production wire-up in StrudelEditorClient without going through
+ * the React/runtime layer: the three intermediate views come from
+ * `parseStrudelStages` (#1387) and the FINAL `Parsed` tab is `parseStrudel`
+ * itself (#1558), four tabs in all. Onset events come from Strudel's eval
+ * (queryArc) in production; here the structural walk (walkLeafItems) covers the
+ * loc-propagation contract.
  *
- * Phase 19-07 (#79): passes[] grew from 1 entry ('Parsed' identity) to
- * 4 entries (RAW / MINI-EXPANDED / CHAIN-APPLIED / Parsed). The FINAL
- * tab name remains 'Parsed' for IRInspectorPanel persistence
+ * The FINAL tab name remains 'Parsed' for IRInspectorPanel persistence
  * backward-compat (RESEARCH §3.2). The PV27 alias contract holds via
  * snap.ir === snap.passes[passes.length - 1].ir.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import {
-  parseStrudel,
-  runPasses,
-  IR,
-  runRawStage,
-  runMiniExpandedStage,
-  runChainAppliedStage,
-  runFinalStage,
-  type Pass,
-} from '../../ir'
+import { parseStrudel, parseStrudelStages } from '../../ir'
 import { walkLeafItems } from '../../ir/structuralWalk'
-import type { PatternIR } from '../../ir/PatternIR'
 import { publishIRSnapshot, clearIRSnapshot, type IRSnapshotInput } from '../irInspector'
 import { getCaptureBuffer, __resetCaptureForTest } from '../timelineCapture'
 
-const v4Passes: readonly Pass<PatternIR>[] = [
-  { name: 'RAW',           run: runRawStage           },
-  { name: 'MINI-EXPANDED', run: runMiniExpandedStage  },
-  { name: 'CHAIN-APPLIED', run: runChainAppliedStage  },
-  { name: 'Parsed',        run: runFinalStage         },
-]
+/** The four tabs, built the way `buildStrudelPasses` builds them in the app. */
+function strudelPasses(code: string) {
+  return [...parseStrudelStages(code), { name: 'Parsed', ir: parseStrudel(code) }]
+}
 
 describe('irInspector integration — parse → run', () => {
   it('produces a 4-pass snapshot whose FINAL IR equals parseStrudel output', () => {
     const code = 'note("c3 e3 g3")'
-    const seed = IR.code(code)
-    const passes = runPasses(seed, v4Passes)
+    const passes = strudelPasses(code)
 
-    // Phase 19-07 — passes[] has 4 entries with locked stage names.
-    expect(passes).toHaveLength(4)
-    expect(passes[0].name).toBe('RAW')
-    expect(passes[1].name).toBe('MINI-EXPANDED')
-    expect(passes[2].name).toBe('CHAIN-APPLIED')
-    expect(passes[3].name).toBe('Parsed')
+    // Four entries with locked stage names.
+    expect(passes.map((p) => p.name)).toEqual(['RAW', 'MINI-EXPANDED', 'CHAIN-APPLIED', 'Parsed'])
 
-    // PV27 — `snap.ir` MUST track passes[passes.length - 1].ir (the
-    // FINAL pass's output). Referential equality holds because FINAL
-    // is identity over CHAIN-APPLIED.
+    // PV27 — `snap.ir` MUST track passes[passes.length - 1].ir. The FINAL tab is
+    // the parser's tree, and CHAIN-APPLIED is the same tree through the
+    // recording path (#1387), so both equal a plain parse.
     const finalIR = passes[passes.length - 1].ir
-    expect(finalIR).toBe(passes[2].ir)
-
-    // FINAL output is byte-equal (deep-equal) to today's parseStrudel
-    // (D-06 regression gate). Reference equality does NOT hold across
-    // the staged pipeline — the IR is rebuilt at MINI-EXPANDED via
-    // parseRoot — so we use deep-equal here.
     const direct = parseStrudel(code)
     expect(finalIR).toEqual(direct)
+    expect(passes[2].ir).toEqual(direct)
   })
 
   it('leaf items flow from passes[last].ir and carry loc (PV24, PV25)', () => {
     const code = 'note("c3 e3 g3")'
-    const seed = IR.code(code)
-    const passes = runPasses(seed, v4Passes)
+    const passes = strudelPasses(code)
     const finalIR = passes[passes.length - 1].ir
     const items = walkLeafItems(finalIR, 1)
 
     expect(items.length).toBeGreaterThan(0)
-    // PV24: every leaf must carry loc — the 4-stage pipeline must
-    // not break the parser's loc propagation.
+    // PV24: every leaf must carry loc.
     for (const it of items) {
       expect(it.loc).toBeDefined()
       expect(Array.isArray(it.loc)).toBe(true)
@@ -81,8 +56,8 @@ describe('irInspector integration — parse → run', () => {
 
   it('purity: running the pipeline twice on the same code yields deep-equal IR', () => {
     const code = 'note("c3 e3 g3")'
-    const run1 = runPasses(IR.code(code), v4Passes)[3].ir
-    const run2 = runPasses(IR.code(code), v4Passes)[3].ir
+    const run1 = strudelPasses(code)[3].ir
+    const run2 = strudelPasses(code)[3].ir
     expect(run2).toEqual(run1)
   })
 })
@@ -97,8 +72,7 @@ describe('irInspector integration — parse → run', () => {
 // here, separate from the unit-level coverage in timelineCapture.test.ts.
 
 function buildSnap(code: string = 'note("c3")'): IRSnapshotInput {
-  const seed = IR.code(code)
-  const passes = runPasses(seed, v4Passes)
+  const passes = strudelPasses(code)
   const finalIR = passes[passes.length - 1].ir
   return {
     ts: 1234,

@@ -46,7 +46,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { extractTracks, parseStrudel } from '../parseStrudel'
-import { runRawStage } from '../parseStrudelStages'
+import { parseStrudelStages } from '../parseStrudelStages'
 import { IR } from '../PatternIR'
 import { pipeline } from './helpers/stagesParity'
 
@@ -107,16 +107,17 @@ describe('#1476 — a commented label inside a chain is not a track', () => {
     expect(tracks[0].expr).toContain('.gain(.5)')
   })
 
-  it('the staged pipeline agrees — extractTracks is the shared seam', () => {
-    // RAW is where extractTracks is consumed on the staged side. One track,
-    // carrying the tail, exactly as `parseStrudel` sees it.
-    const raw = JSON.stringify(runRawStage(IR.code(INTERIOR)))
-    expect(raw).toContain('.slow(\\".1275\\")')
-    // RAW lifts each track to a `Code` carrying its label and `$:` extent; one
-    // track means one `trackLabel`, and its extent runs to the end of the file
-    // rather than stopping at the comment block.
-    expect((raw.match(/"trackLabel"/g) ?? []).length).toBe(1)
-    expect(raw).toContain(`"dollarEnd":${INTERIOR.length}`)
+  it('the Inspector RAW view agrees — extractTracks is the shared seam', () => {
+    // RAW shows each top-level track's body as the source it was parsed from
+    // (#1387). One track, carrying the tail, exactly as `parseStrudel` sees it.
+    const raw = parseStrudelStages(INTERIOR)[0].ir
+    expect(raw.tag).toBe('Track')
+    if (raw.tag !== 'Track') throw new Error('unreachable')
+    expect(raw.body.tag).toBe('Code')
+    expect(JSON.stringify(raw.body)).toContain('.slow(\\".1275\\")')
+    // The track's extent runs to the end of the file rather than stopping at
+    // the comment block.
+    expect(raw.loc?.[0]?.end).toBe(INTERIOR.length)
   })
 
   it('and the two remain byte-identical on this document', () => {

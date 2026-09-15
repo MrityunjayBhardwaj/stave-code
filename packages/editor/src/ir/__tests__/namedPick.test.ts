@@ -13,25 +13,14 @@ import { describe, it, expect } from 'vitest'
 import { parseStrudel, toStrudel } from '../../ir'
 import type { PatternIR } from '../../ir'
 import { IR } from '../PatternIR'
-import {
-  runRawStage,
-  runMiniExpandedStage,
-  runChainAppliedStage,
-  runFinalStage,
-} from '../parseStrudelStages'
-import { runPasses, type Pass } from '../passes'
+import { parseStrudelStages } from '../parseStrudelStages'
 
-// The staged pipeline that builds the app's IR SNAPSHOT (feeds the Song
-// timeline). Must agree with one-shot parseStrudel (P185 divergence guard).
-const STAGES: readonly Pass<PatternIR>[] = [
-  { name: 'RAW', run: runRawStage },
-  { name: 'MINI-EXPANDED', run: runMiniExpandedStage },
-  { name: 'CHAIN-APPLIED', run: runChainAppliedStage },
-  { name: 'Parsed', run: runFinalStage },
-]
+// The Inspector's CHAIN-APPLIED view — `parseStrudel` through its recording
+// path (#1387). Must agree with one-shot parseStrudel: recording must not change
+// the parse (P185 divergence guard).
 function pipeline(code: string): PatternIR {
-  const passes = runPasses(IR.code(code), STAGES)
-  return passes[passes.length - 1].ir
+  const stages = parseStrudelStages(code)
+  return stages[stages.length - 1].ir
 }
 
 function bodyOf(ir: PatternIR): PatternIR {
