@@ -61,6 +61,31 @@ export interface BounceProbe {
    * that a skip is SAID, not only counted.
    */
   offlineReport(code: string, secs: number): Promise<OfflineReportOutcome>;
+  /**
+   * #1409 — `renderStems`, one row per stem in the order the result lists them,
+   * plus the order progress was reported in. A failed stem says whether it was
+   * refused as SILENT and how big the refused take is, read through the error
+   * the way a caller would have to.
+   */
+  stems(stems: Record<string, string>, secs: number): Promise<StemsOutcome>;
+}
+
+/** #1409 — what `renderStems` returned, stem by stem. */
+export interface StemsOutcome {
+  /** False only when `renderStems` itself threw, rather than a stem failing. */
+  ok: boolean;
+  error?: string;
+  progress: Array<[string, number, number]>;
+  stems?: Array<{
+    key: string;
+    ok: boolean;
+    error?: string;
+    silent?: boolean;
+    /** Byte size of `SilentCaptureError.refused`, when the stem was refused as silent. */
+    refusedBytes?: number;
+    /** base64 WAV, present only when the stem is `ok`. */
+    wav?: string;
+  }>;
 }
 
 /** #1353 — what `renderOfflineReport` said about one render. */
@@ -213,6 +238,36 @@ export function installBounceProbe(): () => void {
         return { ok: false, error: String(err), warnings };
       } finally {
         unsubscribe();
+      }
+    },
+
+    stems: async (stems, secs) => {
+      const progress: Array<[string, number, number]> = [];
+      try {
+        const e = await booted();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mod: any = await import("@stave/editor");
+        const out = await e.renderStems(stems, secs, (s, i, total) => {
+          progress.push([s, i, total]);
+        });
+        const rows: NonNullable<StemsOutcome["stems"]> = [];
+        for (const [key, o] of Object.entries(out)) {
+          if (o.ok) {
+            rows.push({ key, ok: true, wav: await toBase64(o.blob) });
+          } else {
+            const silent = o.error instanceof mod.SilentCaptureError;
+            rows.push({
+              key,
+              ok: false,
+              error: String(o.error),
+              silent,
+              refusedBytes: silent ? (o.error as { refused: Blob }).refused.size : undefined,
+            });
+          }
+        }
+        return { ok: true, progress, stems: rows };
+      } catch (err) {
+        return { ok: false, error: String(err), progress };
       }
     },
 

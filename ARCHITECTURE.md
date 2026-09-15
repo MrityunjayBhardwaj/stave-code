@@ -183,28 +183,26 @@ export class StrudelEngine extends EventEmitter {
   }
 
   /**
-   * Parallel multi-stem export. Renders each stem's standalone Strudel program
-   * independently in separate OfflineAudioContexts, all in parallel.
-   * Returns a map of stemName → WAV Blob.
+   * Multi-stem export. Renders each stem's standalone Strudel program through
+   * the real superdough graph, ONE AT A TIME — the render borrows superdough's
+   * module globals, so two at once would corrupt each other (#1409).
+   * Returns a map of stemName → outcome; a stem that fails costs no other stem.
    *
-   * @param stems    { drums: "setcps(...)\n$: ...", bass: "...", ... }
+   * @param stems    { drums: "s(\"bd*4\")", bass: "...", ... }
    * @param duration Seconds to render per stem
-   * @param onProgress Called after each stem completes: (stemName, index, total)
+   * @param onProgress Called after each stem settles, in order: (stemName, index, total)
    */
   async renderStems(
     stems: Record<string, string>,
     duration: number,
     onProgress?: (stem: string, i: number, total: number) => void
-  ): Promise<Record<string, Blob>> {
-    const keys = Object.keys(stems)
-    const blobs = await Promise.all(
-      keys.map(async (key, i) => {
-        const blob = await OfflineRenderer.render(stems[key], duration, this.audioCtx.sampleRate)
-        onProgress?.(key, i + 1, keys.length)
-        return [key, blob] as [string, Blob]
-      })
+  ): Promise<Record<string, StemOutcome<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }>>> {
+    const sampleRate = this.audioCtx.sampleRate
+    return renderStemsInOrder(
+      stems,
+      (code) => this.renderOfflineReport(code, duration, sampleRate),
+      onProgress
     )
-    return Object.fromEntries(blobs)
   }
 }
 ```
@@ -685,11 +683,12 @@ const stems = {
   pad:    'setcps(120/240)\n$: note("<[c3,eb3]>").s("triangle")...',
 }
 
-const blobs = await engine.renderStems(stems, 30)
-// blobs.drums  → WAV containing ONLY drum audio
-// blobs.bass   → WAV containing ONLY bass audio
-// blobs.melody → WAV containing ONLY melody audio
-// blobs.pad    → WAV containing ONLY pad audio
+const out = await engine.renderStems(stems, 30)
+// out.drums  → { ok: true, blob, haps, played, skipped } — WAV containing ONLY drum audio
+// out.bass   → the same shape, ONLY bass audio
+// A stem that fails — silent, or nothing in it could play — is { ok: false, error }
+// and costs no other stem. A silent stem's error is a SilentCaptureError whose
+// `refused` still holds the take.
 
 // Each blob is a standalone WAV — download, upload to CDN, feed to AI, anything.
 ```
@@ -720,10 +719,12 @@ that calls `renderStems()` and downloads a ZIP (using `fflate` for in-browser ZI
 ```ts
 import { zipSync } from 'fflate'
 
-const blobs = await engine.renderStems(stems, 30)
+const out = await engine.renderStems(stems, 30)
 const files: Record<string, Uint8Array> = {}
-for (const [name, blob] of Object.entries(blobs)) {
-  files[`${name}.wav`] = new Uint8Array(await blob.arrayBuffer())
+for (const [name, stem] of Object.entries(out)) {
+  // A stem that failed (silent, or nothing in it could play) is left out of
+  // the ZIP; the others are unaffected.
+  if (stem.ok) files[`${name}.wav`] = new Uint8Array(await stem.blob.arrayBuffer())
 }
 const zip = zipSync(files)
 downloadBlob(new Blob([zip], { type: 'application/zip' }), 'stems.zip')

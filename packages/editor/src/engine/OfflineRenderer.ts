@@ -18,15 +18,16 @@ import { installMiniStringParser } from './stringParser'
  * `initAudio()` against it and then the real `superdough()` per hap — measured
  * audible, samples and all (#1398/#1399).
  *
- * ⚠ `StrudelEngine.renderOffline` NO LONGER COMES THROUGH HERE (#1353). It
- * renders through the real graph (`renderPatternOffline`), so drums sound and a
- * sound that cannot play is reported. The only caller left is
- * `StrudelEngine.renderStems`, which therefore still drops every sample-based
- * sound — moving it is #1409's change, because stems render in parallel and the
- * real graph renders through module globals that one render at a time can own.
+ * ⚠ NOTHING IN STAVE CALLS THIS ANY MORE. `StrudelEngine.renderOffline` moved
+ * to the real superdough graph in #1353 and `renderStems` followed in #1409, so
+ * both play drums and report a sound that cannot play. It stays exported only
+ * because removing a public export is its own decision.
  *
- * A drum-only stem still renders to nothing here, and `WavEncoder` refuses it as
- * silent (#1402) rather than returning a file of zeros.
+ * A drum-only render still comes back as nothing here, and `WavEncoder` refuses
+ * it as silent (#1402) rather than returning a file of zeros.
+ *
+ * @deprecated Use `StrudelEngine.renderOfflineReport` or `renderStems`, which
+ * render through the real graph.
  */
 export class OfflineRenderer {
   static async render(

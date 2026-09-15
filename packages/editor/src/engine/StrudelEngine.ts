@@ -2,10 +2,10 @@ import { HapStream } from './HapStream'
 import { BreakpointStore } from './BreakpointStore'
 import { LiveRecorder } from './LiveRecorder'
 import { perf } from '../perf/profiler'
-import { OfflineRenderer } from './OfflineRenderer'
 import { WavEncoder } from './WavEncoder'
 import { emitLog } from './engineLog'
 import { renderPatternOffline, describeSkipped, type SkippedSounds } from './renderPatternOffline'
+import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { normalizeStrudelHap, declaredLocationKeys } from './NormalizedHap'
 import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
@@ -1899,22 +1899,46 @@ export class StrudelEngine implements LiveCodingEngine {
     }
   }
 
+  /**
+   * Render each stem's standalone program to its own WAV, through the same real
+   * graph as `renderOfflineReport`, and report what happened to every stem.
+   *
+   * ⚠ IT USED TO DROP EVERY DRUM, AND ONE SILENT STEM LOST THEM ALL (#1409). It
+   * went through `OfflineRenderer`, which skips any sample-based sound, and it
+   * rendered with `Promise.all`, so the first stem `WavEncoder` refused as
+   * silent rejected the whole set — stems that had already rendered included.
+   *
+   * ⚠ ONE STEM AT A TIME, on purpose. The real-graph render borrows superdough's
+   * module globals for its duration, so two at once would corrupt each other.
+   * `renderStemsInOrder` owns that ordering and says why.
+   *
+   * ⚠ A STEM THAT FAILS IS `{ ok: false, error }` AND COSTS NO OTHER STEM. A
+   * silent one's `error` is a `SilentCaptureError`, whose `refused` still holds
+   * the take — reached through the error, never handed back as a result (#1410).
+   *
+   * Same contracts as `renderOfflineReport`: requires `init()`, render with the
+   * transport stopped, and `setcps`/`$:`/`.viz` in a stem are still refused
+   * (#1344). `onProgress` fires after each stem settles, in input order.
+   */
   async renderStems(
     stems: Record<string, string>,
     duration: number,
     onProgress?: (stem: string, i: number, total: number) => void
-  ): Promise<Record<string, Blob>> {
-    const keys = Object.keys(stems)
-    const sampleRate = this.audioCtx?.sampleRate ?? 44100
-
-    const blobs = await Promise.all(
-      keys.map(async (key, i) => {
-        const blob = await OfflineRenderer.render(stems[key], duration, sampleRate)
-        onProgress?.(key, i + 1, keys.length)
-        return [key, blob] as [string, Blob]
-      })
+  ): Promise<
+    Record<
+      string,
+      StemOutcome<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }>
+    >
+  > {
+    if (!this.audioCtx) {
+      throw new Error('StrudelEngine not initialized — call init() first')
+    }
+    const sampleRate = this.audioCtx.sampleRate
+    return renderStemsInOrder(
+      stems,
+      (code) => this.renderOfflineReport(code, duration, sampleRate),
+      onProgress
     )
-    return Object.fromEntries(blobs)
   }
 
   getAnalyser(): AnalyserNode {
