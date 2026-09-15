@@ -5631,6 +5631,16 @@ function resolveAlias(rawS) {
   return SOUND_ALIASES[rawS.toLowerCase()];
 }
 __name(resolveAlias, "resolveAlias");
+function aliasSoundValue(value, soundMap) {
+  if (value === null || typeof value !== "object") return { value };
+  const rawS = value.s;
+  if (typeof rawS !== "string") return { value };
+  if (soundMap && soundMap[rawS.toLowerCase()] !== void 0) return { value };
+  const aliased = resolveAlias(rawS);
+  if (!aliased || aliased === rawS) return { value };
+  return { value: { ...value, s: aliased }, resolution: { from: rawS, to: aliased } };
+}
+__name(aliasSoundValue, "aliasSoundValue");
 
 // src/engine/friendlyErrors.ts
 function parseStackLocation(err) {
@@ -9017,16 +9027,11 @@ var _StrudelEngine = class _StrudelEngine {
     const audioCtxRef = audioCtx;
     const wrappedOutput = /* @__PURE__ */ __name(async (hap, deadline, duration, cps, t) => {
       perf.inc("audio.triggers");
-      const rawS = hap?.value?.s;
-      if (typeof rawS === "string") {
-        const lower = rawS.toLowerCase();
-        const liveSoundMap = this.soundMapRef?.get?.() ?? void 0;
-        if (!liveSoundMap || liveSoundMap[lower] === void 0) {
-          const aliased = resolveAlias(rawS);
-          if (aliased && aliased !== rawS) {
-            this.lastAliasResolutions.push({ from: rawS, to: aliased });
-            hap.value = { ...hap.value, s: aliased };
-          }
+      if (hap) {
+        const aliased = aliasSoundValue(hap.value, this.soundMapRef?.get?.() ?? void 0);
+        if (aliased.resolution) {
+          this.lastAliasResolutions.push(aliased.resolution);
+          hap.value = aliased.value;
         }
       }
       const enriched = hapStream.emit(hap, t, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? void 0, this.lastDeclaredLocations ?? void 0);
@@ -9627,7 +9632,10 @@ var _StrudelEngine = class _StrudelEngine {
         getSuperdoughAudioController: wa.getSuperdoughAudioController,
         setSuperdoughAudioController: wa.setSuperdoughAudioController,
         initAudio: wa.initAudio,
-        superdough: wa.superdough,
+        // #1635 — the alias step live playback applies in `wrappedOutput`. The
+        // render calls superdough directly, so without this `kick` was "not
+        // found" in a bounce while it played live.
+        superdough: /* @__PURE__ */ __name((value, t, hapDuration, cps, cycle) => wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? void 0).value, t, hapDuration, cps, cycle), "superdough"),
         createContext: /* @__PURE__ */ __name((frames, rate) => new OfflineAudioContext(2, frames, rate), "createContext")
       }
     ));
@@ -9639,12 +9647,17 @@ var _StrudelEngine = class _StrudelEngine {
         message: `Bounce left out ${left} of ${result.haps} sounds: ` + describeSkipped(result.skipped)
       });
     }
-    return {
-      blob: WavEncoder.encode(result.buffer),
-      haps: result.haps,
-      played: result.played,
-      skipped: result.skipped
-    };
+    let blob;
+    try {
+      blob = WavEncoder.encode(result.buffer);
+    } catch (err) {
+      if (err instanceof SilentCaptureError && result.skipped.length > 0) {
+        const left = result.skipped.reduce((n, s) => n + s.count, 0);
+        err.message = `${err.message} The render left out ${left} of ${result.haps} sounds: ${describeSkipped(result.skipped)}`;
+      }
+      throw err;
+    }
+    return { blob, haps: result.haps, played: result.played, skipped: result.skipped };
   }
   /**
    * Render each stem's standalone program to its own WAV, through the same real

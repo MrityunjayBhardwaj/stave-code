@@ -991,6 +991,44 @@ test.describe('#1636 — an offline bounce and live playback do not trade pooled
 })
 
 /**
+ * #1635 — Stave maps familiar names (`kick`, `snare`, `hat`, …) to the loaded
+ * samples (`aliases.ts`). The live output did that per note, but the offline
+ * render calls superdough directly, so before the fix `s("kick*4")` played live
+ * and bounced to a file refused as silent. Measured then: live rms 0.155, bounce
+ * refused; `s("bd*4")` bounced at 0.162.
+ */
+test.describe('#1635 — a sound alias bounces like the sound it names', () => {
+  test('s("kick*4") bounces sample-for-sample like s("bd*4")', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const bd = await callBounceLoaded(page, '$: s("bd*4")', 4)
+    const kick = await callBounceLoaded(page, '$: s("kick*4")', 4)
+    console.log(
+      `[#1635 alias] bd ok=${bd.ok} err=${bd.error ?? ''} skipped=${JSON.stringify(bd.skipped)} ` +
+        `kick ok=${kick.ok} err=${kick.error ?? ''} skipped=${JSON.stringify(kick.skipped)}`,
+    )
+    // The control has to render, or "kick matches bd" could be two failures agreeing.
+    if (!bd.ok) throw new Error(`control bd did not bounce: ${bd.error}`)
+    const b = readWav(bd.wav!)
+    const diff = kick.wav ? maxSampleDiff(readWav(kick.wav).mono, b.mono) : Infinity
+    console.log(`[#1635 alias] sr=${b.sampleRate} bd peak=${peak(b.mono).toFixed(4)} maxSampleDiff kick vs bd=${diff}`)
+    expect({ ok: kick.ok, skipped: kick.skipped, same: diff < 1e-4 }).toEqual({ ok: true, skipped: [], same: true })
+  })
+
+  test('a bounce refused as silent names the sounds it left out', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const out = await callBounceLoaded(page, '$: s("nosuchsound*4")', 2)
+    console.log(`[#1635 silent] ok=${out.ok} error=${out.error}`)
+    expect({
+      ok: out.ok,
+      silent: /capture is silent/.test(out.error ?? ''),
+      named: /nosuchsound/.test(out.error ?? ''),
+    }).toEqual({ ok: false, silent: true, named: true })
+  })
+})
+
+/**
  * #1356 — how long does the graph keep sounding AFTER the transport stops?
  *
  * Stopping halts Strudel's scheduler but does not cancel Web Audio nodes
