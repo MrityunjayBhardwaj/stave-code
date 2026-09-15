@@ -72,6 +72,7 @@ export { BufferedScheduler } from './engine/BufferedScheduler'
 export { WavEncoder, SilentCaptureError, SILENCE_FLOOR } from './engine/WavEncoder'
 export type { EncodeOptions } from './engine/WavEncoder'
 export { OfflineRenderer } from './engine/OfflineRenderer'
+export type { StemOutcome } from './engine/renderStemsInOrder'
 export { LiveRecorder } from './engine/LiveRecorder'
 export { noteToMidi } from './engine/noteToMidi'
 

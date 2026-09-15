@@ -147,6 +147,28 @@ function callReport(page: Page, code: string, secs: number): Promise<ReportOutco
   ) as Promise<ReportOutcome>
 }
 
+type StemsOutcome = {
+  ok: boolean
+  error?: string
+  progress: Array<[string, number, number]>
+  stems?: Array<{ key: string; ok: boolean; error?: string; silent?: boolean; refusedBytes?: number; wav?: string }>
+}
+
+/** #1409 — `renderStems`, stem by stem. */
+function callStems(page: Page, stems: Record<string, string>, secs: number): Promise<StemsOutcome> {
+  return page.evaluate(
+    ([st, s]) =>
+      (
+        window as unknown as {
+          __staveBounceProbe: {
+            stems: (stems: Record<string, string>, secs: number) => Promise<StemsOutcome>
+          }
+        }
+      ).__staveBounceProbe.stems(st as Record<string, string>, s as number),
+    [stems, secs] as const,
+  ) as Promise<StemsOutcome>
+}
+
 /** Transient count via energy flux on 10ms frames — a note-rate proxy. */
 function onsetCount(mono: Float64Array, sampleRate: number): number {
   const hop = Math.floor(sampleRate * 0.01)
@@ -499,6 +521,50 @@ test.describe('the three audio-bounce paths', () => {
       played: 8,
       skipped: [{ reason: 'sound nosuchsound not found! Is it loaded?', count: 8 }],
       audible: true,
+    })
+  })
+
+  test('stems play their drums, and one silent stem costs no other stem (#1409)', async ({
+    page,
+  }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    // ⚠ THE SILENT STEM IS IN THE MIDDLE, so a set that still failed on the
+    // first refusal would lose the stem AFTER it as well as the one before. The
+    // drum stem is the class the old renderer dropped; it rendered to nothing and
+    // was refused, which took every other stem with it.
+    const out = await callStems(
+      page,
+      { drums: DRUMS_ONLY, missing: 's("nosuchsound*4")', synth: SYNTH_ONLY },
+      4,
+    )
+    const row = (key: string) => out.stems?.find((s) => s.key === key)
+    const audible = (key: string) => {
+      const wav = row(key)?.wav
+      return wav ? nonZeroCount(readWav(wav).mono) > 0 : false
+    }
+    console.log(
+      `[#1409 stems] ok=${out.ok} error=${out.error ?? 'none'} progress=${JSON.stringify(out.progress)} ` +
+        (out.stems ?? [])
+          .map((s) => `${s.key}:ok=${s.ok},silent=${s.silent},refused=${s.refusedBytes},` +
+            `nonZero=${s.wav ? nonZeroCount(readWav(s.wav).mono) : 0},sr=${s.wav ? readWav(s.wav).sampleRate : '-'}`)
+          .join(' '),
+    )
+    expect({
+      ok: out.ok,
+      keys: out.stems?.map((s) => s.key),
+      progress: out.progress,
+      drums: { ok: row('drums')?.ok, audible: audible('drums') },
+      // A refused take is a complete WAV: more than a bare 44-byte header.
+      missing: { ok: row('missing')?.ok, silent: row('missing')?.silent, refusedKept: (row('missing')?.refusedBytes ?? 0) > 44 },
+      synth: { ok: row('synth')?.ok, audible: audible('synth') },
+    }).toEqual({
+      ok: true,
+      keys: ['drums', 'missing', 'synth'],
+      progress: [['drums', 1, 3], ['missing', 2, 3], ['synth', 3, 3]],
+      drums: { ok: true, audible: true },
+      missing: { ok: false, silent: true, refusedKept: true },
+      synth: { ok: true, audible: true },
     })
   })
 })
