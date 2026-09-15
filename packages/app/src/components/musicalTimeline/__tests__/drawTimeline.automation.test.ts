@@ -18,6 +18,7 @@ import { DEFAULT_METER } from '../../../lib/meter'
 import type { TimelineScene, SceneLane } from '../timelineScene'
 import type { SignalAutomation } from '@stave/editor'
 import { signalTimeAt } from '../../../../../editor/src/ir/signalAutomation'
+import { CHAIN_ROOT_RECOGNISER } from '../../../../../editor/src/ir/parseStrudel'
 import { computeLaneLayout } from '../laneLayout'
 
 const THEME: DrawTheme = {
@@ -407,10 +408,34 @@ describe('a fabricated curve is drawn as indicative (#1486)', () => {
     }
   })
 
-  it('leaves `time` solid — deterministic, so the drawn ramp IS the signal', () => {
-    // It is unbounded, not fabricated. The two are different objections and it
-    // already abstains for the other one.
-    expect(dashOf('time')).toEqual([])
+  // Unbounded and deterministic. This arm used to pin `time` as a SOLID ramp, reasoning
+  // that the drawn ramp is the signal. It is not: the lane wraps the phase every period,
+  // so it drew a saw where the engine plays one line that keeps rising (#1614). Not
+  // indicative either — the objection is that there is nothing to draw between.
+  const UNBOUNDED_KINDS = ['time', 'cyclesPer', 'per', 'perCycle', 'perx'] as const
+
+  it('draws no curve for an unbounded kind, even when handed one directly (#1614, #1494)', () => {
+    for (const kind of UNBOUNDED_KINDS) {
+      expect(run([auto({ kind, periodCycles: 2 })]).paths, kind).toEqual([])
+    }
+    // Control: the same automation on a waveform does draw.
+    expect(run([auto({ kind: 'saw', periodCycles: 2 })]).paths).toHaveLength(1)
+  })
+
+  it('the arms above answer for every signal kind the parser recognises (#1494)', () => {
+    // The drawing table is keyed by `SignalKind`, so the compiler holds IT to every kind.
+    // Nothing holds these arms to it; this does, so a kind the parser learns cannot slip
+    // past the visible check while the table quietly carries an entry for it.
+    const covered = new Set<string>([
+      'rand', 'rand2', 'brand', 'perlin', 'berlin',
+      'mousex', 'mousey', 'mouseX', 'mouseY',
+      'sine', 'sine2', 'cosine', 'cosine2', 'saw', 'saw2', 'isaw', 'isaw2',
+      'tri', 'tri2', 'itri', 'itri2', 'square', 'square2',
+      ...UNBOUNDED_KINDS,
+    ])
+    const recognised = [...CHAIN_ROOT_RECOGNISER.values()].flatMap((d) => (d.tag === 'Signal' ? [d.kind] : []))
+    expect(recognised.length).toBeGreaterThan(0)
+    expect([...covered].sort()).toEqual([...new Set(recognised)].sort())
   })
 
   it('does not leave the dash set for whatever strokes next', () => {
