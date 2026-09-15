@@ -5597,6 +5597,173 @@ function renderNote(ctx, oscType, freq, gain, release, startTime, endTime) {
 }
 __name(renderNote, "renderNote");
 
+// src/engine/engineLog.ts
+var MAX_HISTORY = 500;
+var history = [];
+var dedupeIndex = /* @__PURE__ */ new Map();
+var listeners = /* @__PURE__ */ new Set();
+var fixedMarkers = /* @__PURE__ */ new Map();
+var fixedListeners = /* @__PURE__ */ new Set();
+var idSeq = 0;
+function fixedKey(runtime, source) {
+  return `${runtime}:${source ?? "*"}`;
+}
+__name(fixedKey, "fixedKey");
+function makeId() {
+  idSeq += 1;
+  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
+}
+__name(makeId, "makeId");
+function dedupeKey(p) {
+  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
+}
+__name(dedupeKey, "dedupeKey");
+function emitLog(partial) {
+  const key2 = dedupeKey(partial);
+  const existing = dedupeIndex.get(key2);
+  if (existing) {
+    existing.ts = Date.now();
+    existing.count = (existing.count ?? 1) + 1;
+    queueMicrotask(() => {
+      for (const fn of listeners) {
+        try {
+          fn(existing, history);
+        } catch {
+        }
+      }
+    });
+    return existing;
+  }
+  const entry = {
+    id: makeId(),
+    ts: Date.now(),
+    count: 1,
+    ...partial
+  };
+  history.push(entry);
+  dedupeIndex.set(key2, entry);
+  if (history.length > MAX_HISTORY) {
+    const removed = history.splice(0, history.length - MAX_HISTORY);
+    for (const r of removed) {
+      const rk = dedupeKey(r);
+      if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
+    }
+  }
+  queueMicrotask(() => {
+    for (const fn of listeners) {
+      try {
+        fn(entry, history);
+      } catch {
+      }
+    }
+  });
+  return entry;
+}
+__name(emitLog, "emitLog");
+function subscribeLog(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+__name(subscribeLog, "subscribeLog");
+function getLogHistory() {
+  return [...history];
+}
+__name(getLogHistory, "getLogHistory");
+function clearLog() {
+  history.length = 0;
+  dedupeIndex.clear();
+  fixedMarkers.clear();
+  for (const fn of listeners) {
+    try {
+      fn(null, history);
+    } catch {
+    }
+  }
+}
+__name(clearLog, "clearLog");
+function emitFixed(input) {
+  const marker = {
+    runtime: input.runtime,
+    source: input.source,
+    ts: Date.now()
+  };
+  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
+  queueMicrotask(() => {
+    for (const fn of fixedListeners) {
+      try {
+        fn(marker, fixedMarkers);
+      } catch {
+      }
+    }
+  });
+  return marker;
+}
+__name(emitFixed, "emitFixed");
+function subscribeFixed(fn) {
+  fixedListeners.add(fn);
+  return () => {
+    fixedListeners.delete(fn);
+  };
+}
+__name(subscribeFixed, "subscribeFixed");
+function getFixedMarkers() {
+  return new Map(fixedMarkers);
+}
+__name(getFixedMarkers, "getFixedMarkers");
+function makeFixedKey(runtime, source) {
+  return fixedKey(runtime, source);
+}
+__name(makeFixedKey, "makeFixedKey");
+
+// src/engine/renderPatternOffline.ts
+async function renderPatternOffline(pattern, { cps, duration, sampleRate }, deps) {
+  const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
+  const liveCtx = deps.getAudioContext();
+  const liveController = deps.getSuperdoughAudioController();
+  const ctx = deps.createContext(Math.ceil(duration * sampleRate), sampleRate);
+  let played = 0;
+  const skipped = /* @__PURE__ */ new Map();
+  try {
+    deps.setAudioContext(ctx);
+    deps.setSuperdoughAudioController(null);
+    await deps.initAudio({});
+    for (const hap of haps) {
+      hap.ensureObjectValue?.();
+      const begin = hap.whole.begin.valueOf();
+      try {
+        await deps.superdough(
+          hap.value,
+          begin / cps,
+          hap.duration.valueOf() / cps,
+          cps,
+          begin
+        );
+        played++;
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
+      }
+    }
+    const buffer = await ctx.startRendering();
+    return {
+      buffer,
+      haps: haps.length,
+      played,
+      skipped: [...skipped].map(([reason, count]) => ({ reason, count }))
+    };
+  } finally {
+    deps.setAudioContext(liveCtx);
+    deps.setSuperdoughAudioController(liveController);
+  }
+}
+__name(renderPatternOffline, "renderPatternOffline");
+function describeSkipped(skipped) {
+  return skipped.map((s) => `${s.count} \xD7 ${s.reason}`).join("; ");
+}
+__name(describeSkipped, "describeSkipped");
+
 // src/visualizers/blockScan.ts
 function startsTopLevelBlock(trimmed) {
   return /^_?\$:/.test(trimmed) || trimmed.startsWith("setcps") || /^all\s*\(/.test(trimmed) || trimmed.startsWith("/*");
@@ -9556,107 +9723,89 @@ var _StrudelEngine = class _StrudelEngine {
       signal
     );
   }
+  /**
+   * Render `duration` seconds of `code` to a WAV, faster than real time, through
+   * the same superdough graph the live engine plays — samples, soundfonts and
+   * effects included (#1353). The report form is `renderOfflineReport`.
+   */
   async renderOffline(code, duration, sampleRate) {
-    return OfflineRenderer.render(
-      code,
-      duration,
-      sampleRate ?? this.audioCtx?.sampleRate ?? 44100
-    );
+    return (await this.renderOfflineReport(code, duration, sampleRate)).blob;
   }
   /**
-   * #1398 SPIKE — render through the REAL superdough graph into an
-   * `OfflineAudioContext`, so samples and effects apply.
+   * `renderOffline`, plus what the render could and could not play.
    *
-   * `OfflineRenderer` (the method above) skips every sample-based sound and
-   * states why in its header: "AudioWorklets cannot be re-registered in a fresh
-   * OfflineAudioContext." Upstream contradicts that — `@strudel/webaudio` ships
-   * `renderPatternAudio`, which builds an offline context, calls `initAudio()`
-   * against it and then the real `superdough()` per hap. This method runs that
-   * function so the claim can be measured rather than argued.
+   * ⚠ IT USED TO DROP EVERY DRUM, WITH NO ERROR (#1353). `renderOffline` went
+   * through `OfflineRenderer`, a hand-rolled oscillator renderer that skipped
+   * any sound it could not map to a waveform and any hap without a pitch. A drum
+   * pattern stacked into a synth came back byte-identical to the synth alone.
+   * Its stated reason — worklets cannot be registered on a fresh
+   * `OfflineAudioContext` — was measured false (#1398); `renderPatternOffline`
+   * is the real graph, and what it changes from upstream is in its header.
    *
-   * ⚠ THE COUPLING (#1400): `renderPatternAudio` opens with
-   * `await getAudioContext().close()`. It closes whatever superdough's MODULE
-   * GLOBAL holds — not a context handed to it — so the live one is the one that
-   * dies unless the global is pointing somewhere expendable when upstream reads
-   * it. That is what the sacrificial context below is for, and it is the whole
-   * reason this method is more than a call.
+   * ⚠ A SOUND THAT FAILS IS REPORTED, NOT DROPPED. Every hap superdough refuses
+   * is counted by reason, returned in `skipped`, and emitted as one warning
+   * BEFORE encoding — so a render in which nothing could play still says why
+   * when `WavEncoder` refuses it as silent (#1402).
    *
-   * The live context cannot simply be rebuilt afterwards: this engine took it
-   * once at `init()` and built `analyserNode`, the master tap and every
-   * per-track analyser on it, `init()` is guarded against re-entry, and the
-   * context is already published on the workspace audio bus, so viz consumers
-   * hold the same nodes.
+   * ⚠ REQUIRES `init()`. Sample banks, synth sounds and the string parser are
+   * registered there; before it, every drum is "not found" and the render would
+   * report exactly that. Same contract as `record()`.
    *
-   * ⚠ AND IT FAILS SILENTLY, which is why the guard is worth its weight: the
-   * render's `finally` calls `setAudioContext(null)`, so the next
-   * `getAudioContext()` returns a fresh context and every "is there a context"
-   * check passes — while everything already wired to the old one stays wired to
-   * a corpse. Measured before the fix, one page, one engine: live capture
-   * peak 0.7826 → render ok → live capture peak 0.0000, ok=true, no error. A
-   * valid full-length WAV of silence, reported as success. Looking at the
-   * context tells you nothing; only the OUTPUT does, which is why the arm that
-   * covers this reads peaks either side of a render
-   * (`bounce-paths.spec.ts`, '#1400').
+   * ⚠ TEMPO IS THE ENGINE'S ONE READING (`getCps`), falling back to Strudel's
+   * 0.5 — never a regex over the source. The old renderer's regex defaulted to
+   * 1 and rendered at double speed (#1345).
    *
-   * ⚠ It also hands its result straight to a browser download and resolves with
-   * nothing, so the Blob is caught on its way out by stubbing the two DOM calls
-   * it uses. The render itself is untouched.
+   * ⚠ WHILE IT RUNS, superdough's module globals name the OFFLINE context, so
+   * anything the live scheduler triggers in that window is rendered into the
+   * bounce rather than played. Render with the transport stopped.
+   *
+   * ⚠ `code` is evaluated with `@strudel/core`'s `evaluate`, outside this
+   * engine's evaluate window, so `setcps`, `$:` and `.viz` are still refused
+   * here (#1344).
    */
-  async renderOfflineViaSuperdough(code, duration, cps = 0.5, sampleRate) {
+  async renderOfflineReport(code, duration, sampleRate) {
+    if (!this.audioCtx) {
+      throw new Error("StrudelEngine not initialized \u2014 call init() first");
+    }
     const wa = await import('@strudel/webaudio');
     const core = await import('@strudel/core');
     const { transpiler } = await import('@strudel/transpiler');
-    const sr = sampleRate ?? this.audioCtx?.sampleRate ?? 44100;
     const evaluated = await core.evaluate(code, transpiler);
     const pattern = evaluated?.pattern;
     if (!pattern) {
-      throw new Error("renderOfflineViaSuperdough: no pattern returned from evaluate()");
+      throw new Error("renderOffline: no pattern returned from evaluate()");
     }
-    const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).length;
-    const origCreate = URL.createObjectURL;
-    const origRevoke = URL.revokeObjectURL;
-    const origClick = HTMLAnchorElement.prototype.click;
-    let captured = null;
-    const liveCtx = wa.getAudioContext();
-    const liveController = wa.getSuperdoughAudioController();
-    const sacrificial = new AudioContext();
-    wa.setAudioContext(sacrificial);
-    try {
-      URL.createObjectURL = (b) => {
-        captured = b;
-        return "blob:stave-offline-spike";
-      };
-      URL.revokeObjectURL = () => {
-      };
-      HTMLAnchorElement.prototype.click = /* @__PURE__ */ __name(function noop() {
-      }, "noop");
-      await wa.renderPatternAudio(
-        pattern,
-        cps,
-        0,
-        duration * cps,
-        sr,
-        void 0,
-        void 0,
-        void 0
-      );
-    } finally {
-      URL.createObjectURL = origCreate;
-      URL.revokeObjectURL = origRevoke;
-      HTMLAnchorElement.prototype.click = origClick;
-      wa.setAudioContext(liveCtx);
-      wa.setSuperdoughAudioController(liveController);
-      if (sacrificial.state !== "closed") {
-        try {
-          await sacrificial.close();
-        } catch {
-        }
+    const result = await renderPatternOffline(
+      pattern,
+      {
+        cps: this.getCps() ?? 0.5,
+        duration,
+        sampleRate: sampleRate ?? this.audioCtx.sampleRate
+      },
+      {
+        getAudioContext: wa.getAudioContext,
+        setAudioContext: wa.setAudioContext,
+        getSuperdoughAudioController: wa.getSuperdoughAudioController,
+        setSuperdoughAudioController: wa.setSuperdoughAudioController,
+        initAudio: wa.initAudio,
+        superdough: wa.superdough,
+        createContext: /* @__PURE__ */ __name((frames, rate) => new OfflineAudioContext(2, frames, rate), "createContext")
       }
+    );
+    if (result.skipped.length > 0) {
+      const left = result.skipped.reduce((n, s) => n + s.count, 0);
+      emitLog({
+        level: "warn",
+        runtime: "strudel",
+        message: `Bounce left out ${left} of ${result.haps} sounds: ` + describeSkipped(result.skipped)
+      });
     }
-    if (!captured) {
-      throw new Error("renderOfflineViaSuperdough: render produced no blob");
-    }
-    return { blob: captured, haps };
+    return {
+      blob: WavEncoder.encode(result.buffer),
+      haps: result.haps,
+      played: result.played,
+      skipped: result.skipped
+    };
   }
   async renderStems(stems, duration, onProgress) {
     const keys = Object.keys(stems);
@@ -9948,126 +10097,6 @@ var _StrudelEngine = class _StrudelEngine {
 };
 __name(_StrudelEngine, "StrudelEngine");
 var StrudelEngine = _StrudelEngine;
-
-// src/engine/engineLog.ts
-var MAX_HISTORY = 500;
-var history = [];
-var dedupeIndex = /* @__PURE__ */ new Map();
-var listeners = /* @__PURE__ */ new Set();
-var fixedMarkers = /* @__PURE__ */ new Map();
-var fixedListeners = /* @__PURE__ */ new Set();
-var idSeq = 0;
-function fixedKey(runtime, source) {
-  return `${runtime}:${source ?? "*"}`;
-}
-__name(fixedKey, "fixedKey");
-function makeId() {
-  idSeq += 1;
-  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
-}
-__name(makeId, "makeId");
-function dedupeKey(p) {
-  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
-}
-__name(dedupeKey, "dedupeKey");
-function emitLog(partial) {
-  const key2 = dedupeKey(partial);
-  const existing = dedupeIndex.get(key2);
-  if (existing) {
-    existing.ts = Date.now();
-    existing.count = (existing.count ?? 1) + 1;
-    queueMicrotask(() => {
-      for (const fn of listeners) {
-        try {
-          fn(existing, history);
-        } catch {
-        }
-      }
-    });
-    return existing;
-  }
-  const entry = {
-    id: makeId(),
-    ts: Date.now(),
-    count: 1,
-    ...partial
-  };
-  history.push(entry);
-  dedupeIndex.set(key2, entry);
-  if (history.length > MAX_HISTORY) {
-    const removed = history.splice(0, history.length - MAX_HISTORY);
-    for (const r of removed) {
-      const rk = dedupeKey(r);
-      if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
-    }
-  }
-  queueMicrotask(() => {
-    for (const fn of listeners) {
-      try {
-        fn(entry, history);
-      } catch {
-      }
-    }
-  });
-  return entry;
-}
-__name(emitLog, "emitLog");
-function subscribeLog(fn) {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-__name(subscribeLog, "subscribeLog");
-function getLogHistory() {
-  return [...history];
-}
-__name(getLogHistory, "getLogHistory");
-function clearLog() {
-  history.length = 0;
-  dedupeIndex.clear();
-  fixedMarkers.clear();
-  for (const fn of listeners) {
-    try {
-      fn(null, history);
-    } catch {
-    }
-  }
-}
-__name(clearLog, "clearLog");
-function emitFixed(input) {
-  const marker = {
-    runtime: input.runtime,
-    source: input.source,
-    ts: Date.now()
-  };
-  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
-  queueMicrotask(() => {
-    for (const fn of fixedListeners) {
-      try {
-        fn(marker, fixedMarkers);
-      } catch {
-      }
-    }
-  });
-  return marker;
-}
-__name(emitFixed, "emitFixed");
-function subscribeFixed(fn) {
-  fixedListeners.add(fn);
-  return () => {
-    fixedListeners.delete(fn);
-  };
-}
-__name(subscribeFixed, "subscribeFixed");
-function getFixedMarkers() {
-  return new Map(fixedMarkers);
-}
-__name(getFixedMarkers, "getFixedMarkers");
-function makeFixedKey(runtime, source) {
-  return fixedKey(runtime, source);
-}
-__name(makeFixedKey, "makeFixedKey");
 
 // src/visualizers/p5FesBridge.ts
 var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;

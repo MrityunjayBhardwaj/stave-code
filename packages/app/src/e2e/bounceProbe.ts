@@ -44,28 +44,36 @@ export interface BounceProbe {
   /** Which Strudel globals exist right now. Grounds the #1344 diagnosis. */
   globalsCensus(): Record<string, string>;
   /**
-   * #1398 spike — does the REAL superdough graph render into an
-   * `OfflineAudioContext`, with worklets registered and a SAMPLE audible?
+   * #1398 — does the REAL superdough graph render into an `OfflineAudioContext`,
+   * with worklets registered and a SAMPLE audible?
    *
-   * `OfflineRenderer` skips every sample and states the reason in its header:
-   * "AudioWorklets cannot be re-registered in a fresh OfflineAudioContext."
-   * If that is false, the hand-rolled oscillator renderer exists to work around
-   * a constraint that was never there.
+   * The spike that answered yes is now the shipped path: this drives
+   * `renderOfflineReport`, the same render `renderOffline` returns (#1353).
    *
-   * This mirrors `renderPatternAudio` from `@strudel/webaudio` step for step,
-   * with TWO DELIBERATE DIVERGENCES, both to keep it a measurement rather than
-   * a feature: it does NOT `close()` the live context (the probe shares a page
-   * with other arms), and it returns the rendered buffer instead of forcing a
-   * browser download. Everything that bears on the QUESTION — the offline
-   * context, `setAudioContext`, the controller, `initAudio`, and the real
-   * `superdough()` per hap — is the upstream sequence unchanged.
-   *
-   * ⚠ Reports `nonZero` and not merely `ok`. A silent render is the outcome
-   * that matters most and the one an `ok` flag cannot see: both `LiveRecorder`
-   * and `OfflineRenderer` already resolve with a valid, full-length WAV of
-   * pure silence and no error.
+   * ⚠ Reports the WAV and not merely `ok`. A silent render is the outcome that
+   * matters most and the one an `ok` flag cannot see.
    */
   offlineSuperdough(code: string, secs: number): Promise<OfflineSpikeOutcome>;
+  /**
+   * #1353 — `renderOfflineReport`, with what it could not play and the
+   * warnings the engine emitted while rendering. The warnings are the channel a
+   * user sees (the StatusBar and Console read the same log), so an arm can pin
+   * that a skip is SAID, not only counted.
+   */
+  offlineReport(code: string, secs: number): Promise<OfflineReportOutcome>;
+}
+
+/** #1353 — what `renderOfflineReport` said about one render. */
+export interface OfflineReportOutcome {
+  ok: boolean;
+  error?: string;
+  haps?: number;
+  played?: number;
+  skipped?: Array<{ reason: string; count: number }>;
+  /** Warning messages the engine emitted during the call, success or not. */
+  warnings: string[];
+  /** base64 WAV, present only when `ok`. */
+  wav?: string;
 }
 
 /** #1398 — what the offline-superdough spike measured. */
@@ -173,17 +181,38 @@ export function installBounceProbe(): () => void {
 
     offlineSuperdough: async (code, secs) => {
       try {
-        // The engine owns this because `@strudel/webaudio` is the editor's
-        // dependency, not the app's — and because that is where the shipping
-        // path would live if the spike says yes.
         const e = await booted();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { blob, haps } = await (e as any).renderOfflineViaSuperdough(code, secs);
+        const { blob, haps } = await e.renderOfflineReport(code, secs);
         return { ok: true, workletOk: true, haps, wav: await toBase64(blob) };
       } catch (err) {
         // A throw is the INTERESTING outcome, not a harness problem: it is
         // where "worklets cannot be re-registered" would actually show up.
         return { ok: false, workletOk: false, error: String(err) };
+      }
+    },
+
+    offlineReport: async (code, secs) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mod: any = await import("@stave/editor");
+      const warnings: string[] = [];
+      // Subscribed for the call, not diffed from history: `emitLog` folds a
+      // repeat of an existing entry into that entry's count instead of adding a
+      // row, so a history-length diff would miss a warning seen before.
+      const unsubscribe = mod.subscribeLog((entry: { level: string; message: string }) => {
+        if (entry.level === "warn") warnings.push(entry.message);
+      });
+      try {
+        const e = await booted();
+        const { blob, haps, played, skipped } = await e.renderOfflineReport(code, secs);
+        const wav = await toBase64(blob);
+        // listeners fire in a microtask after emit
+        await Promise.resolve();
+        return { ok: true, haps, played, skipped, warnings, wav };
+      } catch (err) {
+        await Promise.resolve();
+        return { ok: false, error: String(err), warnings };
+      } finally {
+        unsubscribe();
       }
     },
 

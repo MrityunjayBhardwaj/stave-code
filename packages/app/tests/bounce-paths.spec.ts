@@ -116,6 +116,37 @@ function peak(mono: Float64Array): number {
   return p
 }
 
+function rms(mono: Float64Array): number {
+  let sq = 0
+  for (const v of mono) sq += v * v
+  return mono.length ? Math.sqrt(sq / mono.length) : 0
+}
+
+type ReportOutcome = {
+  ok: boolean
+  error?: string
+  haps?: number
+  played?: number
+  skipped?: Array<{ reason: string; count: number }>
+  warnings: string[]
+  wav?: string
+}
+
+/** #1353 — `renderOfflineReport`, with the warnings the engine emitted during it. */
+function callReport(page: Page, code: string, secs: number): Promise<ReportOutcome> {
+  return page.evaluate(
+    ([c, s]) =>
+      (
+        window as unknown as {
+          __staveBounceProbe: {
+            offlineReport: (code: string, secs: number) => Promise<ReportOutcome>
+          }
+        }
+      ).__staveBounceProbe.offlineReport(c as string, s as number),
+    [code, secs] as const,
+  ) as Promise<ReportOutcome>
+}
+
 /** Transient count via energy flux on 10ms frames — a note-rate proxy. */
 function onsetCount(mono: Float64Array, sampleRate: number): number {
   const hop = Math.floor(sampleRate * 0.01)
@@ -373,7 +404,7 @@ test.describe('the three audio-bounce paths', () => {
     })
   })
 
-  test('a pattern without setcps renders at double speed offline (#1345)', async ({
+  test('a pattern without setcps renders at the engine tempo offline, not double (#1345)', async ({
     page,
   }) => {
     test.setTimeout(120000)
@@ -381,38 +412,31 @@ test.describe('the three audio-bounce paths', () => {
     const out = await call(page, 'offlineAfterEvaluate', NO_SETCPS, 8)
     if (!out.ok) throw new Error(`offline render failed: ${out.error}`)
     const { sampleRate, mono } = readWav(out.wav!)
-    // extractCps returns 1 when the code has no setcps (OfflineRenderer.ts:87);
-    // Strudel's real default is 0.5. Four notes per cycle => 2/s correct, 4/s
-    // observed. Measured on trunk: 31 offline against 16 live over 8s. The
-    // threshold sits between the two so it flips when #1345 is fixed.
-    expect(onsetCount(mono, sampleRate)).toBeGreaterThanOrEqual(24)
+    const onsets = onsetCount(mono, sampleRate)
+    console.log(`[#1345] sr=${sampleRate} onsets=${onsets} over 8s`)
+    // ⚠ RE-POINTED (#1353), NOT WIDENED. The old renderer's regex tempo
+    // defaulted to 1 when the code had no setcps; Strudel's is 0.5. Four notes
+    // per cycle => 16 onsets correct, 31 measured offline before. The render now
+    // reads the engine's one tempo, so the same threshold between the two
+    // readings now asserts the other side of it. The LEVEL half of #1345 is
+    // still not pinned.
+    expect(onsets).toBeLessThan(24)
   })
 
-  test('a drum-only bounce still renders nothing — but now it SAYS so (#1353/#1402)', async ({
-    page,
-  }) => {
+  test('a drum-only bounce renders the drums (#1353)', async ({ page }) => {
     test.setTimeout(120000)
     await openApp(page)
     const out = await call(page, 'exportLikeButton', DRUMS_ONLY, 4)
-    // toOscType returns null for every sample-based sound and the hap is
-    // `continue`d (OfflineRenderer.ts) with no counter and no diagnostic, so
-    // this document still renders to nothing. #1353 is NOT fixed.
-    //
-    // ⚠ RE-POINTED, NOT WIDENED. This arm used to assert `{ ok: true, nonZero:
-    // 0 }` — the success was the point, because a well-formed empty file is a
-    // worse bug than an error. #1402 put the check at the capture boundary, so
-    // the same silence now arrives as a refusal instead. That flip IS the
-    // notification: the arm goes on measuring the same defect and reports the
-    // one thing that changed about it.
-    expect({
-      ok: out.ok,
-      saysSilent: /silent/i.test(out.error ?? ''),
-    }).toEqual({ ok: false, saysSilent: true })
+    // ⚠ RE-POINTED, NOT WIDENED — twice now. It asserted `{ ok: true, nonZero:
+    // 0 }` (a silent file returned as success), then `{ ok: false, saysSilent }`
+    // once #1402 turned that silence into a refusal. `renderOffline` now plays
+    // through the real graph, so the drums are in the file.
+    const mono = out.wav ? readWav(out.wav).mono : new Float64Array()
+    console.log(`[#1353 drums] ok=${out.ok} nonZero=${nonZeroCount(mono)}/${mono.length} error=${out.error ?? 'none'}`)
+    expect({ ok: out.ok, silent: nonZeroCount(mono) === 0 }).toEqual({ ok: true, silent: false })
   })
 
-  test('adding drums to a working render changes nothing at all (#1353)', async ({
-    page,
-  }) => {
+  test('adding drums to a working render adds the drums (#1353)', async ({ page }) => {
     test.setTimeout(120000)
     await openApp(page)
     const synth = await call(page, 'exportLikeButton', SYNTH_ONLY, 4)
@@ -420,12 +444,62 @@ test.describe('the three audio-bounce paths', () => {
     if (!synth.ok || !mixed.ok) {
       throw new Error(`render failed: ${synth.error ?? ''} ${mixed.error ?? ''}`)
     }
-    // The contrast that makes the drop undeniable: a render that plainly WORKS,
-    // with drums stacked into it, is byte-identical to the same render without
-    // them. This is a stronger control than a live comparison because it needs
-    // no real-time capture and cannot be blamed on a missing sample fetch.
-    expect(Buffer.from(mixed.wav!, 'base64').equals(Buffer.from(synth.wav!, 'base64')))
-      .toBe(true)
+    // ⚠ RE-POINTED, NOT WIDENED. This asserted the mixed render was
+    // byte-identical to the synth alone — the drop made undeniable. The same two
+    // renders now differ, and "differ" alone is weak (anything could move a
+    // byte), so the arm also asks the drums to ADD energy: a RATIO of two
+    // renders in one page, never an absolute level. Measured 1.83 in the probe.
+    const synthRms = rms(readWav(synth.wav!).mono)
+    const mixedRms = rms(readWav(mixed.wav!).mono)
+    const identical = Buffer.from(mixed.wav!, 'base64').equals(Buffer.from(synth.wav!, 'base64'))
+    console.log(`[#1353 mixed] sr=${readWav(mixed.wav!).sampleRate} synthRms=${synthRms.toFixed(5)} mixedRms=${mixedRms.toFixed(5)} ratio=${(mixedRms / synthRms).toFixed(3)}`)
+    expect({ identical, drumsAddEnergy: mixedRms / synthRms > 1.3 }).toEqual({
+      identical: false,
+      drumsAddEnergy: true,
+    })
+  })
+
+  test('a sound that cannot play is refused as silent AND named, with its count (#1353)', async ({
+    page,
+  }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    // Measured before this arm existed, on the real-graph path: ok, 0 of
+    // 192,000 samples, no error — upstream catches each hap's throw and only
+    // logs it. 4 seconds at 0.5 cps = 2 cycles = 8 haps.
+    const out = await callReport(page, 's("nosuchsound*4")', 4)
+    console.log(`[#1353 unknown] ok=${out.ok} error=${out.error ?? 'none'} warnings=${JSON.stringify(out.warnings)}`)
+    expect({
+      ok: out.ok,
+      saysSilent: /silent/i.test(out.error ?? ''),
+      named: out.warnings.some((w) => /left out 8 of 8 sounds/.test(w) && /nosuchsound/.test(w)),
+    }).toEqual({ ok: false, saysSilent: true, named: true })
+  })
+
+  test('one sound that cannot play does not cost the ones that can — every skip counted (#1353)', async ({
+    page,
+  }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    // ⚠ EXACT COUNTS, on purpose. Strudel's logger drops a message identical to
+    // the last within a second, so a count read from its log would say 1 where
+    // 8 haps failed. The render owns the catch, so it must say 8.
+    const out = await callReport(page, 'stack(s("bd*4"), s("nosuchsound*4"))', 4)
+    const mono = out.wav ? readWav(out.wav).mono : new Float64Array()
+    console.log(`[#1353 partial] ok=${out.ok} haps=${out.haps} played=${out.played} skipped=${JSON.stringify(out.skipped)} nonZero=${nonZeroCount(mono)}`)
+    expect({
+      ok: out.ok,
+      haps: out.haps,
+      played: out.played,
+      skipped: out.skipped,
+      audible: nonZeroCount(mono) > 0,
+    }).toEqual({
+      ok: true,
+      haps: 16,
+      played: 8,
+      skipped: [{ reason: 'sound nosuchsound not found! Is it loaded?', count: 8 }],
+      audible: true,
+    })
   })
 })
 
