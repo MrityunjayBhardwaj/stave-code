@@ -961,7 +961,9 @@ export class StrudelEngine implements LiveCodingEngine {
       // Phase 20-07 (T-α-2) — emit returns the enriched HapEvent so the
       // breakpoint hit-check below reads `irNodeId` in O(1) without
       // re-running findMatchedEvent. P50 single-strategy match preserved.
-      const enriched = hapStream.emit(hap, t, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? undefined)
+      // #1621 — the declared spans too, read at emit time like the lookup, so the
+      // highlighter, the hit-check and the Inspector pulse see document offsets only.
+      const enriched = hapStream.emit(hap, t, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? undefined, this.lastDeclaredLocations ?? undefined)
 
       // Phase 20-07 (PK13 step 9 / DEC-AMENDED-3) — breakpoint hit-check.
       // PERF: O(1) Set.has() on the audio scheduler hot path; do NOT

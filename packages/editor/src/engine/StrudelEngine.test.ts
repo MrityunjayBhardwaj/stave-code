@@ -24,6 +24,10 @@ let evalBehavior: EvalBehavior = 'two-anon'
 // Captured onEvalError callback from webaudioRepl construction
 let capturedOnEvalError: ((err: Error) => void) | null = null
 
+// #1621 — the engine's `wrappedOutput`, which the scheduler calls for every hap it plays.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let capturedDefaultOutput: ((hap: any, deadline: number, duration: number, cps: number, t: number) => Promise<unknown>) | null = null
+
 // ---------------------------------------------------------------------------
 // Mock Pattern class
 // ---------------------------------------------------------------------------
@@ -126,10 +130,14 @@ vi.mock('@strudel/webaudio', () => {
     pattern: new MockPattern(),
     start: vi.fn(),
     stop: vi.fn(),
+    // #1621 — the breakpoint hit-check pauses through here.
+    pause: vi.fn(),
   }
 
-  const webaudioRepl = vi.fn((options: { onEvalError?: (err: Error) => void }) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const webaudioRepl = vi.fn((options: { onEvalError?: (err: Error) => void; defaultOutput?: any }) => {
     capturedOnEvalError = options.onEvalError ?? null
+    capturedDefaultOutput = options.defaultOutput ?? null
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const repl: any = {
@@ -292,6 +300,7 @@ vi.mock('@strudel/transpiler', () => ({
 
 import { StrudelEngine, isBootStepFailure, type BootStepFailure } from './StrudelEngine'
 import type { LiveCodingEngine } from './LiveCodingEngine'
+import type { HapEvent } from './HapStream'
 import { Pattern } from '@strudel/core'
 
 // ---------------------------------------------------------------------------
@@ -482,6 +491,83 @@ describe('StrudelEngine keeps only declared hap locations (#1619)', () => {
     const events = engine.getTimelineEvents(1)
     expect(events.length, 'the failed evaluate dropped the last good patterns — this arm tests nothing').toBeGreaterThan(0)
     for (const ev of events) expect(ev.loc).toEqual([{ start: 9, end: 17 }])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #1621 — the live stream (highlighting, the breakpoint hit-check, the Inspector
+// pulse) keeps only declared spans too. Driven through the engine's real
+// `wrappedOutput`, the function the scheduler calls for every hap it plays.
+// ---------------------------------------------------------------------------
+
+describe('StrudelEngine live stream keeps only declared hap locations (#1621)', () => {
+  // The hap the scheduler would play for `declared-locs`: stray span first, declared second.
+  const playedHap = () => ({ whole: { begin: 0, end: 1 }, value: { s: 'hh' }, context: { locations: [{ start: 1, end: 7 }, { start: 9, end: 17 }] } })
+
+  beforeEach(() => {
+    patternInstanceCounter = 0
+    capturedOnEvalError = null
+    capturedDefaultOutput = null
+    vi.clearAllMocks()
+  })
+
+  async function playOne(engine: StrudelEngine): Promise<HapEvent> {
+    const seen: HapEvent[] = []
+    const onEvent = (e: HapEvent) => seen.push(e)
+    engine.getHapStream().on(onEvent)
+    expect(capturedDefaultOutput, 'init() handed the repl no output — this arm tests nothing').not.toBeNull()
+    await capturedDefaultOutput!(playedHap(), 0, 0.25, 1, 0)
+    engine.getHapStream().off(onEvent)
+    expect(seen).toHaveLength(1)
+    return seen[0]
+  }
+
+  it('emits only the declared span to every subscriber', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('declared-locs')
+    expect((await playOne(engine)).loc).toEqual([{ start: 9, end: 17 }])
+  })
+
+  it('keeps every location when the runtime says nothing about declared spans', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('unknown-locs')
+    expect((await playOne(engine)).loc).toEqual([{ start: 1, end: 7 }, { start: 9, end: 17 }])
+  })
+
+  it('a failed evaluate keeps the spans of the patterns that keep playing', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('declared-locs')
+    await engine.evaluate('error-code')
+    expect((await playOne(engine)).loc).toEqual([{ start: 9, end: 17 }])
+  })
+
+  it('a breakpoint fires on the node the declared span names, not the one the stray span would', async () => {
+    const { webaudioOutput } = await import('@strudel/webaudio')
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('declared-locs')
+    // One IR node at each span, so the match decides which breakpoint the note hits.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(engine as any).lastIRNodeLocLookup = new Map([
+      ['1:7', [{ begin: 0, end: 1, irNodeId: 'stray-node' }]],
+      ['9:17', [{ begin: 0, end: 1, irNodeId: 'declared-node' }]],
+    ])
+    const store = engine.getBreakpointStore()
+
+    // Control: a breakpoint on the node only the stray span names never pauses.
+    store.add('stray-node')
+    const passed = await playOne(engine)
+    expect(passed.irNodeId).toBe('declared-node')
+    expect(engine.getPaused()).toBe(false)
+    expect(vi.mocked(webaudioOutput)).toHaveBeenCalledTimes(1)
+
+    store.add('declared-node')
+    await playOne(engine)
+    expect(engine.getPaused()).toBe(true)
+    expect(vi.mocked(webaudioOutput), 'a paused note must not reach the audio output').toHaveBeenCalledTimes(1)
   })
 })
 

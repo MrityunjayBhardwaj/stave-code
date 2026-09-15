@@ -127,3 +127,39 @@ describe('20-06 — HapStream.emit enriches HapEvent with irNodeId via lookup (P
     expect(captured[1].irNodeId).toBe('idA')
   })
 })
+
+describe('#1621 — HapStream.emit keeps only the spans the transpiler declared', () => {
+  // A stray quoted-space span first ([1,7), what `.color('sienna')` gives), then the
+  // declared document span ([9,17)).
+  const hap = { whole: { begin: 0, end: 1 }, value: { s: 'hh' }, context: { locations: [{ start: 1, end: 7 }, { start: 9, end: 17 }] } }
+  const lookup = new Map<string, IREvent[]>([
+    ['1:7', [{ begin: 0, end: 1, irNodeId: 'wrong' } as never]],
+    ['9:17', [{ begin: 0, end: 1, irNodeId: 'right' } as never]],
+  ])
+
+  function emitOne(declared?: ReadonlySet<string>): HapEvent {
+    const hs = new HapStream()
+    const captured: HapEvent[] = []
+    hs.on(e => captured.push(e))
+    const returned = hs.emit(hap, 0.1, 0.5, 1, 0, lookup, declared)
+    expect(returned).toBe(captured[0])
+    return returned
+  }
+
+  it('drops the stray span from the event every subscriber paints, and matches the IR node by the declared one', () => {
+    // Control: unfiltered, the stray span is painted and is what the match keys on.
+    const raw = emitOne()
+    expect(raw.loc).toEqual([{ start: 1, end: 7 }, { start: 9, end: 17 }])
+    expect(raw.irNodeId).toBe('wrong')
+
+    const filtered = emitOne(new Set(['9:17']))
+    expect(filtered.loc).toEqual([{ start: 9, end: 17 }])
+    expect(filtered.irNodeId).toBe('right')
+  })
+
+  it('an empty declared set leaves nothing to paint and nothing to match', () => {
+    const ev = emitOne(new Set())
+    expect(ev.loc).toBeNull()
+    expect('irNodeId' in ev).toBe(false)
+  })
+})

@@ -58,8 +58,12 @@ function extractLoc(hap: unknown): SourceLocation[] | undefined {
   return out.length > 0 ? out : undefined
 }
 
-/** #1619 — the locations whose span the transpiler declared, or undefined when none are. */
-function declaredOnly(loc: SourceLocation[], declared: ReadonlySet<string>): SourceLocation[] | undefined {
+/**
+ * #1619 — the locations whose span the transpiler declared, or undefined when none are.
+ * Exported for the live stream (`HapStream.emit`, #1621), which reads hap locations
+ * without going through `normalizeStrudelHap`.
+ */
+export function declaredOnly(loc: SourceLocation[], declared: ReadonlySet<string>): SourceLocation[] | undefined {
   const kept = loc.filter((l) => declared.has(`${l.start}:${l.end}`))
   return kept.length > 0 ? kept : undefined
 }

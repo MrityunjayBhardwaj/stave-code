@@ -4860,10 +4860,20 @@ var _HapStream = class _HapStream {
    * re-running findMatchedEvent (P50 — single-strategy match preserved).
    * Additive: 8 existing test callers + 1 production caller currently
    * ignore the void return; widening void → HapEvent does not break them.
+   *
+   * Optional 7th positional `declaredLocations` (#1621) — the engine's declared
+   * spans (`declaredLocationKeys`), the same set `normalizeStrudelHap` filters by
+   * (#1619). A single-quoted argument's location is in its own quoted space and
+   * comes first, so unfiltered it lit up the wrong characters in the editor and
+   * keyed the IR match below on the wrong span (breakpoints, the Inspector pulse).
+   * Filtered here, before the event is built, so every subscriber sees one answer.
+   * Omitted → unchanged.
    */
-  emit(hap, deadline, duration, cps, audioCtxCurrentTime, lookup) {
+  emit(hap, deadline, duration, cps, audioCtxCurrentTime, lookup, declaredLocations) {
     const scheduledAheadMs = (deadline - audioCtxCurrentTime) * 1e3;
     const audioDuration = duration;
+    const rawLoc = hap?.context?.locations ?? hap?.context?.loc ?? null;
+    const loc = Array.isArray(rawLoc) && declaredLocations ? declaredOnly(rawLoc, declaredLocations) ?? null : rawLoc;
     const event = {
       hap,
       audioTime: deadline,
@@ -4872,7 +4882,7 @@ var _HapStream = class _HapStream {
       midiNote: noteToMidi(hap?.value?.note ?? hap?.value?.n),
       s: hap?.value?.s ?? null,
       color: hap?.value?.color ?? null,
-      loc: hap?.context?.locations ?? hap?.context?.loc ?? null,
+      loc,
       epoch: this.epoch
     };
     if (lookup && event.loc && event.loc.length > 0) {
@@ -9082,7 +9092,7 @@ var _StrudelEngine = class _StrudelEngine {
           }
         }
       }
-      const enriched = hapStream.emit(hap, t, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? void 0);
+      const enriched = hapStream.emit(hap, t, duration, cps, audioCtxRef.currentTime, this.lastIRNodeLocLookup ?? void 0, this.lastDeclaredLocations ?? void 0);
       if (enriched.irNodeId && this.breakpointStore.has(enriched.irNodeId)) {
         this.repl?.scheduler?.pause();
         this.setPaused(true);
