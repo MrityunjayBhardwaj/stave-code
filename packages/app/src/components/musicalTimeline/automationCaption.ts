@@ -110,12 +110,13 @@ export function formatBound(v: number): string {
   return String(Math.round(v * 1000) / 1000)
 }
 
-/** The `~` that marks a bound this code SUPPLIED from the signal's natural
- *  polarity rather than one the user wrote. Editing such a bound is a different
- *  edit — it inserts a `.range()` call — and the mark is the only warning the
- *  reader gets that the numbers beside it are not in the document. */
+/** The `~` that marks bounds this code SUPPLIED rather than ones the user wrote: the
+ *  signal's natural polarity when no `.range()` is written, and the floor and ceiling
+ *  a range PLAYS where they are not its arguments (#1610, `sine2.range(200, 2000)` reads
+ *  `~-1600→2000`). The mark is the only warning the reader gets that the numbers beside
+ *  it are not the ones in the document. */
 export function suppliedMark(a: SignalAutomation): string {
-  return a.ranged ? '' : '~'
+  return a.ranged && a.boundsAsWritten ? '' : '~'
 }
 
 /**
@@ -192,11 +193,12 @@ export function captionRows(
     const loTo = loFrom + lo.length
     const hiFrom = loTo + 1 // the arrow is one character
     const hiTo = hiFrom + hi.length
-    const fields: CaptionField[] = [
-      { kind: 'param', text: name, from: 0, to: name.length },
-      { kind: 'lo', text: lo, from: loFrom, to: loTo },
-      { kind: 'hi', text: hi, from: hiFrom, to: hiTo },
-    ]
+    const fields: CaptionField[] = [{ kind: 'param', text: name, from: 0, to: name.length }]
+    // #1610 — only where a typed bound reads back as typed. Elsewhere the numbers are
+    // shown and no field is offered over them, as with two composing rates.
+    if (a.boundsAsWritten) {
+      fields.push({ kind: 'lo', text: lo, from: loFrom, to: loTo }, { kind: 'hi', text: hi, from: hiFrom, to: hiTo })
+    }
 
     // #1464 Stage 3 — ` ~4 bars`. The number alone is the field, as a bound's is, and
     // only where a typed number can be written (`rateEditable`).
@@ -274,6 +276,9 @@ export function captionEdit(hit: CaptionHit, nextText: string): OffsetEdit | nul
   // The parameter name is the shape menu's anchor, not a typed field.
   if (field.kind === 'param') return null
   if (field.kind === 'rate') return rateEdit(a, nextText)
+  // #1610 — enforced here, not left to `captionRows` offering no field: on a bipolar
+  // signal, or under an inner range that is not 0..1, the typed pair would play another.
+  if (!a.boundsAsWritten) return null
 
   const raw = nextText.trim()
   // ⚠ `Number('')` is 0, not NaN — and so is `Number(' ')`. Without this guard,

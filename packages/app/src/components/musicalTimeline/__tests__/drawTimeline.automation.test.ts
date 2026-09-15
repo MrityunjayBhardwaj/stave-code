@@ -64,7 +64,7 @@ const auto = (over: Partial<SignalAutomation> = {}): SignalAutomation => ({
   lanePeriodCycles: over.periodCycles ?? 1,
   // Spans are Stage 2's WRITE coordinates; nothing on the drawing path reads
   // them, which is why the drawing fixtures leave them empty.
-  lo: 0, hi: 1, ranged: true, offset: 0, spans: NO_SPANS, placements: [[]], ...over,
+  lo: 0, hi: 1, ranged: true, boundsAsWritten: true, offset: 0, spans: NO_SPANS, placements: [[]], ...over,
 })
 
 const lane = (automations: readonly SignalAutomation[]): SceneLane => ({

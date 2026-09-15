@@ -1052,6 +1052,82 @@ test('a rate typed on the caption reaches the document, and the lane draws the n
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
 
+// ── #1610: bounds that are not the range call's arguments ───────────────────
+
+/** Walk the caption line and name every editor that opens, as `label=value`, and the
+ *  shape menu as `shape menu`. Each is closed with Escape, so the walk writes nothing.
+ *  ⚠ The NAME opens the shape menu (#1464); left open, it blocks the next click on
+ *  the code editor, so it is closed like the rest and checked to have closed. */
+async function captionEditorsOpened(page: Page): Promise<string[]> {
+  const editor = page.locator('[data-full-song="automation-bound"]')
+  const menu = page.locator('[data-full-song="automation-shape"]')
+  const seen = new Set<string>()
+  for (let x = 6; x <= 240; x += 3) {
+    await clickCanvasAt(page, x, 8)
+    await page.waitForTimeout(60)
+    if (await editor.count()) {
+      seen.add(`${(await editor.getAttribute('aria-label')) ?? ''}=${await editor.inputValue()}`)
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(40)
+    }
+    if (await menu.count()) {
+      seen.add('shape menu')
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(40)
+      expect(await menu.count(), 'Escape did not close the shape menu').toBe(0)
+    }
+  }
+  return [...seen]
+}
+
+test('a bipolar curve under a range offers no bound to type, while its rate and a unipolar control still open (#1610)', async ({ page }) => {
+  // Two walks of the caption line, each up to 79 presses with an Escape per editor that
+  // opens. Passing took 32.9s against the default 30s budget, and on a tree where the
+  // bipolar caption DOES open bounds the extra Escapes timed out mid-walk, before the
+  // assertion that names the defect could run. The budget has to fit the failing case.
+  test.setTimeout(90_000)
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  // `barsOnView` reads the marks probe, which exists only with this flag set.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+  await bootShell(page)
+  const canvas = page.locator('[data-full-song-canvas]')
+
+  // ── CONTROL: the unipolar spelling. Its range's arguments are its bounds, so they open.
+  const unipolar = '$: s("bd*8").cutoff(sine.slow(4).range(200, 2000))\n$: s("<hh cp hh cp hh cp hh sd>")'
+  await setSongAndEval(page, unipolar)
+  await canvas.waitFor({ timeout: 10_000 })
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(8)
+  await page.locator('[data-full-song-lane-expand]').first().click()
+  await page.waitForTimeout(800)
+  const control = await captionEditorsOpened(page)
+  expect(control, `the control's caption: ${JSON.stringify(control)}`).toContain('cutoff high bound=2000')
+  expect(control).toContain('cutoff period in bars=4')
+  expect(await readDoc(page), 'walking the caption wrote something').toBe(unipolar)
+
+  // ── THE SUBJECT: `sine2` plays -1600..2000 under the same range, so no bound is offered.
+  const bipolar = '$: s("bd*8").cutoff(sine2.slow(4).range(200, 2000))\n$: s("<hh cp hh cp hh cp hh sd>")'
+  await setSongAndEval(page, bipolar)
+  await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe(bipolar)
+  await page.waitForTimeout(800)
+  const subject = await captionEditorsOpened(page)
+  expect(subject.filter((s) => s.includes('bound')), `a bound opened on the bipolar curve: ${JSON.stringify(subject)}`).toEqual([])
+  // The walk still reaches the caption: the rate beside the bounds opens.
+  expect(subject, `the bipolar caption: ${JSON.stringify(subject)}`).toContain('cutoff period in bars=4')
+  expect(await readDoc(page), 'walking the caption wrote something').toBe(bipolar)
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
 // ── #1464: the shape, chosen from the caption's name ────────────────────────
 
 /** Walk the caption line until the shape menu opens, abandoning any bound, rate or

@@ -67,7 +67,7 @@ const entry = (a: SteppedAutomation, axis: StepAxis = LINEAR): SceneStepped => (
 
 const NO_SPANS = { shape: null, rate: null, range: null, chainEnd: null } as const
 const signal = (paramKey: string): SignalAutomation => ({
-  trackId: 'd1', paramKey, kind: 'sine', periodCycles: 1, lanePeriodCycles: 1, lo: 0, hi: 1, ranged: true, offset: 0, spans: NO_SPANS, placements: [[]],
+  trackId: 'd1', paramKey, kind: 'sine', periodCycles: 1, lanePeriodCycles: 1, lo: 0, hi: 1, ranged: true, boundsAsWritten: true, offset: 0, spans: NO_SPANS, placements: [[]],
 })
 
 const lane = (stepped: readonly SceneStepped[], automations: readonly SignalAutomation[] = []): SceneLane => ({

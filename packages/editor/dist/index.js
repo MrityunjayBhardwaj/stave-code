@@ -1141,8 +1141,7 @@ var SKIP_KEYS2 = /* @__PURE__ */ new Set(["loc", "keyLoc", "callSiteRange"]);
 function readChain(node) {
   let cur = node;
   let periodCycles = 1;
-  let lo = null;
-  let hi = null;
+  const ranges = [];
   let rangeSpan = null;
   let rateArms = 0;
   const rateSpans = [];
@@ -1153,8 +1152,7 @@ function readChain(node) {
       return {
         signal: cur,
         periodCycles,
-        lo,
-        hi,
+        ranges,
         spans: {
           shape: spanOf(cur),
           rate: rateArms === 1 && rateSpans.length === 1 ? rateSpans[0] : null,
@@ -1165,11 +1163,9 @@ function readChain(node) {
     }
     if (!CHAIN_TAGS.has(cur.tag)) return null;
     if (cur.tag === "Range") {
-      if (lo === null && Number.isFinite(cur.lo) && Number.isFinite(cur.hi)) {
-        lo = cur.lo;
-        hi = cur.hi;
-        rangeSpan = spanOf(cur);
-      }
+      if (!Number.isFinite(cur.lo) || !Number.isFinite(cur.hi)) return null;
+      if (ranges.length === 0) rangeSpan = spanOf(cur);
+      ranges.push({ lo: cur.lo, hi: cur.hi });
     } else if (cur.tag === "Slow") {
       if (!Number.isFinite(cur.factor) || cur.factor <= 0) return null;
       periodCycles *= cur.factor;
@@ -1190,6 +1186,21 @@ function readChain(node) {
   return null;
 }
 __name(readChain, "readChain");
+function boundsOf(polarity, ranges) {
+  let lo = polarity === "bipolar" ? -1 : 0;
+  let hi = 1;
+  let enteringLo = lo;
+  let enteringHi = hi;
+  for (let i = ranges.length - 1; i >= 0; i--) {
+    const r = ranges[i];
+    enteringLo = lo;
+    enteringHi = hi;
+    lo = r.lo * (1 - enteringLo) + r.hi * enteringLo;
+    hi = r.lo * (1 - enteringHi) + r.hi * enteringHi;
+  }
+  return { lo, hi, boundsAsWritten: enteringLo === 0 && enteringHi === 1 };
+}
+__name(boundsOf, "boundsOf");
 function spanOf(node) {
   const loc = node.loc;
   const first = loc?.[0];
@@ -1241,10 +1252,9 @@ function signalAutomations(ir) {
     const read5 = readChain(value);
     if (!read5) continue;
     const polarity = polarityOf(read5.signal.kind);
-    const ranged = read5.lo !== null && read5.hi !== null;
+    const ranged = read5.ranges.length > 0;
     if (!ranged && polarity === "unbounded") continue;
-    const lo = ranged ? read5.lo : polarity === "bipolar" ? -1 : 0;
-    const hi = ranged ? read5.hi : 1;
+    const { lo, hi, boundsAsWritten } = boundsOf(polarity, read5.ranges);
     const start = param.loc?.[0]?.start;
     out.push({
       trackId,
@@ -1255,6 +1265,7 @@ function signalAutomations(ir) {
       lo,
       hi,
       ranged,
+      boundsAsWritten,
       offset: typeof start === "number" && Number.isFinite(start) ? start : null,
       spans: read5.spans,
       placements

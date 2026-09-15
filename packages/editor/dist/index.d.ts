@@ -974,14 +974,22 @@ interface SignalAutomation {
      *  disagree (one binding under two different time changes), which leaves no one
      *  number for a lane to show or a control to edit. */
     readonly lanePeriodCycles: number | null;
-    /** The signal's RANGE — its output floor and ceiling. */
+    /** The signal's RANGE — the floor and ceiling the engine PLAYS, which is not always
+     *  what a `.range()` call spells (#1610, see `boundsOf`). `lo` is where the signal's
+     *  own low point lands, so a range written high-to-low reads `lo > hi`. */
     readonly lo: number;
     readonly hi: number;
-    /** True when `lo`/`hi` came from an explicit `.range(lo, hi)`; false when they
-     *  are the signal's natural polarity. Kept because it is the difference between
-     *  a number the user wrote and one this module supplied, and a lane that ever
-     *  labels the axis must not present the second as the first. */
+    /** True when the chain carries an explicit `.range()`; false when `lo`/`hi` are the
+     *  signal's natural polarity. Kept because it is the difference between a number the
+     *  user wrote and one this module supplied, and a lane that ever labels the axis must
+     *  not present the second as the first. */
     readonly ranged: boolean;
+    /** True when a bound typed into this curve reads back as typed (#1610): the values
+     *  entering the range an edit writes — the outermost `.range()`, or one inserted at
+     *  `chainEnd` — run exactly 0..1, so that call's arguments ARE the curve's bounds.
+     *  False on a bipolar signal (`sine2.range(200, 2000)` plays −1600..2000) and under an
+     *  inner range that is not 0..1, where writing the typed pair plays another one. */
+    readonly boundsAsWritten: boolean;
     /** Source offset of the `Param` call site, or null. The same coordinate the
      *  lanes already carry, so a later stage can bind this to the editor without a
      *  second provenance channel invented for it. */

@@ -40,7 +40,7 @@ const NO_SPANS = { shape: null, rate: null, range: null, chainEnd: null } as con
 
 const auto = (over: Partial<SignalAutomation> = {}): SignalAutomation => ({
   trackId: 'd1', paramKey: 'cutoff', kind: 'sine', periodCycles: 1, lanePeriodCycles: 1,
-  lo: 200, hi: 2000, ranged: true, offset: 0, spans: NO_SPANS, placements: [[]], ...over,
+  lo: 200, hi: 2000, ranged: true, boundsAsWritten: true, offset: 0, spans: NO_SPANS, placements: [[]], ...over,
 })
 
 /** The x of character `n`'s left edge, under `measure`. */
@@ -208,6 +208,47 @@ describe('captionEdit — the three things it exists to enforce', () => {
   it('the parameter name is a menu anchor, not a typed field', () => {
     const a = auto({ spans: RANGED })
     expect(captionEdit(hitOn(a, 'param'), 'gain')).toBeNull()
+  })
+})
+
+describe('bounds that are not the range call\'s arguments (#1610)', () => {
+  const RANGED = { shape: null, rate: null, range: { start: 30, end: 46 }, chainEnd: 46 }
+  const bipolar = auto({ kind: 'sine2', lo: -1600, hi: 2000, boundsAsWritten: false, spans: RANGED })
+  const unipolar = auto({ lo: 200, hi: 2000, spans: RANGED })
+
+  it('says what plays, marks it as supplied, and offers no field over it', () => {
+    expect(captionText(bipolar)).toBe('cutoff ~-1600→2000 ~1 bar')
+    // The rate still has somewhere to go; only the bounds are withheld.
+    expect(captionRows([bipolar], 0, 60, true)[0].fields.map((f) => f.kind)).toEqual(['param', 'rate'])
+    // Control: the same curve where the arguments are the bounds.
+    expect(captionText(unipolar)).toBe('cutoff 200→2000 ~1 bar')
+    expect(captionRows([unipolar], 0, 60, true)[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi', 'rate'])
+  })
+
+  it('writes nothing even when handed a bound field, beside a control that writes', () => {
+    const rows = captionRows([unipolar], 0, 60, true)
+    const field = rows[0].fields.find((f) => f.kind === 'hi')!
+    const hit = (a: SignalAutomation) => ({ row: { ...rows[0], automation: a }, field, box: { x: 0, y: 0, w: 0, h: 0 } })
+    expect(captionEdit(hit(unipolar), '3000')).toEqual({ range: [30, 46], text: '.range(200,3000)' })
+    expect(captionEdit(hit(bipolar), '3000')).toBeNull()
+  })
+
+  it('through the real parser: none of these curves offers a bound, and the unipolar control reads back as typed', () => {
+    const readOne = (src: string) => signalAutomations(parseStrudel(src) as never)[0]
+    for (const src of [
+      '$: s("bd*8").cutoff(sine2.slow(4).range(200, 2000))',
+      '$: s("bd*8").pan(sine2.slow(4))',
+      '$: s("bd*8").pan(sine.slow(4).range(0, 2).range(0.2, 0.8))',
+    ]) {
+      expect(captionRows([readOne(src)], 0, 60, true)[0].fields.map((f) => f.kind), src).toEqual(['param', 'rate'])
+    }
+    const src = '$: s("bd*8").pan(sine.slow(4))'
+    const rows = captionRows([readOne(src)], 0, 60, true)
+    const edit = captionEdit({ row: rows[0], field: rows[0].fields.find((f) => f.kind === 'hi')!, box: { x: 0, y: 0, w: 0, h: 0 } }, '0.8')
+    expect(edit).not.toBeNull()
+    const out = src.slice(0, edit!.range[0]) + edit!.text + src.slice(edit!.range[1])
+    expect(out).toBe('$: s("bd*8").pan(sine.slow(4).range(0,0.8))')
+    expect(readOne(out)).toMatchObject({ lo: 0, hi: 0.8, boundsAsWritten: true })
   })
 })
 
