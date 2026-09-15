@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../parseStrudel'
-import { signalAutomations, signalCarryingParamKeys, signalTimeAt, hasTruePeriod } from '../signalAutomation'
+import { signalAutomations, signalCarryingParamKeys, signalTimeAt, signalWriters, hasTruePeriod } from '../signalAutomation'
 
 const read = (src: string) => signalAutomations(parseStrudel(src) as never)
 
@@ -227,8 +227,25 @@ describe('signalAutomations — it abstains rather than drawing something wrong'
     expect(read('$: s("bd*4").cutoff(time)')).toEqual([])
   })
 
-  it('but DRAWS an unbounded signal once the user supplies a range', () => {
-    expect(read('$: s("bd*4").cutoff(time.range(200, 800))')[0]).toMatchObject({ kind: 'time', lo: 200, hi: 800, ranged: true })
+  it('and declines it UNDER a range too: a range scales an unbounded signal, it does not bound it (#1614)', () => {
+    // `time.range(200, 800)` plays 200..9762.5 over 16 cycles (the engine arm), so its
+    // arguments are no ceiling, and a lane drawing them would show a saw the engine never plays.
+    for (const k of ['time', 'cyclesPer', 'per', 'perCycle', 'perx']) {
+      const src = `$: s("bd*4").cutoff(${k}.range(200, 800))`
+      expect(read(src), src).toEqual([])
+    }
+    expect(read('$: s("bd*4").cutoff(time.slow(4).range(0, 1).range(200, 800))')).toEqual([])
+    // Control: the same chain on a bounded signal is read.
+    expect(read('$: s("bd*4").cutoff(saw.range(200, 800))')[0]).toMatchObject({ kind: 'saw', lo: 200, hi: 800 })
+  })
+
+  it('but names it as a WRITER of its control, ranged or not (#1614)', () => {
+    const writers = (src: string) =>
+      signalWriters(parseStrudel(src) as never).map((w) => `${w.trackId}.${w.paramKey}:${w.kind}`).sort()
+    expect(writers('$: s("bd*4").cutoff(time.range(200, 800)).gain(time).pan(sine)'))
+      .toEqual(['d1.cutoff:time', 'd1.gain:time', 'd1.pan:sine'])
+    // What the drawing reader declines for any OTHER reason is no writer here either.
+    expect(writers('$: s("bd*4").gain(sine.add(saw))')).toEqual([])
   })
 
   it('leaves a plain scalar parameter alone', () => {

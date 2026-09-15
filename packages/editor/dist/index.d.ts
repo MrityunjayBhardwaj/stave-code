@@ -430,6 +430,25 @@ interface SignalSpans {
      *  and a control must be offered as disabled rather than as broken. */
     readonly chainEnd: number | null;
 }
+/**
+ * Every continuous automation the document declares, by track, in the order the
+ * shared walk meets them. Empty for a document with none — which is most of them,
+ * and is why the drawing side must treat absence as ordinary.
+ *
+ * ⚠ ONLY WHERE THE CURVE IS HANDED A TIME A LANE CAN DRAW (#1590). A curve under
+ * `.early(0.5)`, `cpm`, or `jux(x => x.late(.25))` plays at a time the song's clock
+ * does not give (measured through the engine: off by up to 0.917), and one
+ * overridden by a later same-key call plays nothing at all. Those decline, by the
+ * same walk the stepped reader uses (`parameterRoutes.ts`). A curve inside an
+ * arrangement section, or under a whole-track `.slow`/`.fast` (#1595), is kept with
+ * its placements and drawn at the time they hand it (`signalTimeAt`).
+ *
+ * ⚠ A LATER SHIFT DECLINES (#1595). `.late(o)` hands the curve `t − o`, which is
+ * negative before bar `o`, and there the engine evaluates `saw = t % 1` with the
+ * sign kept (`signal.mjs:35`): `saw.slow(3)` under `.late(0.5)` plays −0.1667 at
+ * song time 0 (measured), below the floor a lane wraps its phase to. An earlier
+ * shift (`.late(−o)`) never goes negative and is kept.
+ */
 declare function signalAutomations(ir: PatternIR | null | undefined): readonly SignalAutomation[];
 /**
  * The time a curve is handed at song time `time` — the argument its signal is

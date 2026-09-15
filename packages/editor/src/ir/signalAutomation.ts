@@ -53,7 +53,8 @@ export type SignalKind = SignalNode['kind']
  * `cyclesPer`/`per`/`perCycle`/`perx` family measure durations, so none of them
  * has a range to draw between. They are not a gap in this table: a lane that
  * guessed 0..1 for `time` would draw a confidently wrong curve, which is worse
- * than drawing nothing. Without an explicit `.range()` they ABSTAIN.
+ * than drawing nothing. They ABSTAIN, and a `.range()` does not change that: `range`
+ * scales what enters it without bounding it (#1614).
  */
 type Polarity = 'unipolar' | 'bipolar' | 'unbounded'
 
@@ -303,10 +304,8 @@ function readChain(node: PatternIR): ChainRead | null {
  * `captionEdit` writes the untouched bound from it — so the second form would put a
  * number nobody typed into the document on the next edit of the other bound.
  *
- * ⚠ An UNBOUNDED signal has no natural range. Under a range it is folded as if it
- * entered 0..1, which keeps the reading it always had for one range — that range's
- * arguments. The engine does not bear that out for `time` (#1614); it is left as it
- * was rather than widened here.
+ * ⚠ An UNBOUNDED signal never reaches here. It has no natural range for a range to map,
+ * so under one it still abstains (#1614).
  */
 function boundsOf(
   polarity: Polarity,
@@ -380,6 +379,55 @@ function childNodes(node: PatternIR): PatternIR[] {
 }
 
 /**
+ * `SignalAutomation.lanePeriodCycles`. A warp hands the curve `t · times / per`, so
+ * it comes back round `per / times` times as late — the scaling `songPeriodOf`
+ * applies to a stepped parameter (#1595). That function answers a different
+ * question (when the whole SONG repeats, sections folded in as passes); this one is
+ * what one lane shows repeating inside the bars it plays.
+ */
+function lanePeriodOf(periodCycles: number, placements: readonly (readonly TimeStep[])[]): number | null {
+  let agreed: number | null = null
+  for (const placement of placements) {
+    let p = periodCycles
+    for (const step of placement) if (!isSectionWindow(step)) p = (p * step.per) / step.times
+    if (agreed !== null && agreed !== p) return null
+    agreed = p
+  }
+  return agreed
+}
+
+type Playable = ReturnType<typeof playableParameters> extends Iterable<infer T> ? T : never
+
+/** One closed-form curve on a control, before anything asks whether a lane can draw it. */
+interface ReadCurve {
+  readonly trackId: Playable['trackId']
+  readonly param: Playable['param']
+  readonly placements: Playable['placements']
+  readonly read: ChainRead
+  readonly polarity: Polarity
+}
+
+/**
+ * The curves both readers below start from: every closed-form curve on a control, played
+ * at a time a lane can draw. `signalAutomations` (what a lane DRAWS) and `signalWriters`
+ * (what WRITES a control) share it so they cannot disagree about which curves exist; they
+ * differ only on polarity, because an unbounded signal writes its control and cannot be
+ * drawn (#1614).
+ */
+function readCurves(ir: PatternIR | null | undefined): ReadCurve[] {
+  const out: ReadCurve[] = []
+  for (const { trackId, param, placements } of playableParameters(ir)) {
+    if (placements.some((p) => p.some((step) => !isSectionWindow(step) && step.shift < 0))) continue
+    const value: unknown = param.value
+    if (!value || typeof value !== 'object' || typeof (value as PatternIR).tag !== 'string') continue
+    const read = readChain(value as PatternIR)
+    if (!read) continue
+    out.push({ trackId, param, placements, read, polarity: polarityOf(read.signal.kind) })
+  }
+  return out
+}
+
+/**
  * Every continuous automation the document declares, by track, in the order the
  * shared walk meets them. Empty for a document with none — which is most of them,
  * and is why the drawing side must treat absence as ordinary.
@@ -398,37 +446,17 @@ function childNodes(node: PatternIR): PatternIR[] {
  * song time 0 (measured), below the floor a lane wraps its phase to. An earlier
  * shift (`.late(−o)`) never goes negative and is kept.
  */
-/**
- * `SignalAutomation.lanePeriodCycles`. A warp hands the curve `t · times / per`, so
- * it comes back round `per / times` times as late — the scaling `songPeriodOf`
- * applies to a stepped parameter (#1595). That function answers a different
- * question (when the whole SONG repeats, sections folded in as passes); this one is
- * what one lane shows repeating inside the bars it plays.
- */
-function lanePeriodOf(periodCycles: number, placements: readonly (readonly TimeStep[])[]): number | null {
-  let agreed: number | null = null
-  for (const placement of placements) {
-    let p = periodCycles
-    for (const step of placement) if (!isSectionWindow(step)) p = (p * step.per) / step.times
-    if (agreed !== null && agreed !== p) return null
-    agreed = p
-  }
-  return agreed
-}
-
 export function signalAutomations(ir: PatternIR | null | undefined): readonly SignalAutomation[] {
   const out: SignalAutomation[] = []
-  for (const { trackId, param, placements } of playableParameters(ir)) {
-    if (placements.some((p) => p.some((step) => !isSectionWindow(step) && step.shift < 0))) continue
-    const value: unknown = param.value
-    if (!value || typeof value !== 'object' || typeof (value as PatternIR).tag !== 'string') continue
-    const read = readChain(value as PatternIR)
-    if (!read) continue
-    const polarity = polarityOf(read.signal.kind)
+  for (const { trackId, param, placements, read, polarity } of readCurves(ir)) {
+    // ⚠ AN UNBOUNDED SIGNAL ABSTAINS WITH OR WITHOUT A RANGE (#1614). Without one there is
+    // nothing to plot between. With one, `range` is an affine map (`boundsOf`): it scales
+    // the signal and does not bound it. Measured through the engine,
+    // `cutoff(time.range(200, 800))` plays 200..9762.5 over 16 cycles, while the lane —
+    // which wraps a curve's phase every period — drew a 200→800 saw that agreed with it
+    // only in the first cycle. It still writes its control (`signalWriters`).
+    if (polarity === 'unbounded') continue
     const ranged = read.ranges.length > 0
-    // An unbounded signal with no explicit range has nothing to plot
-    // BETWEEN, so it abstains rather than borrowing a plausible 0..1.
-    if (!ranged && polarity === 'unbounded') continue
     const { lo, hi, boundsAsWritten } = boundsOf(polarity, read.ranges)
     const start = param.loc?.[0]?.start
     out.push({
@@ -447,6 +475,26 @@ export function signalAutomations(ir: PatternIR | null | undefined): readonly Si
     })
   }
   return out
+}
+
+/** One curve that writes a control — see `signalWriters`. */
+export interface SignalWriter {
+  readonly trackId: string
+  readonly paramKey: string
+  readonly kind: SignalKind
+}
+
+/**
+ * Every closed-form curve that WRITES a control, whether or not a lane can draw it
+ * (#1614): what `signalAutomations` reads, plus the unbounded signals it declines.
+ *
+ * ⚠ ASK THIS, NOT THE DRAWING READER, HOW MANY CURVES SHARE A CONTROL. A stand-in that
+ * replaces a control's values on a lane replaces every writer's (`previewShapeSwap`), so
+ * the count must not depend on which of them happens to be drawable. Counting only the
+ * drawn ones let a `time` on the same control go unseen.
+ */
+export function signalWriters(ir: PatternIR | null | undefined): readonly SignalWriter[] {
+  return readCurves(ir).map(({ trackId, param, read }) => ({ trackId, paramKey: param.key, kind: read.signal.kind }))
 }
 
 /**

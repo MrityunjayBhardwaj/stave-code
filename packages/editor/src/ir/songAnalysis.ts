@@ -60,7 +60,7 @@
 import type { PatternIR } from './PatternIR'
 import type { IREvent } from './IREvent'
 import { eventValueKey } from './eventValueKey'
-import { signalAutomations, signalCarryingParamKeys, hasTruePeriod, isNoiseKind, type SignalAutomation, type SignalKind } from './signalAutomation'
+import { signalAutomations, signalCarryingParamKeys, signalWriters, hasTruePeriod, isNoiseKind, type SignalAutomation, type SignalKind } from './signalAutomation'
 import { isSectionWindow, type TimeStep } from './parameterRoutes'
 import { steppedAutomations } from './steppedAutomation'
 
@@ -561,12 +561,15 @@ export async function previewShapeSwap(
  * A fixed value is not counted. A constant comes round with the structure the lane already
  * repeats at, so overwriting it with the new curve's phase moves no period — a hand-built
  * pair (noise and a fixed cutoff in one `cat`) agreed with the engine.
+ *
+ * Every WRITER counts, drawn or not (`signalWriters`, #1614). A `time` on the same control
+ * is never drawn, and its values are overwritten all the same.
  */
 function sharesItsControl(ir: PatternIR | null, a: SignalAutomation): boolean {
   if (!ir) return false
   const same = (b: { readonly trackId: string; readonly paramKey: string }) =>
     b.trackId === a.trackId && b.paramKey === a.paramKey
-  return signalAutomations(ir).filter(same).length > 1 || steppedAutomations(ir).some(same)
+  return signalWriters(ir).filter(same).length > 1 || steppedAutomations(ir).some(same)
 }
 
 /** How many song cycles `next`'s values take to come back round on curve `a`'s route:
