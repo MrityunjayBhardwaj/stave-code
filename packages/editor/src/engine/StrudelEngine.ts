@@ -3,7 +3,7 @@ import { BreakpointStore } from './BreakpointStore'
 import { LiveRecorder } from './LiveRecorder'
 import { perf } from '../perf/profiler'
 import { OfflineRenderer } from './OfflineRenderer'
-import { normalizeStrudelHap } from './NormalizedHap'
+import { normalizeStrudelHap, declaredLocationKeys } from './NormalizedHap'
 import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
 import { scanVizRequestLines } from './vizLineScan'
@@ -450,6 +450,12 @@ export class StrudelEngine implements LiveCodingEngine {
   // success (node identity is a structural property of the IR — #975/#982),
   // cleared on failure.
   private lastIRNodeLocLookup: ReadonlyMap<string, IREvent[]> | null = null
+  // #1619 — the spans the last SUCCESSFUL evaluate's transpiler declared, as
+  // `start:end` keys (`declaredLocationKeys`). Unlike the IR lookup it is KEPT on a
+  // failed evaluate: that evaluate also keeps the last good patterns (`songPatterns`,
+  // `trackSchedulers`), and these are the spans those patterns' haps were located
+  // against. Null = unknown, which filters nothing.
+  private lastDeclaredLocations: ReadonlySet<string> | null = null
 
   // Phase 20-07 (PK13 step 9) — engine-attached breakpoint registry.
   // Per-engine scope (PV33). The hit-check in `wrappedOutput` reads
@@ -1464,7 +1470,7 @@ export class StrudelEngine implements LiveCodingEngine {
               try {
                 return captured
                   .queryArc(begin, end)
-                  .map((hap: unknown) => normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? undefined))
+                  .map((hap: unknown) => normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? undefined, this.lastDeclaredLocations ?? undefined))
               } catch {
                 return []
               }
@@ -1499,6 +1505,10 @@ export class StrudelEngine implements LiveCodingEngine {
         this.lastIRNodeLocLookup = this.lastPatternIR
           ? buildNodeLocIndex(this.lastPatternIR)
           : null
+        // #1619 — read after the repl's own `updateState` (`repl.mjs:273`), which runs
+        // before its `evaluate` resolves, so these are THIS evaluate's spans.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        this.lastDeclaredLocations = declaredLocationKeys((this.repl as any)?.state?.miniLocations) ?? null
       } else {
         // Failed evaluate — clear stale IR
         this.lastPatternIR = null
@@ -2003,7 +2013,7 @@ export class StrudelEngine implements LiveCodingEngine {
         try {
           return pattern
             .queryArc(begin, end)
-            .map((hap: unknown) => normalizeStrudelHap(hap, undefined, this.lastIRNodeLocLookup ?? undefined))
+            .map((hap: unknown) => normalizeStrudelHap(hap, undefined, this.lastIRNodeLocLookup ?? undefined, this.lastDeclaredLocations ?? undefined))
         } catch { return [] }
       },
     }
@@ -2090,7 +2100,7 @@ export class StrudelEngine implements LiveCodingEngine {
       try {
         const haps = pattern.queryArc(from, to) as unknown[]
         for (const hap of haps) {
-          out.push(normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? undefined))
+          out.push(normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? undefined, this.lastDeclaredLocations ?? undefined))
         }
       } catch { /* per-track query failure — skip this track */ }
     }

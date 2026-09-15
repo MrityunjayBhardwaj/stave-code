@@ -4759,6 +4759,11 @@ function extractLoc(hap) {
   return out.length > 0 ? out : void 0;
 }
 __name(extractLoc, "extractLoc");
+function declaredOnly(loc, declared) {
+  const kept = loc.filter((l) => declared.has(`${l.start}:${l.end}`));
+  return kept.length > 0 ? kept : void 0;
+}
+__name(declaredOnly, "declaredOnly");
 function findMatchedEvent(loc, begin, locLookup) {
   if (!locLookup || !loc || loc.length === 0) return void 0;
   const key2 = `${loc[0].start}:${loc[0].end}`;
@@ -4776,7 +4781,16 @@ function findMatchedEvent(loc, begin, locLookup) {
   return best;
 }
 __name(findMatchedEvent, "findMatchedEvent");
-function normalizeStrudelHap(hap, trackId, irNodeLocLookup) {
+function declaredLocationKeys(miniLocations) {
+  if (!Array.isArray(miniLocations)) return void 0;
+  const keys = /* @__PURE__ */ new Set();
+  for (const l of miniLocations) {
+    if (Array.isArray(l) && typeof l[0] === "number" && typeof l[1] === "number") keys.add(`${l[0]}:${l[1]}`);
+  }
+  return keys;
+}
+__name(declaredLocationKeys, "declaredLocationKeys");
+function normalizeStrudelHap(hap, trackId, irNodeLocLookup, declaredLocations) {
   const begin = Number(hap.whole?.begin ?? 0);
   const end = Number(hap.whole?.end ?? begin + 0.25);
   const endClipped = Number(hap.endClipped ?? end);
@@ -4792,7 +4806,8 @@ function normalizeStrudelHap(hap, trackId, irNodeLocLookup) {
     velocity: value?.velocity ?? 1,
     color: value?.color ?? null
   };
-  const loc = extractLoc(hap);
+  const extracted = extractLoc(hap);
+  const loc = extracted && declaredLocations ? declaredOnly(extracted, declaredLocations) : extracted;
   if (loc) event.loc = loc;
   if (trackId) event.trackId = trackId;
   const matched = findMatchedEvent(loc, begin, irNodeLocLookup);
@@ -8689,6 +8704,12 @@ var _StrudelEngine = class _StrudelEngine {
     // success (node identity is a structural property of the IR — #975/#982),
     // cleared on failure.
     this.lastIRNodeLocLookup = null;
+    // #1619 — the spans the last SUCCESSFUL evaluate's transpiler declared, as
+    // `start:end` keys (`declaredLocationKeys`). Unlike the IR lookup it is KEPT on a
+    // failed evaluate: that evaluate also keeps the last good patterns (`songPatterns`,
+    // `trackSchedulers`), and these are the spans those patterns' haps were located
+    // against. Null = unknown, which filters nothing.
+    this.lastDeclaredLocations = null;
     // Phase 20-07 (PK13 step 9) — engine-attached breakpoint registry.
     // Per-engine scope (PV33). The hit-check in `wrappedOutput` reads
     // `breakpointStore.has(irNodeId)` on the audio scheduler hot path.
@@ -9277,7 +9298,7 @@ var _StrudelEngine = class _StrudelEngine {
             now: /* @__PURE__ */ __name(() => sched.now(), "now"),
             query: /* @__PURE__ */ __name((begin, end) => {
               try {
-                return captured.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? void 0));
+                return captured.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? void 0, this.lastDeclaredLocations ?? void 0));
               } catch {
                 return [];
               }
@@ -9292,6 +9313,7 @@ var _StrudelEngine = class _StrudelEngine {
         this.rebuildTrackAnalysers(capturedPatterns);
         this.lastPatternIR = parseStrudel(code);
         this.lastIRNodeLocLookup = this.lastPatternIR ? buildNodeLocIndex(this.lastPatternIR) : null;
+        this.lastDeclaredLocations = declaredLocationKeys(this.repl?.state?.miniLocations) ?? null;
       } else {
         this.lastPatternIR = null;
         this.lastIRNodeLocLookup = null;
@@ -9677,7 +9699,7 @@ var _StrudelEngine = class _StrudelEngine {
       now: /* @__PURE__ */ __name(() => sched.now(), "now"),
       query: /* @__PURE__ */ __name((begin, end) => {
         try {
-          return pattern.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, void 0, this.lastIRNodeLocLookup ?? void 0));
+          return pattern.queryArc(begin, end).map((hap) => normalizeStrudelHap(hap, void 0, this.lastIRNodeLocLookup ?? void 0, this.lastDeclaredLocations ?? void 0));
         } catch {
           return [];
         }
@@ -9763,7 +9785,7 @@ var _StrudelEngine = class _StrudelEngine {
       try {
         const haps = pattern.queryArc(from, to);
         for (const hap of haps) {
-          out.push(normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? void 0));
+          out.push(normalizeStrudelHap(hap, trackId, this.lastIRNodeLocLookup ?? void 0, this.lastDeclaredLocations ?? void 0));
         }
       } catch {
       }

@@ -1705,6 +1705,7 @@ declare class StrudelEngine implements LiveCodingEngine {
     private lastEvaluatedCode;
     private lastPatternIR;
     private lastIRNodeLocLookup;
+    private lastDeclaredLocations;
     private breakpointStore;
     private isPausedState;
     private pauseChangedListeners;
@@ -2240,8 +2241,15 @@ type NormalizedHap = IREvent;
  * `irNodeLocLookup` is caller-supplied — engine threads the published
  * snapshot's loc map so each hap can be enriched with its `irNodeId`
  * by structural match (PV38 clause 2). Both optional — additive widening.
+ *
+ * `declaredLocations` (#1619) keeps only the spans the transpiler declared
+ * (`declaredLocationKeys`). A string it never rewrote — a single-quoted argument,
+ * `.color('sienna')` — is mini-parsed in its OWN quoted space, and that location
+ * comes FIRST, so `loc[0]` read `[1, 7)`: the Song timeline put the track on another
+ * track's lane, and the IR match below keyed on the same wrong span. Filtered before
+ * the match, so every reader of `loc` sees one answer. Omitted → unchanged.
  */
-declare function normalizeStrudelHap(hap: any, trackId?: string, irNodeLocLookup?: ReadonlyMap<string, IREvent[]>): NormalizedHap;
+declare function normalizeStrudelHap(hap: any, trackId?: string, irNodeLocLookup?: ReadonlyMap<string, IREvent[]>, declaredLocations?: ReadonlySet<string>): NormalizedHap;
 
 /**
  * Engine-agnostic IRPattern built from a live HapStream.

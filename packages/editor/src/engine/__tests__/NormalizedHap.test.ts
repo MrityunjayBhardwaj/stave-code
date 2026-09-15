@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeStrudelHap } from '../NormalizedHap'
+import { normalizeStrudelHap, declaredLocationKeys } from '../NormalizedHap'
 import type { IREvent } from '../../ir/IREvent'
 
 describe('normalizeStrudelHap', () => {
@@ -176,6 +176,37 @@ describe('normalizeStrudelHap', () => {
       expect(n.loc).toEqual([{ start: 30, end: 36 }])
       expect(n.trackId).toBe('bass')
       expect(n.params).toEqual({ cutoff: 800 })
+    })
+  })
+
+  describe('#1619 — locations filtered to the spans the transpiler declared', () => {
+    // A stray quoted-space span first ([1,7), `.color('sienna')`), then a declared one.
+    const hap = { whole: { begin: 0, end: 1 }, value: { s: 'hh' }, context: { locations: [{ start: 1, end: 7 }, { start: 9, end: 17 }] } }
+
+    it("reads Strudel's [start, end] tuples as keys, and says UNKNOWN for anything that is not a list", () => {
+      expect([...declaredLocationKeys([[9, 17], [20, 22]])!]).toEqual(['9:17', '20:22'])
+      expect(declaredLocationKeys([])!.size).toBe(0)
+      expect(declaredLocationKeys(undefined)).toBeUndefined()
+      expect(declaredLocationKeys(null)).toBeUndefined()
+    })
+
+    it('drops an undeclared span, so the first location is a document offset', () => {
+      expect(normalizeStrudelHap(hap, 'd2', undefined, new Set(['9:17'])).loc).toEqual([{ start: 9, end: 17 }])
+    })
+
+    it('an unknown declared set changes nothing, and an empty one drops every span', () => {
+      expect(normalizeStrudelHap(hap).loc).toEqual([{ start: 1, end: 7 }, { start: 9, end: 17 }])
+      expect(normalizeStrudelHap(hap, undefined, undefined, new Set()).loc).toBeUndefined()
+    })
+
+    it('matches the IR node by the declared span, not the stray one in front of it', () => {
+      const lookup = new Map([
+        ['1:7', [{ begin: 0, end: 1, irNodeId: 'wrong' } as never]],
+        ['9:17', [{ begin: 0, end: 1, irNodeId: 'right' } as never]],
+      ])
+      // Control: unfiltered, the stray span is what the match keys on.
+      expect(normalizeStrudelHap(hap, undefined, lookup).irNodeId).toBe('wrong')
+      expect(normalizeStrudelHap(hap, undefined, lookup, new Set(['9:17'])).irNodeId).toBe('right')
     })
   })
 })

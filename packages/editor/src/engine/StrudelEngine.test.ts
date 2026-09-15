@@ -43,10 +43,14 @@ class MockPattern {
   // where `normalizeStrudelHap` passes unknown fields through as `params`, so a
   // test can read back exactly which wraps the engine applied to which frame.
   private ops: string[]
-  constructor(clone?: { instanceId: number; shift: number; ops: string[] }) {
+  // #1619 — `context.locations` for this pattern's haps, when a test sets them.
+  // Omitted otherwise, so no other test's haps change.
+  locations?: Array<{ start: number; end: number }>
+  constructor(clone?: { instanceId: number; shift: number; ops: string[]; locations?: Array<{ start: number; end: number }> }) {
     this.instanceId = clone ? clone.instanceId : ++patternInstanceCounter
     this.shift = clone ? clone.shift : 0
     this.ops = clone ? clone.ops : []
+    this.locations = clone?.locations
   }
   // Models `@strudel/core`'s `.late(offset)`: delays every onset by `offset`
   // cycles. Returns a NEW pattern (as Strudel does) that keeps the same
@@ -56,6 +60,7 @@ class MockPattern {
       instanceId: this.instanceId,
       shift: this.shift + offset,
       ops: [...this.ops, `late(${offset})`],
+      locations: this.locations,
     })
   }
   // #1570 — `.ribbon(offset, cycles)`: cut a span and loop it. Recorded, not
@@ -65,11 +70,13 @@ class MockPattern {
       instanceId: this.instanceId,
       shift: this.shift,
       ops: [...this.ops, `ribbon(${offset},${cycles})`],
+      locations: this.locations,
     })
   }
   queryArc(begin: number, end: number) {
     return [{
       whole: { begin: begin + this.shift, end: end + this.shift },
+      ...(this.locations ? { context: { locations: this.locations } } : {}),
       // `orbit` field is read by StrudelEngine.resolveOrbit() to decide which
       // superdough orbit to side-tap for per-track analysers. Using instanceId
       // gives each pattern a distinct orbit in tests.
@@ -124,8 +131,12 @@ vi.mock('@strudel/webaudio', () => {
   const webaudioRepl = vi.fn((options: { onEvalError?: (err: Error) => void }) => {
     capturedOnEvalError = options.onEvalError ?? null
 
-    return {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const repl: any = {
       scheduler: mockScheduler,
+      // #1619 — Strudel's repl keeps the transpiler's declared spans here
+      // (`repl.mjs:273-274`), replaced by every evaluate that succeeds.
+      state: { miniLocations: [] as Array<[number, number]> },
       evaluate: vi.fn(async (code: string) => {
         // Simulate Strudel's internal sequence:
         // (1) injectPatternMethods: sets Pattern.prototype.p = function(id) { ... }
@@ -156,7 +167,19 @@ vi.mock('@strudel/webaudio', () => {
           throw new Error('Simulated repl.evaluate rejection')
         }
 
-        if (code === 'two-anon' || evalBehavior === 'two-anon') {
+        // #1619 — a successful evaluate replaces the declared spans, as the real repl
+        // does before it resolves. `unknown-locs` is a runtime with no such state.
+        repl.state = code === 'unknown-locs'
+          ? undefined
+          : { miniLocations: code === 'declared-locs' ? [[9, 17]] : [] }
+
+        if (code === 'declared-locs' || code === 'unknown-locs') {
+          // #1619 — a stray quoted-space span FIRST ([1,7), what `.color('sienna')`
+          // gives), then the declared document span ([9,17)).
+          const p = new MockPattern()
+          p.locations = [{ start: 1, end: 7 }, { start: 9, end: 17 }]
+          ;(p as any).p('$')
+        } else if (code === 'two-anon' || evalBehavior === 'two-anon') {
           const p0 = new MockPattern()
           const p1 = new MockPattern()
           ;(p0 as any).p('$')
@@ -194,6 +217,7 @@ vi.mock('@strudel/webaudio', () => {
         }
       }),
     }
+    return repl
   })
 
   return {
@@ -415,6 +439,49 @@ describe('StrudelEngine.getTrackSchedulers', () => {
     expect(map.has('$0')).toBe(true)
     expect(map.has('d1')).toBe(true)
     expect(map.size).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #1619 — a hap's locations are filtered to the spans the transpiler declared.
+// ---------------------------------------------------------------------------
+
+describe('StrudelEngine keeps only declared hap locations (#1619)', () => {
+  beforeEach(() => {
+    patternInstanceCounter = 0
+    capturedOnEvalError = null
+    vi.clearAllMocks()
+  })
+
+  it('drops a span the transpiler never declared, from timeline events and the live scheduler alike', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('declared-locs')
+    const events = engine.getTimelineEvents(1)
+    expect(events.length, 'the located pattern produced no event').toBeGreaterThan(0)
+    for (const ev of events) expect(ev.loc).toEqual([{ start: 9, end: 17 }])
+    const live = engine.getTrackSchedulers().get('$0')!.query(0, 1)
+    expect(live.length).toBeGreaterThan(0)
+    for (const ev of live) expect(ev.loc).toEqual([{ start: 9, end: 17 }])
+  })
+
+  it('keeps every location when the runtime says nothing about declared spans', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('unknown-locs')
+    const events = engine.getTimelineEvents(1)
+    expect(events.length).toBeGreaterThan(0)
+    for (const ev of events) expect(ev.loc).toEqual([{ start: 1, end: 7 }, { start: 9, end: 17 }])
+  })
+
+  it('a failed evaluate keeps the spans that belong to the patterns it keeps', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('declared-locs')
+    await engine.evaluate('error-code')
+    const events = engine.getTimelineEvents(1)
+    expect(events.length, 'the failed evaluate dropped the last good patterns — this arm tests nothing').toBeGreaterThan(0)
+    for (const ev of events) expect(ev.loc).toEqual([{ start: 9, end: 17 }])
   })
 })
 
