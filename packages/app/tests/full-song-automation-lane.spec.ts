@@ -1052,6 +1052,57 @@ test('a rate typed on the caption reaches the document, and the lane draws the n
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
 
+// ── #1613: a range written high-to-low ───────────────────────────────────────
+
+test('a range written high-to-low is drawn falling where the same range written low-to-high climbs (#1613)', async ({ page }) => {
+  test.setTimeout(90_000)
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+  await bootShell(page)
+  const canvas = page.locator('[data-full-song-canvas]')
+
+  // ── CONTROL: the same two tracks with the cutoff held constant, so the curve is a difference.
+  await setSongAndEval(page, RATE_CONSTANT_SONG)
+  await canvas.waitFor({ timeout: 10_000 })
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(8)
+  await page.waitForTimeout(500)
+  const control = await blueChannel(page)
+
+  /** The curve's mean row just after bar 0 and just before bar 4 — one saw period. */
+  const endsOfFirstRamp = async (song: string) => {
+    await setSongAndEval(page, song)
+    await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(8)
+    await page.waitForTimeout(800)
+    const subject = await blueChannel(page)
+    expect([subject.W, subject.H]).toEqual([control.W, control.H])
+    const bar = subject.W / 8
+    const start = curveRow(subject, control, 8, 24)
+    const end = curveRow(subject, control, Math.round(4 * bar - 24), Math.round(4 * bar - 8))
+    expect(start !== null && end !== null, `no curve at a probe: ${JSON.stringify({ start, end })}`).toBe(true)
+    return { start: start as number, end: end as number }
+  }
+
+  // Low-to-high: the saw climbs, so its row gets SMALLER (screen y grows downward).
+  const upright = await endsOfFirstRamp('$: s("bd*8").cutoff(saw.slow(4).range(200, 2000))\n$: s("<hh cp hh cp hh cp hh sd>")')
+  expect(upright.end, `the upright saw does not climb: ${JSON.stringify(upright)}`).toBeLessThan(upright.start - 5)
+
+  // High-to-low: the engine plays it falling, so its row gets LARGER.
+  const turned = await endsOfFirstRamp('$: s("bd*8").cutoff(saw.slow(4).range(2000, 200))\n$: s("<hh cp hh cp hh cp hh sd>")')
+  expect(turned.end, `the high-to-low saw is not drawn falling: ${JSON.stringify({ upright, turned })}`).toBeGreaterThan(turned.start + 5)
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
 // ── #1610: bounds that are not the range call's arguments ───────────────────
 
 /** Walk the caption line and name every editor that opens, as `label=value`, and the

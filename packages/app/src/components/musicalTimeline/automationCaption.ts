@@ -294,9 +294,12 @@ export function captionEdit(hit: CaptionHit, nextText: string): OffsetEdit | nul
   // Unchanged — see (2). Compared as NUMBERS, so `0.30` typed over `0.3` is
   // correctly no edit at all rather than a rewrite.
   if (lo === a.lo && hi === a.hi) return null
-  // A range must span something and must not be inverted; either would draw a
-  // curve the engine does not play.
-  if (!(hi > lo)) return null
+  // A range must span something. And it keeps the direction it was written in
+  // (#1613): `range(0.7, 0.3)` plays downward (measured) and is drawn so, and a typed
+  // bound that crossed the other would silently turn the curve over — most likely a
+  // typo. A flat range has no direction yet, so either way widens it.
+  if (hi === lo) return null
+  if (a.hi !== a.lo && hi > lo !== a.hi > a.lo) return null
 
   // ⚠ `String`, and DELIBERATELY NOT the house `formatNumber` helper, which
   // exists for drag handlers whose arithmetic produces float noise. There is no

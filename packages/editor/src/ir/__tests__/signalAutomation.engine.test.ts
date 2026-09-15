@@ -196,6 +196,20 @@ describe('#1610 — the bounds the reader reports are the ones the engine plays'
   })
 })
 
+describe('#1613 — a range written high-to-low plays downward, and the reader says so', () => {
+  it('tri under range(0.7, 0.3) is 0.7 at its natural low and 0.3 at its natural high; the reader reports lo > hi', async () => {
+    const code = 's("bd*16").gain(tri.slow(4).range(0.7, 0.3))'
+    const at = new Map((await bdOnsets(code, 4)).map((o) => [o.t, Math.round(o.gain * 1e9) / 1e9]))
+    expect(at.size).toBe(64)
+    expect([at.get(0), at.get(2)], 'natural low (t=0), natural high (t=2)').toEqual([0.7, 0.3])
+    const [a] = signalAutomations(parseStrudel(`$: ${code}`) as never)
+    expect({ lo: a.lo, hi: a.hi }).toEqual({ lo: 0.7, hi: 0.3 })
+    // Control: written low-to-high, the same curve plays upward.
+    const up = new Map((await bdOnsets('s("bd*16").gain(tri.slow(4).range(0.3, 0.7))', 4)).map((o) => [o.t, Math.round(o.gain * 1e9) / 1e9]))
+    expect([up.get(0), up.get(2)]).toEqual([0.3, 0.7])
+  })
+})
+
 describe('#1590 — the period fold is told the period the engine repeats at', () => {
   it.each([
     ['no section (control)', 's("bd*8").gain(saw.slow(3))', 3],

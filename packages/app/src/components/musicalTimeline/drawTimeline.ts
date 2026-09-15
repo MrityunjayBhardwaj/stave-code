@@ -885,7 +885,11 @@ function drawAutomation(
         const cycle = Math.min(firstCycle + (x - toScreenX(firstCycle)) * cyclesPerPx, c1 - 1e-9)
         const own = timeAt(a, cycle)
         if (own !== null) {
-          const unit = signalUnit(a.kind, own / a.periodCycles)
+          const natural = signalUnit(a.kind, own / a.periodCycles)
+          // #1613 — a range written high-to-low (`tri.range(0.7, 0.3)`) maps the signal's
+          // natural HIGH point to the smaller value, so the engine plays it downward
+          // (measured). `lo` is where the natural low lands, so `lo > hi` turns it over.
+          const unit = a.lo > a.hi ? 1 - natural : natural
           // Top of the band is the HIGH value — screen y grows downward.
           const y = top + AUTOMATION_PAD_Y + (1 - Math.min(1, Math.max(0, unit))) * bandH
           if (first) { ctx.moveTo(x, y); first = false } else { ctx.lineTo(x, y) }
