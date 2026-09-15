@@ -9457,7 +9457,8 @@ var _StrudelEngine = class _StrudelEngine {
    * `renderOffline`, plus what the render could and could not play.
    *
    * ⚠ IT USED TO DROP EVERY DRUM, WITH NO ERROR (#1353). `renderOffline` went
-   * through `OfflineRenderer`, a hand-rolled oscillator renderer that skipped
+   * through `OfflineRenderer` (since removed, #1630), a hand-rolled oscillator
+   * renderer that skipped
    * any sound it could not map to a waveform and any hap without a pitch. A drum
    * pattern stacked into a synth came back byte-identical to the synth alone.
    * Its stated reason — worklets cannot be registered on a fresh
@@ -9534,7 +9535,8 @@ var _StrudelEngine = class _StrudelEngine {
    * graph as `renderOfflineReport`, and report what happened to every stem.
    *
    * ⚠ IT USED TO DROP EVERY DRUM, AND ONE SILENT STEM LOST THEM ALL (#1409). It
-   * went through `OfflineRenderer`, which skips any sample-based sound, and it
+   * went through `OfflineRenderer` (since removed, #1630), which skipped any
+   * sample-based sound, and it
    * rendered with `Promise.all`, so the first stem `WavEncoder` refused as
    * silent rejected the whole set — stems that had already rendered included.
    *
@@ -43144,83 +43146,6 @@ var _SonicPiEngine = class _SonicPiEngine {
 __name(_SonicPiEngine, "SonicPiEngine");
 var SonicPiEngine = _SonicPiEngine;
 
-// src/engine/OfflineRenderer.ts
-var _OfflineRenderer = class _OfflineRenderer {
-  static async render(code, duration, sampleRate) {
-    const mini = await import('@strudel/mini');
-    await import('@strudel/tonal');
-    const coreMod = await import('@strudel/core');
-    installMiniStringParser({ core: coreMod, mini });
-    const { evaluate } = coreMod;
-    const { transpiler } = await import('@strudel/transpiler');
-    const result = await evaluate(code, transpiler);
-    const pattern = result.pattern;
-    if (!pattern) {
-      throw new Error("OfflineRenderer: no pattern returned from evaluate()");
-    }
-    const cps = extractCps(code);
-    const numFrames = Math.ceil(duration * sampleRate);
-    const offlineCtx = new OfflineAudioContext(2, numFrames, sampleRate);
-    const haps = pattern.queryArc(0, duration * cps);
-    for (const hap of haps) {
-      if (typeof hap.hasOnset === "function" && !hap.hasOnset()) continue;
-      const startCycle = hap.whole?.begin?.valueOf() ?? hap.part?.begin?.valueOf() ?? 0;
-      const endCycle = hap.whole?.end?.valueOf() ?? hap.part?.end?.valueOf() ?? startCycle + 1;
-      const startTime = startCycle / cps;
-      const endTime = endCycle / cps;
-      if (startTime >= duration) continue;
-      const s = hap.value?.s ?? "sine";
-      const oscType = toOscType(s);
-      if (!oscType) continue;
-      const midi = noteToMidi(hap.value?.note ?? hap.value?.n);
-      if (midi === null) continue;
-      const freq = midiToFreq(midi);
-      const gain = Math.min(1, Math.max(0, hap.value?.gain ?? 0.7));
-      const release = Math.min(hap.value?.release ?? 0.1, endTime - startTime);
-      renderNote(offlineCtx, oscType, freq, gain, release, startTime, Math.min(endTime, duration));
-    }
-    const audioBuffer = await offlineCtx.startRendering();
-    return WavEncoder.encode(audioBuffer);
-  }
-};
-__name(_OfflineRenderer, "OfflineRenderer");
-var OfflineRenderer = _OfflineRenderer;
-function extractCps(code) {
-  const m = code.match(/setcps\s*\(\s*([\d.]+)\s*(?:\/\s*([\d.]+))?\s*\)/);
-  if (!m) return 1;
-  const num = parseFloat(m[1]);
-  const den = m[2] ? parseFloat(m[2]) : 1;
-  return den > 0 ? num / den : 1;
-}
-__name(extractCps, "extractCps");
-function toOscType(s) {
-  const norm = s.toLowerCase().replace(/:\d+$/, "");
-  if (norm === "sine") return "sine";
-  if (norm === "sawtooth" || norm === "saw") return "sawtooth";
-  if (norm === "square") return "square";
-  if (norm === "triangle" || norm === "tri") return "triangle";
-  return null;
-}
-__name(toOscType, "toOscType");
-function midiToFreq(midi) {
-  return 440 * Math.pow(2, (midi - 69) / 12);
-}
-__name(midiToFreq, "midiToFreq");
-function renderNote(ctx, oscType, freq, gain, release, startTime, endTime) {
-  const osc = ctx.createOscillator();
-  osc.type = oscType;
-  osc.frequency.value = freq;
-  const gainNode = ctx.createGain();
-  gainNode.gain.setValueAtTime(gain, startTime);
-  gainNode.gain.setValueAtTime(gain, Math.max(startTime, endTime - release));
-  gainNode.gain.exponentialRampToValueAtTime(1e-4, endTime);
-  osc.connect(gainNode);
-  gainNode.connect(ctx.destination);
-  osc.start(startTime);
-  osc.stop(endTime + 1e-3);
-}
-__name(renderNote, "renderNote");
-
 // src/visualizers/renderers/hydraPresets.ts
 var hydraPianoroll = compileHydraCode(HYDRA_PIANOROLL_CODE);
 var hydraScope = compileHydraCode(HYDRA_SCOPE_CODE);
@@ -47818,7 +47743,6 @@ exports.MIXER_TAB_ID = MIXER_TAB_ID;
 exports.MULTI_VOICE_HEADS = MULTI_VOICE_HEADS;
 exports.MainSignalSampler = MainSignalSampler;
 exports.Mixer = Mixer;
-exports.OfflineRenderer = OfflineRenderer;
 exports.P5VizRenderer = P5VizRenderer;
 exports.P5_DOCS_INDEX = P5_DOCS_INDEX;
 exports.P5_VIZ = P5_VIZ;

@@ -41,7 +41,7 @@ struCode/
 │   │   │   │   ├── StrudelEngine.ts    # Wraps @strudel/core + @strudel/webaudio
 │   │   │   │   ├── Scheduler.ts        # Wraps @strudel/webaudio scheduler
 │   │   │   │   ├── HapStream.ts        # Event bus: emits Hap objects as they're scheduled
-│   │   │   │   ├── OfflineRenderer.ts  # OfflineAudioContext fast render (50× speed)
+│   │   │   │   ├── renderPatternOffline.ts  # Real superdough graph into an OfflineAudioContext
 │   │   │   │   ├── LiveRecorder.ts     # ScriptProcessorNode live capture → WAV Blob
 │   │   │   │   ├── WavEncoder.ts       # AudioBuffer → WAV Blob (pure TS, no deps)
 │   │   │   │   └── noteToMidi.ts       # Note name → MIDI conversion
@@ -166,11 +166,16 @@ export class StrudelEngine extends EventEmitter {
   }
 
   /**
-   * Offline fast-render: evaluates `code` in an OfflineAudioContext at the
-   * native sample rate. Returns in ~durationSeconds/50 wall-clock time.
-   * Does NOT affect the live AudioContext — safe to call while playing.
+   * Offline render: evaluates `code` and renders it faster than real time into
+   * an OfflineAudioContext, through the same superdough graph the live engine
+   * plays (§4.2). `renderOfflineReport` also returns what could not play.
    *
-   * @param code      Complete Strudel program (setcps + $: pattern)
+   * ⚠ Not safe while the transport plays: the render borrows superdough's
+   * module globals, so live notes in that window land in the file (#1627).
+   * ⚠ `code` is evaluated outside the engine's own evaluate, so a document
+   * using setcps, $: or .viz does not render yet (#1344).
+   *
+   * @param code      Strudel program
    * @param duration  Seconds to render
    * @param sampleRate Defaults to live AudioContext sampleRate (44100 or 48000)
    */
@@ -179,7 +184,7 @@ export class StrudelEngine extends EventEmitter {
     duration: number,
     sampleRate?: number
   ): Promise<Blob> {
-    return OfflineRenderer.render(code, duration, sampleRate ?? this.audioCtx.sampleRate)
+    return (await this.renderOfflineReport(code, duration, sampleRate)).blob
   }
 
   /**
@@ -211,41 +216,30 @@ Key: `onTrigger` fires for every scheduled Hap with full timing data. This is th
 single event source for ALL visual feedback — highlights, pianoroll, scope/spectrum all
 derive from this one stream.
 
-### 4.2 OfflineRenderer
+### 4.2 Offline render (`renderPatternOffline`)
 
-Renders Strudel code at full speed using `OfflineAudioContext`. Completely isolated
-from the live AudioContext — no audio interruption, safe to run mid-session.
+Renders a pattern faster than real time into an `OfflineAudioContext`, through the
+same superdough graph the live engine plays, so samples, soundfonts and effects sound
+in a bounce as they do live (#1353). `OfflineAudioContext.startRendering()` has no
+real-time constraint, which is what makes it faster than a live capture.
 
-```ts
-// engine/OfflineRenderer.ts
-export class OfflineRenderer {
-  static async render(code: string, duration: number, sampleRate: number): Promise<Blob> {
-    const numFrames = Math.ceil(duration * sampleRate)
-    const offlineCtx = new OfflineAudioContext(2, numFrames, sampleRate)
+It is upstream's `renderPatternAudio` (`@strudel/webaudio`) with three changes, each
+explained in the header of `engine/renderPatternOffline.ts`:
 
-    // Evaluate the Strudel code with the offline context as the audio target.
-    // @strudel/webaudio's webaudioOutput accepts an AudioContext parameter.
-    const output = webaudioOutput(offlineCtx)
-    const result = await evaluate(code, { output })
+- A hap that fails to sound is counted and reported, not swallowed.
+- It returns the `AudioBuffer`, so `WavEncoder` can refuse a silent take (#1402).
+- It never closes the live context (#1400).
 
-    // Strudel patterns are cycle-based. We fake time progression by setting
-    // a custom clock that advances in sync with OfflineAudioContext render frames.
-    const scheduler = new Scheduler({
-      audioContext: offlineCtx,
-      onTrigger: (hap, time, cps, endTime) => output.trigger(hap, time, cps, endTime),
-    })
-    scheduler.setPattern(result.pattern)
-    scheduler.start()
+`superdough()` takes no context argument, so for the length of a render its module
+globals point at the offline context and are restored afterwards. Two consequences:
+renders run one at a time (`renderStems` goes stem by stem, #1409), and a render
+while the transport plays pulls live notes into the file (#1627).
 
-    const audioBuffer = await offlineCtx.startRendering()
-    return WavEncoder.encode(audioBuffer)
-  }
-}
-```
+Known gap: `renderOffline` evaluates code outside the engine's own evaluate, so a
+document using `setcps`, `$:` or `.viz` does not render yet (#1344).
 
-**Why this is fast:** `OfflineAudioContext.startRendering()` processes audio at CPU speed
-(no real-time constraint). 30 seconds of audio renders in ~300-600ms on a modern machine
-— ~50× faster than real-time. This replaces Composr's `/strudel-record` iframe entirely.
+The first version was a hand-rolled `OfflineRenderer` that drew each note with
+oscillators and skipped every sample. It was removed in #1630.
 
 ### 4.3 LiveRecorder
 
@@ -960,9 +954,9 @@ export { Pitchwheel } from './visualizers/Pitchwheel'
 - [ ] `@strudel/core` + `@strudel/webaudio` direct import working
 - [ ] StrudelEngine class (evaluate, play, stop, onTrigger)
 - [ ] WavEncoder (pure TS, no deps, stereo 16-bit WAV)
-- [ ] OfflineRenderer (`renderOffline` — single pattern, OfflineAudioContext)
+- [ ] `renderOffline` — single pattern, OfflineAudioContext, real superdough graph
 - [ ] LiveRecorder (`record` — ScriptProcessorNode tap)
-- [ ] `renderStems` — parallel multi-stem offline render
+- [ ] `renderStems` — multi-stem offline render, one stem at a time
 - [ ] `onExport` hook wired to toolbar download button
 - [ ] Monaco editor with basic Strudel syntax highlighting
 - [ ] Toolbar (play/stop, export, BPM display, error badge)
