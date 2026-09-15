@@ -21,6 +21,9 @@ export type { SignalAutomation, SignalKind, SignalSpans } from './ir'
 // #1463 Stage 1 — the stepped class, for the same lane.
 export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './ir'
 export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp } from './ir'
+// #1600 — a fixed value a lane can start automating.
+export { fixedParameters, fixedToStepsEdit } from './ir'
+export type { FixedParameter } from './ir'
 
 // Phase 19-07 (#79) — parser stage helpers. PK10 propagation: re-exported
 // from the top-level barrel so the app can `import { runRawStage, ... }
@@ -707,6 +710,7 @@ export {
   routeSurface,
   Knob,
   knobRangeFor,
+  hasKnownKnobRange,
   VISUAL_EDIT_TABS,
   PATTERN_TAB_ID,
   MIXER_CONSOLE_TAB_ID,

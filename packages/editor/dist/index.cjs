@@ -2115,6 +2115,67 @@ function stepValueEdit(a, index, value) {
 }
 __name(stepValueEdit, "stepValueEdit");
 
+// src/ir/fixedParameters.ts
+var NUMBER2 = /^-?(?:\d+\.?\d*|\.\d+)$/;
+function numberOf(raw) {
+  const t = raw.trim();
+  if (NUMBER2.test(t)) return { text: t, quote: "" };
+  const q = t[0];
+  if ((q === '"' || q === "'" || q === "`") && t.length >= 2 && t.indexOf(q, 1) === t.length - 1) {
+    const inner = t.slice(1, -1).trim();
+    if (NUMBER2.test(inner)) return { text: inner, quote: q };
+  }
+  return null;
+}
+__name(numberOf, "numberOf");
+var DECLINE = /* @__PURE__ */ Symbol("decline");
+function sectionCyclesOf(placements) {
+  let agreed = DECLINE;
+  for (const placement of placements) {
+    if (!placement.every(isSectionWindow)) return DECLINE;
+    const sections = placement;
+    const inner = sections.length > 0 ? sections[sections.length - 1].cycles : null;
+    if (agreed !== DECLINE && agreed !== inner) return DECLINE;
+    agreed = inner;
+  }
+  return agreed;
+}
+__name(sectionCyclesOf, "sectionCyclesOf");
+function fixedParameters(ir) {
+  const out = [];
+  for (const { trackId, param, placements } of playableParameters(ir)) {
+    const num = numberOf(param.rawArgs);
+    if (!num) continue;
+    const sectionCycles = sectionCyclesOf(placements);
+    if (sectionCycles === DECLINE) continue;
+    const call = param.loc?.[0];
+    if (!call) continue;
+    const raw = param.rawArgs;
+    const argStart = call.end - 1 - raw.length + (raw.length - raw.trimStart().length);
+    out.push({
+      trackId,
+      paramKey: param.key,
+      method: param.userMethod ?? param.key,
+      value: Number(num.text),
+      valueText: num.text,
+      argSpan: { start: argStart, end: argStart + raw.trim().length },
+      sectionCycles,
+      offset: Number.isFinite(call.start) ? call.start : null,
+      placements
+    });
+  }
+  return out;
+}
+__name(fixedParameters, "fixedParameters");
+function fixedToStepsEdit(f, steps, source) {
+  if (!Number.isInteger(steps) || steps < 1) return null;
+  const num = numberOf(source.slice(f.argSpan.start, f.argSpan.end));
+  if (!num || num.text !== f.valueText) return null;
+  const q = num.quote || '"';
+  return { range: [f.argSpan.start, f.argSpan.end], text: `${q}<${Array(steps).fill(num.text).join(" ")}>${q}` };
+}
+__name(fixedToStepsEdit, "fixedToStepsEdit");
+
 // src/ir/serialize.ts
 var PATTERN_IR_SCHEMA_VERSION = "1.0";
 function patternToJSON(ir, pretty) {
@@ -35473,6 +35534,10 @@ function isKnownControl(method) {
   return STRUDEL_CONTROLS.has(method) || Object.prototype.hasOwnProperty.call(RANGES, method);
 }
 __name(isKnownControl, "isKnownControl");
+function hasKnownKnobRange(method) {
+  return Object.prototype.hasOwnProperty.call(RANGES, method);
+}
+__name(hasKnownKnobRange, "hasKnownKnobRange");
 function isStrudelControl(method) {
   return STRUDEL_CONTROLS.has(method);
 }
@@ -47833,6 +47898,8 @@ exports.exitRuntimeView = exitRuntimeView;
 exports.extractReferenceIdentifier = extractReferenceIdentifier;
 exports.fileHistory = fileHistory;
 exports.filter = filter;
+exports.fixedParameters = fixedParameters;
+exports.fixedToStepsEdit = fixedToStepsEdit;
 exports.flushToPreset = flushToPreset;
 exports.formatFriendlyError = formatFriendlyError;
 exports.formatNumber = formatNumber;
@@ -47908,6 +47975,7 @@ exports.getZoneHeightOverride = getZoneHeightOverride;
 exports.gmFamily = gmFamily;
 exports.groupDrumKits = groupDrumKits;
 exports.groupSoundCatalog = groupSoundCatalog;
+exports.hasKnownKnobRange = hasKnownKnobRange;
 exports.hydraKaleidoscope = hydraKaleidoscope;
 exports.hydraPianoroll = hydraPianoroll;
 exports.hydraScope = hydraScope;

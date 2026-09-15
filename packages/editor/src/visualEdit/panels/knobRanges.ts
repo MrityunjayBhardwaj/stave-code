@@ -121,6 +121,19 @@ export function isKnownControl(method: string): boolean {
 }
 
 /**
+ * Whether `method` has a range of its own in the table above — not the
+ * value-derived fallback `knobRangeFor` invents for anything else (#1600).
+ *
+ * Narrower than `isKnownControl` on purpose: that one admits every Strudel control,
+ * routing like `orbit` included. A lane offering to automate a parameter needs a
+ * dial it can draw honestly, which is exactly this table's vocabulary — the one the
+ * mixer already uses.
+ */
+export function hasKnownKnobRange(method: string): boolean {
+  return Object.prototype.hasOwnProperty.call(RANGES, method)
+}
+
+/**
  * Whether `method` is a genuine Strudel CONTROL (createParam). Only these carry
  * the #844 range metadata in their extra args — grounded that a control ignores
  * everything past its first argument (controls.mjs:50), so `.room(v, min, max)`

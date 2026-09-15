@@ -82,6 +82,9 @@ export type { SignalAutomation, SignalKind, SignalSpans } from './signalAutomati
 // Stepped automation (#1463) — the per-cycle class beside #1464's continuous one.
 export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './steppedAutomation'
 export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp } from './steppedAutomation'
+// A fixed value, and the edit that starts automating it as steps (#1600).
+export { fixedParameters, fixedToStepsEdit } from './fixedParameters'
+export type { FixedParameter } from './fixedParameters'
 
 // Event identity (#1102) — exported so the NEXT consumer asking "are these two
 // events the same sound" finds the one answer instead of curating its own field
