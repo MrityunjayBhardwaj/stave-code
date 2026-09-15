@@ -27,7 +27,7 @@ import { NO_VOICE } from './timelineScene'
 import type { LaneLayout, LaneBox } from './laneLayout'
 import type { DisplayMeter } from '../../lib/meter'
 import { songCycleToXUnclamped, type SongWindow } from './songAxis'
-import type { SignalAutomation } from '@stave/editor'
+import type { SignalAutomation, SignalKind, UnboundedSignalKind } from '@stave/editor'
 import { automationColorOnLane, automationCountOnLane } from './colors'
 import {
   AUTOMATION_PAD_Y,
@@ -614,17 +614,31 @@ const AUTOMATION_INDICATIVE_DASH: readonly number[] = [4, 3]
  * truth that is available: this parameter jumps around, this often.
  */
 /**
- * The kinds this module can draw FAITHFULLY — a closed form the document alone
- * determines, so the curve on screen is the curve the engine will produce.
+ * What the lane can say about each kind's PATH, written out for every kind (#1494):
+ *
+ *  - a closed form: the document alone determines the curve, so the stroke is the
+ *    curve the engine will produce, and it is drawn solid;
+ *  - `'indicative'`: the real stream depends on a runtime value the static IR does
+ *    not carry, so a stand-in contour is drawn DASHED (#1486);
+ *  - `'declined'`: no natural range, so nothing to draw between (#1614).
  *
  * ⚠ THIS TABLE IS THE SINGLE SOURCE OF TRUTH for both questions asked of a
  * kind: what shape to plot (`signalUnit`) and whether that shape is real
  * (`isIndicativeKind`). They were a switch and a list at first, which is two
  * places to add a kind and one place to forget — and forgetting the second is
  * silent, because a fabricated curve drawn as faithful looks exactly like a
- * faithful one. Membership answers both, so it cannot drift.
+ * faithful one. One entry answers both, so it cannot drift.
+ *
+ * ⚠ AND IT IS KEYED BY `SignalKind`, NOT `string`. It used to list only the faithful
+ * kinds and call everything else indicative, so a deterministic kind added later
+ * would have been drawn dashed, with a wobble it does not have — silently, because
+ * nothing failed. A kind added to the IR now does not compile until it has an entry
+ * here, and an unbounded one must be `'declined'`: the same type holds the editor's
+ * polarity table to the same answer.
  */
-const FAITHFUL_UNIT: Readonly<Record<string, (t: number) => number>> = {
+type KindShape<K extends SignalKind> = K extends UnboundedSignalKind ? 'declined' : ((t: number) => number) | 'indicative'
+
+const SIGNAL_SHAPE: { readonly [K in SignalKind]: KindShape<K> } = {
   sine: (t) => (Math.sin(2 * Math.PI * t) + 1) / 2,
   sine2: (t) => (Math.sin(2 * Math.PI * t) + 1) / 2,
   cosine: (t) => (Math.cos(2 * Math.PI * t) + 1) / 2,
@@ -639,10 +653,25 @@ const FAITHFUL_UNIT: Readonly<Record<string, (t: number) => number>> = {
   itri2: (t) => (t < 0.5 ? 1 - t * 2 : t * 2 - 1),
   square: (t) => (t < 0.5 ? 0 : 1),
   square2: (t) => (t < 0.5 ? 0 : 1),
-  // `time` is the cycle position — deterministic, so it is not fabricated and
-  // `isIndicativeKind` must not call it so. It is unbounded, which is why the
-  // reader declines it, range or no range, before it reaches here (#1614).
-  time: (t) => t,
+  // Seeded by `controls.randSeed`, which the document does not carry.
+  rand: 'indicative',
+  rand2: 'indicative',
+  brand: 'indicative',
+  perlin: 'indicative',
+  berlin: 'indicative',
+  // A live pointer.
+  mousex: 'indicative',
+  mousey: 'indicative',
+  mouseX: 'indicative',
+  mouseY: 'indicative',
+  // Unbounded. Deterministic, so not indicative — but a ramp wrapped every period is
+  // not what the engine plays, so these draw nothing. The reader has already dropped
+  // them; this keeps a caller that skips it from drawing the wrong curve (#1614).
+  time: 'declined',
+  cyclesPer: 'declined',
+  per: 'declined',
+  perCycle: 'declined',
+  perx: 'declined',
 }
 
 /**
@@ -654,14 +683,14 @@ const FAITHFUL_UNIT: Readonly<Record<string, (t: number) => number>> = {
  * pointer), a runtime value the static IR does not carry, so no curve drawn
  * from the document alone can be the real one.
  */
-function isIndicativeKind(kind: string): boolean {
-  return !(kind in FAITHFUL_UNIT)
+function isIndicativeKind(kind: SignalKind): boolean {
+  return SIGNAL_SHAPE[kind] === 'indicative'
 }
 
-function signalUnit(kind: string, phase: number): number {
+function signalUnit(kind: SignalKind, phase: number): number {
   const t = phase - Math.floor(phase) // wrap to [0,1)
-  const faithful = FAITHFUL_UNIT[kind]
-  if (faithful) return faithful(t)
+  const shape = SIGNAL_SHAPE[kind]
+  if (typeof shape === 'function') return shape(t)
 
   // rand / perlin / berlin / brand / mouse* — a stable hash-based contour.
   // perlin-family reads as smooth, rand-family as stepped, which is the one
@@ -806,7 +835,8 @@ function drawAutomation(
   ctx.lineJoin = 'round'
 
   const drawable = automations.filter(
-    ({ automation: a }) => a.periodCycles > 0 && Number.isFinite(a.periodCycles),
+    ({ automation: a }) =>
+      a.periodCycles > 0 && Number.isFinite(a.periodCycles) && SIGNAL_SHAPE[a.kind] !== 'declined',
   )
   // Too fast to draw cycle-by-cycle at this zoom (see the band comment below).
   // ⚠ Judged by the period the LANE draws, not the signal's own (#1608): the curve is
