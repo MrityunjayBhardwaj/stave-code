@@ -220,8 +220,9 @@ function callSpike(page: Page, code: string, secs: number): Promise<SpikeOutcome
 
 test.describe('#1398 — can the REAL graph render offline?', () => {
   /**
-   * The spike. `OfflineRenderer` skips every sample-based sound and gives the
-   * reason in its own header: "AudioWorklets cannot be re-registered in a fresh
+   * The spike. `OfflineRenderer` (since removed, #1630) skipped every
+   * sample-based sound and gave the reason in its own header: "AudioWorklets
+   * cannot be re-registered in a fresh
    * OfflineAudioContext." That claim decides whether an offline bounce is a
    * small change or a second synthesis engine maintained forever — and the
    * hand-rolled oscillator renderer, plus #1344/#1345/#1353, all descend from it.
@@ -231,7 +232,7 @@ test.describe('#1398 — can the REAL graph render offline?', () => {
    * `initAudio()` against it, and then the real `superdough()` per hap. Reading
    * that is inference. This arm RUNS it.
    *
-   * A DRUM, deliberately: `bd` is exactly the class `OfflineRenderer` drops, so
+   * A DRUM, deliberately: `bd` is exactly the class `OfflineRenderer` dropped, so
    * a non-silent render here is the whole answer. No `setcps` in the document,
    * so the arm does not depend on #1344's global-injection rungs.
    */

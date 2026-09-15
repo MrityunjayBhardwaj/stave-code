@@ -1814,7 +1814,8 @@ export class StrudelEngine implements LiveCodingEngine {
    * `renderOffline`, plus what the render could and could not play.
    *
    * ⚠ IT USED TO DROP EVERY DRUM, WITH NO ERROR (#1353). `renderOffline` went
-   * through `OfflineRenderer`, a hand-rolled oscillator renderer that skipped
+   * through `OfflineRenderer` (since removed, #1630), a hand-rolled oscillator
+   * renderer that skipped
    * any sound it could not map to a waveform and any hap without a pitch. A drum
    * pattern stacked into a synth came back byte-identical to the synth alone.
    * Its stated reason — worklets cannot be registered on a fresh
@@ -1904,7 +1905,8 @@ export class StrudelEngine implements LiveCodingEngine {
    * graph as `renderOfflineReport`, and report what happened to every stem.
    *
    * ⚠ IT USED TO DROP EVERY DRUM, AND ONE SILENT STEM LOST THEM ALL (#1409). It
-   * went through `OfflineRenderer`, which skips any sample-based sound, and it
+   * went through `OfflineRenderer` (since removed, #1630), which skipped any
+   * sample-based sound, and it
    * rendered with `Promise.all`, so the first stem `WavEncoder` refused as
    * silent rejected the whole set — stems that had already rendered included.
    *
