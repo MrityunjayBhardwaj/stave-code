@@ -84,10 +84,11 @@ export interface EncodeOptions {
  * invariant. Four bugs shared the same signature under that arrangement: a
  * valid, full-length WAV that played as nothing, returned with no error.
  *
- * ⚠ ONE CAPTURE PATH DOES NOT COME THROUGH HERE.
- * `StrudelEngine.renderOfflineViaSuperdough` intercepts a Blob that upstream's
- * `renderPatternAudio` already encoded, so this guard cannot see it. It is
- * unwired to any UI today; guarding it needs its own change.
+ * ⚠ THE REAL-GRAPH OFFLINE RENDER COMES THROUGH HERE TOO (#1353). Upstream's
+ * `renderPatternAudio` encodes its own WAV, which this guard could not see — so
+ * `renderPatternOffline` returns the rendered `AudioBuffer` instead, and
+ * `StrudelEngine.renderOfflineReport` encodes it here. Measured before that:
+ * an unknown sound rendered to 192,000 zeros, returned as success.
  */
 export class WavEncoder {
   /**

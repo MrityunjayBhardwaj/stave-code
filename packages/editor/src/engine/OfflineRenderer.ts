@@ -16,16 +16,18 @@ import { installMiniStringParser } from './stringParser'
  * REASON THIS USED TO GIVE IS FALSE, and it was load-bearing for three issues.
  * Upstream's own `renderPatternAudio` builds an `OfflineAudioContext`, calls
  * `initAudio()` against it and then the real `superdough()` per hap — measured
- * audible, samples and all (#1398/#1399). `StrudelEngine.renderOfflineViaSuperdough`
- * is that path; this hand-rolled oscillator renderer exists to work around a
- * constraint that was never there.
+ * audible, samples and all (#1398/#1399).
  *
- * ⚠ THE SKIP IS NO LONGER SILENT (#1402). A drum-only document renders to
- * nothing, and `WavEncoder` now REFUSES to hand back a file of silence as a
- * success — so this throws `SilentCaptureError` where it used to return a
- * well-formed, full-length WAV of zeros with no error at all. That is the
- * intended change: #1353 is still unfixed, but it can no longer be mistaken for
- * a working bounce.
+ * ⚠ NOTHING IN STAVE CALLS THIS ANY MORE. `StrudelEngine.renderOffline` moved
+ * to the real superdough graph in #1353 and `renderStems` followed in #1409, so
+ * both play drums and report a sound that cannot play. It stays exported only
+ * because removing a public export is its own decision.
+ *
+ * A drum-only render still comes back as nothing here, and `WavEncoder` refuses
+ * it as silent (#1402) rather than returning a file of zeros.
+ *
+ * @deprecated Use `StrudelEngine.renderOfflineReport` or `renderStems`, which
+ * render through the real graph.
  */
 export class OfflineRenderer {
   static async render(

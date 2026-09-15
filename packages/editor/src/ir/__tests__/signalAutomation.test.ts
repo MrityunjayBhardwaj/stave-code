@@ -11,7 +11,7 @@
  * have got it wrong.
  */
 import { describe, it, expect } from 'vitest'
-import { parseStrudel } from '../parseStrudel'
+import { parseStrudel, CHAIN_ROOT_RECOGNISER } from '../parseStrudel'
 import { signalAutomations, signalCarryingParamKeys, signalTimeAt, signalWriters, hasTruePeriod } from '../signalAutomation'
 
 const read = (src: string) => signalAutomations(parseStrudel(src) as never)
@@ -456,5 +456,28 @@ describe('hasTruePeriod — which signals a period can be folded with (#1465)', 
     // already answers. The denylist spelling would instead fold it as though it
     // repeated. One under-promises; the other lies.
     expect(hasTruePeriod('somethingAddedLater' as never)).toBe(false)
+  })
+})
+
+describe('every kind the parser recognises has its polarity written out (#1494)', () => {
+  // The rule the table replaced, restated so the two spellings check each other: no
+  // natural range → unbounded; the `2`-suffixed spelling → bipolar; otherwise unipolar.
+  const UNBOUNDED = new Set(['time', 'cyclesPer', 'per', 'perCycle', 'perx'])
+  const kinds = [...CHAIN_ROOT_RECOGNISER.values()].flatMap((d) => (d.tag === 'Signal' ? [d.kind] : []))
+
+  it('checks all 28 of them', () => {
+    expect(new Set(kinds).size).toBe(28)
+  })
+
+  it('reads each natural range as that rule says, and declines the unbounded ones', () => {
+    for (const kind of kinds) {
+      const got = read(`$: s("bd*4").pan(${kind})`)
+      if (UNBOUNDED.has(kind)) {
+        expect(got, kind).toEqual([])
+      } else {
+        expect(got, kind).toHaveLength(1)
+        expect(got[0], kind).toMatchObject({ kind, lo: kind.endsWith('2') ? -1 : 0, hi: 1, ranged: false })
+      }
+    }
   })
 })

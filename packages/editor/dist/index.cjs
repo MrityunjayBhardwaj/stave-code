@@ -1162,10 +1162,38 @@ function placementsTimeAt(placements, time) {
 __name(placementsTimeAt, "placementsTimeAt");
 
 // src/ir/signalAutomation.ts
-var UNBOUNDED = /* @__PURE__ */ new Set(["time", "cyclesPer", "per", "perCycle", "perx"]);
+var POLARITY = {
+  sine: "unipolar",
+  cosine: "unipolar",
+  saw: "unipolar",
+  isaw: "unipolar",
+  tri: "unipolar",
+  itri: "unipolar",
+  square: "unipolar",
+  sine2: "bipolar",
+  cosine2: "bipolar",
+  saw2: "bipolar",
+  isaw2: "bipolar",
+  tri2: "bipolar",
+  itri2: "bipolar",
+  square2: "bipolar",
+  perlin: "unipolar",
+  berlin: "unipolar",
+  rand: "unipolar",
+  brand: "unipolar",
+  rand2: "bipolar",
+  mousex: "unipolar",
+  mousey: "unipolar",
+  mouseX: "unipolar",
+  mouseY: "unipolar",
+  time: "unbounded",
+  cyclesPer: "unbounded",
+  per: "unbounded",
+  perCycle: "unbounded",
+  perx: "unbounded"
+};
 function polarityOf(kind) {
-  if (UNBOUNDED.has(kind)) return "unbounded";
-  return kind.endsWith("2") ? "bipolar" : "unipolar";
+  return POLARITY[kind];
 }
 __name(polarityOf, "polarityOf");
 var CHAIN_TAGS = /* @__PURE__ */ new Set(["Range", "Slow", "Fast"]);
@@ -5261,95 +5289,189 @@ try {
 } catch {
 }
 
-// src/engine/stringParser.ts
-function installMiniStringParser(deps) {
-  const { core, mini } = deps;
-  core.setStringParser?.((s) => {
-    try {
-      return mini.mini(s);
-    } catch {
-      return core.pure(s);
+// src/engine/engineLog.ts
+var MAX_HISTORY = 500;
+var history = [];
+var dedupeIndex = /* @__PURE__ */ new Map();
+var listeners = /* @__PURE__ */ new Set();
+var fixedMarkers = /* @__PURE__ */ new Map();
+var fixedListeners = /* @__PURE__ */ new Set();
+var idSeq = 0;
+function fixedKey(runtime, source) {
+  return `${runtime}:${source ?? "*"}`;
+}
+__name(fixedKey, "fixedKey");
+function makeId() {
+  idSeq += 1;
+  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
+}
+__name(makeId, "makeId");
+function dedupeKey(p) {
+  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
+}
+__name(dedupeKey, "dedupeKey");
+function emitLog(partial) {
+  const key2 = dedupeKey(partial);
+  const existing = dedupeIndex.get(key2);
+  if (existing) {
+    existing.ts = Date.now();
+    existing.count = (existing.count ?? 1) + 1;
+    queueMicrotask(() => {
+      for (const fn of listeners) {
+        try {
+          fn(existing, history);
+        } catch {
+        }
+      }
+    });
+    return existing;
+  }
+  const entry = {
+    id: makeId(),
+    ts: Date.now(),
+    count: 1,
+    ...partial
+  };
+  history.push(entry);
+  dedupeIndex.set(key2, entry);
+  if (history.length > MAX_HISTORY) {
+    const removed = history.splice(0, history.length - MAX_HISTORY);
+    for (const r of removed) {
+      const rk = dedupeKey(r);
+      if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
+    }
+  }
+  queueMicrotask(() => {
+    for (const fn of listeners) {
+      try {
+        fn(entry, history);
+      } catch {
+      }
     }
   });
+  return entry;
 }
-__name(installMiniStringParser, "installMiniStringParser");
-
-// src/engine/OfflineRenderer.ts
-var _OfflineRenderer = class _OfflineRenderer {
-  static async render(code, duration, sampleRate) {
-    const mini = await import('@strudel/mini');
-    await import('@strudel/tonal');
-    const coreMod = await import('@strudel/core');
-    installMiniStringParser({ core: coreMod, mini });
-    const { evaluate } = coreMod;
-    const { transpiler } = await import('@strudel/transpiler');
-    const result = await evaluate(code, transpiler);
-    const pattern = result.pattern;
-    if (!pattern) {
-      throw new Error("OfflineRenderer: no pattern returned from evaluate()");
+__name(emitLog, "emitLog");
+function subscribeLog(fn) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+__name(subscribeLog, "subscribeLog");
+function getLogHistory() {
+  return [...history];
+}
+__name(getLogHistory, "getLogHistory");
+function clearLog() {
+  history.length = 0;
+  dedupeIndex.clear();
+  fixedMarkers.clear();
+  for (const fn of listeners) {
+    try {
+      fn(null, history);
+    } catch {
     }
-    const cps = extractCps(code);
-    const numFrames = Math.ceil(duration * sampleRate);
-    const offlineCtx = new OfflineAudioContext(2, numFrames, sampleRate);
-    const haps = pattern.queryArc(0, duration * cps);
-    for (const hap of haps) {
-      if (typeof hap.hasOnset === "function" && !hap.hasOnset()) continue;
-      const startCycle = hap.whole?.begin?.valueOf() ?? hap.part?.begin?.valueOf() ?? 0;
-      const endCycle = hap.whole?.end?.valueOf() ?? hap.part?.end?.valueOf() ?? startCycle + 1;
-      const startTime = startCycle / cps;
-      const endTime = endCycle / cps;
-      if (startTime >= duration) continue;
-      const s = hap.value?.s ?? "sine";
-      const oscType = toOscType(s);
-      if (!oscType) continue;
-      const midi = noteToMidi(hap.value?.note ?? hap.value?.n);
-      if (midi === null) continue;
-      const freq = midiToFreq(midi);
-      const gain = Math.min(1, Math.max(0, hap.value?.gain ?? 0.7));
-      const release = Math.min(hap.value?.release ?? 0.1, endTime - startTime);
-      renderNote(offlineCtx, oscType, freq, gain, release, startTime, Math.min(endTime, duration));
-    }
-    const audioBuffer = await offlineCtx.startRendering();
-    return WavEncoder.encode(audioBuffer);
   }
-};
-__name(_OfflineRenderer, "OfflineRenderer");
-var OfflineRenderer = _OfflineRenderer;
-function extractCps(code) {
-  const m = code.match(/setcps\s*\(\s*([\d.]+)\s*(?:\/\s*([\d.]+))?\s*\)/);
-  if (!m) return 1;
-  const num = parseFloat(m[1]);
-  const den = m[2] ? parseFloat(m[2]) : 1;
-  return den > 0 ? num / den : 1;
 }
-__name(extractCps, "extractCps");
-function toOscType(s) {
-  const norm = s.toLowerCase().replace(/:\d+$/, "");
-  if (norm === "sine") return "sine";
-  if (norm === "sawtooth" || norm === "saw") return "sawtooth";
-  if (norm === "square") return "square";
-  if (norm === "triangle" || norm === "tri") return "triangle";
-  return null;
+__name(clearLog, "clearLog");
+function emitFixed(input) {
+  const marker = {
+    runtime: input.runtime,
+    source: input.source,
+    ts: Date.now()
+  };
+  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
+  queueMicrotask(() => {
+    for (const fn of fixedListeners) {
+      try {
+        fn(marker, fixedMarkers);
+      } catch {
+      }
+    }
+  });
+  return marker;
 }
-__name(toOscType, "toOscType");
-function midiToFreq(midi) {
-  return 440 * Math.pow(2, (midi - 69) / 12);
+__name(emitFixed, "emitFixed");
+function subscribeFixed(fn) {
+  fixedListeners.add(fn);
+  return () => {
+    fixedListeners.delete(fn);
+  };
 }
-__name(midiToFreq, "midiToFreq");
-function renderNote(ctx, oscType, freq, gain, release, startTime, endTime) {
-  const osc = ctx.createOscillator();
-  osc.type = oscType;
-  osc.frequency.value = freq;
-  const gainNode = ctx.createGain();
-  gainNode.gain.setValueAtTime(gain, startTime);
-  gainNode.gain.setValueAtTime(gain, Math.max(startTime, endTime - release));
-  gainNode.gain.exponentialRampToValueAtTime(1e-4, endTime);
-  osc.connect(gainNode);
-  gainNode.connect(ctx.destination);
-  osc.start(startTime);
-  osc.stop(endTime + 1e-3);
+__name(subscribeFixed, "subscribeFixed");
+function getFixedMarkers() {
+  return new Map(fixedMarkers);
 }
-__name(renderNote, "renderNote");
+__name(getFixedMarkers, "getFixedMarkers");
+function makeFixedKey(runtime, source) {
+  return fixedKey(runtime, source);
+}
+__name(makeFixedKey, "makeFixedKey");
+
+// src/engine/renderPatternOffline.ts
+async function renderPatternOffline(pattern, { cps, duration, sampleRate }, deps) {
+  const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
+  const liveCtx = deps.getAudioContext();
+  const liveController = deps.getSuperdoughAudioController();
+  const ctx = deps.createContext(Math.ceil(duration * sampleRate), sampleRate);
+  let played = 0;
+  const skipped = /* @__PURE__ */ new Map();
+  try {
+    deps.setAudioContext(ctx);
+    deps.setSuperdoughAudioController(null);
+    await deps.initAudio({});
+    for (const hap of haps) {
+      hap.ensureObjectValue?.();
+      const begin = hap.whole.begin.valueOf();
+      try {
+        await deps.superdough(
+          hap.value,
+          begin / cps,
+          hap.duration.valueOf() / cps,
+          cps,
+          begin
+        );
+        played++;
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
+      }
+    }
+    const buffer = await ctx.startRendering();
+    return {
+      buffer,
+      haps: haps.length,
+      played,
+      skipped: [...skipped].map(([reason, count]) => ({ reason, count }))
+    };
+  } finally {
+    deps.setAudioContext(liveCtx);
+    deps.setSuperdoughAudioController(liveController);
+  }
+}
+__name(renderPatternOffline, "renderPatternOffline");
+function describeSkipped(skipped) {
+  return skipped.map((s) => `${s.count} \xD7 ${s.reason}`).join("; ");
+}
+__name(describeSkipped, "describeSkipped");
+
+// src/engine/renderStemsInOrder.ts
+async function renderStemsInOrder(stems, render, onProgress) {
+  const keys = Object.keys(stems);
+  const outcomes = {};
+  for (let i = 0; i < keys.length; i++) {
+    const key2 = keys[i];
+    try {
+      outcomes[key2] = { ok: true, ...await render(stems[key2]) };
+    } catch (error) {
+      outcomes[key2] = { ok: false, error };
+    }
+    onProgress?.(key2, i + 1, keys.length);
+  }
+  return outcomes;
+}
+__name(renderStemsInOrder, "renderStemsInOrder");
 
 // src/visualizers/blockScan.ts
 function startsTopLevelBlock(trimmed) {
@@ -5809,6 +5931,19 @@ function formatFriendlyError(err, runtime, options = {}) {
   };
 }
 __name(formatFriendlyError, "formatFriendlyError");
+
+// src/engine/stringParser.ts
+function installMiniStringParser(deps) {
+  const { core, mini } = deps;
+  core.setStringParser?.((s) => {
+    try {
+      return mini.mini(s);
+    } catch {
+      return core.pure(s);
+    }
+  });
+}
+__name(installMiniStringParser, "installMiniStringParser");
 function parseTopLevel(doc) {
   try {
     const program = acorn.parse(doc, {
@@ -9310,119 +9445,121 @@ var _StrudelEngine = class _StrudelEngine {
       signal
     );
   }
+  /**
+   * Render `duration` seconds of `code` to a WAV, faster than real time, through
+   * the same superdough graph the live engine plays — samples, soundfonts and
+   * effects included (#1353). The report form is `renderOfflineReport`.
+   */
   async renderOffline(code, duration, sampleRate) {
-    return OfflineRenderer.render(
-      code,
-      duration,
-      sampleRate ?? this.audioCtx?.sampleRate ?? 44100
-    );
+    return (await this.renderOfflineReport(code, duration, sampleRate)).blob;
   }
   /**
-   * #1398 SPIKE — render through the REAL superdough graph into an
-   * `OfflineAudioContext`, so samples and effects apply.
+   * `renderOffline`, plus what the render could and could not play.
    *
-   * `OfflineRenderer` (the method above) skips every sample-based sound and
-   * states why in its header: "AudioWorklets cannot be re-registered in a fresh
-   * OfflineAudioContext." Upstream contradicts that — `@strudel/webaudio` ships
-   * `renderPatternAudio`, which builds an offline context, calls `initAudio()`
-   * against it and then the real `superdough()` per hap. This method runs that
-   * function so the claim can be measured rather than argued.
+   * ⚠ IT USED TO DROP EVERY DRUM, WITH NO ERROR (#1353). `renderOffline` went
+   * through `OfflineRenderer`, a hand-rolled oscillator renderer that skipped
+   * any sound it could not map to a waveform and any hap without a pitch. A drum
+   * pattern stacked into a synth came back byte-identical to the synth alone.
+   * Its stated reason — worklets cannot be registered on a fresh
+   * `OfflineAudioContext` — was measured false (#1398); `renderPatternOffline`
+   * is the real graph, and what it changes from upstream is in its header.
    *
-   * ⚠ THE COUPLING (#1400): `renderPatternAudio` opens with
-   * `await getAudioContext().close()`. It closes whatever superdough's MODULE
-   * GLOBAL holds — not a context handed to it — so the live one is the one that
-   * dies unless the global is pointing somewhere expendable when upstream reads
-   * it. That is what the sacrificial context below is for, and it is the whole
-   * reason this method is more than a call.
+   * ⚠ A SOUND THAT FAILS IS REPORTED, NOT DROPPED. Every hap superdough refuses
+   * is counted by reason, returned in `skipped`, and emitted as one warning
+   * BEFORE encoding — so a render in which nothing could play still says why
+   * when `WavEncoder` refuses it as silent (#1402).
    *
-   * The live context cannot simply be rebuilt afterwards: this engine took it
-   * once at `init()` and built `analyserNode`, the master tap and every
-   * per-track analyser on it, `init()` is guarded against re-entry, and the
-   * context is already published on the workspace audio bus, so viz consumers
-   * hold the same nodes.
+   * ⚠ REQUIRES `init()`. Sample banks, synth sounds and the string parser are
+   * registered there; before it, every drum is "not found" and the render would
+   * report exactly that. Same contract as `record()`.
    *
-   * ⚠ AND IT FAILS SILENTLY, which is why the guard is worth its weight: the
-   * render's `finally` calls `setAudioContext(null)`, so the next
-   * `getAudioContext()` returns a fresh context and every "is there a context"
-   * check passes — while everything already wired to the old one stays wired to
-   * a corpse. Measured before the fix, one page, one engine: live capture
-   * peak 0.7826 → render ok → live capture peak 0.0000, ok=true, no error. A
-   * valid full-length WAV of silence, reported as success. Looking at the
-   * context tells you nothing; only the OUTPUT does, which is why the arm that
-   * covers this reads peaks either side of a render
-   * (`bounce-paths.spec.ts`, '#1400').
+   * ⚠ TEMPO IS THE ENGINE'S ONE READING (`getCps`), falling back to Strudel's
+   * 0.5 — never a regex over the source. The old renderer's regex defaulted to
+   * 1 and rendered at double speed (#1345).
    *
-   * ⚠ It also hands its result straight to a browser download and resolves with
-   * nothing, so the Blob is caught on its way out by stubbing the two DOM calls
-   * it uses. The render itself is untouched.
+   * ⚠ WHILE IT RUNS, superdough's module globals name the OFFLINE context, so
+   * anything the live scheduler triggers in that window is rendered into the
+   * bounce rather than played. Render with the transport stopped.
+   *
+   * ⚠ `code` is evaluated with `@strudel/core`'s `evaluate`, outside this
+   * engine's evaluate window, so `setcps`, `$:` and `.viz` are still refused
+   * here (#1344).
    */
-  async renderOfflineViaSuperdough(code, duration, cps = 0.5, sampleRate) {
+  async renderOfflineReport(code, duration, sampleRate) {
+    if (!this.audioCtx) {
+      throw new Error("StrudelEngine not initialized \u2014 call init() first");
+    }
     const wa = await import('@strudel/webaudio');
     const core = await import('@strudel/core');
     const { transpiler } = await import('@strudel/transpiler');
-    const sr = sampleRate ?? this.audioCtx?.sampleRate ?? 44100;
     const evaluated = await core.evaluate(code, transpiler);
     const pattern = evaluated?.pattern;
     if (!pattern) {
-      throw new Error("renderOfflineViaSuperdough: no pattern returned from evaluate()");
+      throw new Error("renderOffline: no pattern returned from evaluate()");
     }
-    const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).length;
-    const origCreate = URL.createObjectURL;
-    const origRevoke = URL.revokeObjectURL;
-    const origClick = HTMLAnchorElement.prototype.click;
-    let captured = null;
-    const liveCtx = wa.getAudioContext();
-    const liveController = wa.getSuperdoughAudioController();
-    const sacrificial = new AudioContext();
-    wa.setAudioContext(sacrificial);
-    try {
-      URL.createObjectURL = (b) => {
-        captured = b;
-        return "blob:stave-offline-spike";
-      };
-      URL.revokeObjectURL = () => {
-      };
-      HTMLAnchorElement.prototype.click = /* @__PURE__ */ __name(function noop() {
-      }, "noop");
-      await wa.renderPatternAudio(
-        pattern,
-        cps,
-        0,
-        duration * cps,
-        sr,
-        void 0,
-        void 0,
-        void 0
-      );
-    } finally {
-      URL.createObjectURL = origCreate;
-      URL.revokeObjectURL = origRevoke;
-      HTMLAnchorElement.prototype.click = origClick;
-      wa.setAudioContext(liveCtx);
-      wa.setSuperdoughAudioController(liveController);
-      if (sacrificial.state !== "closed") {
-        try {
-          await sacrificial.close();
-        } catch {
-        }
+    const result = await renderPatternOffline(
+      pattern,
+      {
+        cps: this.getCps() ?? 0.5,
+        duration,
+        sampleRate: sampleRate ?? this.audioCtx.sampleRate
+      },
+      {
+        getAudioContext: wa.getAudioContext,
+        setAudioContext: wa.setAudioContext,
+        getSuperdoughAudioController: wa.getSuperdoughAudioController,
+        setSuperdoughAudioController: wa.setSuperdoughAudioController,
+        initAudio: wa.initAudio,
+        superdough: wa.superdough,
+        createContext: /* @__PURE__ */ __name((frames, rate) => new OfflineAudioContext(2, frames, rate), "createContext")
       }
-    }
-    if (!captured) {
-      throw new Error("renderOfflineViaSuperdough: render produced no blob");
-    }
-    return { blob: captured, haps };
-  }
-  async renderStems(stems, duration, onProgress) {
-    const keys = Object.keys(stems);
-    const sampleRate = this.audioCtx?.sampleRate ?? 44100;
-    const blobs = await Promise.all(
-      keys.map(async (key2, i) => {
-        const blob = await OfflineRenderer.render(stems[key2], duration, sampleRate);
-        onProgress?.(key2, i + 1, keys.length);
-        return [key2, blob];
-      })
     );
-    return Object.fromEntries(blobs);
+    if (result.skipped.length > 0) {
+      const left = result.skipped.reduce((n, s) => n + s.count, 0);
+      emitLog({
+        level: "warn",
+        runtime: "strudel",
+        message: `Bounce left out ${left} of ${result.haps} sounds: ` + describeSkipped(result.skipped)
+      });
+    }
+    return {
+      blob: WavEncoder.encode(result.buffer),
+      haps: result.haps,
+      played: result.played,
+      skipped: result.skipped
+    };
+  }
+  /**
+   * Render each stem's standalone program to its own WAV, through the same real
+   * graph as `renderOfflineReport`, and report what happened to every stem.
+   *
+   * ⚠ IT USED TO DROP EVERY DRUM, AND ONE SILENT STEM LOST THEM ALL (#1409). It
+   * went through `OfflineRenderer`, which skips any sample-based sound, and it
+   * rendered with `Promise.all`, so the first stem `WavEncoder` refused as
+   * silent rejected the whole set — stems that had already rendered included.
+   *
+   * ⚠ ONE STEM AT A TIME, on purpose. The real-graph render borrows superdough's
+   * module globals for its duration, so two at once would corrupt each other.
+   * `renderStemsInOrder` owns that ordering and says why.
+   *
+   * ⚠ A STEM THAT FAILS IS `{ ok: false, error }` AND COSTS NO OTHER STEM. A
+   * silent one's `error` is a `SilentCaptureError`, whose `refused` still holds
+   * the take — reached through the error, never handed back as a result (#1410).
+   *
+   * Same contracts as `renderOfflineReport`: requires `init()`, render with the
+   * transport stopped, and `setcps`/`$:`/`.viz` in a stem are still refused
+   * (#1344). `onProgress` fires after each stem settles, in input order.
+   */
+  async renderStems(stems, duration, onProgress) {
+    if (!this.audioCtx) {
+      throw new Error("StrudelEngine not initialized \u2014 call init() first");
+    }
+    const sampleRate = this.audioCtx.sampleRate;
+    return renderStemsInOrder(
+      stems,
+      (code) => this.renderOfflineReport(code, duration, sampleRate),
+      onProgress
+    );
   }
   getAnalyser() {
     if (!this.analyserNode) throw new Error("StrudelEngine not initialized");
@@ -9702,126 +9839,6 @@ var _StrudelEngine = class _StrudelEngine {
 };
 __name(_StrudelEngine, "StrudelEngine");
 var StrudelEngine = _StrudelEngine;
-
-// src/engine/engineLog.ts
-var MAX_HISTORY = 500;
-var history = [];
-var dedupeIndex = /* @__PURE__ */ new Map();
-var listeners = /* @__PURE__ */ new Set();
-var fixedMarkers = /* @__PURE__ */ new Map();
-var fixedListeners = /* @__PURE__ */ new Set();
-var idSeq = 0;
-function fixedKey(runtime, source) {
-  return `${runtime}:${source ?? "*"}`;
-}
-__name(fixedKey, "fixedKey");
-function makeId() {
-  idSeq += 1;
-  return `log-${Date.now().toString(36)}-${idSeq.toString(36)}`;
-}
-__name(makeId, "makeId");
-function dedupeKey(p) {
-  return [p.level, p.runtime, p.source ?? "", p.line ?? "", p.message].join("\0");
-}
-__name(dedupeKey, "dedupeKey");
-function emitLog(partial) {
-  const key2 = dedupeKey(partial);
-  const existing = dedupeIndex.get(key2);
-  if (existing) {
-    existing.ts = Date.now();
-    existing.count = (existing.count ?? 1) + 1;
-    queueMicrotask(() => {
-      for (const fn of listeners) {
-        try {
-          fn(existing, history);
-        } catch {
-        }
-      }
-    });
-    return existing;
-  }
-  const entry = {
-    id: makeId(),
-    ts: Date.now(),
-    count: 1,
-    ...partial
-  };
-  history.push(entry);
-  dedupeIndex.set(key2, entry);
-  if (history.length > MAX_HISTORY) {
-    const removed = history.splice(0, history.length - MAX_HISTORY);
-    for (const r of removed) {
-      const rk = dedupeKey(r);
-      if (dedupeIndex.get(rk) === r) dedupeIndex.delete(rk);
-    }
-  }
-  queueMicrotask(() => {
-    for (const fn of listeners) {
-      try {
-        fn(entry, history);
-      } catch {
-      }
-    }
-  });
-  return entry;
-}
-__name(emitLog, "emitLog");
-function subscribeLog(fn) {
-  listeners.add(fn);
-  return () => {
-    listeners.delete(fn);
-  };
-}
-__name(subscribeLog, "subscribeLog");
-function getLogHistory() {
-  return [...history];
-}
-__name(getLogHistory, "getLogHistory");
-function clearLog() {
-  history.length = 0;
-  dedupeIndex.clear();
-  fixedMarkers.clear();
-  for (const fn of listeners) {
-    try {
-      fn(null, history);
-    } catch {
-    }
-  }
-}
-__name(clearLog, "clearLog");
-function emitFixed(input) {
-  const marker = {
-    runtime: input.runtime,
-    source: input.source,
-    ts: Date.now()
-  };
-  fixedMarkers.set(fixedKey(input.runtime, input.source), marker.ts);
-  queueMicrotask(() => {
-    for (const fn of fixedListeners) {
-      try {
-        fn(marker, fixedMarkers);
-      } catch {
-      }
-    }
-  });
-  return marker;
-}
-__name(emitFixed, "emitFixed");
-function subscribeFixed(fn) {
-  fixedListeners.add(fn);
-  return () => {
-    fixedListeners.delete(fn);
-  };
-}
-__name(subscribeFixed, "subscribeFixed");
-function getFixedMarkers() {
-  return new Map(fixedMarkers);
-}
-__name(getFixedMarkers, "getFixedMarkers");
-function makeFixedKey(runtime, source) {
-  return fixedKey(runtime, source);
-}
-__name(makeFixedKey, "makeFixedKey");
 
 // src/visualizers/p5FesBridge.ts
 var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
@@ -43126,6 +43143,83 @@ var _SonicPiEngine = class _SonicPiEngine {
 };
 __name(_SonicPiEngine, "SonicPiEngine");
 var SonicPiEngine = _SonicPiEngine;
+
+// src/engine/OfflineRenderer.ts
+var _OfflineRenderer = class _OfflineRenderer {
+  static async render(code, duration, sampleRate) {
+    const mini = await import('@strudel/mini');
+    await import('@strudel/tonal');
+    const coreMod = await import('@strudel/core');
+    installMiniStringParser({ core: coreMod, mini });
+    const { evaluate } = coreMod;
+    const { transpiler } = await import('@strudel/transpiler');
+    const result = await evaluate(code, transpiler);
+    const pattern = result.pattern;
+    if (!pattern) {
+      throw new Error("OfflineRenderer: no pattern returned from evaluate()");
+    }
+    const cps = extractCps(code);
+    const numFrames = Math.ceil(duration * sampleRate);
+    const offlineCtx = new OfflineAudioContext(2, numFrames, sampleRate);
+    const haps = pattern.queryArc(0, duration * cps);
+    for (const hap of haps) {
+      if (typeof hap.hasOnset === "function" && !hap.hasOnset()) continue;
+      const startCycle = hap.whole?.begin?.valueOf() ?? hap.part?.begin?.valueOf() ?? 0;
+      const endCycle = hap.whole?.end?.valueOf() ?? hap.part?.end?.valueOf() ?? startCycle + 1;
+      const startTime = startCycle / cps;
+      const endTime = endCycle / cps;
+      if (startTime >= duration) continue;
+      const s = hap.value?.s ?? "sine";
+      const oscType = toOscType(s);
+      if (!oscType) continue;
+      const midi = noteToMidi(hap.value?.note ?? hap.value?.n);
+      if (midi === null) continue;
+      const freq = midiToFreq(midi);
+      const gain = Math.min(1, Math.max(0, hap.value?.gain ?? 0.7));
+      const release = Math.min(hap.value?.release ?? 0.1, endTime - startTime);
+      renderNote(offlineCtx, oscType, freq, gain, release, startTime, Math.min(endTime, duration));
+    }
+    const audioBuffer = await offlineCtx.startRendering();
+    return WavEncoder.encode(audioBuffer);
+  }
+};
+__name(_OfflineRenderer, "OfflineRenderer");
+var OfflineRenderer = _OfflineRenderer;
+function extractCps(code) {
+  const m = code.match(/setcps\s*\(\s*([\d.]+)\s*(?:\/\s*([\d.]+))?\s*\)/);
+  if (!m) return 1;
+  const num = parseFloat(m[1]);
+  const den = m[2] ? parseFloat(m[2]) : 1;
+  return den > 0 ? num / den : 1;
+}
+__name(extractCps, "extractCps");
+function toOscType(s) {
+  const norm = s.toLowerCase().replace(/:\d+$/, "");
+  if (norm === "sine") return "sine";
+  if (norm === "sawtooth" || norm === "saw") return "sawtooth";
+  if (norm === "square") return "square";
+  if (norm === "triangle" || norm === "tri") return "triangle";
+  return null;
+}
+__name(toOscType, "toOscType");
+function midiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+__name(midiToFreq, "midiToFreq");
+function renderNote(ctx, oscType, freq, gain, release, startTime, endTime) {
+  const osc = ctx.createOscillator();
+  osc.type = oscType;
+  osc.frequency.value = freq;
+  const gainNode = ctx.createGain();
+  gainNode.gain.setValueAtTime(gain, startTime);
+  gainNode.gain.setValueAtTime(gain, Math.max(startTime, endTime - release));
+  gainNode.gain.exponentialRampToValueAtTime(1e-4, endTime);
+  osc.connect(gainNode);
+  gainNode.connect(ctx.destination);
+  osc.start(startTime);
+  osc.stop(endTime + 1e-3);
+}
+__name(renderNote, "renderNote");
 
 // src/visualizers/renderers/hydraPresets.ts
 var hydraPianoroll = compileHydraCode(HYDRA_PIANOROLL_CODE);

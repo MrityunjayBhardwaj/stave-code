@@ -2,7 +2,10 @@ import { HapStream } from './HapStream'
 import { BreakpointStore } from './BreakpointStore'
 import { LiveRecorder } from './LiveRecorder'
 import { perf } from '../perf/profiler'
-import { OfflineRenderer } from './OfflineRenderer'
+import { WavEncoder } from './WavEncoder'
+import { emitLog } from './engineLog'
+import { renderPatternOffline, describeSkipped, type SkippedSounds } from './renderPatternOffline'
+import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { normalizeStrudelHap, declaredLocationKeys } from './NormalizedHap'
 import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
@@ -1794,161 +1797,148 @@ export class StrudelEngine implements LiveCodingEngine {
     )
   }
 
+  /**
+   * Render `duration` seconds of `code` to a WAV, faster than real time, through
+   * the same superdough graph the live engine plays — samples, soundfonts and
+   * effects included (#1353). The report form is `renderOfflineReport`.
+   */
   async renderOffline(
     code: string,
     duration: number,
     sampleRate?: number
   ): Promise<Blob> {
-    return OfflineRenderer.render(
-      code,
-      duration,
-      sampleRate ?? this.audioCtx?.sampleRate ?? 44100
-    )
+    return (await this.renderOfflineReport(code, duration, sampleRate)).blob
   }
 
   /**
-   * #1398 SPIKE — render through the REAL superdough graph into an
-   * `OfflineAudioContext`, so samples and effects apply.
+   * `renderOffline`, plus what the render could and could not play.
    *
-   * `OfflineRenderer` (the method above) skips every sample-based sound and
-   * states why in its header: "AudioWorklets cannot be re-registered in a fresh
-   * OfflineAudioContext." Upstream contradicts that — `@strudel/webaudio` ships
-   * `renderPatternAudio`, which builds an offline context, calls `initAudio()`
-   * against it and then the real `superdough()` per hap. This method runs that
-   * function so the claim can be measured rather than argued.
+   * ⚠ IT USED TO DROP EVERY DRUM, WITH NO ERROR (#1353). `renderOffline` went
+   * through `OfflineRenderer`, a hand-rolled oscillator renderer that skipped
+   * any sound it could not map to a waveform and any hap without a pitch. A drum
+   * pattern stacked into a synth came back byte-identical to the synth alone.
+   * Its stated reason — worklets cannot be registered on a fresh
+   * `OfflineAudioContext` — was measured false (#1398); `renderPatternOffline`
+   * is the real graph, and what it changes from upstream is in its header.
    *
-   * ⚠ THE COUPLING (#1400): `renderPatternAudio` opens with
-   * `await getAudioContext().close()`. It closes whatever superdough's MODULE
-   * GLOBAL holds — not a context handed to it — so the live one is the one that
-   * dies unless the global is pointing somewhere expendable when upstream reads
-   * it. That is what the sacrificial context below is for, and it is the whole
-   * reason this method is more than a call.
+   * ⚠ A SOUND THAT FAILS IS REPORTED, NOT DROPPED. Every hap superdough refuses
+   * is counted by reason, returned in `skipped`, and emitted as one warning
+   * BEFORE encoding — so a render in which nothing could play still says why
+   * when `WavEncoder` refuses it as silent (#1402).
    *
-   * The live context cannot simply be rebuilt afterwards: this engine took it
-   * once at `init()` and built `analyserNode`, the master tap and every
-   * per-track analyser on it, `init()` is guarded against re-entry, and the
-   * context is already published on the workspace audio bus, so viz consumers
-   * hold the same nodes.
+   * ⚠ REQUIRES `init()`. Sample banks, synth sounds and the string parser are
+   * registered there; before it, every drum is "not found" and the render would
+   * report exactly that. Same contract as `record()`.
    *
-   * ⚠ AND IT FAILS SILENTLY, which is why the guard is worth its weight: the
-   * render's `finally` calls `setAudioContext(null)`, so the next
-   * `getAudioContext()` returns a fresh context and every "is there a context"
-   * check passes — while everything already wired to the old one stays wired to
-   * a corpse. Measured before the fix, one page, one engine: live capture
-   * peak 0.7826 → render ok → live capture peak 0.0000, ok=true, no error. A
-   * valid full-length WAV of silence, reported as success. Looking at the
-   * context tells you nothing; only the OUTPUT does, which is why the arm that
-   * covers this reads peaks either side of a render
-   * (`bounce-paths.spec.ts`, '#1400').
+   * ⚠ TEMPO IS THE ENGINE'S ONE READING (`getCps`), falling back to Strudel's
+   * 0.5 — never a regex over the source. The old renderer's regex defaulted to
+   * 1 and rendered at double speed (#1345).
    *
-   * ⚠ It also hands its result straight to a browser download and resolves with
-   * nothing, so the Blob is caught on its way out by stubbing the two DOM calls
-   * it uses. The render itself is untouched.
+   * ⚠ WHILE IT RUNS, superdough's module globals name the OFFLINE context, so
+   * anything the live scheduler triggers in that window is rendered into the
+   * bounce rather than played. Render with the transport stopped.
+   *
+   * ⚠ `code` is evaluated with `@strudel/core`'s `evaluate`, outside this
+   * engine's evaluate window, so `setcps`, `$:` and `.viz` are still refused
+   * here (#1344).
    */
-  async renderOfflineViaSuperdough(
+  async renderOfflineReport(
     code: string,
     duration: number,
-    cps = 0.5,
     sampleRate?: number
-  ): Promise<{ blob: Blob; haps: number }> {
+  ): Promise<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }> {
+    if (!this.audioCtx) {
+      throw new Error('StrudelEngine not initialized — call init() first')
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const wa: any = await import('@strudel/webaudio')
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const core: any = await import('@strudel/core')
     const { transpiler } = await import('@strudel/transpiler')
 
-    const sr = sampleRate ?? this.audioCtx?.sampleRate ?? 44100
     const evaluated = await core.evaluate(code, transpiler)
     const pattern = evaluated?.pattern
     if (!pattern) {
-      throw new Error('renderOfflineViaSuperdough: no pattern returned from evaluate()')
+      throw new Error('renderOffline: no pattern returned from evaluate()')
     }
 
-    // Counted BEFORE rendering, so a silent buffer can be told apart from a
-    // pattern that simply had nothing to play.
-    const haps = pattern
-      .queryArc(0, duration * cps, { _cps: cps })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((h: any) => h.hasOnset()).length
-
-    const origCreate = URL.createObjectURL
-    const origRevoke = URL.revokeObjectURL
-    const origClick = HTMLAnchorElement.prototype.click
-    let captured: Blob | null = null
-
-    // The sacrificial context — see THE COUPLING above. Upstream reads the
-    // global, closes it, then swaps in its offline context; handing it a
-    // context nothing is built on means the close lands harmlessly. It must be
-    // a real `AudioContext`: `close()` is not defined on `OfflineAudioContext`,
-    // so a cheaper stand-in would throw before the render ever started.
-    const liveCtx = wa.getAudioContext()
-    const liveController = wa.getSuperdoughAudioController()
-    const sacrificial = new AudioContext()
-    wa.setAudioContext(sacrificial)
-
-    try {
-      URL.createObjectURL = (b: Blob | MediaSource): string => {
-        captured = b as Blob
-        return 'blob:stave-offline-spike'
+    const result = await renderPatternOffline(
+      pattern,
+      {
+        cps: this.getCps() ?? 0.5,
+        duration,
+        sampleRate: sampleRate ?? this.audioCtx.sampleRate,
+      },
+      {
+        getAudioContext: wa.getAudioContext,
+        setAudioContext: wa.setAudioContext,
+        getSuperdoughAudioController: wa.getSuperdoughAudioController,
+        setSuperdoughAudioController: wa.setSuperdoughAudioController,
+        initAudio: wa.initAudio,
+        superdough: wa.superdough,
+        createContext: (frames, rate) => new OfflineAudioContext(2, frames, rate),
       }
-      URL.revokeObjectURL = (): void => {}
-      // eslint-disable-next-line @typescript-eslint/no-empty-function
-      HTMLAnchorElement.prototype.click = function noop(): void {}
+    )
 
-      await wa.renderPatternAudio(
-        pattern,
-        cps,
-        0,
-        duration * cps,
-        sr,
-        undefined,
-        undefined,
-        undefined
-      )
-    } finally {
-      URL.createObjectURL = origCreate
-      URL.revokeObjectURL = origRevoke
-      HTMLAnchorElement.prototype.click = origClick
-
-      // Upstream's own `finally` nulls both globals, so restoring is not
-      // optional cleanup — without it the next live evaluate builds on a
-      // context this engine's analysers know nothing about.
-      wa.setAudioContext(liveCtx)
-      wa.setSuperdoughAudioController(liveController)
-      // Normally upstream already closed it. This covers the path where the
-      // render threw before reaching that line, so the sacrificial context
-      // cannot outlive the call it was made for.
-      if (sacrificial.state !== 'closed') {
-        try {
-          await sacrificial.close()
-        } catch {
-          /* closing an already-closing context is not a failure */
-        }
-      }
+    if (result.skipped.length > 0) {
+      const left = result.skipped.reduce((n, s) => n + s.count, 0)
+      emitLog({
+        level: 'warn',
+        runtime: 'strudel',
+        message:
+          `Bounce left out ${left} of ${result.haps} sounds: ` +
+          describeSkipped(result.skipped),
+      })
     }
 
-    if (!captured) {
-      throw new Error('renderOfflineViaSuperdough: render produced no blob')
+    return {
+      blob: WavEncoder.encode(result.buffer),
+      haps: result.haps,
+      played: result.played,
+      skipped: result.skipped,
     }
-    return { blob: captured, haps }
   }
 
+  /**
+   * Render each stem's standalone program to its own WAV, through the same real
+   * graph as `renderOfflineReport`, and report what happened to every stem.
+   *
+   * ⚠ IT USED TO DROP EVERY DRUM, AND ONE SILENT STEM LOST THEM ALL (#1409). It
+   * went through `OfflineRenderer`, which skips any sample-based sound, and it
+   * rendered with `Promise.all`, so the first stem `WavEncoder` refused as
+   * silent rejected the whole set — stems that had already rendered included.
+   *
+   * ⚠ ONE STEM AT A TIME, on purpose. The real-graph render borrows superdough's
+   * module globals for its duration, so two at once would corrupt each other.
+   * `renderStemsInOrder` owns that ordering and says why.
+   *
+   * ⚠ A STEM THAT FAILS IS `{ ok: false, error }` AND COSTS NO OTHER STEM. A
+   * silent one's `error` is a `SilentCaptureError`, whose `refused` still holds
+   * the take — reached through the error, never handed back as a result (#1410).
+   *
+   * Same contracts as `renderOfflineReport`: requires `init()`, render with the
+   * transport stopped, and `setcps`/`$:`/`.viz` in a stem are still refused
+   * (#1344). `onProgress` fires after each stem settles, in input order.
+   */
   async renderStems(
     stems: Record<string, string>,
     duration: number,
     onProgress?: (stem: string, i: number, total: number) => void
-  ): Promise<Record<string, Blob>> {
-    const keys = Object.keys(stems)
-    const sampleRate = this.audioCtx?.sampleRate ?? 44100
-
-    const blobs = await Promise.all(
-      keys.map(async (key, i) => {
-        const blob = await OfflineRenderer.render(stems[key], duration, sampleRate)
-        onProgress?.(key, i + 1, keys.length)
-        return [key, blob] as [string, Blob]
-      })
+  ): Promise<
+    Record<
+      string,
+      StemOutcome<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }>
+    >
+  > {
+    if (!this.audioCtx) {
+      throw new Error('StrudelEngine not initialized — call init() first')
+    }
+    const sampleRate = this.audioCtx.sampleRate
+    return renderStemsInOrder(
+      stems,
+      (code) => this.renderOfflineReport(code, duration, sampleRate),
+      onProgress
     )
-    return Object.fromEntries(blobs)
   }
 
   getAnalyser(): AnalyserNode {
