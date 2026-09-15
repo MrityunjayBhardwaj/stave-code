@@ -747,6 +747,180 @@ test.describe('#1627 — an offline render while the transport plays', () => {
   })
 })
 
+type BounceLoadedSetup = { playing?: boolean; seek?: number; loop?: { startCycle: number; cycles: number } }
+
+type BounceLoadedOutcome = {
+  ok: boolean
+  error?: string
+  wav?: string
+  haps?: number
+  played?: number
+  skipped?: Array<{ reason: string; count: number }>
+  cps?: number | null
+  offsetBefore?: number
+  loopBefore?: { startCycle: number; cycles: number } | null
+  playingAfter?: boolean
+  offsetAfter?: number
+  loopAfter?: { startCycle: number; cycles: number } | null
+}
+
+function callBounceLoaded(
+  page: Page,
+  code: string,
+  secs: number,
+  setup?: BounceLoadedSetup,
+): Promise<BounceLoadedOutcome> {
+  return page.evaluate(
+    ([c, s, u]) =>
+      (
+        window as unknown as {
+          __staveBounceProbe: {
+            bounceLoaded(c: string, s: number, u?: BounceLoadedSetup): Promise<BounceLoadedOutcome>
+          }
+        }
+      ).__staveBounceProbe.bounceLoaded(
+        c as string,
+        s as number,
+        (u ?? undefined) as BounceLoadedSetup | undefined,
+      ),
+    [code, secs, setup ?? null] as const,
+  )
+}
+
+/**
+ * #1344 — the active-document bounce (`LiveCodingRuntime.bounceOffline`). The
+ * rung arms above still pin `renderOffline(code)` refusing a Stave document, and
+ * that stays true by decision: taking arbitrary code through the engine's
+ * evaluate window replaces what is loaded to play. These arms are the path that
+ * renders one: load the document the way Play does, render what that loaded.
+ */
+test.describe('#1344 — bouncing the loaded document', () => {
+  test('the Starter pattern bounces, with its setcps, $: tracks and .viz', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const out = await callBounceLoaded(page, starterCode(), 4)
+    const r = out.wav ? readWav(out.wav) : null
+    console.log(
+      `[#1344 starter] ok=${out.ok} error=${out.error} sr=${r?.sampleRate} haps=${out.haps} ` +
+        `played=${out.played} cps=${out.cps} peak=${r ? peak(r.mono).toFixed(4) : '-'} ` +
+        `skipped=${JSON.stringify(out.skipped)}`,
+    )
+    // cps is the document's own `setcps(130/240)`, read off the scheduler the
+    // bounce's evaluate set. 0.05 asks only "is this audible".
+    expect({ ok: out.ok, cps: out.cps, audible: r ? peak(r.mono) > 0.05 : false }).toEqual({
+      ok: true,
+      cps: 130 / 240,
+      audible: true,
+    })
+  })
+
+  test("the document's own setcps is the tempo it bounces at", async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    // The #1345 arm's pattern, whose onsets this detector reads reliably
+    // (15 of 16 over 8s at 0.5 cps), at two tempos the document sets itself.
+    const tune = '$: note("c3 e3 g3 b3").s("sawtooth").gain(0.5)'
+    const slow = await callBounceLoaded(page, `setcps(0.5)\n${tune}`, 8)
+    const fast = await callBounceLoaded(page, `setcps(1)\n${tune}`, 8)
+    if (!slow.ok || !fast.ok) throw new Error(`probe failed: ${slow.error ?? ''} ${fast.error ?? ''}`)
+    const s = readWav(slow.wav!)
+    const f = readWav(fast.wav!)
+    const slowOnsets = onsetCount(s.mono, s.sampleRate)
+    const fastOnsets = onsetCount(f.mono, f.sampleRate)
+    console.log(`[#1344 tempo] sr=${s.sampleRate} onsets 0.5cps=${slowOnsets} 1cps=${fastOnsets} cps=${slow.cps}/${fast.cps}`)
+    expect({
+      cps: [slow.cps, fast.cps],
+      slowCounted: slowOnsets >= 12,
+      doubled: Math.abs(fastOnsets - 2 * slowOnsets) <= 3,
+    }).toEqual({ cps: [0.5, 1], slowCounted: true, doubled: true })
+  })
+
+  test('all(...) reaches the file', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const tune = '$: note("c3 e3 g3 b3").s("sine").gain(0.5)'
+    const plain = await callBounceLoaded(page, tune, 4)
+    const again = await callBounceLoaded(page, tune, 4)
+    // `.gain` overrides, last in the chain wins, so `all` sets it to 0.1.
+    const quiet = await callBounceLoaded(page, `${tune}\nall(x => x.gain(0.1))`, 4)
+    if (!plain.ok || !again.ok || !quiet.ok) {
+      throw new Error(`probe failed: ${plain.error ?? ''} ${again.error ?? ''} ${quiet.error ?? ''}`)
+    }
+    const p = readWav(plain.wav!)
+    const control = rms(readWav(again.wav!).mono) / rms(p.mono)
+    const ratio = rms(readWav(quiet.wav!).mono) / rms(p.mono)
+    console.log(`[#1344 all] sr=${p.sampleRate} rms control=${control.toFixed(4)} all(gain 0.1)/plain=${ratio.toFixed(4)}`)
+    // The per-track captures are taken before Strudel applies `all`, so a render
+    // built from them would read ~1 here.
+    expect({ controlSame: Math.abs(control - 1) < 0.01, quieter: ratio < 0.5 }).toEqual({
+      controlSame: true,
+      quieter: true,
+    })
+  })
+
+  test('a seek and an armed loop stay out of the file, and the loop is given back', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    // One pitch per cycle, so a shifted or looped render puts different notes in
+    // different places. Sine, whose offline render is sample-exact run to run.
+    const code = '$: note("<c3 e3 g3 b3>").s("sine").gain(0.5)'
+    const loop = { startCycle: 1, cycles: 1 }
+    const clean = await callBounceLoaded(page, code, 8)
+    // Separately, because the runtime re-pairs the seek offset with an armed
+    // loop: measured together, a 2.5-cycle seek left an offset of -0.027, which
+    // tested the loop and barely touched the seek.
+    const seeked = await callBounceLoaded(page, code, 8, { playing: true, seek: 2.5 })
+    const looped = await callBounceLoaded(page, code, 8, { playing: true, loop })
+    for (const [tag, o] of [['seek', seeked], ['loop', looped]] as const) {
+      console.log(
+        `[#1344 frame ${tag}] ok=${o.ok} error=${o.error} before offset=${o.offsetBefore} ` +
+          `loop=${JSON.stringify(o.loopBefore)} after offset=${o.offsetAfter} ` +
+          `loop=${JSON.stringify(o.loopAfter)} playing=${o.playingAfter}`,
+      )
+    }
+    if (!clean.ok || !seeked.ok || !looped.ok) {
+      throw new Error(`probe failed: ${clean.error ?? ''} ${seeked.error ?? ''} ${looped.error ?? ''}`)
+    }
+    // Each setup has to have taken hold, or its half is green for having
+    // bounced from a clean frame.
+    if (Math.abs(seeked.offsetBefore ?? 0) < 1 || seeked.loopBefore !== null) {
+      throw new Error(`seek did not take hold: offset=${seeked.offsetBefore} loop=${JSON.stringify(seeked.loopBefore)}`)
+    }
+    if (JSON.stringify(looped.loopBefore) !== JSON.stringify(loop)) {
+      throw new Error(`loop did not take hold: loop=${JSON.stringify(looped.loopBefore)}`)
+    }
+    const cleanMono = readWav(clean.wav!).mono
+    const seekDiff = maxSampleDiff(readWav(seeked.wav!).mono, cleanMono)
+    const loopDiff = maxSampleDiff(readWav(looped.wav!).mono, cleanMono)
+    console.log(`[#1344 frame] maxSampleDiff vs clean: seek=${seekDiff} loop=${loopDiff}`)
+    expect({
+      seekSame: seekDiff < 1e-4,
+      loopSame: loopDiff < 1e-4,
+      offsetAfter: [seeked.offsetAfter, looped.offsetAfter],
+      loopAfter: [seeked.loopAfter, looped.loopAfter],
+      playingAfter: [seeked.playingAfter, looped.playingAfter],
+    }).toEqual({
+      seekSame: true,
+      loopSame: true,
+      offsetAfter: [0, 0],
+      loopAfter: [null, loop],
+      playingAfter: [false, false],
+    })
+  })
+
+  test('a document that does not evaluate reports its error and renders nothing', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const out = await callBounceLoaded(page, '$: note("c3").s("sine").nosuchmethod()', 2)
+    console.log(`[#1344 broken] ok=${out.ok} error=${out.error}`)
+    expect({ ok: out.ok, named: /nosuchmethod/.test(out.error ?? ''), wav: out.wav }).toEqual({
+      ok: false,
+      named: true,
+      wav: undefined,
+    })
+  })
+})
+
 /**
  * #1356 — how long does the graph keep sounding AFTER the transport stops?
  *

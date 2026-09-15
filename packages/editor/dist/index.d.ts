@@ -1742,6 +1742,13 @@ declare class StrudelEngine implements LiveCodingEngine {
     private lastPatternIR;
     private lastIRNodeLocLookup;
     private lastDeclaredLocations;
+    /**
+     * #1344 — what the last SUCCESSFUL evaluate handed the repl to play, with the
+     * seek and loop in force at that moment (the `.p` hook wrapped the pattern in
+     * both). `renderLoadedReport` renders exactly this. Cleared by a failed
+     * evaluate: the old pattern keeps playing, but it is no longer the document.
+     */
+    private loadedRender;
     private breakpointStore;
     private isPausedState;
     private pauseChangedListeners;
@@ -1970,7 +1977,10 @@ declare class StrudelEngine implements LiveCodingEngine {
      *
      * ⚠ `code` is evaluated with `@strudel/core`'s `evaluate`, outside this
      * engine's evaluate window, so `setcps`, `$:` and `.viz` are still refused
-     * here (#1344).
+     * here, and that is by decision (#1344): taking arbitrary code through the
+     * engine's window would replace the document loaded to play. To bounce a real
+     * document, load it and call `renderLoadedReport` —
+     * `LiveCodingRuntime.bounceOffline` does both.
      */
     renderOfflineReport(code: string, duration: number, sampleRate?: number): Promise<{
         blob: Blob;
@@ -1978,6 +1988,43 @@ declare class StrudelEngine implements LiveCodingEngine {
         played: number;
         skipped: SkippedSounds[];
     }>;
+    /**
+     * Render the document this engine has LOADED — the pattern its last successful
+     * `evaluate` handed the repl — through the same real graph as
+     * `renderOfflineReport` (#1344).
+     *
+     * ⚠ WHY THIS, AND NOT `renderOfflineReport(code)`. That one evaluates with
+     * `@strudel/core`'s raw `evaluate`, outside this engine's evaluate window, so
+     * `setcps`, `$:` and `.viz` do not exist there. Evaluating the render's code
+     * through the engine instead was measured to REPLACE what is loaded to play:
+     * after a render taken while playing, the speakers resumed the render's code
+     * (live RMS 0.054 → 0.118). Rendering what is already loaded has neither
+     * problem: every word of the document went through the real window, and
+     * nothing is swapped, because the render's document is the document.
+     *
+     * ⚠ IT RENDERS WHAT STRUDEL PLAYS, not the per-track captures. Those are taken
+     * inside the `.p` hook, before Strudel applies `all(...)` — which 42 corpus
+     * documents call on a live line, some to set level — so a mix built from them
+     * would be wrong without an error.
+     *
+     * ⚠ REFUSES A SEEKED OR LOOPED LOAD. The `.p` hook wraps every track in the
+     * seek (`.late`) and the loop (`.ribbon`) in force at evaluate, so rendering
+     * that pattern would bounce a shifted or looped song, silently. The caller
+     * clears both and evaluates first: `LiveCodingRuntime.bounceOffline` does.
+     *
+     * Also refuses when nothing is loaded, when the last evaluate failed (the old
+     * pattern still plays, but it is not the document), and when the loaded
+     * document plays nothing. Tempo is `getCps()`, which the document's own
+     * `setcps`/`setcpm` set during that evaluate.
+     */
+    renderLoadedReport(duration: number, sampleRate?: number): Promise<{
+        blob: Blob;
+        haps: number;
+        played: number;
+        skipped: SkippedSounds[];
+    }>;
+    /** The render both entry points share: hold the transport, render, report, encode. */
+    private renderPatternReport;
     /**
      * Render each stem's standalone program to its own WAV, through the same real
      * graph as `renderOfflineReport`, and report what happened to every stem.
@@ -1999,7 +2046,7 @@ declare class StrudelEngine implements LiveCodingEngine {
      * Same contracts as `renderOfflineReport`: requires `init()`, holds the live
      * transport (once for the whole set, so playback does not stutter back to
      * life between stems, #1627), and `setcps`/`$:`/`.viz` in a stem are still
-     * refused (#1344). `onProgress` fires after each stem settles, in input order.
+     * refused, for the same reason as there (#1344). `onProgress` fires after each stem settles, in input order.
      */
     renderStems(stems: Record<string, string>, duration: number, onProgress?: (stem: string, i: number, total: number) => void): Promise<Record<string, StemOutcome<{
         blob: Blob;
@@ -8699,6 +8746,44 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
      * bounce had started it.
      */
     record(seconds: number, signal?: AbortSignal, onCaptureStart?: () => void): Promise<Blob | null>;
+    /**
+     * Whether this runtime can bounce faster than real time (#1344). Duck-typed
+     * like `canRecord`: only `StrudelEngine` renders the document it has loaded.
+     */
+    canBounceOffline(): boolean;
+    /**
+     * Render `seconds` of this runtime's document OFFLINE — faster than real time,
+     * through the real audio graph — as a WAV, with what could not play (#1344).
+     * Returns null when the engine cannot, or when `signal` aborted before the
+     * render began.
+     *
+     * ⚠ IT RENDERS THE DOCUMENT AS LOADED, SO IT LOADS IT FIRST, THE WAY PLAY
+     * DOES. The engine's evaluate window is the only place `setcps`, `$:` and
+     * `.viz` exist, and a render that evaluates outside it refuses nearly every
+     * document (#1344). Evaluating the file through the same exclusive gate as
+     * `play()` and rendering what that loads means the bounce and the speakers
+     * read one evaluation, and nothing else gets swapped in: the render's document
+     * IS this runtime's document.
+     *
+     * ⚠ THE SAME FRAME RULES AS `record`, for the same reasons. Stop, clear the
+     * seek (#1371), clear the loop (#1572) and give the loop back afterwards,
+     * leaving the transport stopped. The engine refuses a load that still carries
+     * a seek or a loop, so skipping a step fails loudly rather than bouncing a
+     * shifted or looped song. There is no settle wait (#1356): the render plays
+     * into its own offline context, so a live tail cannot reach the file.
+     *
+     * ⚠ A DOCUMENT THAT DOES NOT EVALUATE THROWS ITS ERROR AND RENDERS NOTHING.
+     * What is loaded after a failed evaluate is the previous document.
+     */
+    bounceOffline(seconds: number, signal?: AbortSignal): Promise<{
+        blob: Blob;
+        haps: number;
+        played: number;
+        skipped: Array<{
+            reason: string;
+            count: number;
+        }>;
+    } | null>;
     stop(): void;
     dispose(): void;
     /**

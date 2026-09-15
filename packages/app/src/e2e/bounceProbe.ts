@@ -1,4 +1,4 @@
-import type { StrudelEngine } from "@stave/editor";
+import type { LiveCodingRuntime, StrudelEngine } from "@stave/editor";
 
 /**
  * E2E-only handle onto the three audio-bounce paths, so the claims in #1344,
@@ -92,6 +92,43 @@ export interface BounceProbe {
      */
     midRender?: "stop" | "play",
   ): Promise<RenderWhilePlayingOutcome>;
+  /**
+   * #1344 — the active-document bounce. Loads `code` as the document of a
+   * runtime over the probe's engine, puts the transport in `setup`'s state, then
+   * calls `LiveCodingRuntime.bounceOffline`. Reports the frame BEFORE the bounce
+   * (so an arm can prove its seek and loop took hold) and what it left behind.
+   */
+  bounceLoaded(
+    code: string,
+    secs: number,
+    setup?: BounceLoadedSetup,
+  ): Promise<BounceLoadedOutcome>;
+}
+
+/** #1344 — the transport state to bounce from. */
+export interface BounceLoadedSetup {
+  playing?: boolean;
+  /** Seek to this song cycle first (the runtime's `seekTo`). */
+  seek?: number;
+  /** Arm this loop first (the runtime's `setLoopRange`). */
+  loop?: { startCycle: number; cycles: number };
+}
+
+/** #1344 — what one active-document bounce returned, and the frame around it. */
+export interface BounceLoadedOutcome {
+  ok: boolean;
+  error?: string;
+  wav?: string;
+  haps?: number;
+  played?: number;
+  skipped?: Array<{ reason: string; count: number }>;
+  /** The engine's tempo after the bounce's evaluate. */
+  cps?: number | null;
+  offsetBefore?: number;
+  loopBefore?: { startCycle: number; cycles: number } | null;
+  playingAfter?: boolean;
+  offsetAfter?: number;
+  loopAfter?: { startCycle: number; cycles: number } | null;
 }
 
 /** #1627 — one offline render taken while the transport was in a known state. */
@@ -205,6 +242,20 @@ export function installBounceProbe(): () => void {
     }
     await engine.init();
     return engine;
+  }
+
+  // #1344 — ONE runtime over the probe's engine, reused: `LiveCodingRuntime`'s
+  // `dispose()` disposes its engine too, so a runtime per call would tear down
+  // the engine every other arm here shares. Its document is `loadedCode`.
+  let runtime: LiveCodingRuntime | null = null;
+  let loadedCode = "";
+  async function runtimeOver(e: StrudelEngine): Promise<LiveCodingRuntime> {
+    if (!runtime) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mod: any = await import("@stave/editor");
+      runtime = new mod.LiveCodingRuntime("bounce-probe", e, () => loadedCode) as LiveCodingRuntime;
+    }
+    return runtime;
   }
 
   const probe: BounceProbe = {
@@ -386,6 +437,44 @@ export function installBounceProbe(): () => void {
         } catch {
           /* stop() on an engine that never started is not a failure */
         }
+      }
+    },
+
+    bounceLoaded: async (code, secs, setup) => {
+      try {
+        const e = await booted();
+        const rt = await runtimeOver(e);
+        // The runtime is reused across calls, so each call starts from a clean
+        // frame rather than whatever the previous arm left armed.
+        rt.stop();
+        e.setTransportOffset(0);
+        e.setLoopRange(null);
+        loadedCode = code;
+        if (setup?.playing || setup?.seek !== undefined || setup?.loop) {
+          const res = await rt.play();
+          if (res.error) throw res.error;
+        }
+        if (setup?.loop) await rt.setLoopRange(setup.loop);
+        if (setup?.seek !== undefined) await rt.seekTo(setup.seek);
+        const offsetBefore = e.getTransportOffset();
+        const loopBefore = e.getLoopRange();
+        const report = await rt.bounceOffline(secs);
+        if (!report) throw new Error("bounceOffline returned null");
+        return {
+          ok: true,
+          wav: await toBase64(report.blob),
+          haps: report.haps,
+          played: report.played,
+          skipped: report.skipped,
+          cps: e.getCps(),
+          offsetBefore,
+          loopBefore,
+          playingAfter: rt.getIsPlaying(),
+          offsetAfter: e.getTransportOffset(),
+          loopAfter: e.getLoopRange(),
+        };
+      } catch (err) {
+        return { ok: false, error: String(err) };
       }
     },
 
