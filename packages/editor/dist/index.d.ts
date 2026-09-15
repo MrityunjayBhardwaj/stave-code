@@ -1622,6 +1622,12 @@ declare class BreakpointStore {
     private fireChanged;
 }
 
+/** Sounds the render could not play, grouped by the reason superdough gave. */
+interface SkippedSounds {
+    reason: string;
+    count: number;
+}
+
 type TierName = 'csound' | 'tidal' | 'midi' | 'osc' | 'serial' | 'gamepad' | 'motion' | 'mqtt';
 type TierFlags = Record<TierName, boolean>;
 /**
@@ -1914,49 +1920,49 @@ declare class StrudelEngine implements LiveCodingEngine {
      * be silent.
      */
     record(durationSeconds: number, signal?: AbortSignal): Promise<Blob>;
+    /**
+     * Render `duration` seconds of `code` to a WAV, faster than real time, through
+     * the same superdough graph the live engine plays — samples, soundfonts and
+     * effects included (#1353). The report form is `renderOfflineReport`.
+     */
     renderOffline(code: string, duration: number, sampleRate?: number): Promise<Blob>;
     /**
-     * #1398 SPIKE — render through the REAL superdough graph into an
-     * `OfflineAudioContext`, so samples and effects apply.
+     * `renderOffline`, plus what the render could and could not play.
      *
-     * `OfflineRenderer` (the method above) skips every sample-based sound and
-     * states why in its header: "AudioWorklets cannot be re-registered in a fresh
-     * OfflineAudioContext." Upstream contradicts that — `@strudel/webaudio` ships
-     * `renderPatternAudio`, which builds an offline context, calls `initAudio()`
-     * against it and then the real `superdough()` per hap. This method runs that
-     * function so the claim can be measured rather than argued.
+     * ⚠ IT USED TO DROP EVERY DRUM, WITH NO ERROR (#1353). `renderOffline` went
+     * through `OfflineRenderer`, a hand-rolled oscillator renderer that skipped
+     * any sound it could not map to a waveform and any hap without a pitch. A drum
+     * pattern stacked into a synth came back byte-identical to the synth alone.
+     * Its stated reason — worklets cannot be registered on a fresh
+     * `OfflineAudioContext` — was measured false (#1398); `renderPatternOffline`
+     * is the real graph, and what it changes from upstream is in its header.
      *
-     * ⚠ THE COUPLING (#1400): `renderPatternAudio` opens with
-     * `await getAudioContext().close()`. It closes whatever superdough's MODULE
-     * GLOBAL holds — not a context handed to it — so the live one is the one that
-     * dies unless the global is pointing somewhere expendable when upstream reads
-     * it. That is what the sacrificial context below is for, and it is the whole
-     * reason this method is more than a call.
+     * ⚠ A SOUND THAT FAILS IS REPORTED, NOT DROPPED. Every hap superdough refuses
+     * is counted by reason, returned in `skipped`, and emitted as one warning
+     * BEFORE encoding — so a render in which nothing could play still says why
+     * when `WavEncoder` refuses it as silent (#1402).
      *
-     * The live context cannot simply be rebuilt afterwards: this engine took it
-     * once at `init()` and built `analyserNode`, the master tap and every
-     * per-track analyser on it, `init()` is guarded against re-entry, and the
-     * context is already published on the workspace audio bus, so viz consumers
-     * hold the same nodes.
+     * ⚠ REQUIRES `init()`. Sample banks, synth sounds and the string parser are
+     * registered there; before it, every drum is "not found" and the render would
+     * report exactly that. Same contract as `record()`.
      *
-     * ⚠ AND IT FAILS SILENTLY, which is why the guard is worth its weight: the
-     * render's `finally` calls `setAudioContext(null)`, so the next
-     * `getAudioContext()` returns a fresh context and every "is there a context"
-     * check passes — while everything already wired to the old one stays wired to
-     * a corpse. Measured before the fix, one page, one engine: live capture
-     * peak 0.7826 → render ok → live capture peak 0.0000, ok=true, no error. A
-     * valid full-length WAV of silence, reported as success. Looking at the
-     * context tells you nothing; only the OUTPUT does, which is why the arm that
-     * covers this reads peaks either side of a render
-     * (`bounce-paths.spec.ts`, '#1400').
+     * ⚠ TEMPO IS THE ENGINE'S ONE READING (`getCps`), falling back to Strudel's
+     * 0.5 — never a regex over the source. The old renderer's regex defaulted to
+     * 1 and rendered at double speed (#1345).
      *
-     * ⚠ It also hands its result straight to a browser download and resolves with
-     * nothing, so the Blob is caught on its way out by stubbing the two DOM calls
-     * it uses. The render itself is untouched.
+     * ⚠ WHILE IT RUNS, superdough's module globals name the OFFLINE context, so
+     * anything the live scheduler triggers in that window is rendered into the
+     * bounce rather than played. Render with the transport stopped.
+     *
+     * ⚠ `code` is evaluated with `@strudel/core`'s `evaluate`, outside this
+     * engine's evaluate window, so `setcps`, `$:` and `.viz` are still refused
+     * here (#1344).
      */
-    renderOfflineViaSuperdough(code: string, duration: number, cps?: number, sampleRate?: number): Promise<{
+    renderOfflineReport(code: string, duration: number, sampleRate?: number): Promise<{
         blob: Blob;
         haps: number;
+        played: number;
+        skipped: SkippedSounds[];
     }>;
     renderStems(stems: Record<string, string>, duration: number, onProgress?: (stem: string, i: number, total: number) => void): Promise<Record<string, Blob>>;
     getAnalyser(): AnalyserNode;
@@ -2374,10 +2380,11 @@ interface EncodeOptions {
  * invariant. Four bugs shared the same signature under that arrangement: a
  * valid, full-length WAV that played as nothing, returned with no error.
  *
- * ⚠ ONE CAPTURE PATH DOES NOT COME THROUGH HERE.
- * `StrudelEngine.renderOfflineViaSuperdough` intercepts a Blob that upstream's
- * `renderPatternAudio` already encoded, so this guard cannot see it. It is
- * unwired to any UI today; guarding it needs its own change.
+ * ⚠ THE REAL-GRAPH OFFLINE RENDER COMES THROUGH HERE TOO (#1353). Upstream's
+ * `renderPatternAudio` encodes its own WAV, which this guard could not see — so
+ * `renderPatternOffline` returns the rendered `AudioBuffer` instead, and
+ * `StrudelEngine.renderOfflineReport` encodes it here. Measured before that:
+ * an unknown sound rendered to 192,000 zeros, returned as success.
  */
 declare class WavEncoder {
     /**
@@ -2408,16 +2415,17 @@ declare class WavEncoder {
  * REASON THIS USED TO GIVE IS FALSE, and it was load-bearing for three issues.
  * Upstream's own `renderPatternAudio` builds an `OfflineAudioContext`, calls
  * `initAudio()` against it and then the real `superdough()` per hap — measured
- * audible, samples and all (#1398/#1399). `StrudelEngine.renderOfflineViaSuperdough`
- * is that path; this hand-rolled oscillator renderer exists to work around a
- * constraint that was never there.
+ * audible, samples and all (#1398/#1399).
  *
- * ⚠ THE SKIP IS NO LONGER SILENT (#1402). A drum-only document renders to
- * nothing, and `WavEncoder` now REFUSES to hand back a file of silence as a
- * success — so this throws `SilentCaptureError` where it used to return a
- * well-formed, full-length WAV of zeros with no error at all. That is the
- * intended change: #1353 is still unfixed, but it can no longer be mistaken for
- * a working bounce.
+ * ⚠ `StrudelEngine.renderOffline` NO LONGER COMES THROUGH HERE (#1353). It
+ * renders through the real graph (`renderPatternOffline`), so drums sound and a
+ * sound that cannot play is reported. The only caller left is
+ * `StrudelEngine.renderStems`, which therefore still drops every sample-based
+ * sound — moving it is #1409's change, because stems render in parallel and the
+ * real graph renders through module globals that one render at a time can own.
+ *
+ * A drum-only stem still renders to nothing here, and `WavEncoder` refuses it as
+ * silent (#1402) rather than returning a file of zeros.
  */
 declare class OfflineRenderer {
     static render(code: string, duration: number, sampleRate: number): Promise<Blob>;
