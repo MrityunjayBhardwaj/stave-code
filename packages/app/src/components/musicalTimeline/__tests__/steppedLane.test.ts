@@ -9,8 +9,10 @@
  * `startCycle`s are the ones the reader derives from the weights.
  */
 import { describe, it, expect } from 'vitest'
-import type { SteppedAutomation } from '@stave/editor'
+import type { FixedParameter, SteppedAutomation } from '@stave/editor'
 import {
+  automatableFixed,
+  automateStepCount,
   snapToStep,
   stepAxis,
   stepDragValue,
@@ -379,5 +381,34 @@ describe('the drag geometry — a level that follows the pointer (#1578)', () =>
     expect(out[1]).toBe(entries[1])
     // An index that does not exist changes nothing.
     expect(withStepValue(entries, a, 5, 0.4)[0]).toBe(entries[0])
+  })
+})
+
+describe('automate a fixed value (#1601)', () => {
+  const fixed = (method: string, sectionCycles: number | null = null): FixedParameter => ({
+    trackId: 'd1',
+    paramKey: method,
+    method,
+    value: 0.8,
+    valueText: '0.8',
+    argSpan: { start: 0, end: 3 },
+    sectionCycles,
+    offset: 0,
+    placements: [[]],
+  })
+  // A stand-in for `hasKnownKnobRange` that ranges the tempo too, as the real table does.
+  const hasRange = (m: string) => ['gain', 'lpf', 'cps', 'slow'].includes(m)
+
+  it('offers controls with a knob range of their own — not routing, and not the tempo', () => {
+    const offered = automatableFixed([fixed('gain'), fixed('orbit'), fixed('cps'), fixed('slow'), fixed('lpf')], hasRange)
+    expect(offered.map((f) => f.method)).toEqual(['gain', 'lpf'])
+  })
+
+  it('writes one step per bar the lane shows, or per bar of the section', () => {
+    expect(automateStepCount(fixed('gain'), 4)).toBe(4)
+    expect(automateStepCount(fixed('gain'), 6)).toBe(6)
+    expect(automateStepCount(fixed('gain'), 0)).toBe(1)
+    // A section counts its own bars, whatever the lane's span.
+    expect(automateStepCount(fixed('gain', 3), 8)).toBe(3)
   })
 })

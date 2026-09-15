@@ -95,8 +95,9 @@ import {
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
-import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor } from '@stave/editor'
-import { stepAxis, stepDragValue, stepEdit, stepHitAt, stepY, withStepValue, type StepBand, type StepHit } from './musicalTimeline/steppedLane'
+import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange } from '@stave/editor'
+import type { FixedParameter } from '@stave/editor'
+import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepY, withStepValue, type StepBand, type StepHit } from './musicalTimeline/steppedLane'
 import type { SceneSignal, SceneStepped } from './musicalTimeline/timelineScene'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import {
@@ -1186,6 +1187,18 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     }
     return by as ReadonlyMap<string, readonly SceneStepped[]>
   }, [props.ir])
+  // #1601 — the fixed values each lane's automate menu offers, memoised on the same
+  // `props.ir` as the stepped lanes, so the menu and the staircase always read one
+  // document: a value already written as steps is no longer fixed, and drops out.
+  const fixedByTrack = useMemo(() => {
+    const by = new Map<string, FixedParameter[]>()
+    for (const f of automatableFixed(fixedParameters(props.ir ?? null), hasKnownKnobRange)) {
+      const list = by.get(f.trackId)
+      if (list) list.push(f)
+      else by.set(f.trackId, [f])
+    }
+    return by as ReadonlyMap<string, readonly FixedParameter[]>
+  }, [props.ir])
   // Per-lane voice sub-row order is pinned first-seen across re-evals (#480) so
   // reordering clips in time doesn't reshuffle the instrument rows — the SAME
   // first-seen stability `stableTrackOrder` gives the top-level lanes, one level
@@ -1615,6 +1628,28 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // guard is that one line, and it is pinned by a browser arm rather than left
   // to be re-reasoned.
   const { onEditAutomation } = props
+  // #1601 — the automate menu. Its options and the lane's span are captured when it
+  // OPENS, as the part chooser captures its list, so a re-eval under an open menu
+  // cannot change what a choice writes. The source is read at commit, and
+  // `fixedToStepsEdit` refuses a span whose text no longer spells the value.
+  const [choosingAutomation, setChoosingAutomation] = useState<{
+    laneKey: string
+    rect: DOMRect
+    options: readonly FixedParameter[]
+    laneCycles: number
+  } | null>(null)
+  const commitAutomation = React.useCallback(
+    (value: string): void => {
+      const hit = choosingAutomation
+      setChoosingAutomation(null)
+      if (!hit || !onEditAutomation || source == null || value === '') return
+      const f = hit.options[Number(value)]
+      if (!f) return
+      const edit = fixedToStepsEdit(f, automateStepCount(f, hit.laneCycles), source)
+      if (edit) onEditAutomation(edit, `automation ${f.paramKey} steps`)
+    },
+    [choosingAutomation, onEditAutomation, source],
+  )
   const [editingCaption, setEditingCaption] = useState<CaptionHit | null>(null)
 
   /** The caption field under a client point, or null. X is VIEWPORT-relative and
@@ -2948,6 +2983,27 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                     >
                       {box.expanded ? '▾' : '▸'}
                     </button>
+                    {box.expanded && onEditAutomation && source != null && (fixedByTrack.get(box.laneKey)?.length ?? 0) > 0 && (
+                      <button
+                        type="button"
+                        data-full-song-lane-automate={box.laneKey}
+                        aria-label={`Automate a parameter of ${displayName}`}
+                        title={`${displayName} — automate a parameter`}
+                        onClick={(e) => {
+                          // Opens the menu only — not the header's jump (#610).
+                          e.stopPropagation()
+                          setChoosingAutomation({
+                            laneKey: box.laneKey,
+                            rect: e.currentTarget.getBoundingClientRect(),
+                            options: fixedByTrack.get(box.laneKey) ?? [],
+                            laneCycles: loopCyclesRef.current,
+                          })
+                        }}
+                        style={styles.laneCaret}
+                      >
+                        ∿
+                      </button>
+                    )}
                     {colorPickerEnabled ? (
                       <button
                         type="button"
@@ -3050,6 +3106,38 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             }
             onClose={() => setColorPickerLane(null)}
           />
+        )}
+        {choosingAutomation && (
+          <select
+            data-full-song="automate-parameter"
+            autoFocus
+            aria-label="Automate a parameter"
+            defaultValue=""
+            style={{ ...styles.automateMenu, left: choosingAutomation.rect.left, top: choosingAutomation.rect.bottom + 2 }}
+            // ⚠ NO `stopPropagation` HERE, on pointer or key events, unlike the part
+            // chooser — and on purpose. That chooser is mounted INSIDE the grid, whose
+            // handlers select, drag and delete clips. This menu is mounted in the body
+            // BESIDE the grid: the pointer handlers above it belong to the ruler, which
+            // closes before the body opens, and the key listeners above it are the
+            // app's global shortcuts, every one needing ⌘/Ctrl (⌘Z should still undo
+            // with the menu open). Removing either guard turned no arm red, because no
+            // input reached it.
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setChoosingAutomation(null)
+            }}
+            onChange={(e) => commitAutomation(e.currentTarget.value)}
+            // A select commits by choosing, so a blur is an abandonment.
+            onBlur={() => setChoosingAutomation(null)}
+          >
+            <option value="" disabled>
+              automate…
+            </option>
+            {choosingAutomation.options.map((f, i) => (
+              <option key={`${f.offset}:${i}`} value={String(i)}>
+                {`${f.method} ${f.valueText}`}
+              </option>
+            ))}
+          </select>
         )}
         <div
           data-full-song="grid"
@@ -3710,6 +3798,7 @@ const styles = {
     cursor: 'pointer' as const,
   },
   laneDot: { width: 7, height: 7, borderRadius: '50%', flexShrink: 0, display: 'inline-block', marginTop: 2 },
+  automateMenu: { position: 'fixed' as const, zIndex: 1000, fontFamily: FONT_MONO, fontSize: 11 },
   laneName: {
     color: 'var(--text-tertiary, rgba(255,255,255,0.4))',
     fontSize: 10,

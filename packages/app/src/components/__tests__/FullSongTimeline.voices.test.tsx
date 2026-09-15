@@ -35,13 +35,18 @@ vi.mock('@stave/editor', async () => {
   // #1463 Stage 2 — the component also reads stepped automation and its axis.
   // #1585 — and each lane entry carries `stepIndexAtCycle`.
   const { steppedAutomations, stepIndexAtCycle } = await import('../../../../editor/src/ir/steppedAutomation')
-  const { knobRangeFor } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
+  const { knobRangeFor, hasKnownKnobRange } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
+  // #1601 — the lane's automate menu reads fixed values and writes them as steps.
+  const { fixedParameters, fixedToStepsEdit } = await import('../../../../editor/src/ir/fixedParameters')
   return {
     signalAutomations,
     signalTimeAt,
     steppedAutomations,
     stepIndexAtCycle,
     knobRangeFor,
+    hasKnownKnobRange,
+    fixedParameters,
+    fixedToStepsEdit,
     structuralWalk: (_ir: unknown, window: { originCycle: number; spanCycles: number }) =>
       skeletonsFromEvents(DRUM_EVENTS, window),
     wholeWalkWindow,

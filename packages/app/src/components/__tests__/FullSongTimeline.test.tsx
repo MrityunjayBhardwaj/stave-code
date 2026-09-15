@@ -76,7 +76,9 @@ vi.mock('@stave/editor', async () => {
   // Stage 3 adds the write: a press on a step commits through `stepValueEdit`.
   // #1585 adds the read: each lane entry carries `stepIndexAtCycle`.
   const { steppedAutomations, stepValueEdit, stepIndexAtCycle } = await import('../../../../editor/src/ir/steppedAutomation')
-  const { knobRangeFor } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
+  const { knobRangeFor, hasKnownKnobRange } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
+  // #1601 — the lane's automate menu reads fixed values and writes them as steps.
+  const { fixedParameters, fixedToStepsEdit } = await import('../../../../editor/src/ir/fixedParameters')
   const eventsForIr = (ir: { bare?: boolean; nested?: boolean } | null) =>
     ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : []
   return {
@@ -86,6 +88,9 @@ vi.mock('@stave/editor', async () => {
     stepValueEdit,
     stepIndexAtCycle,
     knobRangeFor,
+    hasKnownKnobRange,
+    fixedParameters,
+    fixedToStepsEdit,
     collectCycles: (ir: { bare?: boolean; nested?: boolean } | null) => eventsForIr(ir),
     structuralWalk: (ir: { bare?: boolean; nested?: boolean } | null, window: { originCycle: number; spanCycles: number }) =>
       skeletonsFromEvents(eventsForIr(ir), window),
@@ -1859,5 +1864,97 @@ describe('FullSongTimeline — edit a STEP on a stepped lane (#1463 Stage 3)', (
     // The CONTROL, same arm: the same bar at a height the staircase does not hold.
     move(grid, 300, levelY(container, 0.5))
     expect(grid.style.cursor).not.toBe('ns-resize')
+  })
+})
+
+describe('FullSongTimeline — automate a fixed value from its lane (#1601)', () => {
+  // One track `bd` setting one fixed value, read by the REAL `fixedParameters` (the
+  // barrel mock loads it from source). The call site starts at 9 in
+  // `s("bd*2").<method>(<raw>)` and ends past the `)`, the offsets the parser gives;
+  // the argument's span is what the edit may replace.
+  const settle = () => act(async () => { await Promise.resolve() })
+  async function renderFixed(
+    method: string,
+    raw: string,
+    extra: Partial<React.ComponentProps<typeof FullSongTimeline>>,
+    expand = true,
+  ) {
+    const source = `s("bd*2").${method}(${raw})`
+    const ir = {
+      tag: 'Stack',
+      tracks: [
+        {
+          tag: 'Track',
+          trackId: 'bd',
+          body: {
+            tag: 'Param',
+            key: method,
+            rawArgs: raw,
+            value: Number(raw),
+            loc: [{ start: 9, end: source.length }],
+            body: { tag: 'Play', note: 'bd' },
+          },
+        },
+      ],
+    }
+    const utils = renderFull({ ir: ir as never, source, ...extra })
+    await settle()
+    if (expand) {
+      await act(async () => {
+        ;(utils.container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement).click()
+      })
+    }
+    return utils
+  }
+  const automate = (c: HTMLElement) => c.querySelector('[data-full-song-lane-automate="bd"]') as HTMLElement | null
+  const menu = (c: HTMLElement) => c.querySelector('[data-full-song="automate-parameter"]') as HTMLSelectElement | null
+
+  it('choosing a fixed value writes it as one step per bar the lane shows, in one edit', async () => {
+    const onEditAutomation = vi.fn()
+    const { container } = await renderFixed('gain', '.8', { onEditAutomation })
+    expect(automate(container), 'no automate button on the expanded lane').not.toBeNull()
+    await act(async () => {
+      automate(container)!.click()
+    })
+    const m = menu(container)
+    expect(m, 'the menu did not open').not.toBeNull()
+    expect(Array.from(m!.options).map((o) => o.textContent)).toEqual(['automate…', 'gain .8'])
+    expect(onEditAutomation, 'opening the menu wrote').not.toHaveBeenCalled()
+    fireEvent.change(m!, { target: { value: '0' } })
+    // The fixture's span is 4 cycles, so the lane shows 4 bars: 4 steps, spelled `.8`.
+    expect(onEditAutomation).toHaveBeenCalledTimes(1)
+    expect(onEditAutomation).toHaveBeenCalledWith({ range: [15, 17], text: '"<.8 .8 .8 .8>"' }, 'automation gain steps')
+    expect(menu(container), 'the menu lingered after its commit').toBeNull()
+  })
+
+  it('offers nothing on a collapsed lane, without a write handler, or for a control with no knob range of its own', async () => {
+    const onEditAutomation = vi.fn()
+    expect(automate((await renderFixed('gain', '0.8', { onEditAutomation }, false)).container), 'collapsed').toBeNull()
+    cleanup()
+    expect(automate((await renderFixed('gain', '0.8', {})).container), 'no handler').toBeNull()
+    cleanup()
+    expect(automate((await renderFixed('orbit', '1', { onEditAutomation })).container), 'orbit').toBeNull()
+    cleanup()
+    expect(automate((await renderFixed('cps', '0.5', { onEditAutomation })).container), 'cps').toBeNull()
+    cleanup()
+    // Control: the same render with a ranged control DOES offer it.
+    expect(automate((await renderFixed('pan', '0.5', { onEditAutomation })).container), 'pan').not.toBeNull()
+    expect(onEditAutomation).not.toHaveBeenCalled()
+  })
+
+  it('Escape and a blur close the menu without writing', async () => {
+    const onEditAutomation = vi.fn()
+    const { container } = await renderFixed('gain', '0.8', { onEditAutomation })
+    const open = async () => {
+      await act(async () => {
+        automate(container)!.click()
+      })
+      return menu(container)!
+    }
+    fireEvent.keyDown(await open(), { key: 'Escape' })
+    expect(menu(container), 'Escape did not close the menu').toBeNull()
+    fireEvent.blur(await open())
+    expect(menu(container), 'a blur did not close the menu').toBeNull()
+    expect(onEditAutomation).not.toHaveBeenCalled()
   })
 })
