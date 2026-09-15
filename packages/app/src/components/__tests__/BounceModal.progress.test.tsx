@@ -41,6 +41,7 @@ function renderAt(state: BounceState, cycles = CYCLES, cps = CPS) {
       open
       state={state}
       sizing={{ length: { kind: "arranged", cycles }, cps }}
+      offline={false}
       onClose={noop}
       onStart={noop}
       onStop={noop}

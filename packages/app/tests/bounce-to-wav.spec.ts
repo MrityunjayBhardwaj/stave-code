@@ -11,10 +11,14 @@ import { readFileSync } from 'node:fs'
  * "A download arrived" and "a WAV parsed" are therefore both false cleans here;
  * only a non-zero sample count means the feature works.
  *
- * The bounce is real-time, so the capture arms genuinely spend their seconds.
+ * #1631 — a Strudel file's bounce renders offline now, so these arms no longer
+ * spend the song's length in wall clock; one of them pins exactly that.
  */
 
 const BOUNCE_SECONDS = 8
+/** #1631 — a sound that does not exist, beside one that does. */
+const MISSING_SOUND = 'nosuchsound'
+const SKIPPED_DOC = `$: stack(s("bd*4"), s("${MISSING_SOUND}*4"))`
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
@@ -98,43 +102,98 @@ test('the bounce is named .wav', async ({ page }) => {
   expect(download.suggestedFilename()).toMatch(/\.wav$/)
 })
 
-test('stopping early keeps what was recorded rather than discarding it', async ({ page }) => {
-  test.setTimeout(90_000)
+/**
+ * #1631 — these two arms replace "stopping early keeps what was recorded" and
+ * "a stopped-early bounce is shorter". Those pinned the LIVE capture, which a
+ * Strudel file no longer reaches from the File menu: the bounce renders offline
+ * now, and a render cannot stop halfway. `LiveRecorder`'s keep-what-was-captured
+ * behaviour is still pinned by its own unit tests, and is still what the live
+ * fallback does.
+ */
+test('a bounce renders faster than the song plays, at full length (#1631)', async ({ page }) => {
+  test.setTimeout(120_000)
   await openBounceModal(page)
-  // 60s, so the take can only end by the Stop button.
   await page.getByRole('button', { name: '60s' }).click()
 
-  const downloadPromise = page.waitForEvent('download', { timeout: 60_000 })
+  const downloadPromise = page.waitForEvent('download', { timeout: 90_000 })
+  const startedAt = Date.now()
   await page.getByRole('button', { name: 'Start Bounce' }).click()
-  await page.getByRole('progressbar').waitFor({ timeout: 15_000 })
-  await page.waitForTimeout(4000)
-  await page
-    .getByRole('dialog', { name: 'Bounce to WAV' })
-    .getByRole('button', { name: 'Stop' })
-    .click()
-
   const download = await downloadPromise
-  // Well under 60s of audio, and well over zero — a shorter file, not nothing.
+  const wallSeconds = (Date.now() - startedAt) / 1000
   const frames = framesOf((await download.path())!)
-  expect(frames).toBeGreaterThan(0)
+  console.log(`[#1631 speed] a 60s bounce took ${wallSeconds.toFixed(1)}s of wall clock, ${frames} frames`)
+
+  // A live capture cannot deliver 60 seconds of audio in under 30, so this goes
+  // red if the bounce falls back to recording — and a short file cannot pass it.
+  expect({ fullLength: frames >= 60 * 40_000, fasterThanPlaying: wallSeconds < 30 }).toEqual({
+    fullLength: true,
+    fasterThanPlaying: true,
+  })
 })
 
-test('a stopped-early bounce is shorter than the length that was asked for', async ({ page }) => {
-  test.setTimeout(90_000)
+test('cancelling a render saves nothing and says so (#1631)', async ({ page }) => {
+  test.setTimeout(240_000)
   await openBounceModal(page)
-  await page.getByRole('button', { name: '60s' }).click()
+  // The longest fixed pick, so the render is still running when Cancel lands.
+  await page.getByRole('button', { name: '300s' }).click()
 
+  let downloaded = false
+  page.on('download', () => {
+    downloaded = true
+  })
+  await page.getByRole('button', { name: 'Start Bounce' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Bounce to WAV' })
+  await expect(dialog.getByText(/^Rendering/)).toBeVisible({ timeout: 15_000 })
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+
+  // The render runs to its end before the cancel can be honoured, so the toast
+  // arrives when it does. If the render had finished BEFORE the click, the file
+  // would have saved and this toast would never appear.
+  await expect(
+    page.locator('[data-testid="toast"]').filter({ hasText: 'Bounce cancelled' }),
+  ).toBeVisible({ timeout: 200_000 })
+  expect(downloaded, 'a cancelled render must not save a file').toBe(false)
+  await expect(dialog).toBeHidden({ timeout: 10_000 })
+})
+
+/**
+ * #1631 — a render that could not play some sounds still saves the file, and
+ * the toast names what was left out. Before this, the app's live bounce had no
+ * such report, and the offline render's `skipped` list went nowhere.
+ *
+ * ⚠ BOTH HALVES. The file must carry the sound that DID play (a bounce refused
+ * as silent would also produce an error toast), and the toast must be the
+ * skipped-sounds one and name the missing sound (not the generic failure).
+ */
+test('a bounce that could not play some sounds still saves, and names them (#1631)', async ({ page }) => {
+  test.setTimeout(120_000)
+  const ok = await page.evaluate((c) => {
+    const monaco = (window as unknown as { monaco?: { editor?: { getEditors?: () => unknown[] } } }).monaco
+    const editors = (monaco?.editor?.getEditors?.() ?? []) as Array<{
+      getModel: () => { getLanguageId?: () => string; setValue: (s: string) => void } | null
+    }>
+    const target = editors.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? editors[0]
+    if (!target) return false
+    target.getModel()?.setValue(c)
+    return true
+  }, SKIPPED_DOC)
+  expect(ok).toBe(true)
+  await page.waitForTimeout(400)
+
+  await openBounceModal(page)
+  await page.getByRole('button', { name: `${BOUNCE_SECONDS}s` }).click()
   const downloadPromise = page.waitForEvent('download', { timeout: 60_000 })
   await page.getByRole('button', { name: 'Start Bounce' }).click()
-  await page.getByRole('progressbar').waitFor({ timeout: 15_000 })
-  await page.waitForTimeout(4000)
-  await page
-    .getByRole('dialog', { name: 'Bounce to WAV' })
-    .getByRole('button', { name: 'Stop' })
-    .click()
-
   const download = await downloadPromise
-  expect(framesOf((await download.path())!)).toBeLessThan(60 * 40000)
+
+  const toast = page
+    .locator('[data-testid="toast"][data-level="error"]')
+    .filter({ hasText: 'could not play' })
+  await expect(toast).toBeVisible({ timeout: 10_000 })
+  await expect(toast).toContainText(MISSING_SOUND)
+  const rms = rmsOf((await download.path())!)
+  console.log(`[#1631 skipped] rms=${rms.toFixed(4)} toast=${(await toast.textContent())?.trim()}`)
+  expect(rms, 'the sound that could play must be in the file').toBeGreaterThan(0.005)
 })
 
 test('the modal closes once the bounce has been saved', async ({ page }) => {

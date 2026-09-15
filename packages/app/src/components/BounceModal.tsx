@@ -10,18 +10,20 @@ import {
 /**
  * #1346 — "Bounce to WAV": the first way to get audio out of Stave.
  *
- * It is backed by `LiveRecorder`, which captures the real graph, so a bounce is
- * genuinely REAL-TIME — thirty seconds of audio costs thirty seconds of wall
- * clock. That is the whole reason this is a modal with a progress bar and a
- * Stop button rather than a menu item with a spinner: the user has to wait, and
- * the UI must say so instead of looking hung.
+ * #1631 — a bounce RENDERS OFFLINE when the file's engine can, through the
+ * same audio graph as playback but faster than the song plays. There is no
+ * clock to show, because an offline render reports no progress, and nothing to
+ * keep from a Cancel, because a render cannot stop halfway. So that phase is a
+ * plain "Rendering…" line and a Cancel that saves nothing.
  *
- * Stopping is not a discard. The recorder resolves with what it captured, so
- * Stop yields a shorter file rather than nothing.
+ * Otherwise it falls back to `LiveRecorder`, which captures the live output in
+ * REAL TIME — thirty seconds of audio costs thirty seconds of wall clock. That
+ * path keeps the progress bar and a Stop that is not a discard: the recorder
+ * resolves with what it captured, so Stop yields a shorter file.
  */
 
 /**
- * Fixed lengths, in seconds. Real-time, so each is also its own cost.
+ * Fixed lengths, in seconds. On the live path each is also its own cost.
  *
  * These are the fallback, not the point: they are the only thing on offer for a
  * document whose length cannot be measured (56 of 142 real documents have no
@@ -40,6 +42,12 @@ export type BounceState =
    */
   | { phase: "preparing" }
   | { phase: "recording"; seconds: number; elapsed: number }
+  /**
+   * #1631 — an offline render of `seconds` of audio is under way. There is no
+   * elapsed time: the render reports no progress, and it finishes faster than
+   * the song would play.
+   */
+  | { phase: "rendering"; seconds: number }
   | { phase: "encoding" };
 
 interface BounceModalProps {
@@ -52,6 +60,11 @@ interface BounceModalProps {
    * the plain seconds picker rather than as a refusal.
    */
   sizing: BounceSizing | null;
+  /**
+   * #1631 — whether the active file's bounce renders offline. Decides the copy
+   * while choosing, which has to say what Start will cost before it is pressed.
+   */
+  offline: boolean;
   onClose: () => void;
   onStart: (seconds: number) => void;
   onStop: () => void;
@@ -61,6 +74,7 @@ export function BounceModal({
   open,
   state,
   sizing,
+  offline,
   onClose,
   onStart,
   onStop,
@@ -97,7 +111,12 @@ export function BounceModal({
     const handler = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (state.phase === "choosing") onClose();
-      else if (state.phase === "recording" || state.phase === "preparing") onStop();
+      else if (
+        state.phase === "recording" ||
+        state.phase === "preparing" ||
+        state.phase === "rendering"
+      )
+        onStop();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
@@ -109,6 +128,15 @@ export function BounceModal({
 
   const recording = state.phase === "recording";
   const pct = recording ? Math.min(100, (state.elapsed / state.seconds) * 100) : 0;
+  // ROUNDED, not raw. Under a minute this deliberately reads "13 seconds"
+  // rather than "0:13" — natural for the fixed picks, which are whole numbers
+  // anyway. But a SONG-derived length is `cycles / cps`, so `selected` is
+  // usually a repeating decimal, and interpolating it bare printed
+  // "13.333333333333334 seconds". The `>= 60` branch hid this: it formats, so
+  // only songs under a minute showed it. One expression serves both the offline
+  // and the live sentence (#1631), so they cannot format one length two ways.
+  const selectedLabel =
+    selected < 60 ? `${Math.round(selected)} seconds` : formatDuration(selected);
 
   return (
     <div
@@ -181,23 +209,19 @@ export function BounceModal({
                   </button>
                 ))}
               </div>
-              <p style={styles.note}>
-                Bouncing records the live output, so it takes as long as it plays —
-                this one will take{" "}
-                {/* ROUNDED, not raw. Under a minute this deliberately reads
-                    "13 seconds" rather than "0:13" — natural for the fixed
-                    picks, which are whole numbers anyway. But a SONG-derived
-                    length is `cycles / cps`, so `selected` is usually a
-                    repeating decimal, and interpolating it bare printed
-                    "13.333333333333334 seconds" here. The `>= 60` branch hid
-                    this: it formats, so only songs under a minute showed it. */}
-                {selected < 60
-                  ? `${Math.round(selected)} seconds`
-                  : formatDuration(selected)}
-                .
-                Playback starts
-                automatically and stops again when the bounce finishes.
-              </p>
+              {offline ? (
+                <p style={styles.note}>
+                  Bouncing renders {selectedLabel} of audio faster than real time,
+                  through the same sounds as playback. Playback stops while it
+                  renders.
+                </p>
+              ) : (
+                <p style={styles.note}>
+                  Bouncing records the live output, so it takes as long as it plays —
+                  this one will take {selectedLabel}. Playback starts
+                  automatically and stops again when the bounce finishes.
+                </p>
+              )}
             </>
           )}
 
@@ -224,6 +248,17 @@ export function BounceModal({
               </div>
               <p style={styles.note}>
                 Stopping early keeps what has been recorded so far.
+              </p>
+            </>
+          )}
+
+          {state.phase === "rendering" && (
+            <>
+              <div style={styles.sectionLabel}>
+                Rendering {formatDuration(state.seconds)} of audio…
+              </div>
+              <p style={styles.note}>
+                Cancel discards the render — nothing is saved.
               </p>
             </>
           )}
@@ -256,7 +291,9 @@ export function BounceModal({
               // resolves at once), so the user is never stranded in the settle.
               disabled={state.phase === "encoding"}
             >
-              Stop
+              {/* #1631 — a render keeps nothing from a cancel, so it is not
+                  called Stop, which on the live path keeps a shorter take. */}
+              {state.phase === "rendering" ? "Cancel" : "Stop"}
             </button>
           )}
         </div>

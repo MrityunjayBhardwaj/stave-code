@@ -106,7 +106,7 @@ import {
   applyPersistedAdaptivePerf,
 } from "@stave/editor";
 import { getLogHistory } from "@stave/editor";
-import { SilentCaptureError } from "@stave/editor";
+import { SilentCaptureError, describeSkipped } from "@stave/editor";
 import { startAudition } from "@stave/editor";
 // #1504 — the project's asset records back the library's "sample" provider.
 import { listAssetRecords, subscribeToAssets } from "@stave/editor";
@@ -490,6 +490,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const bounceRef = useRef<BounceHandle | null>(null);
   const [bounceOpen, setBounceOpen] = useState(false);
   const [bounceState, setBounceState] = useState<BounceState>({ phase: "choosing" });
+  // #1631 — whether the active file's bounce renders offline. Read when the
+  // modal opens, so its copy says what Start will cost before it is pressed.
+  const [bounceOffline, setBounceOffline] = useState(false);
   /** What the active document says about its length; `null` until measured. */
   const [bounceSizing, setBounceSizing] = useState<BounceSizing | null>(null);
   /** Supersedes an in-flight measurement when the modal is reopened. */
@@ -527,11 +530,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     }
     const controller = new AbortController();
     bounceAbortRef.current = controller;
-    // #1356 — the runtime lets the graph fall silent before it starts playing,
+    // #1631 — an offline render has no capture to wait for and no clock to
+    // show: it reports no progress and finishes faster than the song plays.
+    // #1356 — a live take lets the graph fall silent before it starts playing,
     // so Start is not the first captured sample. Show that, and start the
     // clock on `onCaptureStart`, or the bar would run ahead of the audio and
     // sit at 100% while the take was still finishing.
-    setBounceState({ phase: "preparing" });
+    const offline = handle.bouncesOffline();
+    setBounceState(offline ? { phase: "rendering", seconds } : { phase: "preparing" });
 
     const beginTicking = () => {
       setBounceState({ phase: "recording", seconds, elapsed: 0 });
@@ -546,17 +552,40 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
     void handle
       .bounce(seconds, controller.signal, beginTicking)
-      .then((blob) => {
+      .then((result) => {
         if (bounceTickRef.current) {
           clearInterval(bounceTickRef.current);
           bounceTickRef.current = null;
         }
-        if (!blob) {
+        // #1631 — Cancel pressed during an offline render. A render cannot stop
+        // halfway, so what it finished is discarded rather than saved as though
+        // the user had let it run. (A live Stop still keeps its shorter take.)
+        // Decided by the path the bounce REPORTS, not the `offline` predicted at
+        // Start: those are two reads, and a live take discarded on a stale
+        // prediction loses exactly what Stop promises to keep. A null after an
+        // abort is a render that was refused before it began.
+        if (controller.signal.aborted && (result === null || result.offline)) {
+          showToast("Bounce cancelled — nothing was saved.", "info");
+          return;
+        }
+        if (!result) {
           showToast("This file has no audio engine to bounce.", "error");
           return;
         }
         setBounceState({ phase: "encoding" });
-        saveWavBlob(blob, activeProject.name);
+        saveWavBlob(result.blob, activeProject.name);
+        // #1631 — a render that could not play some sounds still saves, and
+        // says which. Error level on purpose: the file is missing part of the
+        // song, and an "info" toast would let that pass unnoticed.
+        if (result.skipped.length > 0) {
+          const left = result.skipped.reduce((n, s) => n + s.count, 0);
+          showToast(
+            `Bounce saved, but ${left} ${left === 1 ? "sound" : "sounds"} could not play: ${describeSkipped(result.skipped)}`,
+            "error",
+            SILENT_BOUNCE_TOAST_MS,
+          );
+          return;
+        }
         showToast(
           controller.signal.aborted
             ? "Bounce stopped early — saved what was recorded."
@@ -605,6 +634,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   const openBounceModal = useCallback(() => {
     setBounceState({ phase: "choosing" });
+    setBounceOffline(bounceRef.current?.bouncesOffline() ?? false);
     setBounceOpen(true);
     // Measure asynchronously and let the modal open immediately (#1365). The
     // analysis walks a growing horizon and can take a moment; blocking the modal
@@ -1787,6 +1817,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         open={bounceOpen}
         state={bounceState}
         sizing={bounceSizing}
+        offline={bounceOffline}
         onClose={() => setBounceOpen(false)}
         onStart={handleBounceStart}
         onStop={handleBounceStop}

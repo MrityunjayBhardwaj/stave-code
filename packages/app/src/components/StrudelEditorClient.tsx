@@ -95,6 +95,7 @@ import {
   listAssetRecords,
   registerAssets,
   type SongExtent,
+  type SkippedSounds,
 } from "@stave/editor";
 import { reportWriteRefusal } from "../lib/writeRefusal";
 import { effectiveLoopRange, subscribeLoopState } from "../state/loopRange";
@@ -277,31 +278,53 @@ function ensureProviders() {
 // ---------------------------------------------------------------------------
 
 /**
- * #1346 — the app-facing contract for bouncing the live mix to a WAV.
+ * #1346 — the app-facing contract for bouncing the active file to a WAV.
  *
- * `LiveRecorder` taps the master analyser, so a bounce records whatever the
- * graph is playing — including nothing. `bounce` therefore guarantees playback
- * for the take and restores the transport afterwards; callers do not sequence
- * that themselves, and must still treat a returned Blob as audio to verify
- * rather than audio to trust.
+ * #1631 — two paths, chosen per runtime. When the engine can render its loaded
+ * document offline (`LiveCodingRuntime.canBounceOffline`), the bounce renders
+ * it through the real graph into an `OfflineAudioContext`, faster than real
+ * time, and reports what it could not play. Otherwise `LiveRecorder` captures
+ * the live output, in real time. The offline render was measured against a
+ * live capture before it became the default: on the Starter, rms .1620 offline
+ * vs .1613 live, every band within 0.6 points, and a `_`-muted track bounces
+ * sample for sample like a deleted one, so the mixer's writes are heard.
+ *
+ * Either path owns the transport for the take and leaves it stopped; callers do
+ * not sequence that themselves, and must still treat a returned Blob as audio
+ * to verify rather than audio to trust.
  */
+export interface BounceResult {
+  blob: Blob;
+  /** True when the take was rendered offline, false when captured live. */
+  offline: boolean;
+  /** Sounds the offline render could not play. Always empty for a live take. */
+  skipped: SkippedSounds[];
+}
+
 export interface BounceHandle {
-  /** True when the active tab has a runtime whose engine can capture audio. */
+  /** True when the active tab has a runtime that can bounce by either path. */
   canBounce(): boolean;
+  /** #1631 — true when the active tab's bounce renders offline rather than live. */
+  bouncesOffline(): boolean;
   /**
-   * Capture `seconds` of the active file's live output. Resolves to null when
-   * there is no active recordable runtime. Pass `signal` to stop early and
-   * keep what was captured.
+   * Bounce `seconds` of the active file. Resolves to null when there is no
+   * active runtime that can bounce, or when `signal` aborted before an offline
+   * render began.
    *
-   * `onCaptureStart` fires once the graph has settled and playback is running,
-   * i.e. at the first captured sample — so a progress display measures the
-   * capture and not the preparation before it (#1356).
+   * Live: `signal` stops early and keeps what was captured. `onCaptureStart`
+   * fires once the graph has settled and playback is running, i.e. at the
+   * first captured sample — so a progress display measures the capture and not
+   * the preparation before it (#1356).
+   *
+   * Offline: a render cannot be cut short once it starts, so `signal` is read
+   * before it, and a caller that aborts during the render discards what comes
+   * back. `onCaptureStart` is never called: there is no capture to wait for.
    */
   bounce(
     seconds: number,
     signal?: AbortSignal,
     onCaptureStart?: () => void,
-  ): Promise<Blob | null>;
+  ): Promise<BounceResult | null>;
   /**
    * How long the active document is, and at what tempo — so the bounce modal can
    * offer a real length instead of a list of guessed durations (#1365).
@@ -1793,11 +1816,25 @@ export default function StrudelEditorClient({
       return runtimesRef.current.get(fid) ?? null;
     };
     const handle: BounceHandle = {
-      canBounce: () => activeRuntime()?.canRecord() ?? false,
+      canBounce: () => {
+        const rt = activeRuntime();
+        return rt ? rt.canBounceOffline() || rt.canRecord() : false;
+      },
+      bouncesOffline: () => activeRuntime()?.canBounceOffline() ?? false,
       bounce: async (seconds, signal, onCaptureStart) => {
         const rt = activeRuntime();
         if (!rt) return null;
-        return rt.record(seconds, signal, onCaptureStart);
+        // #1631 — offline whenever the engine can render its loaded document.
+        // The live capture is the path for an engine that cannot, NOT a retry
+        // after a render that threw: a document that fails to evaluate or plays
+        // nothing fails the same way live, and retrying would spend the song's
+        // whole length in real time to report the same error.
+        if (rt.canBounceOffline()) {
+          const out = await rt.bounceOffline(seconds, signal);
+          return out ? { blob: out.blob, offline: true, skipped: out.skipped } : null;
+        }
+        const blob = await rt.record(seconds, signal, onCaptureStart);
+        return blob ? { blob, offline: false, skipped: [] } : null;
       },
       songSizing: async (signal) => {
         const fid = activeFileIdRef.current;

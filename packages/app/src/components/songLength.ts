@@ -237,11 +237,17 @@ export function cyclesToSeconds(cycles: number, cps: number | null): number | nu
 /**
  * The ceiling a bounce is allowed to reach, in seconds.
  *
- * A bounce is REAL-TIME — `LiveRecorder` captures the live graph, so ten minutes
- * of audio costs ten minutes of wall clock. The old ceiling was 60s only because
- * every option was a hand-picked number; the real constraint is the user's
- * patience, not the format. Ten minutes covers the overwhelming majority of real
- * songs while still being a length someone might actually sit through.
+ * Set when every bounce was REAL-TIME — `LiveRecorder` captured the live graph,
+ * so ten minutes of audio cost ten minutes of wall clock. The old ceiling was
+ * 60s only because every option was a hand-picked number; the constraint then
+ * was the user's patience, not the format.
+ *
+ * #1631 made the offline render the default, and it runs faster than the song
+ * plays, so patience no longer sets the limit for most files. The ceiling stays
+ * for a different reason: an offline render holds the whole take in memory
+ * before encoding it (two float channels at 48 kHz for 600 s is about 230 MB),
+ * and how far past that a browser tab gets has not been measured. The live
+ * fallback still spends real time.
  */
 export const MAX_BOUNCE_SECONDS = 600
 
