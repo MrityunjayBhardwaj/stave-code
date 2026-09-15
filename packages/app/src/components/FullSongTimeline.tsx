@@ -26,17 +26,20 @@ import * as React from 'react'
 
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { SongAnalysis, PatternIR, HapStream, IREvent, OffsetEdit } from '@stave/editor'
+import type { SongAnalysis, PatternIR, HapStream, IREvent, OffsetEdit, SignalAutomation, SignalKind } from '@stave/editor'
 import {
   captionRows,
   captionHit,
   captionEdit,
   shapeEdit,
+  shapeMenuOptions,
   shapeOptions,
   AUTOMATION_LABEL_FONT,
   AUTOMATION_MIN_BAND_H,
   AUTOMATION_PAD_Y,
   type CaptionHit,
+  type ShapeDeps,
+  type SwapPreview,
 } from './musicalTimeline/automationCaption'
 import { automationColorOnLane, automationCountOnLane } from './musicalTimeline/colors'
 import { DEFAULT_THEME } from './SongTimelineCanvas'
@@ -97,10 +100,11 @@ import {
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
-import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf, shapeAlternatives } from '@stave/editor'
+import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf, shapeAlternatives, crossClassShapes } from '@stave/editor'
 import type { FixedParameter } from '@stave/editor'
 import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepY, withStepValue, type StepBand, type StepHit } from './musicalTimeline/steppedLane'
 import { stepCountOptions, type StepCountGroup } from './musicalTimeline/stepCountMenu'
+import { songLoopCycles } from './songLength'
 import type { SceneSignal, SceneStepped } from './musicalTimeline/timelineScene'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import {
@@ -146,6 +150,10 @@ const GUTTER_WIDTH = 90
 // #1570 — the loop strip's band of the ruler. Tall enough to hit without
 // aiming, short enough to leave the tick labels below it readable.
 const LOOP_STRIP_HEIGHT = 9
+/** #1611 — the editor readers the caption's shape menu offers from. Read at CALL time,
+ *  never at import: the app's tests mock `@stave/editor`, and a module-scope read of an
+ *  export a factory does not return fails the whole file at collection. */
+const shapeDeps = (): ShapeDeps => ({ alternatives: shapeAlternatives, crossClass: crossClassShapes })
 /** How near an edge counts as grabbing it rather than drawing a new loop. */
 const LOOP_EDGE_GRAB_PX = 5
 /** Under this much travel a pointerdown/up is a click, not a drag. */
@@ -281,6 +289,16 @@ export interface FullSongTimelineProps {
    *  the captions stay read-only, exactly as Stage 1 left them, and no caption
    *  claims a pointer. */
   readonly onEditAutomation?: (edit: OffsetEdit, gesture: string) => void
+  /** The song as it would be analysed with `automation` switched to shape `next`, before
+   *  anything is written (#1611) — the shape menu labels a swap across classes with it.
+   *  Travels upward for `onRequestWindow`'s reason: the collector lives with the owner.
+   *  Optional — without it no shape across classes is offered, because nothing could say
+   *  what it does to the song. */
+  readonly onPreviewShape?: (
+    automation: SignalAutomation,
+    next: SignalKind,
+    signal: { aborted: boolean },
+  ) => Promise<SongAnalysis | null>
   /** Ask the musician before an edit that removes something they wrote (#1602 — a
    *  step-count cut). Resolves true to go ahead. Optional — without it, the edits
    *  that would need it are offered but cannot be chosen. */
@@ -1634,7 +1652,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // earns its place — it gives real text editing, caret and selection — but the
   // guard is that one line, and it is pinned by a browser arm rather than left
   // to be re-reasoned.
-  const { onEditAutomation } = props
+  const { onEditAutomation, onPreviewShape } = props
   // #1601 — the automate menu. Its options and the lane's span are captured when it
   // OPENS, as the part chooser captures its list, so a re-eval under an open menu
   // cannot change what a choice writes. The source is read at commit, and
@@ -1744,8 +1762,26 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     /** Viewport position of the menu, just under the name that was pressed. */
     left: number
     top: number
-    options: readonly string[]
+    /** #1611 — the song after a swap across classes, or null when none is offered. */
+    preview: SwapPreview | null
+    /** The song's length when the menu opened: the baseline the preview is measured
+     *  against, captured with it, so "(was N)" and the new length come from one moment. */
+    was: number | null
   } | null>(null)
+  // #1611 — a closed menu's preview is abandoned, so a result for a menu nobody is
+  // looking at cannot land on the next one opened.
+  const shapePreviewSignalRef = useRef<{ aborted: boolean } | null>(null)
+  useEffect(() => {
+    if (choosingShape !== null) return
+    if (shapePreviewSignalRef.current) shapePreviewSignalRef.current.aborted = true
+    shapePreviewSignalRef.current = null
+  }, [choosingShape])
+  useEffect(
+    () => () => {
+      if (shapePreviewSignalRef.current) shapePreviewSignalRef.current.aborted = true
+    },
+    [],
+  )
 
   /** The caption NAME under a client point, when it has a shape menu to open — the
    *  press, the double-press and the hover cursor all ask this, so they cannot
@@ -1755,7 +1791,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     (clientX: number, clientY: number): CaptionHit | null => {
       const hit = captionAt(clientX, clientY)
       if (!hit || hit.field.kind !== 'param') return null
-      return shapeOptions(hit.row.automation, shapeAlternatives).length > 0 ? hit : null
+      return shapeOptions(hit.row.automation, shapeDeps()).length > 0 ? hit : null
     },
     [captionAt],
   )
@@ -1767,7 +1803,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const current = sourceRef.current
       if (!open || !onEditAutomation || current == null || value === '') return
       const a = open.hit.row.automation
-      const edit = shapeEdit(a, value, current, shapeAlternatives)
+      // #1611 — a swap across classes is chosen only once its song length is said. A
+      // select cannot pick a disabled option; this holds the rule for any other path.
+      const offered = shapeMenuOptions(a, shapeDeps(), open.preview, null).find((o) => o.kind === value)
+      if (!offered || offered.disabled) return
+      const edit = shapeEdit(a, value, current, shapeDeps())
       if (edit) onEditAutomation(edit, `automation ${a.paramKey} shape ${value}`)
     },
     [choosingShape, onEditAutomation],
@@ -2193,12 +2233,29 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (shape) {
         e.preventDefault()
         const area = areaRef.current?.getBoundingClientRect()
+        // #1611 — shapes across classes are offered only with the song they give, so the
+        // owner is asked for it now, once (`SwapPreview` says why once serves them all).
+        const across = onPreviewShape ? crossClassShapes(shape.row.automation.kind) : []
+        if (shapePreviewSignalRef.current) shapePreviewSignalRef.current.aborted = true
+        const previewSignal = { aborted: false }
+        shapePreviewSignalRef.current = previewSignal
         setChoosingShape({
           hit: shape,
           left: (area?.left ?? 0) + shape.box.x,
           top: (area?.top ?? 0) + shape.box.y - scrollTopRef.current + shape.box.h + 2,
-          options: shapeOptions(shape.row.automation, shapeAlternatives),
+          preview: across.length > 0 ? { state: 'pending' } : null,
+          was: analysis ? songLoopCycles(analysis) : null,
         })
+        if (onPreviewShape && across.length > 0) {
+          const land = (cycles: number | null) => {
+            if (previewSignal.aborted) return
+            setChoosingShape((open) => (open && open.hit === shape ? { ...open, preview: { state: 'done', cycles } } : open))
+          }
+          onPreviewShape(shape.row.automation, across[0], previewSignal).then(
+            (result) => land(result ? songLoopCycles(result) : null),
+            () => land(null),
+          )
+        }
         return
       }
       // #1463 Stage 3 — a STEP, right behind the caption and ahead of every clip
@@ -2348,7 +2405,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const cw = dragAwareContentWidth(areaRef.current!.getBoundingClientRect().width)
       setTrimEdgeX(songCycleToX(hit.clip.endCycle, songWindow, cw))
     },
-    [editableCaptionAt, shapeCaptionAt, stepAt, clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, jumpToLaneAtClientY, displayCycles, dragAwareContentWidth, onDeleteClip, onMoveClip, onDuplicateClip, onSplitClip, onRippleDeleteClip, onInsertSilenceClip, onRenameSection, onAssignSectionPart],
+    [editableCaptionAt, shapeCaptionAt, onPreviewShape, analysis, stepAt, clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, jumpToLaneAtClientY, displayCycles, dragAwareContentWidth, onDeleteClip, onMoveClip, onDuplicateClip, onSplitClip, onRippleDeleteClip, onInsertSilenceClip, onRenameSection, onAssignSectionPart],
   )
 
   const handleGridPointerMove = React.useCallback(
@@ -3285,9 +3342,14 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             <option value="" disabled>
               {`shape: ${choosingShape.hit.row.automation.kind}`}
             </option>
-            {choosingShape.options.map((k) => (
-              <option key={k} value={k}>
-                {k}
+            {shapeMenuOptions(
+              choosingShape.hit.row.automation,
+              shapeDeps(),
+              choosingShape.preview,
+              choosingShape.was,
+            ).map((o) => (
+              <option key={o.kind} value={o.kind} disabled={o.disabled}>
+                {o.label}
               </option>
             ))}
           </select>

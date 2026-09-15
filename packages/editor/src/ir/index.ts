@@ -77,7 +77,7 @@ export type { SongExtent } from './songExtent'
 // It lives beside the IR rather than beside its first consumer because it reads
 // nothing else — and because `songAnalysis` needs it too, which a module in
 // `@stave/app` could not serve (the dependency only runs app -> editor).
-export { signalAutomations, signalCarryingParamKeys, signalTimeAt, shapeAlternatives } from './signalAutomation'
+export { signalAutomations, signalCarryingParamKeys, signalTimeAt, shapeAlternatives, crossClassShapes } from './signalAutomation'
 export type { SignalAutomation, SignalKind, SignalSpans } from './signalAutomation'
 // Stepped automation (#1463) — the per-cycle class beside #1464's continuous one.
 export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './steppedAutomation'
@@ -90,6 +90,9 @@ export { stepCountEdit } from './stepCount'
 export type { StepCountEdit } from './stepCount'
 export { previewRepeat, songPeriodOf } from './songAnalysis'
 export type { LanePeriod } from './songAnalysis'
+// #1611 — a shape swap across periodicity, and the song it would give.
+export { previewShapeSwap } from './songAnalysis'
+export type { ShapeSwap } from './songAnalysis'
 
 // Event identity (#1102) — exported so the NEXT consumer asking "are these two
 // events the same sound" finds the one answer instead of curating its own field

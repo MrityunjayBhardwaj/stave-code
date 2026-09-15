@@ -298,6 +298,212 @@ interface TimeWarp {
 type TimeStep = SectionWindow | TimeWarp;
 
 /**
+ * Continuous automation a track declares, read off the static IR (#1464 Stage 1).
+ *
+ * `.cutoff(saw.slow(4).range(200, 2000))` is a parameter that MOVES, and until
+ * #1478/#1482 it reached the IR as an opaque `Code` — the timeline could not see
+ * that anything was modulated at all. Those two landed the three legs #1464 names
+ * as its prerequisite, so the shape, the rate and the range are now plain field
+ * reads off a nested node:
+ *
+ *   Param{key:'cutoff', value: Range{lo:200, hi:2000,
+ *                                body: Slow{factor:4,
+ *                                       body: Signal{kind:'saw'}}}}
+ *
+ * This module turns that into what a lane needs to DRAW one, plus — since Stage 2
+ * (#1464 option 2) — WHERE each leg is written, so a control can edit it in place.
+ * It still emits no source and holds no inverse: `SignalSpans` carries source
+ * COORDINATES, and the byte-verbatim round-trip #1482 established stays preserved
+ * by construction here, because nothing in this file can produce text. What
+ * changes is that a caller now has somewhere precise to write, which is exactly
+ * the leverage Stage 2 needs and the whole of what this file lends it.
+ *
+ * Mirrors `trackOrder.ts`: pure and structural, no eval and no source scanning,
+ * producing an IR-derived input for `buildTimelineScene` (which is documented
+ * PURE — no IR walk) rather than reaching into the IR from inside the scene.
+ */
+
+type SignalNode = PatternIR & {
+    tag: 'Signal';
+};
+type SignalKind = SignalNode['kind'];
+/** One drawable continuous automation: which track, which parameter, and the
+ *  three legs (#1464's own words) needed to plot it. */
+interface SignalAutomation {
+    /** The lane this belongs to — the same `trackId` `declaredTracks` keys on. */
+    readonly trackId: string;
+    /** The automated control: `cutoff`, `gain`, `pan`, … (the `Param`'s key). */
+    readonly paramKey: string;
+    /** The signal's SHAPE. */
+    readonly kind: SignalKind;
+    /** The signal's RATE, as the cycles one full period spans. `sine` is 1;
+     *  `.slow(4)` makes it 4; `.fast(2)` makes it 0.5. Always finite and > 0. */
+    readonly periodCycles: number;
+    /** The bars one period of the curve spans ON THE LANE (#1464 Stage 3):
+     *  `periodCycles` with every whole-track time change on its route applied — under
+     *  `.slow(2)`, `saw.slow(4)` repeats every 8 (engine-checked). A section does not
+     *  scale it: a section plays its own cycles one bar to a bar. Null when the routes
+     *  disagree (one binding under two different time changes), which leaves no one
+     *  number for a lane to show or a control to edit. */
+    readonly lanePeriodCycles: number | null;
+    /** The signal's RANGE — the floor and ceiling the engine PLAYS, which is not always
+     *  what a `.range()` call spells (#1610, see `boundsOf`). `lo` is where the signal's
+     *  own low point lands, so a range written high-to-low reads `lo > hi`. */
+    readonly lo: number;
+    readonly hi: number;
+    /** True when the chain carries an explicit `.range()`; false when `lo`/`hi` are the
+     *  signal's natural polarity. Kept because it is the difference between a number the
+     *  user wrote and one this module supplied, and a lane that ever labels the axis must
+     *  not present the second as the first. */
+    readonly ranged: boolean;
+    /** True when a bound typed into this curve reads back as typed (#1610): the values
+     *  entering the range an edit writes — the outermost `.range()`, or one inserted at
+     *  `chainEnd` — run exactly 0..1, so that call's arguments ARE the curve's bounds.
+     *  False on a bipolar signal (`sine2.range(200, 2000)` plays −1600..2000) and under an
+     *  inner range that is not 0..1, where writing the typed pair plays another one. */
+    readonly boundsAsWritten: boolean;
+    /** Source offset of the `Param` call site, or null. The same coordinate the
+     *  lanes already carry, so a later stage can bind this to the editor without a
+     *  second provenance channel invented for it. */
+    readonly offset: number | null;
+    /** WHERE each leg is written (#1464 Stage 2). Read the type's own doc. */
+    readonly spans: SignalSpans;
+    /**
+     * Where the curve plays, one entry per route to it: the arrangement sections
+     * (#1590) and whole-track time changes (#1595) that route passes through,
+     * OUTERMOST FIRST — the same shape the stepped reader carries. `[[]]` for a curve
+     * under neither.
+     */
+    readonly placements: readonly (readonly TimeStep[])[];
+}
+/**
+ * Where each of the three legs is SPELLED in the source (#1464 Stage 2).
+ *
+ * ⚠ THIS IS THE ONLY WAY A CONTROL CAN WRITE, and the reason is structural, not
+ * stylistic. `Range` regenerates from `rawArgs` and `Param` from its own
+ * `rawArgs` (`toStrudel.ts:226`, `:196`) — that is what buys the byte-verbatim
+ * round-trip #1482 established. The consequence is that setting `lo`/`hi` on an
+ * IR node and re-emitting writes NOTHING: the raw text wins. So every Stage 2
+ * edit is a source-offset replacement over these spans, on the same path every
+ * other edit surface in this codebase uses.
+ *
+ * A span is `null` when the leg is not spelled — `sine` with no `.range()` names
+ * no numbers to replace. That is not a gap to paper over: it is a DIFFERENT edit
+ * (insert a call at `chainEnd`), and the two must not be confused, because one
+ * preserves every other byte and the other lengthens the document.
+ *
+ * Measured over the sweep corpus (`loadCorpus`, 150 documents, 133 drawable
+ * automations since #1595): range spelled 118 (89%), rate spelled 78 (59%),
+ * NEITHER 12 (9%). #1595 added 14 curves under a whole-track slow, 12 of which
+ * spell no rate of their own — the slow is the track's. Before that, #1590 took it
+ * from 204 (184 / 130 / 16) to 119 (105 / 76 / 11) by declining curves drawn on the
+ * wrong clock, and the shares held.
+ * (#1468 moved the first three by +4/+4/+2: two documents whose top-level
+ * bindings were discarded by the old leading-run rule now resolve, so their
+ * chains are readable. The shares are unchanged.)
+ * ⚠ Those figures are OWNED BY A GATE, not transcribed here and left to rot:
+ * `packages/app/tests/parity-corpus/signal-span-census.test.ts` derives them
+ * from these spans and pins them, so the comment and the corpus cannot drift
+ * apart silently. Update both together or neither. The 8% is what makes
+ * `captionEdit`'s insert path real rather than defensive.
+ */
+interface SignalSpans {
+    /** The signal identifier itself — `sine`, `perlin`. Replacing this text is the
+     *  whole of a shape change. */
+    readonly shape: SourceLocation | null;
+    /** The single `.slow(n)` / `.fast(n)` call site.
+     *
+     *  ⚠ NULL when the chain carries MORE THAN ONE rate arm, not only when it
+     *  carries none. `sine.slow(2).fast(4)` has a well-defined rate (the product)
+     *  and no well-defined place to write a new one — editing either arm produces
+     *  the asked-for rate while silently changing what the user wrote elsewhere.
+     *  Abstaining is the same discipline `readChain` already applies to shapes it
+     *  cannot account for. */
+    readonly rate: SourceLocation | null;
+    /** The `.range(lo,hi)` call site whose bounds WON — the outermost one, which
+     *  is the one `readChain` adopted. An inner `.range()` it supersedes is dead
+     *  in the document already and is not what a control should edit. */
+    readonly range: SourceLocation | null;
+    /** Offset just past the whole signal expression, where an ABSENT leg's call
+     *  would be inserted: `sine` + `.range(0,1)` at `chainEnd`. Null when the
+     *  outermost node carries no source range, in which case no edit is possible
+     *  and a control must be offered as disabled rather than as broken. */
+    readonly chainEnd: number | null;
+}
+declare function signalAutomations(ir: PatternIR | null | undefined): readonly SignalAutomation[];
+/**
+ * The time a curve is handed at song time `time` — the argument its signal is
+ * evaluated at — or null when its section is silent then (#1590). A curve under no
+ * section is handed the song's time itself. The lane samples `kind` at
+ * `signalTimeAt(a, t) / periodCycles` and lifts the pen where this is null.
+ */
+declare function signalTimeAt(a: SignalAutomation, time: number): number | null;
+/**
+ * Every parameter KEY whose argument carries a signal anywhere (#1465).
+ *
+ * ⚠ THIS IS A DIFFERENT QUESTION FROM `signalAutomations`, ON THE SAME IR, and
+ * the difference is the point rather than an oversight. That reader asks "can I
+ * PLOT this?" and abstains on anything without a closed form. This one asks "does
+ * this control MOVE?" — and `.gain(sine.add(saw))` has no closed form, cannot be
+ * drawn, and absolutely does make every cycle differ.
+ *
+ * Measured over the sweep's own corpus (`loadCorpus`, 142 documents that
+ * evaluate), before #1590: the closed-form reader saw 199 signal-carrying `Param`
+ * nodes and this one 239. Answering the period question with the drawing reader
+ * would silently under-report by those 40 — and by far more since #1590, which
+ * made the drawing reader decline every curve the song does not hand its own
+ * clock (the span census counted 119 drawable automations there after #1590, and
+ * 133 once #1595 drew the whole-track slows back). This reader is unchanged by
+ * either: a curve under `.early(0.5)` still makes its control move.
+ *
+ * Returns KEYS rather than nodes because that is what the consumer needs: the
+ * cycle fingerprint reads an event's whole value partition (`eventValueKey.ts` —
+ * `{note, freq, s, gain, velocity, color} ∪ params`), and a key is how a
+ * dimension is named there. `cutoff`/`resonance`/`pan`/`room` arrive via
+ * `params`; `gain` has a dedicated slot. Both are addressed by key.
+ *
+ * Structural and horizon-FREE, which is the property that matters. An earlier
+ * attempt at this exclusion derived it by watching a probe window, so a field
+ * whose period exceeded that window read as unstable and got dropped — it
+ * discarded `note` and `s` in ~75 documents. `Param{value: …Signal}` is the same
+ * fact at horizon 4 and at horizon 256, so it cannot drift with the horizon it
+ * feeds.
+ */
+declare function signalCarryingParamKeys(ir: PatternIR | null | undefined): ReadonlySet<string>;
+/**
+ * The shapes a curve of `kind` can be switched to by replacing its identifier and nothing
+ * else (#1464), most used first, never `kind` itself. Empty when there is none.
+ *
+ * ⚠ ONE CLASS AT A TIME, and each half of the class is load-bearing:
+ *  - SAME POLARITY. `range(lo, hi)` is `mul(hi − lo).add(lo)` and assumes 0..1 input
+ *    (`pattern.mjs:1771`), so `sine2.range(200, 2000)` plays −1600..2000 (measured).
+ *    A swap across polarity moves the output the caption promises.
+ *  - SAME PERIODICITY. The song's length folds in the period of every signal that
+ *    repeats and nothing from noise (`signalDimensionsOf`): `sine.slow(4)` folds `[4]`,
+ *    `perlin.slow(4)` folds `[]`. A swap between the two can change how long the song
+ *    is, so it is offered apart from these, with that length said first
+ *    (`crossClassShapes`, #1611).
+ * Inside one class the range, the rate and the song's length all stay as they were.
+ *
+ * `time` and the mouse signals are their own classes and offer nothing.
+ */
+declare function shapeAlternatives(kind: SignalKind): readonly SignalKind[];
+/**
+ * The shapes a curve of `kind` can be switched to ACROSS periodicity (#1611): a repeating
+ * waveform to noise, or noise to a repeating waveform, most used first.
+ *
+ * Same polarity still, for `shapeAlternatives`' first reason — so only a unipolar curve
+ * has a partner: the only bipolar noise is `rand2`, and a repeating bipolar curve would
+ * have nothing to become.
+ *
+ * ⚠ A SWAP FROM THIS LIST CAN CHANGE HOW LONG THE SONG IS, both ways: `sine.slow(16)`
+ * beside a 4-bar line repeats at 16 and `perlin.slow(16)` there at 4 (measured through
+ * the engine). Offer one only with the song's length after it said first
+ * (`previewShapeSwap`).
+ */
+declare function crossClassShapes(kind: SignalKind): readonly SignalKind[];
+
+/**
  * songAnalysis — full-song analysis for the navigable timeline (#385).
  *
  * Re-expresses the reference editor's `analyze`/`attribute` capabilities on
@@ -539,6 +745,47 @@ declare function detectPeriod(fingerprints: readonly string[]): number | null;
  * 2, 4 and 5 steps: this reading matched every time, and that one never did.
  */
 declare function previewRepeat(analysis: SongAnalysis, laneKey: string, paramPeriods: readonly number[], cap?: number): number | null;
+/** A curve read as another shape (#1611), named by where its shape is spelled —
+ *  `SignalAutomation.spans.shape.start`, the offset the source and every read of it
+ *  agree on. */
+interface ShapeSwap {
+    readonly at: number;
+    readonly kind: SignalKind;
+}
+/**
+ * The song as it would be analysed with curve `a` switched to shape `next` (#1611),
+ * before anything is written — or null when that cannot be said.
+ *
+ * ⚠ THE SWAPPED DOCUMENT IS NOT EVALUATED, AND DOES NOT NEED TO BE. What a shape decides
+ * about a song's length is only WHEN its values come round again, never what they are,
+ * and the analysis asks nothing else of them: it compares cycles for identity
+ * (`cycleFingerprints`) and folds in the periods of the signals that repeat
+ * (`signalDimensionsOf`). So this runs the PRODUCTION analysis over the events the
+ * document already plays, with the automated control on the curve's lane replaced by a
+ * stand-in that comes round exactly as `next` does —
+ *  - a waveform comes back once per song period (`songPeriodOf`, which a swap leaves
+ *    alone — the rate and the placements stay as written): the onset's phase in it;
+ *  - noise comes back too, once per `NOISE_SEED_CYCLES` of its own time, so its stand-in
+ *    is the onset's phase in THAT song period. The first reading here, "noise never comes
+ *    back", was wrong on an archive document sweeping at `sine.slow(0.015)`: switched to
+ *    perlin it repeats at 36, and a never-repeating stand-in said 12;
+ * — and with the signals read as `next`. Every rule that picks the length (the veto
+ * below the cap, abstention at it, the source-informed fold, the whole-song repeat) is
+ * then the one that will run after the edit, and not a second copy of it.
+ *
+ * Measured against the swapped SOURCE through the engine and the same analysis
+ * (`shapeSwap.engine.test.ts`): a 16-bar sweep beside a 4-bar line (16 → 4, and back),
+ * alone (16 → 1), beside a 2-bar line, under a whole-track slow, inside an arrangement
+ * section, on a lane that loops by itself, fast noise both ways, and a third-of-a-cycle
+ * period on a lane whose own length decides the song. Across the archive (291 swaps) 273
+ * agree, 17 decline for a shared control, and the one miss is lane attribution (#1619),
+ * not this preview.
+ *
+ * Null for a curve whose shape is not spelled, a `next` that is neither noise nor a
+ * waveform, a song period that is not an exact fraction, or no collector. `opts` are the
+ * caller's own collector and presence check: the ones its analysis runs with.
+ */
+declare function previewShapeSwap(ir: PatternIR | null, a: SignalAutomation, next: SignalKind, opts: Pick<AnalyzeSongOptions, 'collectFn' | 'hasUnheardTrack' | 'signal' | 'yieldFn'>): Promise<SongAnalysis | null>;
 /**
  * THE display-period rule — the combine step plus the two plausibility clauses,
  * in ONE definition so the decision that ends the analysis cannot be made by a
@@ -619,8 +866,11 @@ interface SignalDimensions {
  * Only the TOP level is scoped, which is the level muting exists at: a `_$:`
  * silences a whole statement, and nothing inside a sounding track is muted
  * independently.
+ *
+ * `swap` reads one curve as another shape (#1611) — the document a shape menu's
+ * preview is asking about, before it is written (`previewShapeSwap`).
  */
-declare function signalDimensionsOf(ir: PatternIR | null | undefined): SignalDimensions;
+declare function signalDimensionsOf(ir: PatternIR | null | undefined, swap?: ShapeSwap): SignalDimensions;
 /**
  * How many SONG cycles a curve's value takes to come back round (#1590), or null
  * when that cannot be said.
@@ -924,197 +1174,6 @@ type SongExtent =
  * wrong towards `arranged` silently truncates someone's bounce.
  */
 declare function songExtent(ir: PatternIR | null): SongExtent;
-
-/**
- * Continuous automation a track declares, read off the static IR (#1464 Stage 1).
- *
- * `.cutoff(saw.slow(4).range(200, 2000))` is a parameter that MOVES, and until
- * #1478/#1482 it reached the IR as an opaque `Code` — the timeline could not see
- * that anything was modulated at all. Those two landed the three legs #1464 names
- * as its prerequisite, so the shape, the rate and the range are now plain field
- * reads off a nested node:
- *
- *   Param{key:'cutoff', value: Range{lo:200, hi:2000,
- *                                body: Slow{factor:4,
- *                                       body: Signal{kind:'saw'}}}}
- *
- * This module turns that into what a lane needs to DRAW one, plus — since Stage 2
- * (#1464 option 2) — WHERE each leg is written, so a control can edit it in place.
- * It still emits no source and holds no inverse: `SignalSpans` carries source
- * COORDINATES, and the byte-verbatim round-trip #1482 established stays preserved
- * by construction here, because nothing in this file can produce text. What
- * changes is that a caller now has somewhere precise to write, which is exactly
- * the leverage Stage 2 needs and the whole of what this file lends it.
- *
- * Mirrors `trackOrder.ts`: pure and structural, no eval and no source scanning,
- * producing an IR-derived input for `buildTimelineScene` (which is documented
- * PURE — no IR walk) rather than reaching into the IR from inside the scene.
- */
-
-type SignalNode = PatternIR & {
-    tag: 'Signal';
-};
-type SignalKind = SignalNode['kind'];
-/** One drawable continuous automation: which track, which parameter, and the
- *  three legs (#1464's own words) needed to plot it. */
-interface SignalAutomation {
-    /** The lane this belongs to — the same `trackId` `declaredTracks` keys on. */
-    readonly trackId: string;
-    /** The automated control: `cutoff`, `gain`, `pan`, … (the `Param`'s key). */
-    readonly paramKey: string;
-    /** The signal's SHAPE. */
-    readonly kind: SignalKind;
-    /** The signal's RATE, as the cycles one full period spans. `sine` is 1;
-     *  `.slow(4)` makes it 4; `.fast(2)` makes it 0.5. Always finite and > 0. */
-    readonly periodCycles: number;
-    /** The bars one period of the curve spans ON THE LANE (#1464 Stage 3):
-     *  `periodCycles` with every whole-track time change on its route applied — under
-     *  `.slow(2)`, `saw.slow(4)` repeats every 8 (engine-checked). A section does not
-     *  scale it: a section plays its own cycles one bar to a bar. Null when the routes
-     *  disagree (one binding under two different time changes), which leaves no one
-     *  number for a lane to show or a control to edit. */
-    readonly lanePeriodCycles: number | null;
-    /** The signal's RANGE — the floor and ceiling the engine PLAYS, which is not always
-     *  what a `.range()` call spells (#1610, see `boundsOf`). `lo` is where the signal's
-     *  own low point lands, so a range written high-to-low reads `lo > hi`. */
-    readonly lo: number;
-    readonly hi: number;
-    /** True when the chain carries an explicit `.range()`; false when `lo`/`hi` are the
-     *  signal's natural polarity. Kept because it is the difference between a number the
-     *  user wrote and one this module supplied, and a lane that ever labels the axis must
-     *  not present the second as the first. */
-    readonly ranged: boolean;
-    /** True when a bound typed into this curve reads back as typed (#1610): the values
-     *  entering the range an edit writes — the outermost `.range()`, or one inserted at
-     *  `chainEnd` — run exactly 0..1, so that call's arguments ARE the curve's bounds.
-     *  False on a bipolar signal (`sine2.range(200, 2000)` plays −1600..2000) and under an
-     *  inner range that is not 0..1, where writing the typed pair plays another one. */
-    readonly boundsAsWritten: boolean;
-    /** Source offset of the `Param` call site, or null. The same coordinate the
-     *  lanes already carry, so a later stage can bind this to the editor without a
-     *  second provenance channel invented for it. */
-    readonly offset: number | null;
-    /** WHERE each leg is written (#1464 Stage 2). Read the type's own doc. */
-    readonly spans: SignalSpans;
-    /**
-     * Where the curve plays, one entry per route to it: the arrangement sections
-     * (#1590) and whole-track time changes (#1595) that route passes through,
-     * OUTERMOST FIRST — the same shape the stepped reader carries. `[[]]` for a curve
-     * under neither.
-     */
-    readonly placements: readonly (readonly TimeStep[])[];
-}
-/**
- * Where each of the three legs is SPELLED in the source (#1464 Stage 2).
- *
- * ⚠ THIS IS THE ONLY WAY A CONTROL CAN WRITE, and the reason is structural, not
- * stylistic. `Range` regenerates from `rawArgs` and `Param` from its own
- * `rawArgs` (`toStrudel.ts:226`, `:196`) — that is what buys the byte-verbatim
- * round-trip #1482 established. The consequence is that setting `lo`/`hi` on an
- * IR node and re-emitting writes NOTHING: the raw text wins. So every Stage 2
- * edit is a source-offset replacement over these spans, on the same path every
- * other edit surface in this codebase uses.
- *
- * A span is `null` when the leg is not spelled — `sine` with no `.range()` names
- * no numbers to replace. That is not a gap to paper over: it is a DIFFERENT edit
- * (insert a call at `chainEnd`), and the two must not be confused, because one
- * preserves every other byte and the other lengthens the document.
- *
- * Measured over the sweep corpus (`loadCorpus`, 150 documents, 133 drawable
- * automations since #1595): range spelled 118 (89%), rate spelled 78 (59%),
- * NEITHER 12 (9%). #1595 added 14 curves under a whole-track slow, 12 of which
- * spell no rate of their own — the slow is the track's. Before that, #1590 took it
- * from 204 (184 / 130 / 16) to 119 (105 / 76 / 11) by declining curves drawn on the
- * wrong clock, and the shares held.
- * (#1468 moved the first three by +4/+4/+2: two documents whose top-level
- * bindings were discarded by the old leading-run rule now resolve, so their
- * chains are readable. The shares are unchanged.)
- * ⚠ Those figures are OWNED BY A GATE, not transcribed here and left to rot:
- * `packages/app/tests/parity-corpus/signal-span-census.test.ts` derives them
- * from these spans and pins them, so the comment and the corpus cannot drift
- * apart silently. Update both together or neither. The 8% is what makes
- * `captionEdit`'s insert path real rather than defensive.
- */
-interface SignalSpans {
-    /** The signal identifier itself — `sine`, `perlin`. Replacing this text is the
-     *  whole of a shape change. */
-    readonly shape: SourceLocation | null;
-    /** The single `.slow(n)` / `.fast(n)` call site.
-     *
-     *  ⚠ NULL when the chain carries MORE THAN ONE rate arm, not only when it
-     *  carries none. `sine.slow(2).fast(4)` has a well-defined rate (the product)
-     *  and no well-defined place to write a new one — editing either arm produces
-     *  the asked-for rate while silently changing what the user wrote elsewhere.
-     *  Abstaining is the same discipline `readChain` already applies to shapes it
-     *  cannot account for. */
-    readonly rate: SourceLocation | null;
-    /** The `.range(lo,hi)` call site whose bounds WON — the outermost one, which
-     *  is the one `readChain` adopted. An inner `.range()` it supersedes is dead
-     *  in the document already and is not what a control should edit. */
-    readonly range: SourceLocation | null;
-    /** Offset just past the whole signal expression, where an ABSENT leg's call
-     *  would be inserted: `sine` + `.range(0,1)` at `chainEnd`. Null when the
-     *  outermost node carries no source range, in which case no edit is possible
-     *  and a control must be offered as disabled rather than as broken. */
-    readonly chainEnd: number | null;
-}
-declare function signalAutomations(ir: PatternIR | null | undefined): readonly SignalAutomation[];
-/**
- * The time a curve is handed at song time `time` — the argument its signal is
- * evaluated at — or null when its section is silent then (#1590). A curve under no
- * section is handed the song's time itself. The lane samples `kind` at
- * `signalTimeAt(a, t) / periodCycles` and lifts the pen where this is null.
- */
-declare function signalTimeAt(a: SignalAutomation, time: number): number | null;
-/**
- * Every parameter KEY whose argument carries a signal anywhere (#1465).
- *
- * ⚠ THIS IS A DIFFERENT QUESTION FROM `signalAutomations`, ON THE SAME IR, and
- * the difference is the point rather than an oversight. That reader asks "can I
- * PLOT this?" and abstains on anything without a closed form. This one asks "does
- * this control MOVE?" — and `.gain(sine.add(saw))` has no closed form, cannot be
- * drawn, and absolutely does make every cycle differ.
- *
- * Measured over the sweep's own corpus (`loadCorpus`, 142 documents that
- * evaluate), before #1590: the closed-form reader saw 199 signal-carrying `Param`
- * nodes and this one 239. Answering the period question with the drawing reader
- * would silently under-report by those 40 — and by far more since #1590, which
- * made the drawing reader decline every curve the song does not hand its own
- * clock (the span census counted 119 drawable automations there after #1590, and
- * 133 once #1595 drew the whole-track slows back). This reader is unchanged by
- * either: a curve under `.early(0.5)` still makes its control move.
- *
- * Returns KEYS rather than nodes because that is what the consumer needs: the
- * cycle fingerprint reads an event's whole value partition (`eventValueKey.ts` —
- * `{note, freq, s, gain, velocity, color} ∪ params`), and a key is how a
- * dimension is named there. `cutoff`/`resonance`/`pan`/`room` arrive via
- * `params`; `gain` has a dedicated slot. Both are addressed by key.
- *
- * Structural and horizon-FREE, which is the property that matters. An earlier
- * attempt at this exclusion derived it by watching a probe window, so a field
- * whose period exceeded that window read as unstable and got dropped — it
- * discarded `note` and `s` in ~75 documents. `Param{value: …Signal}` is the same
- * fact at horizon 4 and at horizon 256, so it cannot drift with the horizon it
- * feeds.
- */
-declare function signalCarryingParamKeys(ir: PatternIR | null | undefined): ReadonlySet<string>;
-/**
- * The shapes a curve of `kind` can be switched to by replacing its identifier and nothing
- * else (#1464), most used first, never `kind` itself. Empty when there is none.
- *
- * ⚠ ONE CLASS AT A TIME, and each half of the class is load-bearing:
- *  - SAME POLARITY. `range(lo, hi)` is `mul(hi − lo).add(lo)` and assumes 0..1 input
- *    (`pattern.mjs:1771`), so `sine2.range(200, 2000)` plays −1600..2000 (measured).
- *    A swap across polarity moves the output the caption promises.
- *  - SAME PERIODICITY. The song's length folds in the period of every signal that
- *    repeats and nothing from noise (`signalDimensionsOf`): `sine.slow(4)` folds `[4]`,
- *    `perlin.slow(4)` folds `[]`. A swap between the two can change how long the song
- *    is, which a menu must say before it writes, and this one cannot yet.
- * Inside one class the range, the rate and the song's length all stay as they were.
- *
- * `time` and the mouse signals are their own classes and offer nothing.
- */
-declare function shapeAlternatives(kind: SignalKind): readonly SignalKind[];
 
 /** One step of a stepped parameter. */
 interface SteppedStep {
@@ -12651,4 +12710,4 @@ declare const SONICPI_DOCS_INDEX: DocsIndex;
 
 declare const STRUDEL_DOCS_INDEX: DocsIndex;
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type AnalyzeWindowOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AssetDigest, type AssetImportInput, type AssetImportPlan, type AssetOrigin, type AssetRecord, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, type BootStepFailure, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, type CapabilityEnv, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type Commit, type CommitKind, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DisplaySpan, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EncodeOptions, type EngineAliasMap, type EngineAliasValue, EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, type FixedMarker, type FixedParameter, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, type GmFamily, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IREvent, IRPattern, type IRSnapshot, type ImportAssetDeps, type ImportAssetResult, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, type LaneItem, type LanePeriod, type LaneSkeleton, LiveCodingEditor, type LiveCodingEditorProps, LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_CENTRE_PAN, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterPanState, type MasterScalar, Mixer, type NormalizedHap, type NoteColorMode, OfflineRenderer, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, PatternIR, type PatternKind, PatternPanel, PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PickSectionEntry, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type PutAssetResult, type RegionControl, type RegionEdit, type RegionTrimRefusal, type RegionTrimResult, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplePeaks, type SampleRef, type SamplerInputs, type SectionStats, type SectionWindow, SequencerGrid, type ShellSnapshot, type SignalAliasMap, type SignalAutomation, SignalBus, type SignalDimensions, type SignalFrame, type SignalKind, type SignalReading, type SignalSpans, type SignalTransportReader, type SignalTransportWriter, SilentCaptureError, type SnapshotMeta, type SongAnalysis, type SongExtent, type SongSection, SonicPiEngine, type SoundMapDict, SourceLocation, SplitPane, type StepCountEdit, type StepGridModel, type StepLane, type SteppedAutomation, type SteppedStep, type StoredAsset, type StoredAssetMeta, type StoredSignalAliases, type StripEdit, StrudelEditor, type StrudelEditorProps, StrudelEngine, type StrudelTheme, type Surface, TAKE_NAME_PREFIX, type TierFlags, type TierName, type TimeStep, type TimeWarp, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizPreviewSpec, VizQualityLevel, VizRenderer, type VizRendererKind, VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, type WalkWindow, WavEncoder, type WindowAnalysis, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteOutcome, type WriteRefusal, type WriteSource, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms$1 as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, insertSilenceArm$1 as insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts$1 as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterPanEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, insertSilenceArm as pickInsertSilenceArm, listSectionParts as pickListSectionParts, removeArm as pickRemoveArm, renameSection as pickRenameSection, reorderArm as pickReorderArm, setArmHead as pickSetArmHead, setWeight as pickSetWeight, silenceArm as pickSilenceArm, splitArm as pickSplitArm, pitchToMidi, placeNote, planAssetImport, previewProviderRegistry, previewRepeat, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, readCurrentCycle, readMasterGain, readMasterMute, readMasterPan, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionControlEdit, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm$1 as removeArm, removeAssetRecord, renameSection$1 as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm$1 as silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterBottomPanelTab, unregisterNamedViz, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type AnalyzeWindowOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AssetDigest, type AssetImportInput, type AssetImportPlan, type AssetOrigin, type AssetRecord, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, type BootStepFailure, BottomPanel, type BottomPanelTab, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, type CapabilityEnv, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type Commit, type CommitKind, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DisplaySpan, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EncodeOptions, type EngineAliasMap, type EngineAliasValue, EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, type FixedMarker, type FixedParameter, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, type GmFamily, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IREvent, IRPattern, type IRSnapshot, type ImportAssetDeps, type ImportAssetResult, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, type LaneItem, type LanePeriod, type LaneSkeleton, LiveCodingEditor, type LiveCodingEditorProps, LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_CENTRE_PAN, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterPanState, type MasterScalar, Mixer, type NormalizedHap, type NoteColorMode, OfflineRenderer, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, PatternIR, type PatternKind, PatternPanel, PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PickSectionEntry, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type PutAssetResult, type RegionControl, type RegionEdit, type RegionTrimRefusal, type RegionTrimResult, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplePeaks, type SampleRef, type SamplerInputs, type SectionStats, type SectionWindow, SequencerGrid, type ShapeSwap, type ShellSnapshot, type SignalAliasMap, type SignalAutomation, SignalBus, type SignalDimensions, type SignalFrame, type SignalKind, type SignalReading, type SignalSpans, type SignalTransportReader, type SignalTransportWriter, SilentCaptureError, type SnapshotMeta, type SongAnalysis, type SongExtent, type SongSection, SonicPiEngine, type SoundMapDict, SourceLocation, SplitPane, type StepCountEdit, type StepGridModel, type StepLane, type SteppedAutomation, type SteppedStep, type StoredAsset, type StoredAssetMeta, type StoredSignalAliases, type StripEdit, StrudelEditor, type StrudelEditorProps, StrudelEngine, type StrudelTheme, type Surface, TAKE_NAME_PREFIX, type TierFlags, type TierName, type TimeStep, type TimeWarp, type TimelineCaptureEntry, type TrackMeta, UI_ICON_SIZE_VAR, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizPreviewSpec, VizQualityLevel, VizRenderer, type VizRendererKind, VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, type WalkWindow, WavEncoder, type WindowAnalysis, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteOutcome, type WriteRefusal, type WriteSource, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canRedo, canUndo, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms$1 as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, insertSilenceArm$1 as insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts$1 as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterPanEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, insertSilenceArm as pickInsertSilenceArm, listSectionParts as pickListSectionParts, removeArm as pickRemoveArm, renameSection as pickRenameSection, reorderArm as pickReorderArm, setArmHead as pickSetArmHead, setWeight as pickSetWeight, silenceArm as pickSilenceArm, splitArm as pickSplitArm, pitchToMidi, placeNote, planAssetImport, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, readCurrentCycle, readMasterGain, readMasterMute, readMasterPan, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionControlEdit, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm$1 as removeArm, removeAssetRecord, renameSection$1 as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runChainAppliedStage, runFinalStage, runMiniExpandedStage, runPasses, runRawStage, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm$1 as silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterBottomPanelTab, unregisterNamedViz, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };

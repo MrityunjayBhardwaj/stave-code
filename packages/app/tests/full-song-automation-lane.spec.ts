@@ -1261,9 +1261,11 @@ test('a shape chosen from the caption\'s name reaches the document, and the lane
   await page.waitForTimeout(800)
   expect(await openShapeMenu(page), 'no press on the caption opened the shape menu').toBe(true)
 
-  // (1) IT NAMES THE CURRENT SHAPE AND OFFERS ONLY ITS CLASS — no bipolar spelling, no noise.
-  const texts = await menu.locator('option').allTextContents()
-  expect(texts).toEqual(['shape: saw', 'sine', 'tri', 'cosine', 'square', 'isaw', 'itri'])
+  // (1) IT NAMES THE CURRENT SHAPE AND OFFERS ITS CLASS BARE — no bipolar spelling — and,
+  //     since #1611, noise only with the song length it gives, once that is measured.
+  const texts = await settledShapeOptions(page)
+  expect(texts.slice(0, 7)).toEqual(['shape: saw', 'sine', 'tri', 'cosine', 'square', 'isaw', 'itri'])
+  expect(texts.slice(7).map((t) => t.split(' · ')[0]), `the options: ${JSON.stringify(texts)}`).toEqual(['perlin', 'rand'])
 
   // (2) ESCAPE WRITES NOTHING and closes it.
   const doc = await readDoc(page)
@@ -1292,6 +1294,83 @@ test('a shape chosen from the caption\'s name reaches the document, and the lane
   const triExtent = Math.abs((a.start as number) - (a.bar2 as number))
   expect(triExtent, `the triangle barely moves: ${JSON.stringify(a)}`).toBeGreaterThan(10)
   expect(Math.abs((a.beforeBar4 as number) - (a.afterBar4 as number)), `still a reset at bar 4: ${JSON.stringify({ b, a })}`).toBeLessThan(0.15 * triExtent)
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
+// ── #1611: a shape across classes, labelled with the song it gives ───────────
+
+/** The open shape menu's option texts, once none is still measuring the song. */
+async function settledShapeOptions(page: Page): Promise<string[]> {
+  const options = page.locator('[data-full-song="automation-shape"] option')
+  await expect
+    .poll(async () => (await options.allTextContents()).some((t) => t.includes('measuring')), { timeout: 20_000 })
+    .toBe(false)
+  return options.allTextContents()
+}
+
+/** The settled option for `kind`, or a description of what was there instead. */
+async function shapeOptionText(page: Page, kind: string): Promise<string> {
+  const texts = await settledShapeOptions(page)
+  return texts.find((t) => t === kind || t.startsWith(`${kind} · `)) ?? `(no ${kind} in ${JSON.stringify(texts)})`
+}
+
+test('switching a sweep to noise and back says what the song length becomes, and the song takes it (#1611)', async ({ page }) => {
+  // Three menus, each waiting on a preview analysis and then on the edited song's own.
+  test.setTimeout(150_000)
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  // `barsOnView` reads the marks probe, which exists only with this flag set.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+  await bootShell(page)
+  const canvas = page.locator('[data-full-song-canvas]')
+  const menu = page.locator('[data-full-song="automation-shape"]')
+
+  // A 16-bar sweep beside a 4-bar line: the song, and the view, span 16.
+  const SINE = '$: s("bd*8").cutoff(sine.slow(16).range(200, 2000))\n$: s("<hh cp sd rim>")'
+  const PERLIN = SINE.replace('sine', 'perlin')
+  await setSongAndEval(page, SINE)
+  await canvas.waitFor({ timeout: 10_000 })
+  await expect.poll(() => barsOnView(page), { timeout: 20_000 }).toBe(16)
+  await page.locator('[data-full-song-lane-expand]').first().click()
+  await page.waitForTimeout(800)
+
+  // (1) sine → perlin: the label names the new length, and the evaluated song has it.
+  expect(await openShapeMenu(page), 'no press on the caption opened the shape menu').toBe(true)
+  expect(await shapeOptionText(page, 'perlin')).toBe('perlin · song repeats every 4 bars (was 16)')
+  await menu.selectOption('perlin')
+  await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe(PERLIN)
+  await expect.poll(() => barsOnView(page), { timeout: 20_000 }).toBe(4)
+
+  // (2) The reverse, on the same document.
+  await page.waitForTimeout(800)
+  expect(await openShapeMenu(page), 'the shape menu did not reopen on the noise curve').toBe(true)
+  expect(await shapeOptionText(page, 'sine')).toBe('sine · song repeats every 16 bars (was 4)')
+  await menu.selectOption('sine')
+  await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe(SINE)
+  await expect.poll(() => barsOnView(page), { timeout: 20_000 }).toBe(16)
+
+  // (3) A lane that loops by itself: the label says nothing changes, and nothing does.
+  const SELF = '$: s("<bd sd cp hh>*4").cutoff(sine.range(200, 2000))'
+  await setSongAndEval(page, SELF)
+  await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe(SELF)
+  await page.waitForTimeout(1500)
+  const selfBars = await barsOnView(page)
+  expect(await openShapeMenu(page), 'the shape menu did not open on the self-looping lane').toBe(true)
+  expect(await shapeOptionText(page, 'perlin')).toBe('perlin · same song length')
+  await menu.selectOption('perlin')
+  await expect.poll(() => readDoc(page), { timeout: 5_000 }).toBe(SELF.replace('sine', 'perlin'))
+  await page.waitForTimeout(1500)
+  expect(await barsOnView(page), 'the view moved on a swap labelled as changing nothing').toBe(selfBars)
 
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })

@@ -578,7 +578,8 @@ const NOISE_KINDS: ReadonlySet<string> = new Set(['perlin', 'rand', 'berlin', 'b
  *  - SAME PERIODICITY. The song's length folds in the period of every signal that
  *    repeats and nothing from noise (`signalDimensionsOf`): `sine.slow(4)` folds `[4]`,
  *    `perlin.slow(4)` folds `[]`. A swap between the two can change how long the song
- *    is, which a menu must say before it writes, and this one cannot yet.
+ *    is, so it is offered apart from these, with that length said first
+ *    (`crossClassShapes`, #1611).
  * Inside one class the range, the rate and the song's length all stay as they were.
  *
  * `time` and the mouse signals are their own classes and offer nothing.
@@ -588,4 +589,30 @@ export function shapeAlternatives(kind: SignalKind): readonly SignalKind[] {
     ? polarityOf(kind) === 'bipolar' ? REPEATING_BIPOLAR_SHAPES : REPEATING_SHAPES
     : NOISE_KINDS.has(kind) ? NOISE_SHAPES : []
   return family.filter((k) => k !== kind)
+}
+
+/**
+ * The shapes a curve of `kind` can be switched to ACROSS periodicity (#1611): a repeating
+ * waveform to noise, or noise to a repeating waveform, most used first.
+ *
+ * Same polarity still, for `shapeAlternatives`' first reason — so only a unipolar curve
+ * has a partner: the only bipolar noise is `rand2`, and a repeating bipolar curve would
+ * have nothing to become.
+ *
+ * ⚠ A SWAP FROM THIS LIST CAN CHANGE HOW LONG THE SONG IS, both ways: `sine.slow(16)`
+ * beside a 4-bar line repeats at 16 and `perlin.slow(16)` there at 4 (measured through
+ * the engine). Offer one only with the song's length after it said first
+ * (`previewShapeSwap`).
+ */
+export function crossClassShapes(kind: SignalKind): readonly SignalKind[] {
+  if (polarityOf(kind) !== 'unipolar') return []
+  if (hasTruePeriod(kind)) return NOISE_SHAPES
+  return isNoiseKind(kind) ? REPEATING_SHAPES : []
+}
+
+/** Is `kind` one of the noise signals a curve may be switched away from — values with no
+ *  waveform period (they do come back, but only after 300 of their own cycles: see
+ *  `songAnalysis`' `NOISE_SEED_CYCLES`)? The same set the menus offer from (`NOISE_KINDS`). */
+export function isNoiseKind(kind: SignalKind): boolean {
+  return NOISE_KINDS.has(kind)
 }

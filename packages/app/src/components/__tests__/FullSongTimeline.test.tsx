@@ -70,7 +70,8 @@ vi.mock('@stave/editor', async () => {
   // the exact trap the `wholeWalkWindow` note below already describes. Real
   // function, from source: it is a pure IR walk, so there is nothing to stub.
   // #1464 — the caption's shape menu reads its options from `shapeAlternatives`.
-  const { signalAutomations, signalTimeAt, shapeAlternatives } = await import('../../../../editor/src/ir/signalAutomation')
+  // #1611 — and its cross-class options from `crossClassShapes`.
+  const { signalAutomations, signalTimeAt, shapeAlternatives, crossClassShapes } = await import('../../../../editor/src/ir/signalAutomation')
   // #1463 Stage 2 — the same trap, twice more: the component now reads stepped
   // automation and resolves each one's axis. Both real, from source (the knob
   // table imports nothing but its own control list).
@@ -89,6 +90,7 @@ vi.mock('@stave/editor', async () => {
     signalAutomations,
     signalTimeAt,
     shapeAlternatives,
+    crossClassShapes,
     steppedAutomations,
     stepValueEdit,
     stepIndexAtCycle,
@@ -2162,5 +2164,148 @@ describe('FullSongTimeline — change a stepped parameter\'s step count from its
     fireEvent.blur(await open(container))
     expect(menu(container), 'a blur did not close the menu').toBeNull()
     expect(onEditAutomation).not.toHaveBeenCalled()
+  })
+})
+
+describe('FullSongTimeline — the shape menu measures a swap against the song it opened on (#1611)', () => {
+  // `s("bd*2").gain(sine.slow(16))`, with the spans the parser gives: the call site
+  // 9–29, the chain 15–28, the identifier 15–19. Read by the REAL `signalAutomations`.
+  const source = 's("bd*2").gain(sine.slow(16))'
+  const SIGNAL_IR = {
+    tag: 'Stack',
+    tracks: [
+      {
+        tag: 'Track',
+        trackId: 'bd',
+        body: {
+          tag: 'Param',
+          key: 'gain',
+          rawArgs: 'sine.slow(16)',
+          loc: [{ start: 9, end: 29 }],
+          value: {
+            tag: 'Slow',
+            factor: 16,
+            loc: [{ start: 15, end: 28 }],
+            body: { tag: 'Signal', kind: 'sine', loc: [{ start: 15, end: 19 }] },
+          },
+          body: { tag: 'Play', note: 'bd' },
+        },
+      },
+    ],
+  }
+  const loopOf = (cycles: number): SongAnalysis => ({
+    ...analysisFixture,
+    periodCycles: cycles,
+    horizonCycles: cycles * 2,
+    displaySpan: { kind: 'loop', cycles },
+    repeatCycles: cycles,
+  })
+  const settle = () => act(async () => { await Promise.resolve() })
+
+  /** ⚠ jsdom has no canvas, so the caption's text measures 0 wide and no name can be
+   *  pressed. The stub answers only an OFFSCREEN canvas, which is the measurer's own
+   *  (`measureCaption` creates one and never attaches it); the drawn canvases keep
+   *  jsdom's null, so the draw path is not handed a context it would half-use. */
+  async function withMeasuredCaptions(run: () => Promise<void>): Promise<void> {
+    const realGetContext = HTMLCanvasElement.prototype.getContext
+    const spy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (
+      this: HTMLCanvasElement,
+      ...args: Parameters<HTMLCanvasElement['getContext']>
+    ) {
+      if (this.isConnected) return realGetContext.apply(this, args as never)
+      return { font: '', measureText: (t: string) => ({ width: t.length * 6 }) } as never
+    } as never)
+    try {
+      await run()
+    } finally {
+      spy.mockRestore()
+    }
+  }
+
+  /** The song at 16 bars with `bd` expanded, and a press on its caption's name. */
+  async function renderSignal(onPreviewShape: NonNullable<React.ComponentProps<typeof FullSongTimeline>['onPreviewShape']>) {
+    const props = { ir: SIGNAL_IR as never, source, analysis: loopOf(16), onEditAutomation: vi.fn(), onPreviewShape }
+    const utils = renderFull(props)
+    const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    await settle()
+    await act(async () => {
+      ;(utils.container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement).click()
+    })
+    // The name `gain` is the caption's first field: x from CAPTION_PAD_X (4) over four
+    // 6px glyphs, y inside the first line (the lane's top inset is 3).
+    const pressName = () => fireEvent.pointerDown(grid, { clientX: 10, clientY: 5, pointerId: 1 })
+    const menu = () => utils.container.querySelector('[data-full-song="automation-shape"]') as HTMLSelectElement | null
+    /** The cross-class options' labels, the ones a preview speaks for. */
+    const across = () => Array.from(menu()?.options ?? []).map((o) => o.textContent ?? '').filter((l) => l.includes(' · '))
+    return { ...utils, props, pressName, menu, across }
+  }
+
+  it('a re-evaluation while the preview is measuring does not move the "(was N)" beside it', async () => {
+    await withMeasuredCaptions(async () => {
+      let answer: (a: SongAnalysis | null) => void = () => {}
+      const onPreviewShape = vi.fn(() => new Promise<SongAnalysis | null>((resolve) => { answer = resolve }))
+      const { props, pressName, menu, across, rerender, onSeek } = await renderSignal(onPreviewShape)
+      pressName()
+      expect(menu(), 'a press on the name did not open the shape menu').not.toBeNull()
+      expect(onPreviewShape).toHaveBeenCalledTimes(1)
+      expect(across().length, 'no shape across classes was offered').toBeGreaterThan(0)
+      expect(across().every((l) => l.endsWith('measuring song length…'))).toBe(true)
+
+      // The song is re-evaluated under the open menu, to a length the preview never saw.
+      rerender(
+        <FullSongTimeline
+          getSongPosition={() => null}
+          onSeek={onSeek}
+          getDrawerOpen={() => true}
+          getActiveTabId={() => 'musical-timeline'}
+          {...props}
+          analysis={loopOf(8)}
+        />,
+      )
+      expect(menu(), 'a new snapshot closed the menu — this arm no longer tests anything').not.toBeNull()
+      await act(async () => {
+        answer(loopOf(4))
+        await Promise.resolve()
+      })
+      // The preview was measured from the song at 16; its baseline must be that song's.
+      expect(across().length).toBeGreaterThan(0)
+      for (const label of across()) expect(label).toMatch(/ · song repeats every 4 bars \(was 16\)$/)
+    })
+  })
+
+  it('a preview for a menu that closed does not land on the next one opened', async () => {
+    await withMeasuredCaptions(async () => {
+      const answers: Array<(a: SongAnalysis | null) => void> = []
+      const onPreviewShape = vi.fn(() => new Promise<SongAnalysis | null>((resolve) => { answers.push(resolve) }))
+      const { pressName, menu, across } = await renderSignal(onPreviewShape)
+      pressName()
+      expect(menu(), 'a press on the name did not open the shape menu').not.toBeNull()
+      fireEvent.keyDown(menu()!, { key: 'Escape' })
+      expect(menu(), 'Escape did not close the menu').toBeNull()
+      pressName()
+      expect(menu(), 'the menu did not open again').not.toBeNull()
+      expect(onPreviewShape).toHaveBeenCalledTimes(2)
+
+      // The FIRST menu's answer arrives late, for a menu nobody is looking at any more.
+      await act(async () => {
+        answers[0](loopOf(4))
+        await Promise.resolve()
+      })
+      expect(across().length).toBeGreaterThan(0)
+      expect(
+        across().every((l) => l.endsWith('measuring song length…')),
+        `the closed menu's preview landed on the open one: ${across().join(' / ')}`,
+      ).toBe(true)
+
+      // Control: the open menu's own answer does land, so the arm above is not a menu
+      // that ignores every answer.
+      await act(async () => {
+        answers[1](loopOf(2))
+        await Promise.resolve()
+      })
+      for (const label of across()) expect(label).toMatch(/ · song repeats every 2 bars \(was 16\)$/)
+    })
   })
 })

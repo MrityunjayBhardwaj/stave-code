@@ -1369,6 +1369,16 @@ function shapeAlternatives(kind) {
   return family.filter((k) => k !== kind);
 }
 __name(shapeAlternatives, "shapeAlternatives");
+function crossClassShapes(kind) {
+  if (polarityOf(kind) !== "unipolar") return [];
+  if (hasTruePeriod(kind)) return NOISE_SHAPES;
+  return isNoiseKind(kind) ? REPEATING_SHAPES : [];
+}
+__name(crossClassShapes, "crossClassShapes");
+function isNoiseKind(kind) {
+  return NOISE_KINDS.has(kind);
+}
+__name(isNoiseKind, "isNoiseKind");
 var bjorklund = /* @__PURE__ */ __name((k, n) => {
   if (n <= 0) return [];
   if (k === 0) return Array(n).fill(false);
@@ -1800,6 +1810,55 @@ function previewRepeat(analysis, laneKey, paramPeriods, cap = DEFAULT_CAP) {
   return repeatOf([...others, mine.restCycles, ...paramPeriods], cap);
 }
 __name(previewRepeat, "previewRepeat");
+var PHASE_GRAIN = 1e6;
+var NOISE_SEED_CYCLES = 300;
+async function previewShapeSwap(ir, a, next, opts) {
+  const at = a.spans.shape?.start;
+  const collect2 = opts.collectFn;
+  if (at === void 0 || !collect2) return null;
+  const standIn = standInFor(a, next);
+  if (standIn === null) return null;
+  const standInPeriod = standInPeriodOf(a, next);
+  const pastCap = !hasTruePeriod(next) && standInPeriod !== null && standInPeriod > DEFAULT_CAP;
+  if (!pastCap && sharesItsControl(ir, a)) return null;
+  const key2 = a.paramKey;
+  return analyzeSong(ir, {
+    ...opts,
+    collectFn: /* @__PURE__ */ __name((start, end) => collect2(start, end).map((ev) => laneKeyOf(ev) === a.trackId ? withValue(ev, key2, standIn(ev)) : ev), "collectFn"),
+    signals: signalDimensionsOf(ir, { at, kind: next })
+  });
+}
+__name(previewShapeSwap, "previewShapeSwap");
+function sharesItsControl(ir, a) {
+  if (!ir) return false;
+  const same = /* @__PURE__ */ __name((b) => b.trackId === a.trackId && b.paramKey === a.paramKey, "same");
+  return signalAutomations(ir).filter(same).length > 1 || steppedAutomations(ir).some(same);
+}
+__name(sharesItsControl, "sharesItsControl");
+function standInPeriodOf(a, next) {
+  const own = hasTruePeriod(next) ? a.periodCycles : isNoiseKind(next) ? NOISE_SEED_CYCLES * a.periodCycles : null;
+  return own === null ? null : songPeriodOf({ periodCycles: own, placements: a.placements });
+}
+__name(standInPeriodOf, "standInPeriodOf");
+function standInFor(a, next) {
+  const song = standInPeriodOf(a, next);
+  const f = song === null ? null : asFraction(song);
+  if (f === null) return null;
+  const [n, d] = f;
+  const ticks = n * PHASE_GRAIN;
+  return (ev) => {
+    const t = Math.round(ev.begin * d * PHASE_GRAIN);
+    return (t % ticks + ticks) % ticks;
+  };
+}
+__name(standInFor, "standInFor");
+function withValue(ev, key2, value) {
+  const rec = ev;
+  if (rec[key2] !== void 0) return { ...rec, [key2]: value };
+  if (ev.params && key2 in ev.params) return { ...ev, params: { ...ev.params, [key2]: value } };
+  return ev;
+}
+__name(withValue, "withValue");
 function repeatBeside(lanePeriods, cap, period) {
   if (period === null) return null;
   const repeat = repeatOf(lanePeriods.map((l) => l.periodCycles), cap);
@@ -1840,13 +1899,14 @@ function spanCoversEveryLane(events, period) {
   return true;
 }
 __name(spanCoversEveryLane, "spanCoversEveryLane");
-function signalDimensionsOf(ir) {
+function signalDimensionsOf(ir, swap) {
   const audible = audibleTracks(ir);
   const periods = [];
   const keys = /* @__PURE__ */ new Set();
   for (const t of audible) {
     for (const a of signalAutomations(t)) {
-      if (!hasTruePeriod(a.kind) || !(a.periodCycles > 0)) continue;
+      const kind = swap !== void 0 && a.spans.shape?.start === swap.at ? swap.kind : a.kind;
+      if (!hasTruePeriod(kind) || !(a.periodCycles > 0)) continue;
       const song = songPeriodOf(a);
       if (song !== null) periods.push(song);
     }
@@ -47967,6 +48027,7 @@ exports.createPostMessageWriter = createPostMessageWriter;
 exports.createProject = createProject;
 exports.createVizConfig = createVizConfig;
 exports.createWorkspaceFile = createWorkspaceFile;
+exports.crossClassShapes = crossClassShapes;
 exports.cycleEditorTheme = cycleEditorTheme;
 exports.cycleFingerprints = cycleFingerprints;
 exports.deleteAsset = deleteAsset;
@@ -48189,6 +48250,7 @@ exports.placeNote = placeNote;
 exports.planAssetImport = planAssetImport;
 exports.previewProviderRegistry = previewProviderRegistry;
 exports.previewRepeat = previewRepeat;
+exports.previewShapeSwap = previewShapeSwap;
 exports.pruneEphemeralArtifacts = pruneEphemeralArtifacts;
 exports.pruneTrackMetaForCode = pruneTrackMetaForCode;
 exports.pruneZoneOverrides = pruneZoneOverrides;
