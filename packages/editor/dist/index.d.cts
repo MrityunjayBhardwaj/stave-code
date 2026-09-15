@@ -378,6 +378,19 @@ interface SongAnalysis {
     /** The span to show and what it means — the single answer for every consumer
      *  deciding geometry, wrapping, or what to tell the user. */
     readonly displaySpan: DisplaySpan;
+    /**
+     * The cycles after which EVERY lane has come back round (#1599), or null where
+     * that cannot be vouched for. A LENGTH, for a consumer asking how long one pass
+     * of the audio is — a bounce. A consumer drawing the view wants `displaySpan`,
+     * which spans the longest single lane so lanes of different lengths phase
+     * inside it (#488): a 4-cycle lane beside a 3-cycle lane views at 4 and repeats
+     * at 12. For lanes of one length the two are equal.
+     *
+     * Always a whole number of `periodCycles` when it is a number. Null when there
+     * is no period, a lane has no loop of its own, or the repeat runs past the cap
+     * — see `wholeSongRepeat`.
+     */
+    readonly repeatCycles: number | null;
 }
 /**
  * Accumulate per-lane onset counts bucketed by integer cycle over
@@ -555,7 +568,7 @@ declare function computeSectionsInWindow(lanes: readonly LaneActivity[], originC
  * `reachedCap` is supplied by the caller (it's a property of the collection
  * loop, not of the events). Synchronous — used directly in unit tests.
  */
-declare function analyzeEvents(events: readonly IREvent[], horizon: number, reachedCap?: boolean, detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null): SongAnalysis;
+declare function analyzeEvents(events: readonly IREvent[], horizon: number, reachedCap?: boolean, detectPeriodFn?: (events: readonly IREvent[], horizon: number) => number | null, capCycles?: number): SongAnalysis;
 interface AnalyzeSongOptions {
     /** Initial horizon to collect before the first period check (default 8). */
     hintCycles?: number;

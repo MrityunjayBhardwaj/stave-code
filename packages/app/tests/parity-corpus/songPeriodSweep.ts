@@ -87,6 +87,12 @@ export interface PeriodVerdict {
   /** distinct lane keys the analysis produced. */
   lanes: number
   /**
+   * #1599 — the cycles after which every lane has come back round
+   * (`analysis.repeatCycles`), or null. What a bounce offers as one repeat; equal
+   * to `span` wherever the lanes share one length.
+   */
+  repeat: number | null
+  /**
    * Declared tracks that SOUNDED within the analysed horizon and are still
    * absent from `analysis.lanes` — the [[P405]] loss, counted at the boundary it
    * happens at rather than inferred from the rule that now prevents it (#1107).
@@ -483,6 +489,7 @@ export async function periodOfTracks(
     span: analysis.displaySpan.cycles,
     reachedCap: analysis.displaySpan.kind === 'capped',
     lanes: analysis.lanes.length,
+    repeat: analysis.repeatCycles,
     lostLanes: [...heard].filter((id) => !shipped.has(id)).length,
     events,
   }
@@ -504,6 +511,7 @@ export async function periodOfDocument(
       span: 0,
       reachedCap: false,
       lanes: 0,
+      repeat: null,
       lostLanes: 0,
       events: 0,
     }
@@ -523,6 +531,7 @@ export async function periodOfDocument(
       span: 0,
       reachedCap: false,
       lanes: 0,
+      repeat: null,
       lostLanes: 0,
       events: 0,
     }

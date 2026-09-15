@@ -1417,6 +1417,26 @@ function eventsByLane(events) {
   return byLane;
 }
 __name(eventsByLane, "eventsByLane");
+function wholeSongRepeat(events, horizon, cap) {
+  const byLane = eventsByLane(events);
+  if (byLane.size === 0) return null;
+  let repeat = 1;
+  for (const laneEvents of byLane.values()) {
+    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
+    if (p === null) return null;
+    const next = rationalLcm(repeat, p);
+    if (next === null || !Number.isFinite(next) || next > cap) return null;
+    repeat = next;
+  }
+  return repeat;
+}
+__name(wholeSongRepeat, "wholeSongRepeat");
+function repeatBeside(events, horizon, cap, period) {
+  if (period === null) return null;
+  const repeat = wholeSongRepeat(events, horizon, cap);
+  return repeat !== null && repeat % period === 0 ? repeat : null;
+}
+__name(repeatBeside, "repeatBeside");
 var MIN_ABSTAINED_PERIOD = 4;
 function detectDisplayPeriodAtCap(events, horizon) {
   const byLane = eventsByLane(events);
@@ -1609,13 +1629,14 @@ function computeSectionsInWindow(lanes, originCycle, spanCycles) {
   return sections;
 }
 __name(computeSectionsInWindow, "computeSectionsInWindow");
-function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn) {
+function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn, capCycles = DEFAULT_CAP) {
   const periodOf = detectPeriodFn ?? ((evs, h) => displayPeriodRule(evs, h, reachedCap ? h : Number.POSITIVE_INFINITY, false));
   const lanes = accumulateLanes(events, horizon);
   const periodCycles = periodOf(events, horizon);
   const sections = computeSections(lanes, horizon);
   const displaySpan = periodCycles != null ? { kind: "loop", cycles: periodCycles } : { kind: reachedCap ? "capped" : "horizon", cycles: horizon };
-  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan };
+  const repeatCycles = repeatBeside(events, horizon, capCycles, periodCycles);
+  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan, repeatCycles };
 }
 __name(analyzeEvents, "analyzeEvents");
 var DEFAULT_HINT = 8;
@@ -1670,15 +1691,18 @@ async function analyzeSong(ir, opts = {}) {
         horizonCycles: period,
         lanes,
         sections,
-        displaySpan: { kind: "loop", cycles: period }
+        displaySpan: { kind: "loop", cycles: period },
+        // #1599 — over the full collection horizon, where every lane's period was
+        // detected, NOT the trimmed one-loop span (one loop has no repetition).
+        repeatCycles: repeatBeside(events, horizon, cap, period)
       };
     }
     if (horizon >= cap) {
-      return analyzeEvents(events, cap, true, periodRule);
+      return analyzeEvents(events, cap, true, periodRule, cap);
     }
     horizon = Math.min(horizon * 2, cap);
   }
-  return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule);
+  return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap);
 }
 __name(analyzeSong, "analyzeSong");
 async function analyzeWindow(originCycle, spanCycles, opts = {}) {

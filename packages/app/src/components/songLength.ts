@@ -198,7 +198,15 @@ export async function measureSongLength(
   }
 
   if (analysis.displaySpan.kind === 'loop' && analysis.displaySpan.cycles > 0) {
-    return { kind: 'loop', periodCycles: analysis.displaySpan.cycles }
+    // #1599 — a repeat is the length after which EVERY track has come back
+    // round, not the view's span. The view spans the longest single track so
+    // tracks of different lengths phase inside it (#488), and a bounce of that
+    // span cut `<bd sd cp hh>` beside a 3-step gain at 4 cycles of a 12-cycle
+    // song. Where no whole-song repeat could be vouched for (a track with no
+    // loop of its own, or an LCM past the cap) the offer stays on the span it
+    // always offered, rather than inventing a number.
+    const cycles = analysis.repeatCycles !== null ? analysis.repeatCycles : analysis.displaySpan.cycles
+    return { kind: 'loop', periodCycles: cycles }
   }
 
   // `capped` and `horizon` are both places the analysis STOPPED, not lengths.

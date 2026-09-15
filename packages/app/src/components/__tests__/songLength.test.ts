@@ -154,6 +154,27 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     if (result.kind === 'loop') expect(result.periodCycles).toBeGreaterThan(0)
   })
 
+  it('a loop whose tracks repeat at different lengths is offered its WHOLE repeat, not the view span (#1599)', async () => {
+    // A 4-cycle track beside a 3-cycle one. The view spans 4 so the tracks phase
+    // inside it (#488); the audio only comes back round at 12, and a bounce of 4
+    // cycles is a third of the song.
+    const onsets = Array.from({ length: 64 }, (_, c) => [
+      { ...ev(c, `a${c % 4}`), trackId: 'd1' },
+      { ...ev(c, `b${c % 3}`), trackId: 'd2' },
+    ]).flat() as IREvent[]
+    expect(await measureSongLength(both(bd), depsWith(onsets))).toEqual({ kind: 'loop', periodCycles: 12 })
+  })
+
+  it('a loop with a track that never repeats keeps the span it was offered before (#1599)', async () => {
+    // No whole-song repeat can be vouched for when one track never loops, so the
+    // offer stays where it was: the span of the tracks that do (#1104 abstention).
+    const onsets = Array.from({ length: 300 }, (_, c) => [
+      { ...ev(c, `a${c % 8}`), trackId: 'd1' },
+      { ...ev(c, `n${c}`), trackId: 'd2' },
+    ]).flat() as IREvent[]
+    expect(await measureSongLength(both(bd), depsWith(onsets))).toEqual({ kind: 'loop', periodCycles: 8 })
+  })
+
   it('an aperiodic document is `no-period` — NEVER the horizon it stopped at', async () => {
     // This is the arm the module exists for. The analysis still returns a span
     // for this document; that span is where it gave up, and a bounce driven off

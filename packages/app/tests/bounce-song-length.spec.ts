@@ -59,6 +59,40 @@ test.use({
   launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] },
 })
 
+/**
+ * #1599 — a 4-cycle track beside a hi-hat whose gain steps through 3 values. The
+ * timeline spans 4 so the tracks phase inside it; the audio only comes back round
+ * at 12 (engine arm: cycle 4 differs from cycle 0, cycle 12 equals it). A bounce of
+ * one repeat has to be the 12, or it records a third of the song.
+ */
+const MIXED_LENGTH_SONG = 'setcps(130/240)\n$: s("<bd sd cp hh>")\n$: s("hh*4").gain("<0.2 0.8 0.5>")'
+
+test('a loop whose tracks repeat at different lengths is offered its whole repeat (#1599)', async ({ page }) => {
+  test.setTimeout(90_000)
+  await boot(page)
+  await page.locator('.monaco-editor').first().click()
+  await page.evaluate((code) => {
+    const eds = ((window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { setValue: (s: string) => void; getLanguageId?: () => string } | null }> } } }).monaco?.editor?.getEditors?.()) ?? []
+    const target = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+    target?.getModel()?.setValue(code)
+  }, MIXED_LENGTH_SONG)
+  await playOnce(page)
+  await openBounceModal(page)
+
+  const offers = page.getByTestId('bounce-song-offers')
+  await expect(offers).toBeVisible({ timeout: 15000 })
+  const labels = await offers.getByRole('button').allTextContents()
+  const first = /(\d+):(\d\d)/.exec(labels[0] ?? '')
+  expect(first, `no duration on the first offer (labels: ${labels.join(' | ')})`).not.toBeNull()
+  const seconds = Number(first![1]) * 60 + Number(first![2])
+
+  // Whole cycles at the document's own tempo, within the display's 1s rounding.
+  const cycles = Math.round(seconds / CYCLE_SECONDS)
+  expect(Math.abs(seconds - cycles * CYCLE_SECONDS), labels.join(' | ')).toBeLessThanOrEqual(0.5)
+  // THE CLAIM, with the rival named: the view span (4) is what the offer used to be.
+  expect(cycles, `one repeat is ${cycles} cycles, not the whole song's 12 (labels: ${labels.join(' | ')})`).toBe(12)
+})
+
 test('the modal offers repeats of the song, costed at the document tempo', async ({
   page,
 }) => {
