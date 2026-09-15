@@ -58,6 +58,12 @@ function extractLoc(hap: unknown): SourceLocation[] | undefined {
   return out.length > 0 ? out : undefined
 }
 
+/** #1619 — the locations whose span the transpiler declared, or undefined when none are. */
+function declaredOnly(loc: SourceLocation[], declared: ReadonlySet<string>): SourceLocation[] | undefined {
+  const kept = loc.filter((l) => declared.has(`${l.start}:${l.end}`))
+  return kept.length > 0 ? kept : undefined
+}
+
 /**
  * Resolve a hap's leaf-loc to the matching IREvent by structural lookup
  * against the published snapshot's loc map (PV38 clause 2). Single-strategy:
@@ -99,6 +105,25 @@ export function findMatchedEvent(
 }
 
 /**
+ * #1619 — the spans the transpiler DECLARED for one evaluate, as `start:end` keys a
+ * hap's locations can be checked against. Read from the repl's own state
+ * (`@strudel/core@1.2.6/repl.mjs:273-274`, `miniLocations`), whose entries are
+ * `[start, end]` tuples (`@strudel/mini/mini.mjs:189`).
+ *
+ * ⚠ `undefined` MEANS UNKNOWN, NOT NONE. A runtime with no such state keeps every
+ * location as it was. An empty array is a real answer — the document declared no
+ * spans — and drops them all.
+ */
+export function declaredLocationKeys(miniLocations: unknown): ReadonlySet<string> | undefined {
+  if (!Array.isArray(miniLocations)) return undefined
+  const keys = new Set<string>()
+  for (const l of miniLocations) {
+    if (Array.isArray(l) && typeof l[0] === 'number' && typeof l[1] === 'number') keys.add(`${l[0]}:${l[1]}`)
+  }
+  return keys
+}
+
+/**
  * Convert a raw Strudel hap into an IREvent (NormalizedHap).
  * Handles Fraction objects (Number() coercion), missing fields, and optional value bag.
  *
@@ -110,12 +135,20 @@ export function findMatchedEvent(
  * `irNodeLocLookup` is caller-supplied — engine threads the published
  * snapshot's loc map so each hap can be enriched with its `irNodeId`
  * by structural match (PV38 clause 2). Both optional — additive widening.
+ *
+ * `declaredLocations` (#1619) keeps only the spans the transpiler declared
+ * (`declaredLocationKeys`). A string it never rewrote — a single-quoted argument,
+ * `.color('sienna')` — is mini-parsed in its OWN quoted space, and that location
+ * comes FIRST, so `loc[0]` read `[1, 7)`: the Song timeline put the track on another
+ * track's lane, and the IR match below keyed on the same wrong span. Filtered before
+ * the match, so every reader of `loc` sees one answer. Omitted → unchanged.
  */
 export function normalizeStrudelHap(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   hap: any,
   trackId?: string,
   irNodeLocLookup?: ReadonlyMap<string, IREvent[]>,
+  declaredLocations?: ReadonlySet<string>,
 ): NormalizedHap {
   const begin = Number(hap.whole?.begin ?? 0)
   const end = Number(hap.whole?.end ?? begin + 0.25)
@@ -132,7 +165,8 @@ export function normalizeStrudelHap(
     velocity: value?.velocity ?? 1,
     color: value?.color ?? null,
   }
-  const loc = extractLoc(hap)
+  const extracted = extractLoc(hap)
+  const loc = extracted && declaredLocations ? declaredOnly(extracted, declaredLocations) : extracted
   if (loc) event.loc = loc
   if (trackId) event.trackId = trackId
   // PV38 clause 2 — single-strategy structural match. Miss → undefined
