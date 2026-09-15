@@ -1,0 +1,64 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index da81977b3a8f9cb8af08440c61990437041f69b7..eeffaa53d13263846c1dd5f365fe63567886e0de 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -93,13 +93,19 @@ const st = /* @__PURE__ */ new Map(), ut = Symbol("nodePoolKey"), hn = (e) => !!
+   const t = Ct(e), n = e?.parameters?.get("end").value ?? 0;
+   return t < n + 0.45;
+ }, we = (e, t) => {
+-  const n = st.get(e) ?? [];
++  // stave patch (#1636): a pooled node is reusable only on the context it was built on.
++  // Nodes from another open context stay pooled for it; nodes from a closed context are dropped.
++  const n = st.get(e) ?? [], c = z();
+   let o, a = !1;
+-  for (; n.length; )
+-    if (o = n.pop()?.deref(), o != null && Gn(o)) {
+-      a = !0;
++  for (let i = n.length - 1; i >= 0; i--) {
++    const r = n[i]?.deref();
++    if (r != null && r.context !== c && r.context?.state !== "closed") continue;
++    n.splice(i, 1);
++    if (r != null && r.context === c && Gn(r)) {
++      o = r, a = !0;
+       break;
+     }
++  }
+   return a || (o = t()), o[ut] = e, o;
+ }, Xn = (e) => {
+   if (typeof e != "string")
+diff --git a/nodePools.mjs b/nodePools.mjs
+index 90b4c0ae7e968a4bb78430ba9384c60f69910af9..61997d333f86eaf4769f18e10964ec7a1189b834 100644
+--- a/nodePools.mjs
++++ b/nodePools.mjs
+@@ -5,6 +5,8 @@ Copyright (C) 2025 Strudel contributors - see <https://codeberg.org/uzu/strudel/
+ This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more details. You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+ 
++import { getAudioContext } from './audioContext.mjs';
++
+ const nodePools = new Map();
+ const POOL_KEY = Symbol('nodePoolKey');
+ 
+@@ -65,13 +67,18 @@ const isNodeAlive = (node) => {
+ // Attempt to get node from the pool. If this fails, fall back
+ // to building it with the factory
+ export const getNodeFromPool = (key, factory) => {
++  // stave patch (#1636): a pooled node is reusable only on the context it was built on.
++  // Nodes from another open context stay pooled for it; nodes from a closed context are dropped.
+   const pool = nodePools.get(key) ?? [];
++  const ctx = getAudioContext();
+   let node;
+   let found = false;
+-  while (pool.length) {
+-    const ref = pool.pop();
+-    node = ref?.deref();
+-    if (node != null && isNodeAlive(node)) {
++  for (let i = pool.length - 1; i >= 0; i--) {
++    const candidate = pool[i]?.deref();
++    if (candidate != null && candidate.context !== ctx && candidate.context?.state !== 'closed') continue;
++    pool.splice(i, 1);
++    if (candidate != null && candidate.context === ctx && isNodeAlive(candidate)) {
++      node = candidate;
+       found = true;
+       break;
+     }

@@ -922,6 +922,75 @@ test.describe('#1344 — bouncing the loaded document', () => {
 })
 
 /**
+ * #1636 — superdough pools reusable nodes (filters, compressors, supersaws,
+ * wavetables) in ONE page-wide map keyed only by kind (`nodePools.mjs:8`). An
+ * offline render swaps the audio context, so without a context check each side
+ * was handed the other's nodes, could not connect them, and dropped the note.
+ * Measured before the fix on this filtered sawtooth: a live take after a bounce
+ * fell from 0.0476 to 0.0068 rms, and a bounce after a live take skipped 3 notes.
+ * A plain sawtooth never touches the pool, so it cannot show this.
+ */
+const POOLED_FILTER_SAW = '$: note("c4 e4 g4 b4 c5 b4 g4 e4").s("sawtooth").gain(0.3).lpf(2400).release(0.12)'
+
+// Each ordering runs on its OWN fresh page, so the pool holds exactly what that
+// ordering put in it. Measured with the fix removed: a same-page sequence that
+// starts with a bounce left the bounce-after-live arm green (diff 0, nothing
+// skipped) and took only 17% off the live take, so neither pinned the defect.
+test.describe('#1636 — an offline bounce and live playback do not trade pooled nodes', () => {
+  test('a live take right after a bounce plays at the level of one on a page that never bounced', async ({ browser }) => {
+    test.setTimeout(180000)
+    const clean = await browser.newPage()
+    await openApp(clean)
+    const reference = await call(clean, 'recordLive', POOLED_FILTER_SAW, 6)
+    await clean.close()
+    const page = await browser.newPage()
+    await openApp(page)
+    const bounce = await callBounceLoaded(page, POOLED_FILTER_SAW, 6)
+    const after = await call(page, 'recordLive', POOLED_FILTER_SAW, 6)
+    await page.close()
+    if (!reference.ok || !bounce.ok || !after.ok) {
+      throw new Error(`probe failed: ${reference.error ?? ''} ${bounce.error ?? ''} ${after.error ?? ''}`)
+    }
+    const r = readWav(reference.wav!)
+    const ratio = rms(readWav(after.wav!).mono) / rms(r.mono)
+    console.log(
+      `[#1636 live-after-bounce] sr=${r.sampleRate} rms reference=${rms(r.mono).toFixed(5)} ` +
+        `after=${rms(readWav(after.wav!).mono).toFixed(5)} ratio=${ratio.toFixed(4)} bounceSkipped=${JSON.stringify(bounce.skipped)}`,
+    )
+    // Live takes of this noise-free pattern on two fresh pages agree within a few
+    // percent (capture start jitter); the defect took 86% off.
+    expect(Math.abs(ratio - 1) < 0.1).toBe(true)
+  })
+
+  test('a bounce right after a live take skips nothing and matches a bounce on a page that never played', async ({
+    browser,
+  }) => {
+    test.setTimeout(180000)
+    const clean = await browser.newPage()
+    await openApp(clean)
+    const reference = await callBounceLoaded(clean, POOLED_FILTER_SAW, 6)
+    await clean.close()
+    const page = await browser.newPage()
+    await openApp(page)
+    const live = await call(page, 'recordLive', POOLED_FILTER_SAW, 6)
+    const after = await callBounceLoaded(page, POOLED_FILTER_SAW, 6)
+    await page.close()
+    if (!reference.ok || !live.ok || !after.ok) {
+      throw new Error(`probe failed: ${reference.error ?? ''} ${live.error ?? ''} ${after.error ?? ''}`)
+    }
+    const f = readWav(reference.wav!)
+    const diff = maxSampleDiff(readWav(after.wav!).mono, f.mono)
+    console.log(
+      `[#1636 bounce-after-live] sr=${f.sampleRate} skipped reference=${JSON.stringify(reference.skipped)} ` +
+        `after=${JSON.stringify(after.skipped)} maxSampleDiff=${diff}`,
+    )
+    // An offline render of this pattern is sample-exact run to run, so any
+    // difference from the page that never played came from the live take.
+    expect({ skipped: after.skipped, same: diff < 1e-4 }).toEqual({ skipped: [], same: true })
+  })
+})
+
+/**
  * #1356 — how long does the graph keep sounding AFTER the transport stops?
  *
  * Stopping halts Strudel's scheduler but does not cancel Web Audio nodes
