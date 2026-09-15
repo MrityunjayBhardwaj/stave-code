@@ -73,6 +73,8 @@ export { BufferedScheduler } from './engine/BufferedScheduler'
 export { WavEncoder, SilentCaptureError, SILENCE_FLOOR } from './engine/WavEncoder'
 export type { EncodeOptions } from './engine/WavEncoder'
 export type { StemOutcome } from './engine/renderStemsInOrder'
+export { describeSkipped } from './engine/renderPatternOffline'
+export type { SkippedSounds } from './engine/renderPatternOffline'
 export { LiveRecorder } from './engine/LiveRecorder'
 export { noteToMidi } from './engine/noteToMidi'
 

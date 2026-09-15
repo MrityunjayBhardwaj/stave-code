@@ -48065,6 +48065,7 @@ exports.deleteProject = deleteProject;
 exports.deleteSnapshot = deleteSnapshot;
 exports.deleteWorkspaceFile = deleteWorkspaceFile;
 exports.deriveVizQuality = deriveVizQuality;
+exports.describeSkipped = describeSkipped;
 exports.detectAllArrangeCalls = detectAllArrangeCalls;
 exports.detectAllChunks = detectAllChunks;
 exports.detectAllPickControls = detectAllPickControls;
