@@ -1,6 +1,6 @@
 import { noteToMidi } from './noteToMidi'
 import type { IREvent } from '../ir/IREvent'
-import { findMatchedEvent } from './NormalizedHap'
+import { declaredOnly, findMatchedEvent } from './NormalizedHap'
 
 export interface HapEvent {
   /** Full Strudel Hap object (optional for non-Strudel engines) */
@@ -87,6 +87,14 @@ export class HapStream {
    * re-running findMatchedEvent (P50 — single-strategy match preserved).
    * Additive: 8 existing test callers + 1 production caller currently
    * ignore the void return; widening void → HapEvent does not break them.
+   *
+   * Optional 7th positional `declaredLocations` (#1621) — the engine's declared
+   * spans (`declaredLocationKeys`), the same set `normalizeStrudelHap` filters by
+   * (#1619). A single-quoted argument's location is in its own quoted space and
+   * comes first, so unfiltered it lit up the wrong characters in the editor and
+   * keyed the IR match below on the wrong span (breakpoints, the Inspector pulse).
+   * Filtered here, before the event is built, so every subscriber sees one answer.
+   * Omitted → unchanged.
    */
   emit(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -95,10 +103,15 @@ export class HapStream {
     duration: number,
     cps: number,
     audioCtxCurrentTime: number,
-    lookup?: ReadonlyMap<string, IREvent[]>
+    lookup?: ReadonlyMap<string, IREvent[]>,
+    declaredLocations?: ReadonlySet<string>
   ): HapEvent {
     const scheduledAheadMs = (deadline - audioCtxCurrentTime) * 1000
     const audioDuration = duration
+    const rawLoc = hap?.context?.locations ?? hap?.context?.loc ?? null
+    const loc = Array.isArray(rawLoc) && declaredLocations
+      ? declaredOnly(rawLoc, declaredLocations) ?? null
+      : rawLoc
 
     const event: HapEvent = {
       hap,
@@ -108,7 +121,7 @@ export class HapStream {
       midiNote: noteToMidi(hap?.value?.note ?? hap?.value?.n),
       s: hap?.value?.s ?? null,
       color: hap?.value?.color ?? null,
-      loc: hap?.context?.locations ?? hap?.context?.loc ?? null,
+      loc,
       epoch: this.epoch,
     }
 
