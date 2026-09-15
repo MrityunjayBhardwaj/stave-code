@@ -59,6 +59,31 @@ describe('#1599 — what the engine plays, and what the analysis says about it',
     expect(a.repeatCycles).toBe(12)
   }, 60_000)
 
+  // #1617 — a continuous signal is sampled on the same beat each pass and still differs in
+  // its last bits, so identity has to round. Each arm checks the engine's own cycles first.
+  it('a 16-bar sine sweep beside a 4-bar line repeats at 16, not the 4 the line alone gives', async () => {
+    const patterns = await evaluate({ d1: 's("bd*8").cutoff(sine.slow(16).range(200, 2000))', d2: 's("<hh cp sd rim>")' })
+    const collect = collectorFor(patterns)
+    const cutoffsAt = (c: number) => collect(c, c + 1).filter((e) => e.trackId === 'd1').map((e) => Math.round((e.params?.cutoff as number) * 1e6))
+    expect(cutoffsAt(16), 'the sweep comes back at 16').toEqual(cutoffsAt(0))
+    expect(cutoffsAt(4), 'and not at 4').not.toEqual(cutoffsAt(0))
+
+    const a = await analyzeSong(null, { collectFn: collect, yieldFn: async () => {} })
+    expect(a.repeatCycles).toBe(16)
+  }, 60_000)
+
+  it('a 1-bar sine beside the same line repeats with the line, at 4', async () => {
+    const patterns = await evaluate({ d1: 's("bd*8").cutoff(sine.range(200, 2000))', d2: 's("<hh cp sd rim>")' })
+    const a = await analyzeSong(null, { collectFn: collectorFor(patterns), yieldFn: async () => {} })
+    expect(a.repeatCycles).toBe(4)
+  }, 60_000)
+
+  it('noise beside the same line still has no whole-song repeat', async () => {
+    const patterns = await evaluate({ d1: 's("bd*8").cutoff(perlin.slow(16).range(200, 2000))', d2: 's("<hh cp sd rim>")' })
+    const a = await analyzeSong(null, { collectFn: collectorFor(patterns), yieldFn: async () => {} })
+    expect(a.repeatCycles).toBeNull()
+  }, 60_000)
+
   it('the control: the same tracks with a 2-step gain repeat where they view, at 4', async () => {
     const patterns = await evaluate({ d1: 's("<bd sd cp hh>")', d2: 's("hh*4").gain("<0.2 0.8>")' })
     const a = await analyzeSong(null, { collectFn: collectorFor(patterns), yieldFn: async () => {} })

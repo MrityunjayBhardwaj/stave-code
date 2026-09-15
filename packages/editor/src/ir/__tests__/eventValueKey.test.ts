@@ -56,6 +56,12 @@ describe('the axes the three-field token was blind to', () => {
     )
   })
 
+  it('still separates values several steps apart — rounding merges noise, not music (#1617)', () => {
+    // Ten steps of the 1e-6 grid, so the arm is not balanced on a single grid line.
+    expect(eventValueKey(base({ params: { cutoff: 1000 } }))).not.toBe(eventValueKey(base({ params: { cutoff: 1000.00001 } })))
+    expect(eventValueKey(base({ gain: 0.5 }))).not.toBe(eventValueKey(base({ gain: 0.50001 })))
+  })
+
   it('still separates two notes — the axis that already worked', () => {
     expect(eventValueKey(base({ note: 'c4' }))).not.toBe(eventValueKey(base({ note: 'e4' })))
   })
@@ -78,6 +84,20 @@ describe('what must stay the SAME, or every cycle differs and no period is ever 
         base({ s: 'bd', loc: [{ start: 90, end: 94 }], trackId: 'd2', irNodeId: 'b', armIndex: 3 }),
       ),
     )
+  })
+
+  // #1617 — a continuous signal sampled on the same beat in two passes differs in its last
+  // bits; a key that kept them made every cycle of a swept track differ.
+  it('two values that differ only by float noise agree, in a param, a gain and a nested array', () => {
+    expect(0.1 + 0.2).not.toBe(0.3) // the noise is real
+    expect(eventValueKey(base({ params: { cutoff: 0.1 + 0.2 } }))).toBe(eventValueKey(base({ params: { cutoff: 0.3 } })))
+    expect(eventValueKey(base({ gain: 0.1 + 0.2 }))).toBe(eventValueKey(base({ gain: 0.3 })))
+    expect(eventValueKey(base({ params: { x: ['bd', 0.1 + 0.2] } }))).toBe(eventValueKey(base({ params: { x: ['bd', 0.3] } })))
+  })
+
+  it('near zero, the step is absolute: a value a few bits off zero agrees with zero, and -0 with 0', () => {
+    expect(eventValueKey(base({ params: { pan: 1.2246467991473532e-16 } }))).toBe(eventValueKey(base({ params: { pan: 0 } })))
+    expect(eventValueKey(base({ params: { pan: -0 } }))).toBe(eventValueKey(base({ params: { pan: 0 } })))
   })
 
   it('param order does not decide identity', () => {

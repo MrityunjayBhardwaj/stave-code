@@ -24,9 +24,13 @@
  * The sixteen are ONE mechanism, attributed per field: an LFO-modulated
  * continuous control makes every cycle differ, so no period exists. `cutoff` is
  * implicated in 11 of the 16, then `resonance`, `gain`, `pan`, `delaytime`,
- * `room`. That is the `.gain(sine)` hazard the invariant named, and it is the
- * TRUE answer for those documents — a filter sweeping over 40 cycles genuinely
- * does not repeat. What it exposes is a display question the corpus already had
+ * `room`. That is the `.gain(sine)` hazard the invariant named, and it was taken
+ * to be the TRUE answer for those documents — a filter sweeping over 40 cycles
+ * does not repeat. ⚠ CORRECTED BY #1617: true for noise, NOT for a repeating
+ * LFO. The key compared control values as raw floats, and a `sine` sampled on the
+ * same beat in two passes differs in its last bits, so a sweep that DOES come
+ * back read as one that never did. Rounded to 1e-6, `sine.slow(16)` repeats at 16
+ * through the engine, as it sounds. What it exposes is a display question the corpus already had
  * before this change: **53 of 142 documents were already drawn on a 256-cycle
  * timeline, and this makes it 69.** How an aperiodic song should be displayed is
  * its own issue; it is not a reason to keep asking a narrower identity question.
@@ -85,6 +89,25 @@
  * the document does not support, and #1105 already made the aperiodic display an
  * honest one. Both clauses test whether the ANSWER is plausible, never which
  * lanes answered — the family the abstention sibling measured and refused.
+ *
+ * ── AND A FIFTH (#1617): THE VALUE KEY ROUNDS, 8 ROWS MOVE ───────────────────
+ * `eventValueKey` now rounds every number to 1e-6. Nothing entered or left the cap
+ * (37 → 37) and period 1 is unmoved (16 → 16); whole-song repeats go 79 null → 75.
+ * Every mover, attributed per lane against the key at HEAD:
+ *  - a whole-song repeat appears, the span unchanged: `0/-9BuEqUq3uzT` 2,
+ *    `250/1JE7WbXt0B2t` 16, `500/3JxiZ8teItUk` 60 — each confirmed by the engine's
+ *    own cycles;
+ *  - the span lengthens to a lane float noise had hidden (#488's longest-lane rule):
+ *    `0/-1poFQwaznQK` 32→48, `500/38eh7DdPyYBP` 48→60, and `250/0zQIrn0Y36Iu` 23→60
+ *    (its chord track: 4 chords under a 5-step and a 3-step filter sweep, lcm 60 —
+ *    found only once the step is 1e-6, not 1e-9);
+ *  - the span is now found BEFORE the #1465 fold is reached, because a lane loops:
+ *    `500/3OH2P5x4J4fc` 96→32, with the whole-song repeat 96 now stated rather than
+ *    null; and `250/15ZGIgs3OLQr` 75→6. That last one is the judgment call: one lane
+ *    loops at 6 and eight never repeat within 128 cycles even rounded, so they abstain
+ *    at the cap (#1104) and 6 answers, where the fold used to give 75. Neither is a
+ *    whole-song repeat; the rules as shipped put abstention ahead of the fold, and the
+ *    fix changes no rule's order — it only stops a lane reading as never looping.
  *
  * ── HOW TO RE-BASELINE, deliberately awkward ─────────────────────────────────
  *   UPDATE_SONG_PERIOD_BASELINE=1 pnpm --filter @stave/app exec vitest run \
@@ -170,8 +193,8 @@ describe('Song display period — corpus baseline (#1102)', () => {
         // three of the seven are periods #1104 recovered, given back because a span
         // excluding a track is a loop claim the document does not support, and
         // #1105 already made the aperiodic display an honest one.
-        `  aperiodic-at-cap ${evaluated.filter((v) => v.reachedCap).length}   (53 pre-#1102 → 69 post-#1102 → 49 post-#1104 → 56 post-#1107 → 37 post-#1465)`,
-        `  period 1          ${evaluated.filter((v) => v.period === 1).length}   (21 pre-#1102 → 19 post-#1102, unmoved by #1104)`,
+        `  aperiodic-at-cap ${evaluated.filter((v) => v.reachedCap).length}   (53 pre-#1102 → 69 post-#1102 → 49 post-#1104 → 56 post-#1107 → 37 post-#1465 → 37 post-#1617)`,
+        `  period 1          ${evaluated.filter((v) => v.period === 1).length}   (21 pre-#1102 → 19 post-#1102, unmoved by #1104 and #1617)`,
         // A document that produced NO events is not an aperiodic document — it is
         // a document the sweep saw nothing of, and `analyzeSong` short-circuits it
         // to a zero-cycle span. Reported separately so it can never be read as
