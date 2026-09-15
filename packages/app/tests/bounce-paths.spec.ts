@@ -570,6 +570,183 @@ test.describe('the three audio-bounce paths', () => {
   })
 })
 
+type RenderWhilePlayingOutcome = {
+  ok: boolean
+  error?: string
+  renderWav?: string
+  liveWav?: string
+  renderStartMs?: number
+  renderMs?: number
+  startedBefore?: boolean
+  startedAfter?: boolean
+  cycleBefore?: number
+  cycleAfter?: number
+  cps?: number
+  renderingAtMs?: number
+  pressedAtMs?: number
+}
+
+function callRenderWhilePlaying(
+  page: Page,
+  liveCode: string,
+  renderCode: string,
+  secs: number,
+  playing: boolean,
+  midRender?: 'stop' | 'play',
+): Promise<RenderWhilePlayingOutcome> {
+  return page.evaluate(
+    ([l, r, s, p, m]) =>
+      (
+        window as unknown as {
+          __staveBounceProbe: {
+            renderWhilePlaying(
+              l: string,
+              r: string,
+              s: number,
+              p: boolean,
+              m?: 'stop' | 'play',
+            ): Promise<RenderWhilePlayingOutcome>
+          }
+        }
+      ).__staveBounceProbe.renderWhilePlaying(
+        l as string,
+        r as string,
+        s as number,
+        p as boolean,
+        (m ?? undefined) as 'stop' | 'play' | undefined,
+      ),
+    [liveCode, renderCode, secs, playing, midRender ?? null] as const,
+  )
+}
+
+/** Dense and high, so live notes that leak into a render are easy to see. */
+const LIVE_WHILE_RENDERING = 'note("c6*16").s("square").gain(0.3)'
+
+/**
+ * A render long enough to SPAN SCHEDULER TICKS. The live clock ticks every
+ * 100ms (`zyklus.mjs:8`), so a render shorter than that can fall between two
+ * ticks and trigger nothing live at all: the first measurement rendered 4s of
+ * this in 15-37ms and saw no leak, which proved only that the window was too
+ * short. Long songs and first-time sample loads are what make it wide.
+ */
+const LONG_RENDER = 'note("c3*16").s("sine")'
+const LONG_RENDER_SECS = 60
+
+/**
+ * Largest per-sample difference between two renders. An offline render of a
+ * noise-free pattern is deterministic, so the same code rendered with the
+ * transport stopped is an exact control: any difference came from outside it.
+ */
+function maxSampleDiff(a: Float64Array, b: Float64Array): number {
+  if (a.length !== b.length) return Infinity
+  let d = 0
+  for (let i = 0; i < a.length; i++) d = Math.max(d, Math.abs(a[i] - b[i]))
+  return d
+}
+
+/** RMS of `mono` between two times, in ms. */
+function rmsBetween(mono: Float64Array, sampleRate: number, fromMs: number, toMs: number): number {
+  const a = Math.max(0, Math.floor((fromMs / 1000) * sampleRate))
+  const b = Math.min(mono.length, Math.floor((toMs / 1000) * sampleRate))
+  return rms(mono.subarray(a, Math.max(a, b)))
+}
+
+function describeRenderWhilePlaying(tag: string, o: RenderWhilePlayingOutcome): string {
+  if (!o.ok) return `[#1627 ${tag}] error=${o.error}`
+  const r = readWav(o.renderWav!)
+  let live = 'no take'
+  if (o.liveWav) {
+    const l = readWav(o.liveWav)
+    const s = o.renderStartMs!
+    const e = s + o.renderMs!
+    live =
+      `live rms before=${rmsBetween(l.mono, l.sampleRate, s - 400, s).toFixed(4)} ` +
+      `during=${rmsBetween(l.mono, l.sampleRate, s, e).toFixed(4)} ` +
+      `after=${rmsBetween(l.mono, l.sampleRate, e + 200, e + 600).toFixed(4)}`
+  }
+  return (
+    `[#1627 ${tag}] renderMs=${o.renderMs!.toFixed(0)} renderingAtMs=${o.renderingAtMs?.toFixed(0)} ` +
+    `pressedAtMs=${o.pressedAtMs?.toFixed(0)} startedBefore=${o.startedBefore} ` +
+    `startedAfter=${o.startedAfter} cycles ${o.cycleBefore?.toFixed(3)}→${o.cycleAfter?.toFixed(3)} ` +
+    `cps=${o.cps} render onsets=${onsetCount(r.mono, r.sampleRate)} rms=${rms(r.mono).toFixed(4)} ${live}`
+  )
+}
+
+test.describe('#1627 — an offline render while the transport plays', () => {
+  test('keeps the live notes out of the rendered file', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const stopped = await callRenderWhilePlaying(page, LIVE_WHILE_RENDERING, LONG_RENDER, LONG_RENDER_SECS, false)
+    const playing = await callRenderWhilePlaying(page, LIVE_WHILE_RENDERING, LONG_RENDER, LONG_RENDER_SECS, true)
+    console.log(describeRenderWhilePlaying('stopped', stopped))
+    console.log(describeRenderWhilePlaying('playing', playing))
+    if (!stopped.ok || !playing.ok) {
+      throw new Error(`probe failed: ${stopped.error ?? ''} ${playing.error ?? ''}`)
+    }
+    const diff = maxSampleDiff(readWav(playing.renderWav!).mono, readWav(stopped.renderWav!).mono)
+    console.log(`[#1627 leak] maxSampleDiff playing vs stopped = ${diff}`)
+    // The render must not span fewer ticks than it takes to leak, or this arm
+    // is green for the reason the first measurement was (see LONG_RENDER).
+    if ((playing.renderMs ?? 0) < 300) throw new Error(`render too short to span ticks: ${playing.renderMs}ms`)
+    expect(diff).toBeLessThan(1e-4)
+  })
+
+  test('leaves a playing transport playing', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const out = await callRenderWhilePlaying(page, LIVE_WHILE_RENDERING, LONG_RENDER, LONG_RENDER_SECS, true)
+    console.log(describeRenderWhilePlaying('resume', out))
+    expect({ ok: out.ok, before: out.startedBefore, after: out.startedAfter }).toEqual({
+      ok: true,
+      before: true,
+      after: true,
+    })
+  })
+
+  test('a Stop pressed during the render is not undone when the render ends', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const out = await callRenderWhilePlaying(page, LIVE_WHILE_RENDERING, LONG_RENDER, LONG_RENDER_SECS, true, 'stop')
+    console.log(describeRenderWhilePlaying('stop-mid-render', out))
+    expect({ ok: out.ok, before: out.startedBefore, pressed: out.pressedAtMs !== undefined, after: out.startedAfter }).toEqual({
+      ok: true,
+      before: true,
+      pressed: true,
+      after: false,
+    })
+  })
+
+  test('a Play pressed during the render starts after it, and none of it lands in the file', async ({
+    page,
+  }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const control = await callRenderWhilePlaying(page, LIVE_WHILE_RENDERING, LONG_RENDER, LONG_RENDER_SECS, false)
+    const out = await callRenderWhilePlaying(page, LIVE_WHILE_RENDERING, LONG_RENDER, LONG_RENDER_SECS, false, 'play')
+    console.log(describeRenderWhilePlaying('play-mid-render', out))
+    if (!control.ok || !out.ok) throw new Error(`probe failed: ${control.error ?? ''} ${out.error ?? ''}`)
+    // Pressed any later than the start of rendering, an undeferred Play can
+    // leak nothing (its notes land in audio already rendered) and this arm
+    // would be green for that reason instead of the deferral's.
+    if (out.pressedAtMs === undefined) throw new Error('Play was never pressed inside the render')
+    const diff = maxSampleDiff(readWav(out.renderWav!).mono, readWav(control.renderWav!).mono)
+    console.log(`[#1627 play-mid-render] maxSampleDiff vs stopped = ${diff}`)
+    expect({ clean: diff < 1e-4, playingAfter: out.startedAfter }).toEqual({ clean: true, playingAfter: true })
+  })
+
+  test('does not start a stopped transport', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const out = await callRenderWhilePlaying(page, LIVE_WHILE_RENDERING, LONG_RENDER, LONG_RENDER_SECS, false)
+    console.log(describeRenderWhilePlaying('stays-stopped', out))
+    expect({ ok: out.ok, before: out.startedBefore, after: out.startedAfter }).toEqual({
+      ok: true,
+      before: false,
+      after: false,
+    })
+  })
+})
+
 /**
  * #1356 — how long does the graph keep sounding AFTER the transport stops?
  *

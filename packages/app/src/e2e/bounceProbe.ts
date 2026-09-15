@@ -68,6 +68,54 @@ export interface BounceProbe {
    * the way a caller would have to.
    */
   stems(stems: Record<string, string>, secs: number): Promise<StemsOutcome>;
+  /**
+   * #1627 — evaluate `liveCode`, optionally play it, then render `renderCode`
+   * offline WHILE the transport is in that state. A live take is recorded
+   * across the render when playing, so an arm can see whether the speakers
+   * dropped out and whether live notes reached the rendered file. Transport
+   * state and cycle position are read straight off the scheduler on both sides
+   * of the render: they are the facts the fix has to preserve.
+   */
+  renderWhilePlaying(
+    liveCode: string,
+    renderCode: string,
+    secs: number,
+    playing: boolean,
+    /**
+     * Press Stop or Play INSIDE the render's borrow window: at the moment it
+     * calls `startRendering()`, after every note has been scheduled onto the
+     * offline context and before a sample is rendered. A press any later can be
+     * clean for the wrong reason: a live note is scheduled at the LIVE clock's
+     * time (`webaudio.mjs:109`), and once the render has run past that time the
+     * note lands in audio already rendered and is dropped, so an undeferred Play
+     * 500ms in leaked nothing.
+     */
+    midRender?: "stop" | "play",
+  ): Promise<RenderWhilePlayingOutcome>;
+}
+
+/** #1627 — one offline render taken while the transport was in a known state. */
+export interface RenderWhilePlayingOutcome {
+  ok: boolean;
+  error?: string;
+  /** base64 WAV of the offline render. */
+  renderWav?: string;
+  /** base64 WAV of the live output recorded across the render, when playing. */
+  liveWav?: string;
+  /** When the render started, in ms after the live take started. */
+  renderStartMs?: number;
+  /** How long the render took, wall clock. */
+  renderMs?: number;
+  startedBefore?: boolean;
+  startedAfter?: boolean;
+  /** `scheduler.now()` just before and just after the render, in cycles. */
+  cycleBefore?: number;
+  cycleAfter?: number;
+  cps?: number;
+  /** When the render called `startRendering()`, in ms after it was asked for. */
+  renderingAtMs?: number;
+  /** When `midRender` was pressed, in ms after the render was asked for. */
+  pressedAtMs?: number;
 }
 
 /** #1409 — what `renderStems` returned, stem by stem. */
@@ -268,6 +316,76 @@ export function installBounceProbe(): () => void {
         return { ok: true, progress, stems: rows };
       } catch (err) {
         return { ok: false, error: String(err), progress };
+      }
+    },
+
+    renderWhilePlaying: async (liveCode, renderCode, secs, playing, midRender) => {
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      let e: StrudelEngine | null = null;
+      const offlineProto = OfflineAudioContext.prototype;
+      const realStartRendering = offlineProto.startRendering;
+      try {
+        e = await booted();
+        const engine = e;
+        const res = await e.evaluate(liveCode);
+        if (res?.error) throw res.error;
+        // The scheduler is private to the engine; the probe reads it only to
+        // measure what the render did to the transport.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sched: any = (e as any).repl?.scheduler;
+        if (playing) {
+          e.play();
+          // Let playback establish, so the take has live audio on both sides.
+          await sleep(1500);
+        }
+        // Long enough to cover a fast render with live audio either side of it.
+        const liveTake = playing ? e.record(4) : null;
+        const takeStart = performance.now();
+        await sleep(500);
+        const startedBefore = Boolean(sched?.started);
+        const cycleBefore = sched?.now?.();
+        let renderingAtMs: number | undefined;
+        let pressedAtMs: number | undefined;
+        const t0 = performance.now();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (offlineProto as any).startRendering = function (this: OfflineAudioContext) {
+          renderingAtMs ??= performance.now() - t0;
+          if (midRender && pressedAtMs === undefined) {
+            pressedAtMs = performance.now() - t0;
+            if (midRender === "stop") engine.stop();
+            else engine.play();
+          }
+          return realStartRendering.call(this);
+        };
+        const rendering = e.renderOfflineReport(renderCode, secs);
+        const { blob } = await rendering;
+        const t1 = performance.now();
+        const startedAfter = Boolean(sched?.started);
+        const cycleAfter = sched?.now?.();
+        const live = liveTake ? await liveTake : null;
+        return {
+          ok: true,
+          renderWav: await toBase64(blob),
+          liveWav: live ? await toBase64(live) : undefined,
+          renderStartMs: t0 - takeStart,
+          renderMs: t1 - t0,
+          startedBefore,
+          startedAfter,
+          cycleBefore,
+          cycleAfter,
+          cps: sched?.cps,
+          renderingAtMs,
+          pressedAtMs,
+        };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      } finally {
+        offlineProto.startRendering = realStartRendering;
+        try {
+          e?.stop();
+        } catch {
+          /* stop() on an engine that never started is not a failure */
+        }
       }
     },
 
