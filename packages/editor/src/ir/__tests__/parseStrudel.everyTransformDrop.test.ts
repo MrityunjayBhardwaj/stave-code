@@ -15,8 +15,8 @@
  * that catches classification drift is structurally blind here. So the gate
  * asserts on STRUCTURE (the transform node is present and distinct from the
  * body) and on ROUND-TRIP (the source text survives), never on a count. Both
- * the headless `parseStrudel` and the staged pipeline the Timeline actually
- * runs are checked, because `parseTransform` is shared by both.
+ * the plain `parseStrudel` and its recording path (the Inspector's views,
+ * #1387) are checked, so recording cannot change what `parseTransform` builds.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { evalScope, evaluate } from '@strudel/core/evaluate.mjs'
@@ -25,23 +25,11 @@ import { mini, miniAllStrings } from '@strudel/mini/mini.mjs'
 import { parseStrudel } from '../parseStrudel'
 import { toStrudel } from '../toStrudel'
 import { IR, type PatternIR } from '../PatternIR'
-import {
-  runRawStage,
-  runMiniExpandedStage,
-  runChainAppliedStage,
-  runFinalStage,
-} from '../parseStrudelStages'
-import { runPasses, type Pass } from '../passes'
+import { parseStrudelStages } from '../parseStrudelStages'
 
-const PASSES: readonly Pass<PatternIR>[] = [
-  { name: 'RAW', run: runRawStage },
-  { name: 'MINI-EXPANDED', run: runMiniExpandedStage },
-  { name: 'CHAIN-APPLIED', run: runChainAppliedStage },
-  { name: 'Parsed', run: runFinalStage },
-]
 function staged(code: string): PatternIR {
-  const passes = runPasses(IR.code(code), PASSES)
-  return passes[passes.length - 1].ir
+  const stages = parseStrudelStages(code)
+  return stages[stages.length - 1].ir
 }
 
 type EveryNode = { tag: 'Every'; n: number; body: PatternIR; default_?: PatternIR }
@@ -96,9 +84,9 @@ describe('every() transform is wrapped, never dropped (#963)', () => {
       expect(toStrudel(parseStrudel(code))).toContain(keeps)
     })
 
-    it(`staged — ${code} keeps a distinct transform node on the Timeline path`, () => {
+    it(`staged — ${code} keeps a distinct transform node on the recording path`, () => {
       const ev = findEvery(staged(code))
-      expect(ev, 'an Every node exists on the staged path').not.toBeNull()
+      expect(ev, 'an Every node exists on the recording path').not.toBeNull()
       expect(transformIsDistinct(ev)).toBe(true)
       expect(ev!.body.tag === 'Play').toBe(false)
     })

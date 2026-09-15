@@ -106,16 +106,13 @@ export { patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './ser
 export { parseMini } from './parseMini'
 export { parseStrudel, classifyLiteralRhs } from './parseStrudel'
 
-// Phase 19-07 (#79) — staged parser pipeline. Each stage helper runs
-// PatternIR → PatternIR; STRUDEL_PASSES wires them as named passes so
-// the IR Inspector renders one tab per stage. End-to-end FINAL output
-// is byte-identical to parseStrudel(code).
-export {
-  runRawStage,
-  runMiniExpandedStage,
-  runChainAppliedStage,
-  runFinalStage,
-} from './parseStrudelStages'
+// #1387 — the IR Inspector's intermediate views (RAW, MINI-EXPANDED,
+// CHAIN-APPLIED), derived from parseStrudel's own record of each top-level
+// track body. Replaces the four hand-kept `run*Stage` passes (#79).
+export { parseStrudelStages } from './parseStrudelStages'
+export type { NamedStage } from './parseStrudelStages'
+export { parseStrudelRecorded } from './parseStrudel'
+export type { TopLevelBody } from './parseStrudel'
 
 // Pass runner — runtime-neutral IR→IR transform machinery
 export type { Pass } from './passes'

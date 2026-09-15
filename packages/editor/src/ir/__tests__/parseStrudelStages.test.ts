@@ -1,40 +1,25 @@
 /**
- * parseStrudelStages — per-stage round-trip tests (PR-A scope).
+ * The IR Inspector's intermediate views (#1387), and the parse they come from.
  *
- * Phase 19-07 (#79). Per CONTEXT D-06, BOTH end-to-end parity AND
- * per-stage round-trip invariants are required. PR-A scope covers:
+ * `parseStrudelStages` lays `parseStrudelRecorded`'s record of each top-level
+ * track body over the parser's final tree. These arms pin:
  *
- *   T-05.a — RAW: every Code lift's loc matches extractTracks offsets.
- *   T-05.b — MINI-EXPANDED: parseRoot output preserves loc; root nodes
- *            carry unresolvedChain metadata when chain non-empty;
- *            root-level stack(...) preserves userMethod === 'stack'.
- *   T-05.c — Regression sentinel (REV-6): for a 6-fixture set, the
- *            4-stage pipeline FINAL output is byte-equal to today's
- *            parseStrudel(code). Plus assertNoStageMeta against
- *            CHAIN-APPLIED (passes[2]) and FINAL (passes[3]) outputs
- *            so D-06.c orphan-metadata is caught in PR-A, not deferred.
- *   T-05.d — CHAIN-APPLIED → FINAL: identity (FINAL is identity stage).
+ *   - RAW shows, per track, the exact source text its body was parsed from;
+ *   - MINI-EXPANDED shows the root the parser built before applying the chain;
+ *   - every view keeps the parser's own Track wrappers;
+ *   - recording changes nothing: the `pipeline` side of every parity arm is the
+ *     recording path, and the other side is plain `parseStrudel`.
  *
- * `assertNoStageMeta` is exported so PR-B's T-10.c can reuse it without
- * redefinition (REV-6).
+ * The parity arms that predate #1387 were written against the hand-kept staged
+ * pipeline it replaced. Their fixtures still run, now through the recording path.
  */
 
 import { describe, it, expect } from 'vitest'
-import { parseStrudel } from '../parseStrudel'
-import { IR, type PatternIR } from '../PatternIR'
-import {
-  runRawStage,
-  runMiniExpandedStage,
-  runChainAppliedStage,
-  runFinalStage,
-} from '../parseStrudelStages'
-import { runPasses } from '../passes'
+import { parseStrudel, parseStrudelRecorded, buildBindingMap, parseExpression } from '../parseStrudel'
+import type { PatternIR } from '../PatternIR'
+import { parseStrudelStages } from '../parseStrudelStages'
 import { unwrapD1 } from './helpers/unwrapD1'
-// #1375 — PASSES / pipeline / stripStageMeta moved to the shared helper so the
-// corpus sweep asserts the contract through the SAME comparison this sentinel
-// uses. Two copies of a parity check can drift apart and both stay green, which
-// is the defect class the sweep exists to measure.
-import { PASSES, pipeline, stripStageMeta } from './helpers/stagesParity'
+import { pipeline, stripStageMeta } from './helpers/stagesParity'
 
 // ---------------------------------------------------------------------------
 // Helpers — exported for PR-B's T-10.c reuse (REV-6).
@@ -229,19 +214,15 @@ describe('MINI-EXPANDED — a commented track keeps its name and its range (#138
     expect(stripStageMeta(pipeline('// just a comment')).loc).toBeUndefined()
   })
 
-  it('PINNED: an EMPTY document diverges, and predates this fix', () => {
-    // Found while choosing a control, and deliberately not fixed here.
+  it('an EMPTY document agrees with parseStrudel — a divergence pinned here until #1387', () => {
     // `parseStrudel('')` returns a bare `IR.pure()` from its own top guard,
-    // with NO synthetic Track wrapper; the staged pipeline wraps every
-    // non-multi-track shape in `Track('d1', …)` at CHAIN-APPLIED. Verified
-    // identical before and after this change by stashing it.
-    //
-    // A real breach of the byte-identity contract, with no reachable
-    // consequence: no corpus document is empty, and an empty editor produces
-    // no haps either way. Pinned rather than left silent so it cannot drift
-    // in either direction unnoticed.
+    // with NO synthetic Track wrapper. The hand-kept staged pipeline wrapped
+    // every non-multi-track shape in `Track('d1', …)` at CHAIN-APPLIED, so this
+    // arm used to pin the two apart (`Pure` vs `Track`) as a known breach with
+    // no reachable consequence. The views are derived from the parse now, so
+    // there is nothing left to disagree: both sides are `Pure`.
     expect(stripStageMeta(parseStrudel('')).tag).toBe('Pure')
-    expect(stripStageMeta(pipeline('')).tag).toBe('Track')
+    expect(stripStageMeta(pipeline('')).tag).toBe('Pure')
   })
 })
 
@@ -344,116 +325,143 @@ describe('RAW — a bare document with several top-level statements (#1376)', ()
 })
 
 // ---------------------------------------------------------------------------
-// T-05.a — RAW: per-track Code lifts preserve loc (PV25, P39)
+// T-05.a — RAW: each track body is the source it was parsed from (#1387)
 // ---------------------------------------------------------------------------
 
-describe('parseStrudel stages — RAW (T-05.a)', () => {
-  it('zero-track (no $: prefix) wraps from trim-start to length', () => {
+/** The body of each top-level Track in a view, in the order the tree holds them. */
+function trackBodies(ir: PatternIR): PatternIR[] {
+  if (ir.tag === 'Track') return [ir.body]
+  if (ir.tag === 'Stack' && ir.tracks.every((t) => t.tag === 'Track')) {
+    return ir.tracks.map((t) => (t as Extract<PatternIR, { tag: 'Track' }>).body)
+  }
+  return []
+}
+
+/** A view's top-level Track wrappers without their bodies — ids, loc, muted. */
+function wrappers(ir: PatternIR): unknown[] {
+  const tracks = ir.tag === 'Track' ? [ir] : ir.tag === 'Stack' ? ir.tracks : []
+  return tracks.map((t) => ({ ...t, body: undefined }))
+}
+
+type CodeNode = Extract<PatternIR, { tag: 'Code' }>
+const RAW = 0
+const MINI = 1
+const CHAIN = 2
+
+describe('parseStrudel stages — RAW (T-05.a, #1387)', () => {
+  it('a bare pattern: one Code body, the exact source slice it names', () => {
     const code = '   note("c")\n'
-    const seed = IR.code(code)
-    const raw = runRawStage(seed)
-    expect(raw.tag).toBe('Code')
-    if (raw.tag !== 'Code') throw new Error('unreachable')
-    expect(raw.loc?.[0]?.start).toBe(3) // first non-WS char
-    expect(raw.loc?.[0]?.end).toBe(code.length)
+    const bodies = trackBodies(parseStrudelStages(code)[RAW].ir)
+    expect(bodies.map((b) => b.tag)).toEqual(['Code'])
+    const body = bodies[0] as CodeNode
+    expect(body.code.trim()).toBe('note("c")')
+    const loc = body.loc![0]
+    expect(code.slice(loc.start, loc.end)).toBe(body.code)
   })
 
-  it('single track (no $:) covers the trimmed expr', () => {
-    const code = 'note("c d e f")'
-    const seed = IR.code(code)
-    const raw = runRawStage(seed)
-    expect(raw.tag).toBe('Code')
-    if (raw.tag !== 'Code') throw new Error('unreachable')
-    expect(raw.loc?.[0]?.start).toBe(0)
-    expect(raw.loc?.[0]?.end).toBe(code.length)
-  })
-
-  it('multi-track $: wraps Code lifts in outer Stack with synthetic userMethod undefined', () => {
+  it('multi-track $: one Code body per track, each at its $: body offset', () => {
     const code = '$: note("c d")\n$: s("bd hh")'
-    const seed = IR.code(code)
-    const raw = runRawStage(seed)
-    expect(raw.tag).toBe('Stack')
-    if (raw.tag !== 'Stack') throw new Error('unreachable')
-    // Outer Stack synthetic — userMethod must be undefined (RAW marker).
-    expect(raw.userMethod).toBeUndefined()
-    expect(raw.tracks).toHaveLength(2)
-    expect(raw.loc?.[0]?.start).toBe(0)
-    expect(raw.loc?.[0]?.end).toBe(code.length)
+    const bodies = trackBodies(parseStrudelStages(code)[RAW].ir)
+    expect(bodies.map((b) => b.tag)).toEqual(['Code', 'Code'])
+    const [b0, b1] = bodies as CodeNode[]
+    // '$: ' is 3 chars, so the first body starts at 3; the second `$:` is at 15.
+    expect([b0.loc?.[0]?.start, b0.code]).toEqual([3, 'note("c d")\n'])
+    expect([b1.loc?.[0]?.start, b1.code]).toEqual([18, 's("bd hh")'])
+    for (const b of [b0, b1]) expect(code.slice(b.loc![0].start, b.loc![0].end)).toBe(b.code)
+  })
 
-    // Each Code lift's loc matches its $: bodyStart offset.
-    // First track: '$: ' is 3 chars, body starts at offset 3.
-    const t0 = raw.tracks[0]
-    expect(t0.tag).toBe('Code')
-    if (t0.tag !== 'Code') throw new Error('unreachable')
-    expect(t0.loc?.[0]?.start).toBe(3)
-    expect(t0.code).toBe('note("c d")\n')
-    // The slice end is the next $: dollarStart (or code.length for last).
-    expect(t0.loc?.[0]?.end).toBe(t0.loc![0].start + t0.code.length)
+  it('every view keeps the parser\'s own Track wrappers', () => {
+    for (const code of REGRESSION_FIXTURES) {
+      const [raw, mini, chain] = parseStrudelStages(code)
+      expect(wrappers(raw.ir), code).toEqual(wrappers(chain.ir))
+      expect(wrappers(mini.ir), code).toEqual(wrappers(chain.ir))
+    }
+  })
 
-    const t1 = raw.tracks[1]
-    expect(t1.tag).toBe('Code')
-    if (t1.tag !== 'Code') throw new Error('unreachable')
-    // Second $:  dollarStart = 'note("c d")\n'.length + '$: '.length = 12 + 3
-    // Wait: code = '$: note("c d")\n$: s("bd hh")', the second $ is at index 15
-    // and bodyStart = 15 + 3 = 18.
-    expect(t1.loc?.[0]?.start).toBe(18)
-    expect(t1.code).toBe('s("bd hh")')
-    expect(t1.loc?.[0]?.end).toBe(t1.loc![0].start + t1.code.length)
+  it('records exactly one body per top-level track', () => {
+    for (const code of [...REGRESSION_FIXTURES, ...TIER4_FIXTURES.map((f) => f.code)]) {
+      const { ir, bodies } = parseStrudelRecorded(code)
+      expect(bodies.length, code).toBe(trackBodies(ir).length)
+    }
+  })
+
+  it('a body parsed and then discarded leaves no record behind (the binding-map fall-through)', () => {
+    const code = 'const a = s("bd")\nfoo(a)'
+    // Preconditions, so the fixture cannot quietly stop taking the branch it is
+    // here for: the binding map accepts the document, and its final expression
+    // parses opaque — which is when the parser drops that parse and starts over.
+    const bound = buildBindingMap(code, 0)
+    expect(bound, 'precondition: the binding map accepts the document').not.toBeNull()
+    const inner = parseExpression(bound!.finalExpr, bound!.finalOffset, undefined, bound!.bindings)
+    expect(
+      inner.tag === 'Code' && (inner as { via?: unknown }).via === undefined,
+      'precondition: its final expression parses opaque',
+    ).toBe(true)
+
+    const { ir, bodies } = parseStrudelRecorded(code)
+    expect(bodies.length).toBe(trackBodies(ir).length)
+    // With the discarded body still recorded, the counts would disagree and RAW
+    // would fall back to showing the final tree, whose body carries no loc.
+    const [body] = trackBodies(parseStrudelStages(code)[RAW].ir)
+    expect(body.tag).toBe('Code')
+    expect((body as CodeNode).loc, 'RAW shows the recorded slice, not the final tree').toBeDefined()
+  })
+
+  it('a commented track keeps its slot in the record, with an empty body', () => {
+    // ⚠ The corpus sweep also catches a commented track going unrecorded, but
+    // it skips on a checkout without `.bakery-runs/`. This arm is what holds it
+    // there: a missing body shifts every later track onto the wrong body.
+    const code = 'drums: s("bd")\n// PR: s("hh")\nhats: s("cp")'
+    const { ir, bodies } = parseStrudelRecorded(code)
+    const finalBodies = trackBodies(ir)
+    // Precondition: the parser really keeps the commented track as a Track.
+    expect(finalBodies.map((b) => b.tag), 'precondition: three tracks, the middle one empty').toEqual([
+      expect.any(String),
+      'Pure',
+      expect.any(String),
+    ])
+    expect(bodies).toHaveLength(3)
+    const raw = trackBodies(parseStrudelStages(code)[RAW].ir)
+    expect(raw.map((b) => b.tag)).toEqual(['Code', 'Pure', 'Code'])
+    expect((raw[2] as CodeNode).code.trim()).toBe('s("cp")')
+  })
+
+  it('an empty document has no tracks, records nothing, and shows one tree in every view', () => {
+    expect(parseStrudelRecorded('').bodies).toEqual([])
+    expect(parseStrudelStages('').map((s) => s.ir)).toEqual([{ tag: 'Pure' }, { tag: 'Pure' }, { tag: 'Pure' }])
   })
 })
 
 // ---------------------------------------------------------------------------
-// T-05.b — MINI-EXPANDED: parseRoot preserves userMethod + carries
-//          unresolvedChain when chain non-empty (PV25, PV31).
+// T-05.b — MINI-EXPANDED: the root before its chain (#1387; PV25, PV31).
 // ---------------------------------------------------------------------------
 
-describe('parseStrudel stages — MINI-EXPANDED (T-05.b)', () => {
-  it('chained track stashes unresolvedChain + chainOffset on root', () => {
-    const code = 'note("c d e").fast(2)'
-    const passes = runPasses(IR.code(code), PASSES)
-    const me = passes[1].ir // MINI-EXPANDED
-    const meAny = me as { unresolvedChain?: string; chainOffset?: number }
-    expect(meAny.unresolvedChain).toBe('.fast(2)')
-    // chainOffset is the absolute position of the chain's first char
-    // (the leading dot) — equals trimmedOffset + root.length where
-    // trimmedOffset = 0 (no leading WS) and root = 'note("c d e")'.
-    expect(meAny.chainOffset).toBe('note("c d e")'.length)
+describe('parseStrudel stages — MINI-EXPANDED (T-05.b, #1387)', () => {
+  it('a chained track shows its root before the chain', () => {
+    const [, mini, chain] = parseStrudelStages('note("c d e").fast(2)')
+    const [m] = trackBodies(mini.ir)
+    const [c] = trackBodies(chain.ir)
+    expect(c.tag).toBe('Fast')
+    if (c.tag !== 'Fast') throw new Error('unreachable')
+    expect(m.tag).not.toBe('Fast')
+    expect(m).toEqual(c.body)
   })
 
-  it('non-chained track has no unresolvedChain metadata', () => {
-    const code = 'note("c d")'
-    const passes = runPasses(IR.code(code), PASSES)
-    const me = passes[1].ir
-    const meRec = me as Record<string, unknown>
-    expect(Object.prototype.hasOwnProperty.call(meRec, 'unresolvedChain')).toBe(
-      false,
-    )
-    expect(Object.prototype.hasOwnProperty.call(meRec, 'chainOffset')).toBe(
-      false,
-    )
+  it('a track with no chain shows the same body in both views', () => {
+    const [, mini, chain] = parseStrudelStages('note("c d")')
+    expect(trackBodies(mini.ir)).toEqual(trackBodies(chain.ir))
   })
 
   it('root-level stack(...) preserves userMethod === "stack" (PV31)', () => {
-    const code = 'stack(s("bd"), s("hh"))'
-    const passes = runPasses(IR.code(code), PASSES)
-    const me = passes[1].ir
-    expect(me.tag).toBe('Stack')
-    expect((me as { userMethod?: string }).userMethod).toBe('stack')
+    const [m] = trackBodies(parseStrudelStages('stack(s("bd"), s("hh"))')[MINI].ir)
+    expect(m.tag).toBe('Stack')
+    expect((m as { userMethod?: string }).userMethod).toBe('stack')
   })
 
-  it('multi-track $: produces outer Stack of parsed roots; outer Stack has no userMethod', () => {
-    const code = '$: note("c d")\n$: s("bd hh")'
-    const passes = runPasses(IR.code(code), PASSES)
-    const me = passes[1].ir
-    expect(me.tag).toBe('Stack')
-    if (me.tag !== 'Stack') throw new Error('unreachable')
-    // Synthetic outer Stack from RAW — userMethod still undefined at MINI-EXPANDED.
-    expect(me.userMethod).toBeUndefined()
-    expect(me.tracks).toHaveLength(2)
-    // Each track is the parsed root (Cycle or Seq from parseMini), not Code.
-    for (const t of me.tracks) {
-      expect(t.tag).not.toBe('Code')
-    }
+  it('multi-track $: each body is a parsed root, not Code', () => {
+    const bodies = trackBodies(parseStrudelStages('$: note("c d")\n$: s("bd hh")')[MINI].ir)
+    expect(bodies).toHaveLength(2)
+    for (const b of bodies) expect(b.tag).not.toBe('Code')
   })
 })
 
@@ -500,12 +508,9 @@ describe('parseStrudel stages — regression sentinel (T-05.c, D-06)', () => {
   }
 
   for (const code of REGRESSION_FIXTURES) {
-    it(`CHAIN-APPLIED + FINAL have no orphan stage metadata (D-06.c) — ${JSON.stringify(code).slice(0, 50)}`, () => {
-      const seed = IR.code(code)
-      const passes = runPasses(seed, PASSES)
-      // passes[2] = CHAIN-APPLIED; passes[3] = FINAL.
-      assertNoStageMeta(passes[2].ir)
-      assertNoStageMeta(passes[3].ir)
+    it(`no view carries stage metadata (D-06.c) — ${JSON.stringify(code).slice(0, 50)}`, () => {
+      for (const stage of parseStrudelStages(code)) assertNoStageMeta(stage.ir)
+      assertNoStageMeta(parseStrudel(code))
     })
   }
 
@@ -523,20 +528,17 @@ describe('parseStrudel stages — regression sentinel (T-05.c, D-06)', () => {
 })
 
 // ---------------------------------------------------------------------------
-// T-05.d — CHAIN-APPLIED → FINAL identity.
+// T-05.d — CHAIN-APPLIED is the parser's tree (#1387).
 // ---------------------------------------------------------------------------
 
-describe('parseStrudel stages — CHAIN-APPLIED → FINAL identity (T-05.d)', () => {
-  it('FINAL.ir === CHAIN-APPLIED.ir (referential equality, identity stage)', () => {
-    const code = 'note("c d")'
-    const passes = runPasses(IR.code(code), PASSES)
-    expect(passes[3].ir).toBe(passes[2].ir)
+describe('parseStrudel stages — CHAIN-APPLIED is the parser\'s tree (T-05.d, #1387)', () => {
+  it('CHAIN-APPLIED equals parseStrudel(code) for a plain track', () => {
+    expect(parseStrudelStages('note("c d")')[CHAIN].ir).toEqual(parseStrudel('note("c d")'))
   })
 
-  it('referential equality holds for chained track too', () => {
+  it('and for a chained track', () => {
     const code = 'note("c d e").fast(2)'
-    const passes = runPasses(IR.code(code), PASSES)
-    expect(passes[3].ir).toBe(passes[2].ir)
+    expect(parseStrudelStages(code)[CHAIN].ir).toEqual(parseStrudel(code))
   })
 })
 
@@ -666,22 +668,11 @@ describe('parseStrudel stages — MINI-EXPANDED → CHAIN-APPLIED: universal loc
   ]
   for (const code of fixtures) {
     it(`every loc preserved MINI-EXPANDED → CHAIN-APPLIED — ${JSON.stringify(code).slice(0, 50)}`, () => {
-      const seed = IR.code(code)
-      const passes = runPasses(seed, PASSES)
-      // Skip the synthetic-from-RAW outer Stack (multi-track $: wrapper)
-      // — it carries a synthetic loc spanning the full source for the RAW
-      // tab visualization; CHAIN-APPLIED rebuilds via IR.stack() which
-      // drops the synthetic loc to match today's parseStrudel byte-shape
-      // (parseStrudelStages.ts:189). Drop the outermost entry when both
-      // stages have a Stack-with-undefined-userMethod at root.
-      const me = passes[1].ir
-      const isSyntheticOuter =
-        me.tag === 'Stack' &&
-        (me as { userMethod?: string }).userMethod === undefined
-      const meEntries = collectLocEntries(passes[1].ir).filter(
-        (e, i) => !(isSyntheticOuter && i === 0),
-      )
-      const caEntries = collectLocEntries(passes[2].ir)
+      const stages = parseStrudelStages(code)
+      // #1387 — MINI-EXPANDED keeps the parser's own outer Stack and Track
+      // wrappers, so there is no synthetic RAW wrapper to skip any more.
+      const meEntries = collectLocEntries(stages[MINI].ir)
+      const caEntries = collectLocEntries(stages[CHAIN].ir)
       // CHAIN-APPLIED may have MORE entries (newly-wrapped tags) but every
       // (start, end, tag) tuple from MINI-EXPANDED must appear at least
       // once at CHAIN-APPLIED.
@@ -767,11 +758,8 @@ describe('parseStrudel stages — orphan stage-metadata walk over fixtures (T-10
     '$: s("bd").fast(2)\n$: s("hh").late(0.125)',
   ]
   for (const code of fixtures) {
-    it(`no orphan metadata at CHAIN-APPLIED + FINAL — ${JSON.stringify(code).slice(0, 50)}`, () => {
-      const seed = IR.code(code)
-      const passes = runPasses(seed, PASSES)
-      assertNoStageMeta(passes[2].ir)
-      assertNoStageMeta(passes[3].ir)
+    it(`no stage metadata in any view — ${JSON.stringify(code).slice(0, 50)}`, () => {
+      for (const stage of parseStrudelStages(code)) assertNoStageMeta(stage.ir)
     })
   }
 })

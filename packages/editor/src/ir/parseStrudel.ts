@@ -1083,8 +1083,40 @@ export function parseStrudel(
   // (Wave-0 ACTION 7 invariant, hardened in this wave's spec).
   _opts?: { recogniseGeneralChainRoots?: boolean },
 ): PatternIR {
+  return parseDocument(code, _opts)
+}
+
+/**
+ * One top-level track body as the parse saw it on the way in (#1387): `raw` is
+ * the source text it was handed, as a `Code` node spanning that text, and
+ * `mini` is the root it parsed before the method chain was applied.
+ */
+export interface TopLevelBody {
+  raw: PatternIR
+  mini: PatternIR
+}
+
+/**
+ * `parseStrudel`, plus every top-level track body it parsed, in the order the
+ * returned tree holds those tracks (#1387). The IR Inspector's intermediate
+ * views are built from this, so they are RECORDED by the parse that made the
+ * decisions rather than re-derived by a second copy of them.
+ *
+ * ⚠ `ir` IS `parseStrudel(code)`, byte for byte — recording changes what is
+ * kept, never what is parsed.
+ */
+export function parseStrudelRecorded(code: string): { ir: PatternIR; bodies: TopLevelBody[] } {
+  const bodies: TopLevelBody[] = []
+  const ir = parseDocument(code, undefined, bodies)
+  return { ir, bodies }
+}
+
+function parseDocument(
+  code: string,
+  opts: { recogniseGeneralChainRoots?: boolean } | undefined,
+  record?: TopLevelBody[],
+): PatternIR {
   if (!code.trim()) return IR.pure()
-  const opts = _opts
 
   try {
     // Split into track blocks ($: lines). Each carries the absolute
@@ -1105,6 +1137,31 @@ export function parseStrudel(
     // from the same text and neither reads the other's output, so this order
     // is free to be the one that works.
     const numbers = collectNumericBindings(code)
+    // #1387 — EVERY TOP-LEVEL TRACK BODY IS PARSED THROUGH `top`, and every
+    // track whose body is not parsed (a commented track, an all-prelude
+    // document) takes `silent`. That is what keeps `record` in step with the
+    // Tracks this function returns: one entry per Track, in order.
+    //
+    // ⚠ A BODY PARSED AND THEN DISCARDED MUST TAKE ITS ENTRY WITH IT. The
+    // binding-map branch below parses, may reject the result as opaque, and falls
+    // through to parse again — see `mark` there.
+    const top = (
+      text: string,
+      offset: number,
+      bindings: ReadonlyMap<string, PatternIR> | undefined,
+    ): PatternIR => {
+      if (!record) return parseExpression(text, offset, undefined, bindings, opts, numbers)
+      const staged = parseExpressionStaged(text, offset, undefined, bindings, opts, numbers)
+      record.push({
+        raw: IR.code(text, { loc: [{ start: offset, end: offset + text.length }] }),
+        mini: staged.root,
+      })
+      return staged.ir
+    }
+    const silent = (): PatternIR => {
+      record?.push({ raw: IR.pure(), mini: IR.pure() })
+      return IR.pure()
+    }
     // #1392 — WHAT AN IDENTIFIER MEANS IS A PROPERTY OF THE DOCUMENT, so it is
     // resolved ONCE, here, above the track dispatch. It used to be computed
     // inside the no-`$:` branch alone, which meant every `$:`-declared track —
@@ -1144,7 +1201,7 @@ export function parseStrudel(
         // Source is ENTIRELY prelude (no musical body). Return an
         // empty-body Track wrapper so downstream consumers still get
         // the synthetic-d1 shape. PV37 wrap-never-drop preserved.
-        return IR.track('d1', IR.pure())
+        return IR.track('d1', silent())
       }
       const bodyTrimStart = stripped.body.search(/\S/)
       const innerOffset = stripped.offset + (bodyTrimStart >= 0 ? bodyTrimStart : 0)
@@ -1158,7 +1215,8 @@ export function parseStrudel(
       // handled at the substitution site, never a throw).
       const bound = buildBindingMap(stripped.body, stripped.offset, numbers)
       if (bound) {
-        const inner = parseExpression(bound.finalExpr, bound.finalOffset, undefined, bound.bindings, opts, numbers)
+        const mark = record?.length ?? 0
+        const inner = top(bound.finalExpr, bound.finalOffset, bound.bindings)
         // P67: if the final expression resolved to bare Code (the binding
         // map did not help — e.g. a non-stack final expr), keep the
         // existing whole-program fallback shape rather than wrapping a
@@ -1169,7 +1227,9 @@ export function parseStrudel(
         if (!innerIsBareCode) {
           return IR.track('d1', inner)
         }
-        // else: fall through to the plain parse (whole-program Code).
+        // else: fall through to the plain parse (whole-program Code), and drop
+        // the body just recorded — the tree will not contain it (#1387).
+        if (record) record.length = mark
       }
       // #1096 — a bare document with SEVERAL top-level statements declares
       // several tracks, and every one of them gets a row.
@@ -1233,8 +1293,9 @@ export function parseStrudel(
       // binding-free documents, NOT a new one. Keeping only the statements that
       // parse musically was the tempting alternative and is rejected twice
       // over: it would give this file two different answers to one question,
-      // and the staged pipeline splits at RAW, before anything is parsed, so it
-      // could not mirror the filter and the two parsers would diverge. An
+      // and the staged pipeline of the time split at RAW, before anything was
+      // parsed, so it could not have mirrored the filter. #1387 removed that
+      // pipeline, so only the first reason still holds. An
       // opaque statement therefore draws a silent row, which is what #1096
       // decided a statement the parser cannot read should do.
       const declaresBinding = bareStmts.some(s => BINDING_RE.test(s.text))
@@ -1285,7 +1346,7 @@ export function parseStrudel(
               // resolves in EVERY statement of the tail. `undefined` for a
               // document that declares none, which is what this passed
               // unconditionally before.
-              parseExpression(s.text, s.offset, undefined, collected?.bindings, opts, numbers),
+              top(s.text, s.offset, collected?.bindings),
               {
                 loc: [{ start: s.offset, end: s.offset + s.text.length }],
               },
@@ -1333,10 +1394,10 @@ export function parseStrudel(
           'd1',
           // `collected?.bindings` — undefined where there is no map, exactly
           // what the multi-statement split above passes.
-          parseExpression(only.text, only.offset, undefined, collected?.bindings, opts, numbers),
+          top(only.text, only.offset, collected?.bindings),
         )
       }
-      const inner = parseExpression(stripped.body.trim(), innerOffset, undefined, undefined, opts, numbers)
+      const inner = top(stripped.body.trim(), innerOffset, undefined)
       return IR.track('d1', inner)
     }
     if (tracks.length === 1) {
@@ -1349,7 +1410,7 @@ export function parseStrudel(
       // empty-body Track wrapper so d{N} numbering stays stable when
       // the user toggles a line's comment prefix.
       const t = tracks[0]
-      const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, undefined, trackBindings, opts, numbers)
+      const body = t.commented ? silent() : top(t.expr, t.offset, trackBindings)
       // 20-15 G5 (#138 / D-01) — a named label becomes the trackId so the
       // label IS the timeline row name (no `.p()` needed). `$` (the legacy
       // `$:` marker) keeps the synthetic `d1` numbering — byte-identical to
@@ -1369,7 +1430,7 @@ export function parseStrudel(
     // they keep their slot in the numbering.
     return IR.stack(
       ...tracks.map((t, i) => {
-        const body = t.commented ? IR.pure() : parseExpression(t.expr, t.offset, undefined, trackBindings, opts, numbers)
+        const body = t.commented ? silent() : top(t.expr, t.offset, trackBindings)
         // 20-15 G5 (#138 / D-01) — labelled tracks carry trackId = label;
         // legacy `$:` (label === '$') keeps `d{i+1}` so existing multi-$:
         // tunes are byte-identical. dollarStart (label-line start) is the
@@ -1383,6 +1444,8 @@ export function parseStrudel(
       }),
     )
   } catch {
+    // No Tracks in the result, so no bodies either (#1387).
+    if (record) record.length = 0
     return IR.code(code)
   }
 }
@@ -1736,9 +1799,9 @@ export function extractTracks(
   // of the literal `$:` token) and `end` (exclusive end of the track body
   // slice — either the next `$:` line start or `code.length`) are exposed
   // so α-3's parseStrudel main path can attach a loc covering the `$:` line
-  // range to each Track wrapper. Existing callers (parseStrudel main +
-  // parseStrudelStages.runRawStage) consume only `expr`/`offset` and are
-  // forward-compatible.
+  // range to each Track wrapper. Existing callers (parseStrudel main, and at
+  // the time the staged `runRawStage`, removed in #1387) consume only
+  // `expr`/`offset` and are forward-compatible.
   //
   // Phase 20-12.1 follow-up — commented `$:` lines (// $:) are now matched
   // and emitted as `commented: true`. parseStrudel maps these to empty-body
@@ -1953,7 +2016,7 @@ export function skipWhitespaceAndLineComments(src: string, pos: number): number 
  *
  * e.g. 'note("c4 e4").fast(2).every(4, fast(2))'
  */
-export function parseExpression(
+export function parseExpressionStaged(
   expr: string,
   baseOffset = 0,
   // #132 (β-2) — when set, threads the caller's s-vs-note context into
@@ -1976,8 +2039,8 @@ export function parseExpression(
   // written `M*8` reads as 8. Optional trailing STACK param (PV50), threaded
   // exactly as `bindings`; `undefined` = literal weights only.
   numbers?: ReadonlyMap<string, number>,
-): PatternIR {
-  if (!expr.trim()) return IR.pure()
+): StagedExpression {
+  if (!expr.trim()) return unstaged(IR.pure())
 
   // 20-15 G1 — if the WHOLE expression is a bare identifier bound in the
   // map, substitute its subtree directly (covers the single-arg
@@ -1986,7 +2049,7 @@ export function parseExpression(
   if (bindings) {
     const bareId = expr.trim()
     if (/^[A-Za-z_$][\w$]*$/.test(bareId) && bindings.has(bareId)) {
-      return bindings.get(bareId) as PatternIR
+      return unstaged(bindings.get(bareId) as PatternIR)
     }
   }
 
@@ -2013,10 +2076,10 @@ export function parseExpression(
       rootIR.tag === 'Code' && (rootIR as { via?: unknown }).via === undefined
     if (rootIsBareCode && !chain.trim()) {
       // Entire expression is opaque — preserve full original expression
-      return IR.code(expr)
+      return unstaged(IR.code(expr))
     }
     if (rootIsBareCode) {
-      return IR.code(expr)
+      return unstaged(IR.code(expr))
     }
 
     // Walk the method chain, wrapping ir.
@@ -2031,10 +2094,40 @@ export function parseExpression(
     // `bound.bindings` — this flow is the WIRE that makes Wave C/D/E reach.
     const ir = applyChain(rootIR, chain, chainOffset, bindings, numbers)
 
-    return ir
+    return { root: rootIR, ir }
   } catch {
-    return IR.code(expr)
+    return unstaged(IR.code(expr))
   }
+}
+
+/**
+ * What `parseExpressionStaged` returns: the tree, and the root it parsed BEFORE
+ * the method chain was applied (#1387). Where there is no chain to apply — an
+ * empty expression, a bound identifier, an opaque fallback — the two are the
+ * same node.
+ */
+export interface StagedExpression {
+  root: PatternIR
+  ir: PatternIR
+}
+
+function unstaged(node: PatternIR): StagedExpression {
+  return { root: node, ir: node }
+}
+
+/**
+ * Parse a single Strudel expression (with optional method chain). The
+ * parameters are `parseExpressionStaged`'s; this returns only the tree.
+ */
+export function parseExpression(
+  expr: string,
+  baseOffset = 0,
+  isSampleKey?: boolean,
+  bindings?: ReadonlyMap<string, PatternIR>,
+  opts?: { recogniseGeneralChainRoots?: boolean },
+  numbers?: ReadonlyMap<string, number>,
+): PatternIR {
+  return parseExpressionStaged(expr, baseOffset, isSampleKey, bindings, opts, numbers).ir
 }
 
 // ---------------------------------------------------------------------------

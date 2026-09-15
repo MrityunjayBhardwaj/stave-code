@@ -14,7 +14,8 @@
  * here: #950's anchors come from `declaredTrackAnchors` reading the Track
  * wrappers on the IR itself. So this file mocks `collectCycles` to return
  * NOTHING, which is what forces the wrapper path — and it builds the IR by
- * running the REAL staged pipeline over real source, so the anchors under test
+ * running the REAL parser over real source (`parseStrudel`, the tree the song
+ * reads since #1558), so the anchors under test
  * are the ones the app actually gets rather than a hand-drawn imitation.
  *
  * Only the haps are synthetic, and their offsets are the real ones: in
@@ -24,7 +25,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 // No IR events → the pre-eval collect path is empty, which is exactly the #950 situation.
 // STRUCTURE now comes from the REAL `structuralWalk` on the REAL IR these tests build via the
-// staged pipeline — so this file genuinely exercises structuralWalk's comma-arm lane split
+// real parser — so this file genuinely exercises structuralWalk's comma-arm lane split
 // (#974), not a stub. `laneKeyOf` keeps its real behaviour.
 vi.mock('@stave/editor', async () => ({
   collectCycles: () => [],
@@ -45,24 +46,10 @@ vi.mock('@stave/editor', async () => ({
 import { collectNoteMarks } from '../timelineMarks'
 import { wholeSongWindow } from '../songAxis'
 import { IR, type PatternIR } from '../../../../../editor/src/ir/PatternIR'
-import {
-  runRawStage,
-  runMiniExpandedStage,
-  runChainAppliedStage,
-  runFinalStage,
-} from '../../../../../editor/src/ir/parseStrudelStages'
-import { runPasses, type Pass } from '../../../../../editor/src/ir/passes'
+import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
 
-const PASSES: readonly Pass<PatternIR>[] = [
-  { name: 'RAW', run: runRawStage },
-  { name: 'MINI-EXPANDED', run: runMiniExpandedStage },
-  { name: 'CHAIN-APPLIED', run: runChainAppliedStage },
-  { name: 'Parsed', run: runFinalStage },
-]
-const pipeline = (code: string): PatternIR => {
-  const passes = runPasses(IR.code(code), PASSES)
-  return passes[passes.length - 1].ir
-}
+// The tree the song is drawn from: `parseStrudel` (since #1558).
+const pipeline = (code: string): PatternIR => parseStrudel(code)
 
 /** A hap located at `start`, carrying a trackId shared by every arm — which is
  *  what the engine really does for one `$:` statement, and why trackId alone

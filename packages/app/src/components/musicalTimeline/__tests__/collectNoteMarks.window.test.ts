@@ -14,7 +14,7 @@
  * are indistinguishable — which is precisely why a well-covered function
  * carried this for a whole branch without one red arm.
  *
- * The IR is built by the REAL staged pipeline and walked by the REAL
+ * The IR is built by the REAL parser (`parseStrudel`, since #1558) and walked by the REAL
  * `structuralWalk`, so the clips asserted below are the ones production
  * derives. Only the haps are synthetic, and they carry the real source offsets
  * of the fixture.
@@ -30,24 +30,10 @@ vi.mock('@stave/editor', async () => ({
 
 import { collectNoteMarks } from '../timelineMarks'
 import { IR, type PatternIR } from '../../../../../editor/src/ir/PatternIR'
-import {
-  runRawStage,
-  runMiniExpandedStage,
-  runChainAppliedStage,
-  runFinalStage,
-} from '../../../../../editor/src/ir/parseStrudelStages'
-import { runPasses, type Pass } from '../../../../../editor/src/ir/passes'
+import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
 
-const PASSES: readonly Pass<PatternIR>[] = [
-  { name: 'RAW', run: runRawStage },
-  { name: 'MINI-EXPANDED', run: runMiniExpandedStage },
-  { name: 'CHAIN-APPLIED', run: runChainAppliedStage },
-  { name: 'Parsed', run: runFinalStage },
-]
-const pipeline = (code: string): PatternIR => {
-  const passes = runPasses(IR.code(code), PASSES)
-  return passes[passes.length - 1].ir
-}
+// The tree the song is drawn from: `parseStrudel` (since #1558).
+const pipeline = (code: string): PatternIR => parseStrudel(code)
 
 /** arm0 → cycles 0-1, arm1 → 2-3, arm2 → 4-7, repeating with period 8. */
 const ARRANGE = '$: arrange([2, s("bd")], [2, s("hh")], [4, s("cp")])'

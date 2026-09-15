@@ -60,25 +60,19 @@ export interface PlayParams {
 // non-parser code paths (test fixtures, IR transforms) construct nodes
 // without metadata. CONTEXT D-03, D-07, D-12.
 //
-// 19-07 (#79) — the 6 root-eligible union members (Pure, Seq, Stack, Play,
-// Cycle, Code) carry two optional stage-transition metadata fields:
-// `unresolvedChain?: string` and `chainOffset?: number`. These are SET by
-// `runMiniExpandedStage` on each track root, READ + DROPPED by
-// `runChainAppliedStage`, and IRRELEVANT for engine consumption (collect,
-// toStrudel, irProjection ignore them per CONTEXT D-03). The other 16
-// union members (Fast, Slow, Every, ...) are constructed only inside
-// applyChain and never sit at a track root post-parseRoot, so they do
-// NOT carry these fields. Narrow-union additive change preserves PV32
-// (implicit-IR principle). RESEARCH §3.1 fallback option.
+// #1387 — the stage-transition fields `unresolvedChain` / `chainOffset` that
+// 19-07 (#79) added to six members here are gone, with the hand-kept staged
+// pipeline that set them. The Inspector's views are derived from
+// `parseStrudelRecorded`, which carries nothing on the nodes.
 export type PatternIR =
-  | { tag: 'Pure'; loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
-  | { tag: 'Seq';    children: PatternIR[]; loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
-  | { tag: 'Stack';  tracks: PatternIR[]; loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
-  | { tag: 'Play';   note: string | number; duration: number; params: PlayParams; loc?: SourceLocation[]; unresolvedChain?: string; chainOffset?: number }
+  | { tag: 'Pure'; loc?: SourceLocation[]; userMethod?: string }
+  | { tag: 'Seq';    children: PatternIR[]; loc?: SourceLocation[]; userMethod?: string }
+  | { tag: 'Stack';  tracks: PatternIR[]; loc?: SourceLocation[]; userMethod?: string }
+  | { tag: 'Play';   note: string | number; duration: number; params: PlayParams; loc?: SourceLocation[] }
   | { tag: 'Sleep';  duration: number; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Choice'; p: number; then: PatternIR; else_: PatternIR; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Every';  n: number; body: PatternIR; default_?: PatternIR; loc?: SourceLocation[]; userMethod?: string }
-  | { tag: 'Cycle';  items: PatternIR[]; loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
+  | { tag: 'Cycle';  items: PatternIR[]; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'When';   gate: string; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Ramp';   param: string; from: number; to: number; cycles: number; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Fast';   factor: number; body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
@@ -156,8 +150,6 @@ export type PatternIR =
       lang: 'strudel'
       loc?: SourceLocation[]
       userMethod?: string
-      unresolvedChain?: string
-      chainOffset?: number
       // Phase 20-04 (PV37 / PK13 step 2 / D-01..D-03). When set, this Code
       // node is an OPAQUE-FRAGMENT WRAPPER constructed by `wrapAsOpaque`
       // (parseStrudel.ts) at `applyMethod`'s default arm or any typed
@@ -215,7 +207,7 @@ export type PatternIR =
           | 'itri' | 'itri2'
           | 'cyclesPer' | 'per' | 'perCycle' | 'perx'
       args?: string                                // RAW source slice for arg-taking signals — round-trip byte-fidelity; absent for 0-arity signals
-      loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
+      loc?: SourceLocation[]; userMethod?: string }
   | { tag: 'Builder'
       // #953 — each kind below (except the two Wave-C entries noted) is a
       // signal.mjs export that is root-capable (`fn(1) instanceof Pattern`) AND
@@ -229,7 +221,7 @@ export type PatternIR =
           | 'chord' | 'arrange'                  // 20-18 Wave C — `chord`/`arrange` GROUNDED at @strudel/core@1.2.6 controls.mjs:2130 + pattern.mjs:1469-1473 (ref/GROUND_TRUTH_SIGNAL_MJS.md §2/§3). args-RAW-only; `body` ABSENT (OPAQUE sublanguage / JS-tuple-array; recursion outside matcher competence — never inferred).
       args: string                                 // RAW (untrimmed) arg slice — code-invariance (the Code.via.args convention)
       body?: PatternIR                             // OPTIONAL — only for builders whose arg is a recursable pattern (no current kind populates this — `chord`/`arrange` are grounded args-RAW-only per Ground Truth §5)
-      loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
+      loc?: SourceLocation[]; userMethod?: string }
   // Phase 5a (#386) — UNIFIED TIME-SEQUENCE node: the structured form of the
   // `arrange`/`cat`/`slowcat` combinators (the timeline-clip family). GROUNDED
   // 2026-06-17 against real haps (@strudel/core@1.2.6 pattern.mjs:1469-1473):
@@ -251,7 +243,7 @@ export type PatternIR =
   | { tag: 'Arrange'
       mode: 'arrange' | 'cat' | 'slowcat'          // literal combinator name (round-trip fidelity)
       arms: ArrangeArm[]                           // ordered clips; ≥1
-      loc?: SourceLocation[]; userMethod?: string; unresolvedChain?: string; chainOffset?: number }
+      loc?: SourceLocation[]; userMethod?: string }
 
 /**
  * Optional metadata accepted by every non-rest-spread smart constructor

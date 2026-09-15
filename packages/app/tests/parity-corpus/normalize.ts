@@ -30,12 +30,6 @@ const STRIP_FIELDS: Record<string, string> = {
   // parity.test.ts at runtime; this corpus is the parser-IR rung.
   loc: 'source-byte offsets — drift with file framing, not IR shape',
 
-  // chainOffset is a stage-transition annotation set by runMiniExpandedStage
-  // and dropped by runChainAppliedStage; it never reaches engine
-  // consumers (PatternIR.ts:38-44). For the parser-IR shape gate we
-  // strip it because it depends on the same source-byte offsets as loc.
-  chainOffset: 'stage-transition annotation — same byte-offset hazard as loc',
-
   // callSiteRange lives inside Code.via for opaque-fragment wrappers
   // (parseStrudel.ts:73 wrapAsOpaque); same source-byte rationale as loc.
   // Stripped at the .via level via a dedicated rewrite below — see

@@ -160,30 +160,22 @@ type PatternIR = {
     tag: 'Pure';
     loc?: SourceLocation[];
     userMethod?: string;
-    unresolvedChain?: string;
-    chainOffset?: number;
 } | {
     tag: 'Seq';
     children: PatternIR[];
     loc?: SourceLocation[];
     userMethod?: string;
-    unresolvedChain?: string;
-    chainOffset?: number;
 } | {
     tag: 'Stack';
     tracks: PatternIR[];
     loc?: SourceLocation[];
     userMethod?: string;
-    unresolvedChain?: string;
-    chainOffset?: number;
 } | {
     tag: 'Play';
     note: string | number;
     duration: number;
     params: PlayParams;
     loc?: SourceLocation[];
-    unresolvedChain?: string;
-    chainOffset?: number;
 } | {
     tag: 'Sleep';
     duration: number;
@@ -208,8 +200,6 @@ type PatternIR = {
     items: PatternIR[];
     loc?: SourceLocation[];
     userMethod?: string;
-    unresolvedChain?: string;
-    chainOffset?: number;
 } | {
     tag: 'When';
     gate: string;
@@ -373,8 +363,6 @@ type PatternIR = {
     lang: 'strudel';
     loc?: SourceLocation[];
     userMethod?: string;
-    unresolvedChain?: string;
-    chainOffset?: number;
     via?: {
         method: string;
         args: string;
@@ -390,8 +378,6 @@ type PatternIR = {
     args?: string;
     loc?: SourceLocation[];
     userMethod?: string;
-    unresolvedChain?: string;
-    chainOffset?: number;
 } | {
     tag: 'Builder';
     kind: 'run' | 'irand' | 'binary' | 'binaryN' | 'binaryL' | 'binaryNL' | 'brandBy' | 'chooseCycles' | 'chooseIn' | 'chooseOut' | 'randL' | 'randcat' | 'randrun' | 'signal' | 'steady' | 'chord' | 'arrange';
@@ -399,16 +385,12 @@ type PatternIR = {
     body?: PatternIR;
     loc?: SourceLocation[];
     userMethod?: string;
-    unresolvedChain?: string;
-    chainOffset?: number;
 } | {
     tag: 'Arrange';
     mode: 'arrange' | 'cat' | 'slowcat';
     arms: ArrangeArm[];
     loc?: SourceLocation[];
     userMethod?: string;
-    unresolvedChain?: string;
-    chainOffset?: number;
 };
 /**
  * Optional metadata accepted by every non-rest-spread smart constructor

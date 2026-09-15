@@ -23,7 +23,7 @@ the parse path asks somebody who already knows:
 |---|---|---|---|
 | `ir/parseMini.ts` | krill | **0** | 397 |
 | `ir/collect.ts` | — | **0** | 1419 |
-| `ir/parseStrudelStages.ts` | — | **0** | 377 |
+| `ir/parseStrudelStages.ts` | — | **0** | 73 |
 | `visualEdit/chunkDetect.ts` | acorn | **0** | 496 |
 | `visualEdit/arrange/parse.ts` | acorn | **0** | 223 |
 | **`ir/parseStrudel.ts`** | **nobody** | **37** | **4214** |

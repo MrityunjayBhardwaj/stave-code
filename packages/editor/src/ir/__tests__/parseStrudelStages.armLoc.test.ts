@@ -39,25 +39,13 @@
  */
 import { describe, it, expect } from 'vitest'
 import { IR, type PatternIR } from '../PatternIR'
-import {
-  runRawStage,
-  runMiniExpandedStage,
-  runChainAppliedStage,
-  runFinalStage,
-} from '../parseStrudelStages'
-import { runPasses, type Pass } from '../passes'
+import { parseStrudelStages } from '../parseStrudelStages'
 import { rootStackArms, armSourceSpan } from '../structuralWalk'
 
-const PASSES: readonly Pass<PatternIR>[] = [
-  { name: 'RAW', run: runRawStage },
-  { name: 'MINI-EXPANDED', run: runMiniExpandedStage },
-  { name: 'CHAIN-APPLIED', run: runChainAppliedStage },
-  { name: 'Parsed', run: runFinalStage },
-]
 
 function pipeline(code: string): PatternIR {
-  const passes = runPasses(IR.code(code), PASSES)
-  return passes[passes.length - 1].ir
+  const stages = parseStrudelStages(code)
+  return stages[stages.length - 1].ir
 }
 
 /**

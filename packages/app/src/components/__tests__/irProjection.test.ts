@@ -13,7 +13,7 @@
 import { describe, it, expect } from 'vitest'
 import { parseStrudel as _parseStrudel } from '../../../../editor/src/ir/parseStrudel'
 import { IR, type PatternIR } from '../../../../editor/src/ir/PatternIR'
-import { runRawStage } from '../../../../editor/src/ir/parseStrudelStages'
+import { parseStrudelStages } from '../../../../editor/src/ir/parseStrudelStages'
 import {
   projectedLabel,
   projectedChildren,
@@ -620,43 +620,38 @@ describe('stripInnerLate', () => {
 // -----------------------------------------------------------------------------
 
 describe('RAW tab projection (D-04 uniform projection — REV-3)', () => {
-  it('multi-track $: RAW IR projects without errors; outer Stack(undefined) → "{}" mini polymetric symbol', () => {
+  it('multi-track $: RAW IR projects without errors; each track row drills to its source Code', () => {
     const code = '$: note("c d")\n$: s("bd hh")'
-    const raw = runRawStage(IR.code(code))
-    // Sanity: RAW returned the expected shape (multi-track outer Stack).
+    // #1387 — RAW is the parser's tree with each track body shown as the source
+    // it was parsed from, so the outer Stack and the Track rows are the parser's.
+    const raw = parseStrudelStages(code)[0].ir
     expect(raw.tag).toBe('Stack')
     expect((raw as { userMethod?: string }).userMethod).toBeUndefined()
-    // Outer Stack with userMethod undefined projects to the polymetric
-    // mini symbol per RESEARCH §6 D-04 risk acceptance — no thrown error.
     expect(() => projectedLabel(raw)).not.toThrow()
     expect(projectedLabel(raw)).toBe('{}')
-    // projectedChildren returns the per-track Code lifts (D-04 uniform
-    // — Code is whitelisted out of D-02 hide rule).
-    const kids = projectedChildren(raw)
-    expect(kids.length).toBe(2)
-    for (const k of kids) {
-      expect(k.tag).toBe('Code')
-      expect(projectedLabel(k)).toBe('Code')
-    }
-    // Each track's expr text is recoverable from its Code node.
-    const codes = kids
+    const rows = projectedChildren(raw)
+    expect(rows.map((r) => r.tag)).toEqual(['Track', 'Track'])
+    const bodies = rows.flatMap((r) => projectedChildren(r))
+    expect(bodies.map((b) => b.tag)).toEqual(['Code', 'Code'])
+    for (const b of bodies) expect(projectedLabel(b)).toBe('Code')
+    const codes = bodies
       .filter((k): k is Extract<PatternIR, { tag: 'Code' }> => k.tag === 'Code')
       .map((k) => k.code)
     expect(codes[0]).toContain('note("c d")')
     expect(codes[1]).toContain('s("bd hh")')
   })
 
-  it('single-track RAW IR projects to one Code row with the expected text', () => {
+  it('single-track RAW IR projects to one track row over one Code row with the expected text', () => {
     const code = 'note("c d")'
-    const raw = runRawStage(IR.code(code))
-    expect(raw.tag).toBe('Code')
+    const raw = parseStrudelStages(code)[0].ir
+    expect(raw.tag).toBe('Track')
     expect(() => projectedLabel(raw)).not.toThrow()
-    expect(projectedLabel(raw)).toBe('Code')
-    // Code is a leaf at projection — no children.
     const kids = projectedChildren(raw)
-    expect(kids).toHaveLength(0)
-    // The Code's text contains the source.
-    expect((raw as { code: string }).code).toBe('note("c d")')
+    expect(kids.map((k) => k.tag)).toEqual(['Code'])
+    expect(projectedLabel(kids[0])).toBe('Code')
+    // Code is a leaf at projection — no children.
+    expect(projectedChildren(kids[0])).toHaveLength(0)
+    expect((kids[0] as { code: string }).code.trim()).toBe('note("c d")')
   })
 })
 
