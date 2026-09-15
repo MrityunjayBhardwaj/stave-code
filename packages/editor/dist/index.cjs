@@ -5473,6 +5473,44 @@ async function renderStemsInOrder(stems, render, onProgress) {
 }
 __name(renderStemsInOrder, "renderStemsInOrder");
 
+// src/engine/transportHold.ts
+function createTransportHold(transport) {
+  let depth = 0;
+  let resumeOnRelease = false;
+  return {
+    async hold(render) {
+      if (depth === 0) {
+        resumeOnRelease = transport.isPlaying();
+        if (resumeOnRelease) transport.pause();
+      }
+      depth++;
+      try {
+        return await render();
+      } finally {
+        depth--;
+        if (depth === 0 && resumeOnRelease) {
+          resumeOnRelease = false;
+          try {
+            await transport.resume();
+          } catch (error) {
+            transport.onResumeError?.(error);
+          }
+        }
+      }
+    },
+    isHeld: /* @__PURE__ */ __name(() => depth > 0, "isHeld"),
+    requestPlay() {
+      if (depth === 0) return false;
+      resumeOnRelease = true;
+      return true;
+    },
+    cancelResume() {
+      resumeOnRelease = false;
+    }
+  };
+}
+__name(createTransportHold, "createTransportHold");
+
 // src/visualizers/blockScan.ts
 function startsTopLevelBlock(trimmed) {
   return /^_?\$:/.test(trimmed) || trimmed.startsWith("setcps") || /^all\s*\(/.test(trimmed) || trimmed.startsWith("/*");
@@ -8552,6 +8590,23 @@ var _StrudelEngine = class _StrudelEngine {
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.repl = null;
+    /**
+     * #1627 — holds the live transport still while an offline render borrows
+     * superdough's globals, and restores it after. See `transportHold.ts`.
+     */
+    this.transportHold = createTransportHold({
+      isPlaying: /* @__PURE__ */ __name(() => Boolean(this.repl?.scheduler?.started), "isPlaying"),
+      pause: /* @__PURE__ */ __name(() => this.repl?.scheduler?.pause?.(), "pause"),
+      resume: /* @__PURE__ */ __name(async () => {
+        await this.repl?.scheduler?.start?.();
+        this.followMasterAnalyser();
+      }, "resume"),
+      onResumeError: /* @__PURE__ */ __name((error) => emitLog({
+        level: "warn",
+        runtime: "strudel",
+        message: `Playback could not resume after the bounce: ${error instanceof Error ? error.message : String(error)}`
+      }), "onResumeError")
+    });
     this.audioCtx = null;
     this.analyserNode = null;
     this.hapStream = new HapStream();
@@ -9289,6 +9344,7 @@ var _StrudelEngine = class _StrudelEngine {
     return scanVizRequestLines(requests, code, this.vizOptions);
   }
   play() {
+    if (this.transportHold.requestPlay()) return;
     this.repl?.scheduler?.start();
     this.followMasterAnalyser();
   }
@@ -9319,24 +9375,31 @@ var _StrudelEngine = class _StrudelEngine {
     this.taggedDestinationGain = dg;
   }
   stop() {
+    this.transportHold.cancelResume();
     this.repl?.scheduler?.stop();
   }
   /**
    * Phase 20-07 (DEC-AMENDED-1) — debugger pause. Calls
-   * `scheduler.pause()` (NOT `.stop()`) — pause preserves cycle position
+   * `scheduler.pause()` (NOT `.stop()`) — pause keeps lastEnd
    * (cyclist.mjs:112-116), stop rewinds lastEnd to 0 (cyclist.mjs:117-122).
+   * ⚠ Pause does NOT hold the song at the paused cycle: the clock keeps its
+   * next tick time (zyklus.mjs:44), so the next start() runs every tick missed
+   * while paused, skipping their notes (zyklus.mjs:27-31, cyclist.mjs:53-56).
+   * Position after resume = paused position + paused seconds × cps.
    * Idempotent: setPaused() guards against double-fire of listeners (T17).
    */
   pause() {
+    this.transportHold.cancelResume();
     this.repl?.scheduler?.pause?.();
     this.setPaused(true);
   }
   /**
-   * Phase 20-07 — debugger resume. Calls `scheduler.start()` which uses
-   * the preserved lastEnd from pause (cyclist.mjs:101-111). Idempotent.
+   * Phase 20-07 — debugger resume. Calls `scheduler.start()`, which picks up
+   * where the song would be NOW, not at the paused cycle (see pause() above;
+   * cyclist.mjs:101-111). Idempotent.
    */
   resume() {
-    this.repl?.scheduler?.start?.();
+    if (!this.transportHold.requestPlay()) this.repl?.scheduler?.start?.();
     this.setPaused(false);
   }
   /** Current debugger pause state (true after a breakpoint hit). */
@@ -9478,9 +9541,15 @@ var _StrudelEngine = class _StrudelEngine {
    * 0.5 — never a regex over the source. The old renderer's regex defaulted to
    * 1 and rendered at double speed (#1345).
    *
-   * ⚠ WHILE IT RUNS, superdough's module globals name the OFFLINE context, so
-   * anything the live scheduler triggers in that window is rendered into the
-   * bounce rather than played. Render with the transport stopped.
+   * ⚠ IT HOLDS THE LIVE TRANSPORT FOR THE RENDER (#1627). While it runs,
+   * superdough's module globals name the OFFLINE context, so anything the live
+   * scheduler triggered in that window would be rendered into the bounce rather
+   * than played. A playing transport is paused for the render and resumed after
+   * it, on every exit; a stopped one is left stopped; Stop during the render
+   * cancels the resume and Play is deferred to its end (`transportHold.ts`).
+   * Resuming picks up where the song would be NOW, not where it paused: Strudel's
+   * clock keeps its next tick time through a pause and catches up on start,
+   * skipping the notes it missed (`zyklus.mjs:27-31`, `cyclist.mjs:40-52`).
    *
    * ⚠ `code` is evaluated with `@strudel/core`'s `evaluate`, outside this
    * engine's evaluate window, so `setcps`, `$:` and `.viz` are still refused
@@ -9498,13 +9567,14 @@ var _StrudelEngine = class _StrudelEngine {
     if (!pattern) {
       throw new Error("renderOffline: no pattern returned from evaluate()");
     }
-    const result = await renderPatternOffline(
+    const options = {
+      cps: this.getCps() ?? 0.5,
+      duration,
+      sampleRate: sampleRate ?? this.audioCtx.sampleRate
+    };
+    const result = await this.transportHold.hold(() => renderPatternOffline(
       pattern,
-      {
-        cps: this.getCps() ?? 0.5,
-        duration,
-        sampleRate: sampleRate ?? this.audioCtx.sampleRate
-      },
+      options,
       {
         getAudioContext: wa.getAudioContext,
         setAudioContext: wa.setAudioContext,
@@ -9514,7 +9584,7 @@ var _StrudelEngine = class _StrudelEngine {
         superdough: wa.superdough,
         createContext: /* @__PURE__ */ __name((frames, rate) => new OfflineAudioContext(2, frames, rate), "createContext")
       }
-    );
+    ));
     if (result.skipped.length > 0) {
       const left = result.skipped.reduce((n, s) => n + s.count, 0);
       emitLog({
@@ -9548,19 +9618,22 @@ var _StrudelEngine = class _StrudelEngine {
    * silent one's `error` is a `SilentCaptureError`, whose `refused` still holds
    * the take — reached through the error, never handed back as a result (#1410).
    *
-   * Same contracts as `renderOfflineReport`: requires `init()`, render with the
-   * transport stopped, and `setcps`/`$:`/`.viz` in a stem are still refused
-   * (#1344). `onProgress` fires after each stem settles, in input order.
+   * Same contracts as `renderOfflineReport`: requires `init()`, holds the live
+   * transport (once for the whole set, so playback does not stutter back to
+   * life between stems, #1627), and `setcps`/`$:`/`.viz` in a stem are still
+   * refused (#1344). `onProgress` fires after each stem settles, in input order.
    */
   async renderStems(stems, duration, onProgress) {
     if (!this.audioCtx) {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
     const sampleRate = this.audioCtx.sampleRate;
-    return renderStemsInOrder(
-      stems,
-      (code) => this.renderOfflineReport(code, duration, sampleRate),
-      onProgress
+    return this.transportHold.hold(
+      () => renderStemsInOrder(
+        stems,
+        (code) => this.renderOfflineReport(code, duration, sampleRate),
+        onProgress
+      )
     );
   }
   getAnalyser() {
@@ -9740,6 +9813,7 @@ var _StrudelEngine = class _StrudelEngine {
     return this.loadedSoundNames;
   }
   dispose() {
+    this.transportHold.cancelResume();
     this.repl?.scheduler?.stop();
     this.hapStream.dispose();
     this.analyserNode?.disconnect();
