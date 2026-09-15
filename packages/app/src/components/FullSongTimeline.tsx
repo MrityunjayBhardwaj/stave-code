@@ -31,6 +31,8 @@ import {
   captionRows,
   captionHit,
   captionEdit,
+  shapeEdit,
+  shapeOptions,
   AUTOMATION_LABEL_FONT,
   AUTOMATION_MIN_BAND_H,
   AUTOMATION_PAD_Y,
@@ -95,7 +97,7 @@ import {
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
-import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf } from '@stave/editor'
+import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf, shapeAlternatives } from '@stave/editor'
 import type { FixedParameter } from '@stave/editor'
 import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepY, withStepValue, type StepBand, type StepHit } from './musicalTimeline/steppedLane'
 import { stepCountOptions, type StepCountGroup } from './musicalTimeline/stepCountMenu'
@@ -1715,21 +1717,60 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     [onEditAutomation],
   )
 
-  /** The caption fields a press may actually EDIT — the two bounds.
+  /** The caption fields a press may TYPE into — the two bounds and the rate.
    *
    *  ⚠ The parameter NAME is part of the caption and is reported by the
    *  hit-test, but nothing can be typed into it: `captionEdit` returns null for
-   *  it, so an editor opened there would take text and silently drop it, which
-   *  is worse than an inert label. Excluding it here also means a press on the
-   *  name keeps reaching the gestures it always reached. Both the press and the
-   *  double-press ask this, so they cannot disagree about which pixels are
-   *  claimed. */
+   *  it, so a text editor opened there would take text and silently drop it,
+   *  which is worse than an inert label. The name opens the SHAPE menu instead
+   *  (`shapeCaptionAt`, #1464), and only where the curve has a shape to switch to;
+   *  elsewhere a press on it keeps reaching the gestures it always reached. Both
+   *  the press and the double-press ask this, so they cannot disagree about which
+   *  pixels are claimed. */
   const editableCaptionAt = React.useCallback(
     (clientX: number, clientY: number): CaptionHit | null => {
       const hit = captionAt(clientX, clientY)
       return hit && hit.field.kind !== 'param' ? hit : null
     },
     [captionAt],
+  )
+
+  // #1464 — the SHAPE menu, opened by a press on the caption's parameter name. The
+  // automation is captured when it opens, as the automate menu captures its options;
+  // the source is read at commit, and `shapeEdit` refuses bytes that no longer spell
+  // the captured shape, or a shape outside its class.
+  const [choosingShape, setChoosingShape] = useState<{
+    hit: CaptionHit
+    /** Viewport position of the menu, just under the name that was pressed. */
+    left: number
+    top: number
+    options: readonly string[]
+  } | null>(null)
+
+  /** The caption NAME under a client point, when it has a shape menu to open — the
+   *  press, the double-press and the hover cursor all ask this, so they cannot
+   *  disagree about which pixels are claimed. A name with nothing to offer (`time`, a
+   *  mouse signal) stays an inert label and keeps reaching the gestures under it. */
+  const shapeCaptionAt = React.useCallback(
+    (clientX: number, clientY: number): CaptionHit | null => {
+      const hit = captionAt(clientX, clientY)
+      if (!hit || hit.field.kind !== 'param') return null
+      return shapeOptions(hit.row.automation, shapeAlternatives).length > 0 ? hit : null
+    },
+    [captionAt],
+  )
+
+  const commitShape = React.useCallback(
+    (value: string): void => {
+      const open = choosingShape
+      setChoosingShape(null)
+      const current = sourceRef.current
+      if (!open || !onEditAutomation || current == null || value === '') return
+      const a = open.hit.row.automation
+      const edit = shapeEdit(a, value, current, shapeAlternatives)
+      if (edit) onEditAutomation(edit, `automation ${a.paramKey} shape ${value}`)
+    },
+    [choosingShape, onEditAutomation],
   )
 
   /** Commit whatever is in the editor, then close it.
@@ -2146,6 +2187,20 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         setEditingCaption(caption)
         return
       }
+      // #1464 — the caption's NAME opens the shape menu, with the bounds' precedence
+      // and for their reason: the name is drawn over the clip body.
+      const shape = shapeCaptionAt(e.clientX, e.clientY)
+      if (shape) {
+        e.preventDefault()
+        const area = areaRef.current?.getBoundingClientRect()
+        setChoosingShape({
+          hit: shape,
+          left: (area?.left ?? 0) + shape.box.x,
+          top: (area?.top ?? 0) + shape.box.y - scrollTopRef.current + shape.box.h + 2,
+          options: shapeOptions(shape.row.automation, shapeAlternatives),
+        })
+        return
+      }
       // #1463 Stage 3 — a STEP, right behind the caption and ahead of every clip
       // test, for the caption's reason: the staircase is drawn over the clip
       // body, so testing the body first would turn every press on a step into a
@@ -2293,7 +2348,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const cw = dragAwareContentWidth(areaRef.current!.getBoundingClientRect().width)
       setTrimEdgeX(songCycleToX(hit.clip.endCycle, songWindow, cw))
     },
-    [editableCaptionAt, stepAt, clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, jumpToLaneAtClientY, displayCycles, dragAwareContentWidth, onDeleteClip, onMoveClip, onDuplicateClip, onSplitClip, onRippleDeleteClip, onInsertSilenceClip, onRenameSection, onAssignSectionPart],
+    [editableCaptionAt, shapeCaptionAt, stepAt, clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, jumpToLaneAtClientY, displayCycles, dragAwareContentWidth, onDeleteClip, onMoveClip, onDuplicateClip, onSplitClip, onRippleDeleteClip, onInsertSilenceClip, onRenameSection, onAssignSectionPart],
   )
 
   const handleGridPointerMove = React.useCallback(
@@ -2376,7 +2431,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // A step's level is tested FIRST here because it is tested ahead of the
       // clip edge on press (#1578) — the cursor must not promise a trim over a
       // level that a press would drag.
-      el.style.cursor = stepAt(e.clientX, e.clientY)
+      // A caption name with a shape menu is tested first, as it is on press.
+      el.style.cursor = shapeCaptionAt(e.clientX, e.clientY)
+        ? 'pointer'
+        : stepAt(e.clientX, e.clientY)
         ? 'ns-resize'
         : clipEdgeAt(e.clientX, e.clientY)
           ? 'col-resize'
@@ -2389,7 +2447,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     // #1210 — `songWindow`, not `displayCycles`: this handler maps the pointer
     // through the window itself (the move-target highlight), so a paged origin
     // has to re-create it.
-    [stepAt, applyStepDrag, clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, armSpansNow, songWindow, dragAwareContentWidth, applyTrim, extendAutoScrollTick, stopExtendAutoScroll, onMoveClip],
+    [shapeCaptionAt, stepAt, applyStepDrag, clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, armSpansNow, songWindow, dragAwareContentWidth, applyTrim, extendAutoScrollTick, stopExtendAutoScroll, onMoveClip],
   )
 
   const endTrimDrag = React.useCallback(
@@ -3209,6 +3267,31 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             ))}
           </select>
         )}
+        {choosingShape && (
+          <select
+            data-full-song="automation-shape"
+            autoFocus
+            aria-label={`${choosingShape.hit.row.automation.paramKey} shape`}
+            defaultValue=""
+            style={{ ...styles.automateMenu, left: choosingShape.left, top: choosingShape.top }}
+            // No propagation guard, for the automate menu's reason: this is mounted
+            // beside the grid, and nothing above it acts on a plain key or a press.
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setChoosingShape(null)
+            }}
+            onChange={(e) => commitShape(e.currentTarget.value)}
+            onBlur={() => setChoosingShape(null)}
+          >
+            <option value="" disabled>
+              {`shape: ${choosingShape.hit.row.automation.kind}`}
+            </option>
+            {choosingShape.options.map((k) => (
+              <option key={k} value={k}>
+                {k}
+              </option>
+            ))}
+          </select>
+        )}
         {choosingStepCount && (
           <select
             data-full-song="step-count"
@@ -3257,7 +3340,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             // caption being aimed at — captions are drawn on EXPANDED lanes only.
             // A step is the same case: collapsing would take away the staircase
             // whose number was just opened.
-            if (editableCaptionAt(e.clientX, e.clientY) || stepAt(e.clientX, e.clientY)) return
+            if (editableCaptionAt(e.clientX, e.clientY) || shapeCaptionAt(e.clientX, e.clientY) || stepAt(e.clientX, e.clientY)) return
             handleExpandAtClientY(e.clientY)
           }}
         >

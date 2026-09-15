@@ -22,12 +22,14 @@ import {
   captionText,
   captionEdit,
   rateEditable,
+  shapeEdit,
+  shapeOptions,
   CAPTION_PAD_X,
   AUTOMATION_PAD_Y,
   AUTOMATION_LABEL_LINE_H,
 } from '../automationCaption'
 import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
-import { signalAutomations } from '../../../../../editor/src/ir/signalAutomation'
+import { signalAutomations, shapeAlternatives } from '../../../../../editor/src/ir/signalAutomation'
 
 /** One character = 5px. Not the real face — a face whose arithmetic is legible,
  *  so `x=CAPTION_PAD_X + 5*n` names character n without a screenshot. */
@@ -320,5 +322,48 @@ describe('the rate field through the real parser: written, then read back (#1464
 
   it('offers no field on two composing rates', () => {
     expect(retype('$: s("bd*8").cutoff(sine.slow(2).fast(4).range(200, 2000))', '4')).toBeNull()
+  })
+})
+
+describe('the shape menu — what the caption\'s name offers and writes (#1464)', () => {
+  const SRC = '$: s("bd*8").cutoff(saw.slow(4).range(200, 2000))'
+  const readOne = (src: string) => signalAutomations(parseStrudel(src) as never)[0]
+  const apply = (src: string, e: { range: [number, number]; text: string }) => src.slice(0, e.range[0]) + e.text + src.slice(e.range[1])
+
+  it('offers the editor\'s alternatives where the document spells a shape, and none where it does not', () => {
+    expect(shapeOptions(readOne(SRC), shapeAlternatives)).toEqual(shapeAlternatives('saw'))
+    expect(shapeOptions(auto({ kind: 'saw', spans: NO_SPANS }), shapeAlternatives)).toEqual([])
+  })
+
+  it('replaces the identifier and no other byte, and reads back as the new shape with the same bounds and rate', () => {
+    const a = readOne(SRC)
+    const edit = shapeEdit(a, 'tri', SRC, shapeAlternatives)
+    expect(edit).not.toBeNull()
+    const out = apply(SRC, edit!)
+    expect(out).toBe('$: s("bd*8").cutoff(tri.slow(4).range(200, 2000))')
+    const back = readOne(out)
+    expect({ kind: back.kind, lo: back.lo, hi: back.hi, period: back.periodCycles, lane: back.lanePeriodCycles })
+      .toEqual({ kind: 'tri', lo: a.lo, hi: a.hi, period: a.periodCycles, lane: a.lanePeriodCycles })
+  })
+
+  it('writes nothing for the same shape, or a shape the editor does not offer', () => {
+    const a = readOne(SRC)
+    // Control first: an offered shape does write.
+    expect(shapeEdit(a, 'sine', SRC, shapeAlternatives)).not.toBeNull()
+    for (const next of ['saw', 'saw2', 'perlin', 'time', 'cutoff', '']) {
+      expect(shapeEdit(a, next, SRC, shapeAlternatives), next).toBeNull()
+    }
+  })
+
+  it('writes nothing where the document spells no shape', () => {
+    expect(shapeEdit(auto({ kind: 'saw', spans: NO_SPANS }), 'tri', SRC, shapeAlternatives)).toBeNull()
+  })
+
+  it('writes nothing when the document moved under the open menu', () => {
+    const a = readOne(SRC)
+    // Two characters inserted before the curve: the captured offsets now land on `(s`.
+    expect(shapeEdit(a, 'tri', `  ${SRC}`, shapeAlternatives)).toBeNull()
+    // Control: the same bytes at the same place still write.
+    expect(shapeEdit(a, 'tri', SRC, shapeAlternatives)).not.toBeNull()
   })
 })

@@ -1051,3 +1051,120 @@ test('a rate typed on the caption reaches the document, and the lane draws the n
 
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
+
+// ── #1464: the shape, chosen from the caption's name ────────────────────────
+
+/** Walk the caption line until the shape menu opens, abandoning any bound, rate or
+ *  step editor a press lands on instead. Found by what the app opens, never by a
+ *  glyph width. */
+async function openShapeMenu(page: Page): Promise<boolean> {
+  const menu = page.locator('[data-full-song="automation-shape"]')
+  const others = page.locator('[data-full-song="automation-bound"], [data-full-song="automation-step"]')
+  for (let x = 4; x <= 120; x += 3) {
+    await clickCanvasAt(page, x, 8)
+    await page.waitForTimeout(60)
+    if (await menu.count()) return true
+    if (await others.count()) {
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(40)
+    }
+  }
+  return false
+}
+
+test('a shape chosen from the caption\'s name reaches the document, and the lane draws it (#1464)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+  await bootShell(page)
+  const canvas = page.locator('[data-full-song-canvas]')
+  const menu = page.locator('[data-full-song="automation-shape"]')
+
+  // ── CONTROL FIRST: the rate arm's two tracks, the cutoff held constant, over 8 bars.
+  //    The companion track pins the view, so both renders share one geometry.
+  await setSongAndEval(page, RATE_CONSTANT_SONG)
+  await canvas.waitFor({ timeout: 10_000 })
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(8)
+  await page.waitForTimeout(500)
+  const control = await blueChannel(page)
+  expect(curveRow(control, control, 0, control.W), 'the difference fires on an identical render').toBeNull()
+
+  const readShape = (subject: { W: number; H: number; blue: number[] }) => {
+    const bar = subject.W / 8
+    const at = (x0: number, x1: number) => curveRow(subject, control, Math.round(x0), Math.round(x1))
+    return {
+      start: at(8, 24),
+      bar2: at(2 * bar - 8, 2 * bar + 8),
+      beforeBar4: at(4 * bar - 24, 4 * bar - 8),
+      afterBar4: at(4 * bar + 8, 4 * bar + 24),
+    }
+  }
+
+  await setSongAndEval(page, RATE_SONG)
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(8)
+  await page.waitForTimeout(800)
+  const before = await blueChannel(page)
+  expect([before.W, before.H]).toEqual([control.W, control.H])
+  const b = readShape(before)
+  expect(Object.values(b).every((r) => r !== null), `no curve at one of the probes: ${JSON.stringify(b)}`).toBe(true)
+
+  // (0) THE INSTRUMENT SEES THE SAW: it rises to bar 4 and resets there.
+  const sawExtent = Math.abs((b.start as number) - (b.beforeBar4 as number))
+  expect(sawExtent, `the saw barely moves: ${JSON.stringify(b)}`).toBeGreaterThan(10)
+  expect(Math.abs((b.beforeBar4 as number) - (b.afterBar4 as number)), `no reset at bar 4: ${JSON.stringify(b)}`).toBeGreaterThan(0.5 * sawExtent)
+
+  // ── COLLAPSED: no caption, so no press along the line opens the menu.
+  for (let x = 4; x <= 120; x += 8) {
+    await clickCanvasAt(page, x, 8)
+    await page.waitForTimeout(40)
+    expect(await menu.count(), `a collapsed lane opened the shape menu at x=${x}`).toBe(0)
+  }
+
+  // ── EXPAND and open the menu on the name.
+  await page.locator('[data-full-song-lane-expand]').first().click()
+  await page.waitForTimeout(800)
+  expect(await openShapeMenu(page), 'no press on the caption opened the shape menu').toBe(true)
+
+  // (1) IT NAMES THE CURRENT SHAPE AND OFFERS ONLY ITS CLASS — no bipolar spelling, no noise.
+  const texts = await menu.locator('option').allTextContents()
+  expect(texts).toEqual(['shape: saw', 'sine', 'tri', 'cosine', 'square', 'isaw', 'itri'])
+
+  // (2) ESCAPE WRITES NOTHING and closes it.
+  const doc = await readDoc(page)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
+  expect(await menu.count(), 'Escape left the menu open').toBe(0)
+  expect(await readDoc(page), 'Escape wrote to the document').toBe(doc)
+
+  // (3) CHOOSING `tri` REPLACES THE IDENTIFIER AND NO OTHER BYTE.
+  expect(await openShapeMenu(page), 'the shape menu did not reopen').toBe(true)
+  await menu.selectOption('tri')
+  await expect.poll(() => readDoc(page), { timeout: 5_000 })
+    .toBe('$: s("bd*8").cutoff(tri.slow(4).range(200, 2000))\n$: s("<hh cp hh cp hh cp hh sd>")')
+  await expect.poll(() => menu.count(), { timeout: 2_000 }).toBe(0)
+
+  // ── COLLAPSE, so the canvas matches the control's geometry.
+  await page.locator('[data-full-song-lane-expand]').first().click()
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(8)
+  await page.waitForTimeout(800)
+  const after = await blueChannel(page)
+  expect([after.W, after.H]).toEqual([control.W, control.H])
+  const a = readShape(after)
+  expect(Object.values(a).every((r) => r !== null), `no curve at one of the probes: ${JSON.stringify(a)}`).toBe(true)
+
+  // (4) THE LANE DRAWS A TRIANGLE: it peaks at bar 2, and has no reset at bar 4.
+  const triExtent = Math.abs((a.start as number) - (a.bar2 as number))
+  expect(triExtent, `the triangle barely moves: ${JSON.stringify(a)}`).toBeGreaterThan(10)
+  expect(Math.abs((a.beforeBar4 as number) - (a.afterBar4 as number)), `still a reset at bar 4: ${JSON.stringify({ b, a })}`).toBeLessThan(0.15 * triExtent)
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
