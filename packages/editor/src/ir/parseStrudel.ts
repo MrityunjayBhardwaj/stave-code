@@ -1293,8 +1293,9 @@ function parseDocument(
       // binding-free documents, NOT a new one. Keeping only the statements that
       // parse musically was the tempting alternative and is rejected twice
       // over: it would give this file two different answers to one question,
-      // and the staged pipeline splits at RAW, before anything is parsed, so it
-      // could not mirror the filter and the two parsers would diverge. An
+      // and the staged pipeline of the time split at RAW, before anything was
+      // parsed, so it could not have mirrored the filter. #1387 removed that
+      // pipeline, so only the first reason still holds. An
       // opaque statement therefore draws a silent row, which is what #1096
       // decided a statement the parser cannot read should do.
       const declaresBinding = bareStmts.some(s => BINDING_RE.test(s.text))
@@ -1798,9 +1799,9 @@ export function extractTracks(
   // of the literal `$:` token) and `end` (exclusive end of the track body
   // slice — either the next `$:` line start or `code.length`) are exposed
   // so α-3's parseStrudel main path can attach a loc covering the `$:` line
-  // range to each Track wrapper. Existing callers (parseStrudel main +
-  // parseStrudelStages.runRawStage) consume only `expr`/`offset` and are
-  // forward-compatible.
+  // range to each Track wrapper. Existing callers (parseStrudel main, and at
+  // the time the staged `runRawStage`, removed in #1387) consume only
+  // `expr`/`offset` and are forward-compatible.
   //
   // Phase 20-12.1 follow-up — commented `$:` lines (// $:) are now matched
   // and emitted as `commented: true`. parseStrudel maps these to empty-body
