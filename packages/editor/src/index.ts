@@ -24,6 +24,9 @@ export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp 
 // #1600 — a fixed value a lane can start automating.
 export { fixedParameters, fixedToStepsEdit } from './ir'
 export type { FixedParameter } from './ir'
+// #1602 — a stepped parameter's step count, and the song length it would give.
+export { stepCountEdit, previewRepeat, songPeriodOf } from './ir'
+export type { StepCountEdit, LanePeriod } from './ir'
 
 // Phase 19-07 (#79) — parser stage helpers. PK10 propagation: re-exported
 // from the top-level barrel so the app can `import { runRawStage, ... }

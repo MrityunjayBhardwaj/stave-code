@@ -8,7 +8,7 @@ const analysisFixture: SongAnalysis = {
   periodCycles: 4,
   horizonCycles: 8,
   displaySpan: { kind: 'loop', cycles: 4 },
-  repeatCycles: 4,
+  repeatCycles: 4, lanePeriods: [],
   lanes: [
     { laneKey: 'bd', onsetsByCycle: [2, 0, 3, 0] },
     { laneKey: 'lead', onsetsByCycle: [1, 1, 1, 1] },
@@ -141,7 +141,7 @@ describe('buildTimelineScene', () => {
       ],
       sections: [],
       displaySpan: { kind: 'loop', cycles: 1 },
-      repeatCycles: 1,
+      repeatCycles: 1, lanePeriods: [],
     }
     const scene = sceneOf(analysis, 0, null, marks({}, false, {}, {}, {}, { d1: 0, d2: 14 }), undefined, code)
     const d1 = scene.lanes.find((l) => l.laneKey === 'd1')!
@@ -166,7 +166,7 @@ describe('buildTimelineScene', () => {
       ],
       sections: [],
       displaySpan: { kind: 'loop', cycles: 1 },
-      repeatCycles: 1,
+      repeatCycles: 1, lanePeriods: [],
     }
     // Override keyed by the lane's DISPLAY NAME: `bass` (the named track's label)
     // and `d2` (the anon track's positional name).
@@ -209,7 +209,7 @@ describe('buildTimelineScene', () => {
       lanes: [{ laneKey: 'd1', onsetsByCycle: [1] }],
       sections: [],
       displaySpan: { kind: 'loop', cycles: 1 },
-      repeatCycles: 1,
+      repeatCycles: 1, lanePeriods: [],
     }
     const scene = sceneOf(analysis, 0, null, marks({}, false, {}, {}, { d1: 0 }))
     expect(scene.lanes[0].displayName).toBe('d1')
@@ -653,7 +653,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
       periodCycles: 1,
       horizonCycles: 1,
       displaySpan: { kind: 'loop', cycles: 1 },
-      repeatCycles: 1,
+      repeatCycles: 1, lanePeriods: [],
       lanes: [{ laneKey: 'kick', onsetsByCycle: [4] }],
       sections: [],
     }
@@ -680,7 +680,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
       periodCycles: 1,
       horizonCycles: 1,
       displaySpan: { kind: 'loop', cycles: 1 },
-      repeatCycles: 1,
+      repeatCycles: 1, lanePeriods: [],
       lanes: [{ laneKey: 'kick', onsetsByCycle: [4] }],
       sections: [],
     }
@@ -705,7 +705,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
       periodCycles: 1,
       horizonCycles: 1,
       displaySpan: { kind: 'loop', cycles: 1 },
-      repeatCycles: 1,
+      repeatCycles: 1, lanePeriods: [],
       lanes: [{ laneKey: 'kick', onsetsByCycle: [4] }],
       sections: [],
     }
@@ -765,7 +765,7 @@ describe('declared-but-silent lanes (#1098) reconciled by source position (#1101
     // reaches the marks, and the IR's single Track node is `d1` too. A bare
     // statement is also unlabelled, so it declares no offset and is owed no
     // structural row either way — ONE row.
-    const bare: SongAnalysis = { periodCycles: 1, horizonCycles: 1, displaySpan: { kind: 'loop', cycles: 1 }, repeatCycles: 1, lanes: [], sections: [] }
+    const bare: SongAnalysis = { periodCycles: 1, horizonCycles: 1, displaySpan: { kind: 'loop', cycles: 1 }, repeatCycles: 1, lanePeriods: [], lanes: [], sections: [] }
     const scene = sceneOf(
       bare, 0, null,
       marks({ d1: [{ cycle: 0, end: 0.25, pitch: null, gain: 1 }] }),

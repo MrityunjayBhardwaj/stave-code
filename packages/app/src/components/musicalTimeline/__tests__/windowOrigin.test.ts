@@ -98,7 +98,7 @@ function analysisAtOrigin(density: number[]): SongAnalysis {
       { startCycle: ORIGIN + 16, endCycle: ORIGIN + SPAN, laneKeys: ['bass'] },
     ],
     displaySpan: { kind: 'capped', cycles: SPAN },
-    repeatCycles: null,
+    repeatCycles: null, lanePeriods: [],
   }
 }
 

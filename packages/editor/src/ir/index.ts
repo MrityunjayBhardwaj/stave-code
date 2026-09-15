@@ -85,6 +85,11 @@ export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp 
 // A fixed value, and the edit that starts automating it as steps (#1600).
 export { fixedParameters, fixedToStepsEdit } from './fixedParameters'
 export type { FixedParameter } from './fixedParameters'
+// #1602 — change a stepped parameter's step count, and preview the song's length first.
+export { stepCountEdit } from './stepCount'
+export type { StepCountEdit } from './stepCount'
+export { previewRepeat, songPeriodOf } from './songAnalysis'
+export type { LanePeriod } from './songAnalysis'
 
 // Event identity (#1102) — exported so the NEXT consumer asking "are these two
 // events the same sound" finds the one answer instead of curating its own field
