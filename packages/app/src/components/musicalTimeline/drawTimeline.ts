@@ -639,9 +639,9 @@ const FAITHFUL_UNIT: Readonly<Record<string, (t: number) => number>> = {
   itri2: (t) => (t < 0.5 ? 1 - t * 2 : t * 2 - 1),
   square: (t) => (t < 0.5 ? 0 : 1),
   square2: (t) => (t < 0.5 ? 0 : 1),
-  // `time` is the cycle position — deterministic, so the drawn ramp IS the
-  // signal. It is not fabricated; it is simply unbounded, which is why it
-  // abstains without an explicit `.range()` long before it reaches here.
+  // `time` is the cycle position — deterministic, so it is not fabricated and
+  // `isIndicativeKind` must not call it so. It is unbounded, which is why the
+  // reader declines it, range or no range, before it reaches here (#1614).
   time: (t) => t,
 }
 

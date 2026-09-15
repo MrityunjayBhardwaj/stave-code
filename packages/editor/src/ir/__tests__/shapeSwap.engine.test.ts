@@ -147,6 +147,11 @@ describe('#1611 — where the stand-in cannot tell whose value it replaces', () 
     // The steps come round every 3 and the new waveform every 8, so the song is 24 —
     // a stand-in over both writers would have overwritten the steps' own 3.
     ['steps', 'stack(s("bd*8").gain(perlin.slow(8)), s("hh*8").gain("<.2 .8 .5>"))', 24],
+    // #1614 — `time` is never drawn, and it writes the control all the same. Counting only
+    // the drawn curves let the bare one through, where the preview matched the engine only
+    // by luck of this document.
+    ['time', 'stack(s("bd*8").gain(perlin.slow(8)), s("hh*8").gain(time))', 8],
+    ['time under a range', 'stack(s("bd*8").gain(perlin.slow(8)), s("hh*8").gain(time.range(0.2, 0.8)))', 'unchanged'],
   ] as const)('toward a waveform, with %s on the same control: no preview, rather than a wrong one', async (_label, d1, after) => {
     const r = await swap([d1, LOOP4], 'sine')
     // The engine's own answer first, so the refusal is seen to be for a song that has one.

@@ -210,6 +210,23 @@ describe('#1613 — a range written high-to-low plays downward, and the reader s
   })
 })
 
+describe('#1614 — a range does not bound time: the engine passes the range\'s arguments, and the reader declines', () => {
+  it('time.range(0.2, 0.8) keeps rising past 0.8 after the first cycle; nothing is drawn for it', async () => {
+    const code = 's("bd*16").gain(time.range(0.2, 0.8))'
+    const onsets = await bdOnsets(code, 16)
+    expect(onsets.length).toBe(256)
+    // The engine plays the affine map of the cycle position, over the whole song.
+    expect(worst(onsets.map((o) => Math.abs(o.gain - (0.2 + 0.6 * o.t)))), 'the closed form').toBeLessThan(1e-9)
+    expect(Math.max(...onsets.map((o) => o.gain)), 'the loudest onset').toBeCloseTo(9.7625, 9)
+    // The rival — what the lane drew before: the arguments as bounds, the phase wrapped each
+    // cycle. It agrees in the first cycle and nowhere after, so the input tells the two apart.
+    const wrapped = (t: number) => 0.2 + 0.6 * (t - Math.floor(t))
+    expect(worst(onsets.filter((o) => o.t < 1).map((o) => Math.abs(o.gain - wrapped(o.t))))).toBeLessThan(1e-9)
+    expect(worst(onsets.filter((o) => o.t >= 1).map((o) => Math.abs(o.gain - wrapped(o.t))))).toBeGreaterThan(0.5)
+    expect(signalAutomations(parseStrudel(`$: ${code}`) as never)).toEqual([])
+  })
+})
+
 describe('#1590 — the period fold is told the period the engine repeats at', () => {
   it.each([
     ['no section (control)', 's("bd*8").gain(saw.slow(3))', 3],

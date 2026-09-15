@@ -1249,7 +1249,7 @@ function lanePeriodOf(periodCycles, placements) {
   return agreed;
 }
 __name(lanePeriodOf, "lanePeriodOf");
-function signalAutomations(ir) {
+function readCurves(ir) {
   const out = [];
   for (const { trackId, param, placements } of playableParameters(ir)) {
     if (placements.some((p) => p.some((step) => !isSectionWindow(step) && step.shift < 0))) continue;
@@ -1257,9 +1257,16 @@ function signalAutomations(ir) {
     if (!value || typeof value !== "object" || typeof value.tag !== "string") continue;
     const read5 = readChain(value);
     if (!read5) continue;
-    const polarity = polarityOf(read5.signal.kind);
+    out.push({ trackId, param, placements, read: read5, polarity: polarityOf(read5.signal.kind) });
+  }
+  return out;
+}
+__name(readCurves, "readCurves");
+function signalAutomations(ir) {
+  const out = [];
+  for (const { trackId, param, placements, read: read5, polarity } of readCurves(ir)) {
+    if (polarity === "unbounded") continue;
     const ranged = read5.ranges.length > 0;
-    if (!ranged && polarity === "unbounded") continue;
     const { lo, hi, boundsAsWritten } = boundsOf(polarity, read5.ranges);
     const start = param.loc?.[0]?.start;
     out.push({
@@ -1280,6 +1287,10 @@ function signalAutomations(ir) {
   return out;
 }
 __name(signalAutomations, "signalAutomations");
+function signalWriters(ir) {
+  return readCurves(ir).map(({ trackId, param, read: read5 }) => ({ trackId, paramKey: param.key, kind: read5.signal.kind }));
+}
+__name(signalWriters, "signalWriters");
 function signalTimeAt(a, time) {
   return placementsTimeAt(a.placements, time);
 }
@@ -1806,7 +1817,7 @@ __name(previewShapeSwap, "previewShapeSwap");
 function sharesItsControl(ir, a) {
   if (!ir) return false;
   const same = /* @__PURE__ */ __name((b) => b.trackId === a.trackId && b.paramKey === a.paramKey, "same");
-  return signalAutomations(ir).filter(same).length > 1 || steppedAutomations(ir).some(same);
+  return signalWriters(ir).filter(same).length > 1 || steppedAutomations(ir).some(same);
 }
 __name(sharesItsControl, "sharesItsControl");
 function standInPeriodOf(a, next) {
