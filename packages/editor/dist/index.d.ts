@@ -773,10 +773,13 @@ interface ShapeSwap {
  * below the cap, abstention at it, the source-informed fold, the whole-song repeat) is
  * then the one that will run after the edit, and not a second copy of it.
  *
- * Measured against the swapped SOURCE through the engine and the same analysis, 16 of 16
- * hand-picked swaps agreed — a 16-bar sweep beside a 4-bar line (16 → 4, and back),
- * alone (16 → 1), beside a 2-bar line (16 → 2), under a whole-track slow, inside an
- * arrangement section, on a lane that loops by itself — see `shapeSwap.engine.test.ts`.
+ * Measured against the swapped SOURCE through the engine and the same analysis
+ * (`shapeSwap.engine.test.ts`): a 16-bar sweep beside a 4-bar line (16 → 4, and back),
+ * alone (16 → 1), beside a 2-bar line, under a whole-track slow, inside an arrangement
+ * section, on a lane that loops by itself, fast noise both ways, and a third-of-a-cycle
+ * period on a lane whose own length decides the song. Across the archive (291 swaps) 273
+ * agree, 17 decline for a shared control, and the one miss is lane attribution (#1619),
+ * not this preview.
  *
  * Null for a curve whose shape is not spelled, a `next` that is neither noise nor a
  * waveform, a song period that is not an exact fraction, or no collector. `opts` are the

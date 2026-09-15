@@ -150,11 +150,11 @@ const GUTTER_WIDTH = 90
 // #1570 — the loop strip's band of the ruler. Tall enough to hit without
 // aiming, short enough to leave the tick labels below it readable.
 const LOOP_STRIP_HEIGHT = 9
-/** How near an edge counts as grabbing it rather than drawing a new loop. */
 /** #1611 — the editor readers the caption's shape menu offers from. Read at CALL time,
  *  never at import: the app's tests mock `@stave/editor`, and a module-scope read of an
  *  export a factory does not return fails the whole file at collection. */
 const shapeDeps = (): ShapeDeps => ({ alternatives: shapeAlternatives, crossClass: crossClassShapes })
+/** How near an edge counts as grabbing it rather than drawing a new loop. */
 const LOOP_EDGE_GRAB_PX = 5
 /** Under this much travel a pointerdown/up is a click, not a drag. */
 const LOOP_CLICK_SLOP_PX = 3
@@ -1764,6 +1764,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     top: number
     /** #1611 — the song after a swap across classes, or null when none is offered. */
     preview: SwapPreview | null
+    /** The song's length when the menu opened: the baseline the preview is measured
+     *  against, captured with it, so "(was N)" and the new length come from one moment. */
+    was: number | null
   } | null>(null)
   // #1611 — a closed menu's preview is abandoned, so a result for a menu nobody is
   // looking at cannot land on the next one opened.
@@ -2241,6 +2244,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           left: (area?.left ?? 0) + shape.box.x,
           top: (area?.top ?? 0) + shape.box.y - scrollTopRef.current + shape.box.h + 2,
           preview: across.length > 0 ? { state: 'pending' } : null,
+          was: analysis ? songLoopCycles(analysis) : null,
         })
         if (onPreviewShape && across.length > 0) {
           const land = (cycles: number | null) => {
@@ -2401,7 +2405,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const cw = dragAwareContentWidth(areaRef.current!.getBoundingClientRect().width)
       setTrimEdgeX(songCycleToX(hit.clip.endCycle, songWindow, cw))
     },
-    [editableCaptionAt, shapeCaptionAt, onPreviewShape, stepAt, clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, jumpToLaneAtClientY, displayCycles, dragAwareContentWidth, onDeleteClip, onMoveClip, onDuplicateClip, onSplitClip, onRippleDeleteClip, onInsertSilenceClip, onRenameSection, onAssignSectionPart],
+    [editableCaptionAt, shapeCaptionAt, onPreviewShape, analysis, stepAt, clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, jumpToLaneAtClientY, displayCycles, dragAwareContentWidth, onDeleteClip, onMoveClip, onDuplicateClip, onSplitClip, onRippleDeleteClip, onInsertSilenceClip, onRenameSection, onAssignSectionPart],
   )
 
   const handleGridPointerMove = React.useCallback(
@@ -3342,7 +3346,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               choosingShape.hit.row.automation,
               shapeDeps(),
               choosingShape.preview,
-              analysis ? songLoopCycles(analysis) : null,
+              choosingShape.was,
             ).map((o) => (
               <option key={o.kind} value={o.kind} disabled={o.disabled}>
                 {o.label}

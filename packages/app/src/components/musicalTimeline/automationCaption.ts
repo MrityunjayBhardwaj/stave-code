@@ -342,10 +342,10 @@ export function shapeOptions(a: SignalAutomation, deps: ShapeDeps): readonly Sig
  * #1611 — what the menu knows about the song after a swap across classes: still being
  * measured, or measured — the bars one pass lasts, or null for no loop.
  *
- * ONE preview serves every cross-class shape on the menu. A swap to noise gives each
- * noise shape the same song (none comes back), and a swap to a waveform gives each
- * waveform the same song (the rate is untouched, so is the period) — so the menu asks
- * once, for the first.
+ * ONE preview serves every cross-class shape on the menu. Every noise shape comes back at
+ * the same span (300 of its own cycles — the editor's `NOISE_SEED_CYCLES`), and every
+ * waveform at its rate, which a swap leaves untouched — so each side gives one song, and
+ * the menu asks once, for the first.
  */
 export type SwapPreview =
   | { readonly state: 'pending' }

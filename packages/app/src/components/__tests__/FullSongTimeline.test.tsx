@@ -2166,3 +2166,104 @@ describe('FullSongTimeline — change a stepped parameter\'s step count from its
     expect(onEditAutomation).not.toHaveBeenCalled()
   })
 })
+
+describe('FullSongTimeline — the shape menu measures a swap against the song it opened on (#1611)', () => {
+  // `s("bd*2").gain(sine.slow(16))`, with the spans the parser gives: the call site
+  // 9–29, the chain 15–28, the identifier 15–19. Read by the REAL `signalAutomations`.
+  const source = 's("bd*2").gain(sine.slow(16))'
+  const SIGNAL_IR = {
+    tag: 'Stack',
+    tracks: [
+      {
+        tag: 'Track',
+        trackId: 'bd',
+        body: {
+          tag: 'Param',
+          key: 'gain',
+          rawArgs: 'sine.slow(16)',
+          loc: [{ start: 9, end: 29 }],
+          value: {
+            tag: 'Slow',
+            factor: 16,
+            loc: [{ start: 15, end: 28 }],
+            body: { tag: 'Signal', kind: 'sine', loc: [{ start: 15, end: 19 }] },
+          },
+          body: { tag: 'Play', note: 'bd' },
+        },
+      },
+    ],
+  }
+  const loopOf = (cycles: number): SongAnalysis => ({
+    ...analysisFixture,
+    periodCycles: cycles,
+    horizonCycles: cycles * 2,
+    displaySpan: { kind: 'loop', cycles },
+    repeatCycles: cycles,
+  })
+  const settle = () => act(async () => { await Promise.resolve() })
+
+  it('a re-evaluation while the preview is measuring does not move the "(was N)" beside it', async () => {
+    // ⚠ jsdom has no canvas, so the caption's text measures 0 wide and no name can be
+    // pressed. The stub answers only an OFFSCREEN canvas, which is the measurer's own
+    // (`measureCaption` creates one and never attaches it); the drawn canvases keep
+    // jsdom's null, so the draw path is not handed a context it would half-use.
+    const realGetContext = HTMLCanvasElement.prototype.getContext
+    const spy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (
+      this: HTMLCanvasElement,
+      ...args: Parameters<HTMLCanvasElement['getContext']>
+    ) {
+      if (this.isConnected) return realGetContext.apply(this, args as never)
+      return { font: '', measureText: (t: string) => ({ width: t.length * 6 }) } as never
+    } as never)
+    try {
+      let answer: (a: SongAnalysis | null) => void = () => {}
+      const onPreviewShape = vi.fn(() => new Promise<SongAnalysis | null>((resolve) => { answer = resolve }))
+      const props = {
+        ir: SIGNAL_IR as never,
+        source,
+        analysis: loopOf(16),
+        onEditAutomation: vi.fn(),
+        onPreviewShape,
+      }
+      const utils = renderFull(props)
+      const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
+      grid.getBoundingClientRect = () =>
+        ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+      await settle()
+      await act(async () => {
+        ;(utils.container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement).click()
+      })
+      // The name `gain` is the caption's first field: x from CAPTION_PAD_X (4) over four
+      // 6px glyphs, y inside the first line (the lane's top inset is 3).
+      fireEvent.pointerDown(grid, { clientX: 10, clientY: 5, pointerId: 1 })
+      const menu = () => utils.container.querySelector('[data-full-song="automation-shape"]') as HTMLSelectElement | null
+      expect(menu(), 'a press on the name did not open the shape menu').not.toBeNull()
+      expect(onPreviewShape).toHaveBeenCalledTimes(1)
+      const across = () => Array.from(menu()!.options).map((o) => o.textContent ?? '').filter((l) => l.includes(' · '))
+      expect(across().length, 'no shape across classes was offered').toBeGreaterThan(0)
+      expect(across().every((l) => l.endsWith('measuring song length…'))).toBe(true)
+
+      // The song is re-evaluated under the open menu, to a length the preview never saw.
+      utils.rerender(
+        <FullSongTimeline
+          getSongPosition={() => null}
+          onSeek={utils.onSeek}
+          getDrawerOpen={() => true}
+          getActiveTabId={() => 'musical-timeline'}
+          {...props}
+          analysis={loopOf(8)}
+        />,
+      )
+      expect(menu(), 'a new snapshot closed the menu — this arm no longer tests anything').not.toBeNull()
+      await act(async () => {
+        answer(loopOf(4))
+        await Promise.resolve()
+      })
+      // The preview was measured from the song at 16; its baseline must be that song's.
+      expect(across().length).toBeGreaterThan(0)
+      for (const label of across()) expect(label).toMatch(/ · song repeats every 4 bars \(was 16\)$/)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+})

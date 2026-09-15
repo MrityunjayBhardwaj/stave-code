@@ -508,10 +508,13 @@ const NOISE_SEED_CYCLES = 300
  * below the cap, abstention at it, the source-informed fold, the whole-song repeat) is
  * then the one that will run after the edit, and not a second copy of it.
  *
- * Measured against the swapped SOURCE through the engine and the same analysis, 16 of 16
- * hand-picked swaps agreed — a 16-bar sweep beside a 4-bar line (16 → 4, and back),
- * alone (16 → 1), beside a 2-bar line (16 → 2), under a whole-track slow, inside an
- * arrangement section, on a lane that loops by itself — see `shapeSwap.engine.test.ts`.
+ * Measured against the swapped SOURCE through the engine and the same analysis
+ * (`shapeSwap.engine.test.ts`): a 16-bar sweep beside a 4-bar line (16 → 4, and back),
+ * alone (16 → 1), beside a 2-bar line, under a whole-track slow, inside an arrangement
+ * section, on a lane that loops by itself, fast noise both ways, and a third-of-a-cycle
+ * period on a lane whose own length decides the song. Across the archive (291 swaps) 273
+ * agree, 17 decline for a shared control, and the one miss is lane attribution (#1619),
+ * not this preview.
  *
  * Null for a curve whose shape is not spelled, a `next` that is neither noise nor a
  * waveform, a song period that is not an exact fraction, or no collector. `opts` are the
@@ -550,7 +553,8 @@ export async function previewShapeSwap(
  * of the key on the lane, and the other writers' noise or periods are overwritten by the
  * new shape's phase. The one direction where that is still exact is noise that comes back
  * only past the analysis cap (`NOISE_SEED_CYCLES`): the lane then repeats within no
- * horizon, whatever the others do. Faster noise repeats, and the others count again. Found on an archive document whose drop stacks four `perlin` gains in one track:
+ * horizon, whatever the others do. Faster noise repeats, and the others count again.
+ * Found on an archive document whose drop stacks four `perlin` gains in one track:
  * switching one to `sine` leaves the song at 7 bars, and a stand-in over all four named 40
  * and 120.
  *
