@@ -740,6 +740,77 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     }
   }
 
+  /**
+   * Whether this runtime can bounce faster than real time (#1344). Duck-typed
+   * like `canRecord`: only `StrudelEngine` renders the document it has loaded.
+   */
+  canBounceOffline(): boolean {
+    if (this.isDisposed) return false
+    return typeof (this.engine as { renderLoadedReport?: unknown }).renderLoadedReport === 'function'
+  }
+
+  /**
+   * Render `seconds` of this runtime's document OFFLINE — faster than real time,
+   * through the real audio graph — as a WAV, with what could not play (#1344).
+   * Returns null when the engine cannot, or when `signal` aborted before the
+   * render began.
+   *
+   * ⚠ IT RENDERS THE DOCUMENT AS LOADED, SO IT LOADS IT FIRST, THE WAY PLAY
+   * DOES. The engine's evaluate window is the only place `setcps`, `$:` and
+   * `.viz` exist, and a render that evaluates outside it refuses nearly every
+   * document (#1344). Evaluating the file through the same exclusive gate as
+   * `play()` and rendering what that loads means the bounce and the speakers
+   * read one evaluation, and nothing else gets swapped in: the render's document
+   * IS this runtime's document.
+   *
+   * ⚠ THE SAME FRAME RULES AS `record`, for the same reasons. Stop, clear the
+   * seek (#1371), clear the loop (#1572) and give the loop back afterwards,
+   * leaving the transport stopped. The engine refuses a load that still carries
+   * a seek or a loop, so skipping a step fails loudly rather than bouncing a
+   * shifted or looped song. There is no settle wait (#1356): the render plays
+   * into its own offline context, so a live tail cannot reach the file.
+   *
+   * ⚠ A DOCUMENT THAT DOES NOT EVALUATE THROWS ITS ERROR AND RENDERS NOTHING.
+   * What is loaded after a failed evaluate is the previous document.
+   */
+  async bounceOffline(
+    seconds: number,
+    signal?: AbortSignal,
+  ): Promise<{ blob: Blob; haps: number; played: number; skipped: Array<{ reason: string; count: number }> } | null> {
+    const engine = this.engine as {
+      renderLoadedReport?: (
+        s: number,
+      ) => Promise<{ blob: Blob; haps: number; played: number; skipped: Array<{ reason: string; count: number }> }>
+      setTransportOffset?: (offset: number) => void
+      getLoopRange?: () => LoopRange | null
+      setLoopRange?: (range: LoopRange | null) => void
+    }
+    if (this.isDisposed || typeof engine.renderLoadedReport !== 'function') return null
+
+    this.stop()
+    engine.setTransportOffset?.(0)
+    const loopBeforeBounce = engine.getLoopRange?.() ?? null
+    if (loopBeforeBounce) engine.setLoopRange?.(null)
+
+    try {
+      if (!this.isInitialized) {
+        await this.engine.init()
+        this.isInitialized = true
+      }
+      const code = this.getFileContent()
+      const { error } = await this.runExclusiveEval(() => this.engine.evaluate(code))
+      if (error) {
+        this.fireOnError(error)
+        throw error
+      }
+      if (signal?.aborted) return null
+      return await engine.renderLoadedReport(seconds)
+    } finally {
+      // The locators are the user's — given back on every exit, as `record` does.
+      if (loopBeforeBounce) engine.setLoopRange?.(loopBeforeBounce)
+    }
+  }
+
   stop(): void {
     // Invalidate any in-flight play() so it aborts after its await instead of
     // restarting the scheduler we're about to stop (#811). Bump first, before

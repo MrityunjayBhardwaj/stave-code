@@ -8675,6 +8675,14 @@ var _StrudelEngine = class _StrudelEngine {
     // `trackSchedulers`), and these are the spans those patterns' haps were located
     // against. Null = unknown, which filters nothing.
     this.lastDeclaredLocations = null;
+    /**
+     * #1344 — what the last SUCCESSFUL evaluate handed the repl to play, with the
+     * seek and loop in force at that moment (the `.p` hook wrapped the pattern in
+     * both). `renderLoadedReport` renders exactly this. Cleared by a failed
+     * evaluate: the old pattern keeps playing, but it is no longer the document.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.loadedRender = null;
     // Phase 20-07 (PK13 step 9) — engine-attached breakpoint registry.
     // Per-engine scope (PV33). The hit-check in `wrappedOutput` reads
     // `breakpointStore.has(irNodeId)` on the audio scheduler hot path.
@@ -9279,10 +9287,16 @@ var _StrudelEngine = class _StrudelEngine {
         this.lastPatternIR = parseStrudel(code);
         this.lastIRNodeLocLookup = this.lastPatternIR ? buildNodeLocIndex(this.lastPatternIR) : null;
         this.lastDeclaredLocations = declaredLocationKeys(this.repl?.state?.miniLocations) ?? null;
+        this.loadedRender = {
+          pattern: isQueryablePattern(playedPattern) ? playedPattern : null,
+          transportOffset,
+          loopRange
+        };
       } else {
         this.lastPatternIR = null;
         this.lastIRNodeLocLookup = null;
         this.backdropVizRequest = null;
+        this.loadedRender = null;
       }
       return result;
     } finally {
@@ -9553,13 +9567,16 @@ var _StrudelEngine = class _StrudelEngine {
    *
    * ⚠ `code` is evaluated with `@strudel/core`'s `evaluate`, outside this
    * engine's evaluate window, so `setcps`, `$:` and `.viz` are still refused
-   * here (#1344).
+   * here, and that is by decision (#1344): taking arbitrary code through the
+   * engine's window would replace the document loaded to play. To bounce a real
+   * document, load it and call `renderLoadedReport` —
+   * `LiveCodingRuntime.bounceOffline` does both.
    */
   async renderOfflineReport(code, duration, sampleRate) {
     if (!this.audioCtx) {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
-    const wa = await import('@strudel/webaudio');
+    await import('@strudel/webaudio');
     const core = await import('@strudel/core');
     const { transpiler } = await import('@strudel/transpiler');
     const evaluated = await core.evaluate(code, transpiler);
@@ -9567,6 +9584,61 @@ var _StrudelEngine = class _StrudelEngine {
     if (!pattern) {
       throw new Error("renderOffline: no pattern returned from evaluate()");
     }
+    return this.renderPatternReport(pattern, duration, sampleRate);
+  }
+  /**
+   * Render the document this engine has LOADED — the pattern its last successful
+   * `evaluate` handed the repl — through the same real graph as
+   * `renderOfflineReport` (#1344).
+   *
+   * ⚠ WHY THIS, AND NOT `renderOfflineReport(code)`. That one evaluates with
+   * `@strudel/core`'s raw `evaluate`, outside this engine's evaluate window, so
+   * `setcps`, `$:` and `.viz` do not exist there. Evaluating the render's code
+   * through the engine instead was measured to REPLACE what is loaded to play:
+   * after a render taken while playing, the speakers resumed the render's code
+   * (live RMS 0.054 → 0.118). Rendering what is already loaded has neither
+   * problem: every word of the document went through the real window, and
+   * nothing is swapped, because the render's document is the document.
+   *
+   * ⚠ IT RENDERS WHAT STRUDEL PLAYS, not the per-track captures. Those are taken
+   * inside the `.p` hook, before Strudel applies `all(...)` — which 42 corpus
+   * documents call on a live line, some to set level — so a mix built from them
+   * would be wrong without an error.
+   *
+   * ⚠ REFUSES A SEEKED OR LOOPED LOAD. The `.p` hook wraps every track in the
+   * seek (`.late`) and the loop (`.ribbon`) in force at evaluate, so rendering
+   * that pattern would bounce a shifted or looped song, silently. The caller
+   * clears both and evaluates first: `LiveCodingRuntime.bounceOffline` does.
+   *
+   * Also refuses when nothing is loaded, when the last evaluate failed (the old
+   * pattern still plays, but it is not the document), and when the loaded
+   * document plays nothing. Tempo is `getCps()`, which the document's own
+   * `setcps`/`setcpm` set during that evaluate.
+   */
+  async renderLoadedReport(duration, sampleRate) {
+    if (!this.audioCtx) {
+      throw new Error("StrudelEngine not initialized \u2014 call init() first");
+    }
+    const loaded = this.loadedRender;
+    if (!loaded) {
+      throw new Error("renderLoadedReport: no document is loaded \u2014 the last evaluate failed or never ran");
+    }
+    if (loaded.transportOffset !== 0 || loaded.loopRange !== null) {
+      throw new Error(
+        "renderLoadedReport: the document was evaluated with a seek or a loop armed, so the render would be shifted or looped \u2014 clear both and evaluate again"
+      );
+    }
+    if (!loaded.pattern) {
+      throw new Error("renderLoadedReport: the loaded document plays nothing");
+    }
+    return this.renderPatternReport(loaded.pattern, duration, sampleRate);
+  }
+  /** The render both entry points share: hold the transport, render, report, encode. */
+  async renderPatternReport(pattern, duration, sampleRate) {
+    if (!this.audioCtx) {
+      throw new Error("StrudelEngine not initialized \u2014 call init() first");
+    }
+    const wa = await import('@strudel/webaudio');
     const options = {
       cps: this.getCps() ?? 0.5,
       duration,
@@ -9621,7 +9693,7 @@ var _StrudelEngine = class _StrudelEngine {
    * Same contracts as `renderOfflineReport`: requires `init()`, holds the live
    * transport (once for the whole set, so playback does not stutter back to
    * life between stems, #1627), and `setcps`/`$:`/`.viz` in a stem are still
-   * refused (#1344). `onProgress` fires after each stem settles, in input order.
+   * refused, for the same reason as there (#1344). `onProgress` fires after each stem settles, in input order.
    */
   async renderStems(stems, duration, onProgress) {
     if (!this.audioCtx) {
@@ -42063,6 +42135,62 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
       return await engine.record(seconds, signal);
     } finally {
       this.stop();
+      if (loopBeforeBounce) engine.setLoopRange?.(loopBeforeBounce);
+    }
+  }
+  /**
+   * Whether this runtime can bounce faster than real time (#1344). Duck-typed
+   * like `canRecord`: only `StrudelEngine` renders the document it has loaded.
+   */
+  canBounceOffline() {
+    if (this.isDisposed) return false;
+    return typeof this.engine.renderLoadedReport === "function";
+  }
+  /**
+   * Render `seconds` of this runtime's document OFFLINE — faster than real time,
+   * through the real audio graph — as a WAV, with what could not play (#1344).
+   * Returns null when the engine cannot, or when `signal` aborted before the
+   * render began.
+   *
+   * ⚠ IT RENDERS THE DOCUMENT AS LOADED, SO IT LOADS IT FIRST, THE WAY PLAY
+   * DOES. The engine's evaluate window is the only place `setcps`, `$:` and
+   * `.viz` exist, and a render that evaluates outside it refuses nearly every
+   * document (#1344). Evaluating the file through the same exclusive gate as
+   * `play()` and rendering what that loads means the bounce and the speakers
+   * read one evaluation, and nothing else gets swapped in: the render's document
+   * IS this runtime's document.
+   *
+   * ⚠ THE SAME FRAME RULES AS `record`, for the same reasons. Stop, clear the
+   * seek (#1371), clear the loop (#1572) and give the loop back afterwards,
+   * leaving the transport stopped. The engine refuses a load that still carries
+   * a seek or a loop, so skipping a step fails loudly rather than bouncing a
+   * shifted or looped song. There is no settle wait (#1356): the render plays
+   * into its own offline context, so a live tail cannot reach the file.
+   *
+   * ⚠ A DOCUMENT THAT DOES NOT EVALUATE THROWS ITS ERROR AND RENDERS NOTHING.
+   * What is loaded after a failed evaluate is the previous document.
+   */
+  async bounceOffline(seconds, signal) {
+    const engine = this.engine;
+    if (this.isDisposed || typeof engine.renderLoadedReport !== "function") return null;
+    this.stop();
+    engine.setTransportOffset?.(0);
+    const loopBeforeBounce = engine.getLoopRange?.() ?? null;
+    if (loopBeforeBounce) engine.setLoopRange?.(null);
+    try {
+      if (!this.isInitialized) {
+        await this.engine.init();
+        this.isInitialized = true;
+      }
+      const code = this.getFileContent();
+      const { error } = await this.runExclusiveEval(() => this.engine.evaluate(code));
+      if (error) {
+        this.fireOnError(error);
+        throw error;
+      }
+      if (signal?.aborted) return null;
+      return await engine.renderLoadedReport(seconds);
+    } finally {
       if (loopBeforeBounce) engine.setLoopRange?.(loopBeforeBounce);
     }
   }

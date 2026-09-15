@@ -478,6 +478,14 @@ export class StrudelEngine implements LiveCodingEngine {
   // `trackSchedulers`), and these are the spans those patterns' haps were located
   // against. Null = unknown, which filters nothing.
   private lastDeclaredLocations: ReadonlySet<string> | null = null
+  /**
+   * #1344 — what the last SUCCESSFUL evaluate handed the repl to play, with the
+   * seek and loop in force at that moment (the `.p` hook wrapped the pattern in
+   * both). `renderLoadedReport` renders exactly this. Cleared by a failed
+   * evaluate: the old pattern keeps playing, but it is no longer the document.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private loadedRender: { pattern: any; transportOffset: number; loopRange: LoopRange | null } | null = null
 
   // Phase 20-07 (PK13 step 9) — engine-attached breakpoint registry.
   // Per-engine scope (PV33). The hit-check in `wrappedOutput` reads
@@ -1533,11 +1541,21 @@ export class StrudelEngine implements LiveCodingEngine {
         // before its `evaluate` resolves, so these are THIS evaluate's spans.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         this.lastDeclaredLocations = declaredLocationKeys((this.repl as any)?.state?.miniLocations) ?? null
+        // #1344 — the pattern the repl PLAYS, after Strudel's own `$:` stacking,
+        // solo selection and `all(...)`/`each(...)` (`repl.mjs:230-262`), none of
+        // which the per-track captures above see. The two snapshots are the
+        // frame the `.p` hook wrapped it in, read from the same consts it used.
+        this.loadedRender = {
+          pattern: isQueryablePattern(playedPattern) ? playedPattern : null,
+          transportOffset,
+          loopRange,
+        }
       } else {
         // Failed evaluate — clear stale IR
         this.lastPatternIR = null
         this.lastIRNodeLocLookup = null
         this.backdropVizRequest = null
+        this.loadedRender = null
       }
 
       return result
@@ -1879,7 +1897,10 @@ export class StrudelEngine implements LiveCodingEngine {
    *
    * ⚠ `code` is evaluated with `@strudel/core`'s `evaluate`, outside this
    * engine's evaluate window, so `setcps`, `$:` and `.viz` are still refused
-   * here (#1344).
+   * here, and that is by decision (#1344): taking arbitrary code through the
+   * engine's window would replace the document loaded to play. To bounce a real
+   * document, load it and call `renderLoadedReport` —
+   * `LiveCodingRuntime.bounceOffline` does both.
    */
   async renderOfflineReport(
     code: string,
@@ -1900,7 +1921,73 @@ export class StrudelEngine implements LiveCodingEngine {
     if (!pattern) {
       throw new Error('renderOffline: no pattern returned from evaluate()')
     }
+    return this.renderPatternReport(pattern, duration, sampleRate)
+  }
 
+  /**
+   * Render the document this engine has LOADED — the pattern its last successful
+   * `evaluate` handed the repl — through the same real graph as
+   * `renderOfflineReport` (#1344).
+   *
+   * ⚠ WHY THIS, AND NOT `renderOfflineReport(code)`. That one evaluates with
+   * `@strudel/core`'s raw `evaluate`, outside this engine's evaluate window, so
+   * `setcps`, `$:` and `.viz` do not exist there. Evaluating the render's code
+   * through the engine instead was measured to REPLACE what is loaded to play:
+   * after a render taken while playing, the speakers resumed the render's code
+   * (live RMS 0.054 → 0.118). Rendering what is already loaded has neither
+   * problem: every word of the document went through the real window, and
+   * nothing is swapped, because the render's document is the document.
+   *
+   * ⚠ IT RENDERS WHAT STRUDEL PLAYS, not the per-track captures. Those are taken
+   * inside the `.p` hook, before Strudel applies `all(...)` — which 42 corpus
+   * documents call on a live line, some to set level — so a mix built from them
+   * would be wrong without an error.
+   *
+   * ⚠ REFUSES A SEEKED OR LOOPED LOAD. The `.p` hook wraps every track in the
+   * seek (`.late`) and the loop (`.ribbon`) in force at evaluate, so rendering
+   * that pattern would bounce a shifted or looped song, silently. The caller
+   * clears both and evaluates first: `LiveCodingRuntime.bounceOffline` does.
+   *
+   * Also refuses when nothing is loaded, when the last evaluate failed (the old
+   * pattern still plays, but it is not the document), and when the loaded
+   * document plays nothing. Tempo is `getCps()`, which the document's own
+   * `setcps`/`setcpm` set during that evaluate.
+   */
+  async renderLoadedReport(
+    duration: number,
+    sampleRate?: number
+  ): Promise<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }> {
+    if (!this.audioCtx) {
+      throw new Error('StrudelEngine not initialized — call init() first')
+    }
+    const loaded = this.loadedRender
+    if (!loaded) {
+      throw new Error('renderLoadedReport: no document is loaded — the last evaluate failed or never ran')
+    }
+    if (loaded.transportOffset !== 0 || loaded.loopRange !== null) {
+      throw new Error(
+        'renderLoadedReport: the document was evaluated with a seek or a loop armed, so the render ' +
+          'would be shifted or looped — clear both and evaluate again'
+      )
+    }
+    if (!loaded.pattern) {
+      throw new Error('renderLoadedReport: the loaded document plays nothing')
+    }
+    return this.renderPatternReport(loaded.pattern, duration, sampleRate)
+  }
+
+  /** The render both entry points share: hold the transport, render, report, encode. */
+  private async renderPatternReport(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    pattern: any,
+    duration: number,
+    sampleRate?: number
+  ): Promise<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }> {
+    if (!this.audioCtx) {
+      throw new Error('StrudelEngine not initialized — call init() first')
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wa: any = await import('@strudel/webaudio')
     const options = {
       cps: this.getCps() ?? 0.5,
       duration,
@@ -1960,7 +2047,7 @@ export class StrudelEngine implements LiveCodingEngine {
    * Same contracts as `renderOfflineReport`: requires `init()`, holds the live
    * transport (once for the whole set, so playback does not stutter back to
    * life between stems, #1627), and `setcps`/`$:`/`.viz` in a stem are still
-   * refused (#1344). `onProgress` fires after each stem settles, in input order.
+   * refused, for the same reason as there (#1344). `onProgress` fires after each stem settles, in input order.
    */
   async renderStems(
     stems: Record<string, string>,

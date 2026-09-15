@@ -1789,3 +1789,115 @@ describe('bounce rewinds to the top of the song (#1371)', () => {
     runtime.dispose()
   })
 })
+
+// ---------------------------------------------------------------------------
+// #1344 — the offline bounce renders the document AS LOADED, so it loads it the
+// way Play does and in the frame a bounce must use: the song, from its top, not
+// the loop. The engine refuses a load that still carries a seek or a loop, so
+// these arms pin the runtime's half — the ORDER, and what is in force at the
+// instant of the render — against a mock that records both. The audio half is
+// observed in `bounce-paths.spec.ts` (#1344 describe).
+// ---------------------------------------------------------------------------
+describe('offline bounce loads the document in the song frame, then renders it (#1344)', () => {
+  function makeBounceEngine() {
+    const engine = createMockEngine()
+    const anyEngine = engine as unknown as Record<string, unknown>
+    let offset = 0
+    let loop: { startCycle: number; cycles: number } | null = null
+    anyEngine.setTransportOffset = vi.fn((o: number) => {
+      engine.callLog.push(`setTransportOffset(${o})`)
+      offset = o
+    })
+    anyEngine.getTransportOffset = () => offset
+    anyEngine.setLoopRange = vi.fn((r: { startCycle: number; cycles: number } | null) => {
+      engine.callLog.push(`setLoopRange(${r ? `${r.startCycle},${r.cycles}` : 'null'})`)
+      loop = r
+    })
+    anyEngine.getLoopRange = () => loop
+    let frameAtRender: { offset: number; loop: { startCycle: number; cycles: number } | null } | undefined
+    anyEngine.renderLoadedReport = vi.fn(async () => {
+      engine.callLog.push('renderLoadedReport')
+      frameAtRender = { offset, loop }
+      return { blob: new Blob([new Uint8Array(8)]), haps: 4, played: 4, skipped: [] }
+    })
+    return { engine, getLoop: () => loop, getFrameAtRender: () => frameAtRender }
+  }
+
+  it('stops, clears the seek and the loop, loads the file, renders, gives the loop back', async () => {
+    const { engine } = makeBounceEngine()
+    const runtime = new LiveCodingRuntime('bo-1', engine, () => 'the document')
+    await runtime.play()
+    await runtime.setLoopRange({ startCycle: 3, cycles: 2 })
+    engine.callLog.length = 0
+    engine.evaluateCalls.length = 0
+
+    const report = await runtime.bounceOffline(4)
+
+    expect(report?.haps).toBe(4)
+    // Order is the point: a render before the evaluate would bounce whatever was
+    // loaded last, and one before the frame is cleared would be refused.
+    expect(engine.callLog).toEqual([
+      'stop',
+      'setTransportOffset(0)',
+      'setLoopRange(null)',
+      'evaluate',
+      'renderLoadedReport',
+      'setLoopRange(3,2)',
+    ])
+    expect(engine.evaluateCalls).toEqual(['the document'])
+    runtime.dispose()
+  })
+
+  it('renders in the song frame and leaves the transport stopped', async () => {
+    const { engine, getLoop, getFrameAtRender } = makeBounceEngine()
+    const runtime = new LiveCodingRuntime('bo-2', engine, () => 'code')
+    await runtime.play()
+    await runtime.setLoopRange({ startCycle: 3, cycles: 2 })
+    ;(engine as unknown as { setTransportOffset: (n: number) => void }).setTransportOffset(7)
+
+    await runtime.bounceOffline(4)
+
+    expect(getFrameAtRender()).toEqual({ offset: 0, loop: null })
+    expect(getLoop()).toEqual({ startCycle: 3, cycles: 2 })
+    expect(runtime.getIsPlaying()).toBe(false)
+    runtime.dispose()
+  })
+
+  it('a document that does not evaluate throws its error, renders nothing, and still gives the loop back', async () => {
+    const { engine, getLoop } = makeBounceEngine()
+    const runtime = new LiveCodingRuntime('bo-3', engine, () => 'broken')
+    await runtime.play()
+    await runtime.setLoopRange({ startCycle: 3, cycles: 2 })
+    engine.setEvalResult({ error: new Error('nosuchmethod is not a function') })
+    const onError = vi.fn()
+    runtime.onError(onError)
+
+    await expect(runtime.bounceOffline(4)).rejects.toThrow('nosuchmethod')
+    expect(engine.callLog).not.toContain('renderLoadedReport')
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(getLoop()).toEqual({ startCycle: 3, cycles: 2 })
+    runtime.dispose()
+  })
+
+  it('an abort before the render renders nothing', async () => {
+    const { engine } = makeBounceEngine()
+    const runtime = new LiveCodingRuntime('bo-4', engine, () => 'code')
+    const controller = new AbortController()
+    controller.abort()
+
+    expect(await runtime.bounceOffline(4, controller.signal)).toBeNull()
+    expect(engine.callLog).not.toContain('renderLoadedReport')
+    runtime.dispose()
+  })
+
+  it('an engine that cannot render what it loaded returns null and touches nothing (non-Strudel)', async () => {
+    const engine = createMockEngine()
+    const runtime = new LiveCodingRuntime('bo-5', engine, () => 'code')
+    engine.callLog.length = 0
+
+    expect(runtime.canBounceOffline()).toBe(false)
+    expect(await runtime.bounceOffline(4)).toBeNull()
+    expect(engine.callLog).toEqual([])
+    runtime.dispose()
+  })
+})

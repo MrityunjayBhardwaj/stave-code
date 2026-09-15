@@ -1153,3 +1153,68 @@ describe('StrudelEngine.evaluate() does not autostart (#1186)', () => {
     engine.dispose()
   })
 })
+
+// ---------------------------------------------------------------------------
+// #1344 — `renderLoadedReport` renders what the last SUCCESSFUL evaluate
+// loaded, in the frame that evaluate ran in. These arms pin its refusals, which
+// are what keep it from bouncing the wrong thing without an error. The render
+// itself is observed in the browser (`bounce-paths.spec.ts`, #1344 describe).
+// The mock repl's evaluate resolves no pattern, so a load that got through
+// every other check refuses as "plays nothing" — which is how these arms tell a
+// load that happened from one that did not.
+// ---------------------------------------------------------------------------
+describe('StrudelEngine.renderLoadedReport refusals (#1344)', () => {
+  it('refuses when nothing has been evaluated', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await expect(engine.renderLoadedReport(1)).rejects.toThrow(/no document is loaded/)
+    engine.dispose()
+  })
+
+  it('a successful evaluate loads what the repl returned', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('one-track')
+    await expect(engine.renderLoadedReport(1)).rejects.toThrow(/plays nothing/)
+    engine.dispose()
+  })
+
+  it('a failed evaluate unloads the document, even after a good one', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('one-track')
+    await engine.evaluate('error-code')
+    await expect(engine.renderLoadedReport(1)).rejects.toThrow(/no document is loaded/)
+    engine.dispose()
+  })
+
+  it('refuses a load evaluated with a seek', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    engine.setTransportOffset(2)
+    await engine.evaluate('one-track')
+    await expect(engine.renderLoadedReport(1)).rejects.toThrow(/seek or a loop/)
+    engine.dispose()
+  })
+
+  it('refuses a load evaluated with a loop armed', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    engine.setLoopRange({ startCycle: 1, cycles: 2 })
+    await engine.evaluate('one-track')
+    await expect(engine.renderLoadedReport(1)).rejects.toThrow(/seek or a loop/)
+    engine.dispose()
+  })
+
+  it('reads the frame the evaluate ran in, not the frame now', async () => {
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('one-track')
+    // Armed AFTER the load: the loaded pattern was not wrapped in either, so
+    // this is not a reason to refuse.
+    engine.setTransportOffset(2)
+    engine.setLoopRange({ startCycle: 1, cycles: 2 })
+    await expect(engine.renderLoadedReport(1)).rejects.toThrow(/plays nothing/)
+    engine.dispose()
+  })
+})
