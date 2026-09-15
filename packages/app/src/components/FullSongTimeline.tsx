@@ -3350,7 +3350,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   data-full-song="automation-bound"
                   autoFocus
                   defaultValue={editingCaption.field.text}
-                  aria-label={`${editingCaption.row.automation.paramKey} ${editingCaption.field.kind === 'lo' ? 'low' : 'high'} bound`}
+                  aria-label={`${editingCaption.row.automation.paramKey} ${editingCaption.field.kind === 'lo' ? 'low bound' : editingCaption.field.kind === 'hi' ? 'high bound' : 'period in bars'}`}
                   style={{
                     ...styles.captionInput,
                     left: editingCaption.box.x,

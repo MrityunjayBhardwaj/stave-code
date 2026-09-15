@@ -1247,6 +1247,17 @@ function childNodes2(node) {
   return out;
 }
 __name(childNodes2, "childNodes");
+function lanePeriodOf(periodCycles, placements) {
+  let agreed = null;
+  for (const placement of placements) {
+    let p = periodCycles;
+    for (const step of placement) if (!isSectionWindow(step)) p = p * step.per / step.times;
+    if (agreed !== null && agreed !== p) return null;
+    agreed = p;
+  }
+  return agreed;
+}
+__name(lanePeriodOf, "lanePeriodOf");
 function signalAutomations(ir) {
   const out = [];
   for (const { trackId, param, placements } of playableParameters(ir)) {
@@ -1266,6 +1277,7 @@ function signalAutomations(ir) {
       paramKey: param.key,
       kind: read5.signal.kind,
       periodCycles: read5.periodCycles,
+      lanePeriodCycles: lanePeriodOf(read5.periodCycles, placements),
       lo,
       hi,
       ranged,

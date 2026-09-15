@@ -20,7 +20,7 @@ describe('signalAutomations — the three legs #1464 names', () => {
   it('reads shape, rate and range off one nested node', () => {
     expect(read('$: s("bd*4").cutoff(saw.slow(4).range(200, 2000))')).toEqual([
       {
-        trackId: 'd1', paramKey: 'cutoff', kind: 'saw', periodCycles: 4,
+        trackId: 'd1', paramKey: 'cutoff', kind: 'saw', periodCycles: 4, lanePeriodCycles: 4,
         lo: 200, hi: 2000, ranged: true, offset: expect.any(Number),
         spans: {
           shape: { start: expect.any(Number), end: expect.any(Number) },
@@ -120,6 +120,33 @@ describe('signalAutomations — a whole-track time change is applied, not declin
     // Song time 3 is slowed time 1.5 → bar 1 of the pass → the section's cycle 0.
     // Song time 8.5 is slowed 4.25 → bar 0 of the second pass, the hh section.
     expect([0.5, 2.5, 3, 8.5, 10.5].map((t) => signalTimeAt(a, t))).toEqual([null, 0.25, 0.5, null, 3.25])
+  })
+})
+
+describe('signalAutomations — the period the LANE shows (#1464 Stage 3)', () => {
+  const CURVE = '$: s("bd*8").gain(saw.slow(3))'
+
+  it.each([
+    ['no time change', CURVE, 3],
+    ['a whole-track slow multiplies it', `${CURVE}.slow(2)`, 6],
+    ['a whole-track fast divides it', `${CURVE}.fast(2)`, 1.5],
+    ['a shift moves where it starts, not how long it takes', `${CURVE}.late(-0.5)`, 3],
+    ['a section plays its own cycles one bar to a bar', '$: arrange([1, s("hh*8")], [3, s("bd*8").gain(saw.slow(3))])', 3],
+    ['a slow around a section still multiplies it', '$: arrange([1, s("hh*8")], [3, s("bd*8").gain(saw.slow(3))]).slow(2)', 6],
+  ])('%s', (_label, src, bars) => {
+    const [a] = read(src)
+    expect(a?.paramKey, 'the reader declined').toBe('gain')
+    expect(a.periodCycles, 'the signal\'s own rate is unchanged').toBe(3)
+    expect(a.lanePeriodCycles).toBe(bars)
+  })
+
+  it('agrees across routes that agree, and is null across routes that do not', () => {
+    const same = read('const a = s("bd*8").gain(saw.slow(3))\n$: arrange([1, a], [1, s("hh*8")], [1, a])')
+    expect(same[0]?.placements.length, 'the fixture must reach the curve twice').toBe(2)
+    expect(same[0].lanePeriodCycles).toBe(3)
+    const differ = read('const a = s("bd*8").gain(saw.slow(3))\n$: arrange([1, a.slow(2)], [1, s("hh*8")], [1, a])')
+    expect(differ[0]?.placements.length, 'the fixture must reach the curve twice').toBe(2)
+    expect(differ[0].lanePeriodCycles).toBeNull()
   })
 })
 

@@ -54,7 +54,7 @@ export const AUTOMATION_LABEL_TEXT_H = 10
  *  be typed into it, so nothing may open an editor over it: a field that accepts
  *  text and then discards it is worse than an inert label. `captionEdit` returns
  *  null for it, and the timeline declines to open on it at all. */
-export type CaptionFieldKind = 'param' | 'lo' | 'hi'
+export type CaptionFieldKind = 'param' | 'lo' | 'hi' | 'rate'
 
 export interface CaptionField {
   readonly kind: CaptionFieldKind
@@ -118,9 +118,43 @@ export function suppliedMark(a: SignalAutomation): string {
   return a.ranged ? '' : '~'
 }
 
+/**
+ * #1464 Stage 3 — the rate as the caption spells it: the bars one period of the
+ * curve spans ON THE LANE, which under a whole-track time change is not the number in
+ * the signal's own `.slow()`. `~`-marked when the signal writes no rate of its own,
+ * for the bounds' reason. Null when the curve's routes disagree about that number.
+ *
+ * ⚠ The `~` reads `periodCycles === 1` as "no rate written", the proxy the span
+ * census documents: `sine.slow(2).fast(2)` states two rates that compose to 1 and is
+ * marked as if it stated none. An inserted `.slow(P)` still gives it the typed period,
+ * because a rate appended to a chain multiplies what is already there.
+ */
+function rateText(a: SignalAutomation): { mark: string; bars: string; unit: string } | null {
+  const p = a.lanePeriodCycles
+  if (p === null) return null
+  return {
+    mark: a.spans.rate === null && a.periodCycles === 1 ? '~' : '',
+    bars: formatBound(p),
+    unit: p === 1 ? 'bar' : 'bars',
+  }
+}
+
+/**
+ * Whether a typed rate has somewhere honest to go: one spelled rate to replace, or no
+ * rate at all and a place to insert one. Two composing rates have neither — the
+ * number is shown, and no field is offered over it.
+ */
+export function rateEditable(a: SignalAutomation): boolean {
+  if (a.lanePeriodCycles === null) return false
+  if (a.spans.rate !== null) return true
+  return a.periodCycles === 1 && a.spans.chainEnd !== null
+}
+
 /** The caption line for one automation, exactly as drawn. */
 export function captionText(a: SignalAutomation): string {
-  return `${a.paramKey} ${suppliedMark(a)}${formatBound(a.lo)}→${formatBound(a.hi)}`
+  const bounds = `${a.paramKey} ${suppliedMark(a)}${formatBound(a.lo)}→${formatBound(a.hi)}`
+  const rate = rateText(a)
+  return rate ? `${bounds} ${rate.mark}${rate.bars} ${rate.unit}` : bounds
 }
 
 /**
@@ -152,23 +186,29 @@ export function captionRows(
     const mark = suppliedMark(a)
     const lo = formatBound(a.lo)
     const hi = formatBound(a.hi)
-    const text = `${name} ${mark}${lo}→${hi}`
+    const bounds = `${name} ${mark}${lo}→${hi}`
 
     const loFrom = name.length + 1 + mark.length
     const loTo = loFrom + lo.length
     const hiFrom = loTo + 1 // the arrow is one character
     const hiTo = hiFrom + hi.length
+    const fields: CaptionField[] = [
+      { kind: 'param', text: name, from: 0, to: name.length },
+      { kind: 'lo', text: lo, from: loFrom, to: loTo },
+      { kind: 'hi', text: hi, from: hiFrom, to: hiTo },
+    ]
 
-    rows.push({
-      automation: a,
-      text,
-      y,
-      fields: [
-        { kind: 'param', text: name, from: 0, to: name.length },
-        { kind: 'lo', text: lo, from: loFrom, to: loTo },
-        { kind: 'hi', text: hi, from: hiFrom, to: hiTo },
-      ],
-    })
+    // #1464 Stage 3 — ` ~4 bars`. The number alone is the field, as a bound's is, and
+    // only where a typed number can be written (`rateEditable`).
+    let text = bounds
+    const rate = rateText(a)
+    if (rate) {
+      text = `${bounds} ${rate.mark}${rate.bars} ${rate.unit}`
+      const rateFrom = bounds.length + 1 + rate.mark.length
+      if (rateEditable(a)) fields.push({ kind: 'rate', text: rate.bars, from: rateFrom, to: rateFrom + rate.bars.length })
+    }
+
+    rows.push({ automation: a, text, y, fields })
     y += AUTOMATION_LABEL_LINE_H
   }
   return rows
@@ -233,6 +273,7 @@ export function captionEdit(hit: CaptionHit, nextText: string): OffsetEdit | nul
   const a = row.automation
   // The parameter name is the shape menu's anchor, not a typed field.
   if (field.kind === 'param') return null
+  if (field.kind === 'rate') return rateEdit(a, nextText)
 
   const raw = nextText.trim()
   // ⚠ `Number('')` is 0, not NaN — and so is `Number(' ')`. Without this guard,
@@ -263,6 +304,49 @@ export function captionEdit(hit: CaptionHit, nextText: string): OffsetEdit | nul
   if (span) return { range: [span.start, span.end], text: call }
 
   // See (3): nothing to replace, so append the call to the whole expression.
+  const at = a.spans.chainEnd
+  if (at === null) return null
+  return { range: [at, at], text: call }
+}
+
+/** The most significant digits a written rate may carry — `0.25` and `1.5` pass,
+ *  `0.6666666666666666` (2 bars under a whole-track `.slow(3)`) does not. */
+const RATE_DIGITS = 6
+
+/**
+ * #1464 Stage 3 — "the user typed `nextText` bars into the rate field" as an edit, or
+ * nothing. The same three rules as the bounds, for the same reasons: nothing typed
+ * is not zero, an unchanged number writes nothing, and an unspelled rate inserts.
+ *
+ * The typed number is the period ON THE LANE; what is written is the signal's own,
+ * with the route's whole-track time changes divided back out. A speed-up by a whole
+ * number is written `.fast(n)` and anything else `.slow(P)` — the engine plays
+ * `.fast(2)` and `.slow(0.5)` identically (probe), and each is what a person writes.
+ *
+ * ⚠ IT WRITES ONLY WHAT READS BACK AS TYPED. A number that needs more than
+ * `RATE_DIGITS` significant digits, or whose period times the route's scale is not
+ * exactly the typed bars, writes nothing: a rate the document cannot spell exactly is
+ * a rate the lane would show differently the moment it re-reads.
+ */
+function rateEdit(a: SignalAutomation, nextText: string): OffsetEdit | null {
+  const shown = a.lanePeriodCycles
+  if (shown === null || !rateEditable(a)) return null
+  const raw = nextText.trim()
+  if (raw.length === 0) return null
+  const bars = Number(raw)
+  if (!Number.isFinite(bars) || bars <= 0 || bars === shown) return null
+
+  // What the route's time changes multiply the signal's own period by.
+  const scale = shown / a.periodCycles
+  const own = bars / scale
+  const speedUp = own < 1 && Number.isInteger(1 / own)
+  const n = speedUp ? 1 / own : own
+  if (Number(n.toPrecision(RATE_DIGITS)) !== n) return null
+  if ((speedUp ? 1 / n : n) * scale !== bars) return null
+  const call = speedUp ? `.fast(${String(n)})` : `.slow(${String(n)})`
+
+  const span = a.spans.rate
+  if (span) return { range: [span.start, span.end], text: call }
   const at = a.spans.chainEnd
   if (at === null) return null
   return { range: [at, at], text: call }

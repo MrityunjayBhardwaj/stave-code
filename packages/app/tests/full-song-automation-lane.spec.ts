@@ -942,3 +942,112 @@ test('a bound opens in its caption\'s colour on a lane that also steps a paramet
   await page.keyboard.press('Escape')
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
+
+// ── #1464 Stage 3: the rate, typed on the caption ───────────────────────────
+
+/**
+ * A curve that repeats every 4 bars beside a track that repeats every 8, so the view
+ * spans 8 bars on BOTH sides of the edit and the drawn ramps can be read inside it.
+ * With the curve alone, the view would re-span to the new period, and one ramp per
+ * view would read the same before and after — an arm that could not fail.
+ *
+ * ⚠ `s("<hh cp hh cp hh cp hh sd>")`, one name a bar. `<…>*8` would play all eight
+ * inside every bar, a period of 1.
+ */
+const RATE_SONG = '$: s("bd*8").cutoff(saw.slow(4).range(200, 2000))\n$: s("<hh cp hh cp hh cp hh sd>")'
+const RATE_CONSTANT_SONG = '$: s("bd*8").cutoff(800)\n$: s("<hh cp hh cp hh cp hh sd>")'
+
+/** Walk the caption line and leave open the field whose editor shows `value` and
+ *  whose name contains `label`. Found by what the app says, never by a glyph width. */
+async function openCaptionField(page: Page, value: string, label: string): Promise<boolean> {
+  const editor = page.locator('[data-full-song="automation-bound"]')
+  for (let x = 6; x <= 240; x += 3) {
+    await clickCanvasAt(page, x, 8)
+    await page.waitForTimeout(60)
+    if (await editor.count()) {
+      const name = (await editor.getAttribute('aria-label')) ?? ''
+      if ((await editor.inputValue()) === value && name.includes(label)) return true
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(40)
+    }
+  }
+  return false
+}
+
+test('a rate typed on the caption reaches the document, and the lane draws the new period (#1464 Stage 3)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+  await bootShell(page)
+  const canvas = page.locator('[data-full-song-canvas]')
+
+  // ── CONTROL FIRST: the same two tracks, the cutoff held constant, over the same 8 bars.
+  await setSongAndEval(page, RATE_CONSTANT_SONG)
+  await canvas.waitFor({ timeout: 10_000 })
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(8)
+  await page.waitForTimeout(500)
+  const control = await blueChannel(page)
+  expect(curveRow(control, control, 0, control.W), 'the difference fires on an identical render').toBeNull()
+
+  /** The curve's mean row at the start, either side of bar 4, and before the end. */
+  const readRamps = (subject: { W: number; H: number; blue: number[] }) => {
+    const bar = subject.W / 8
+    const at = (x0: number, x1: number) => curveRow(subject, control, Math.round(x0), Math.round(x1))
+    return { start: at(8, 24), beforeBar4: at(4 * bar - 24, 4 * bar - 8), afterBar4: at(4 * bar + 8, 4 * bar + 24), beforeEnd: at(8 * bar - 24, 8 * bar - 8) }
+  }
+
+  await setSongAndEval(page, RATE_SONG)
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(8)
+  await page.waitForTimeout(800)
+  const before = await blueChannel(page)
+  expect([before.W, before.H]).toEqual([control.W, control.H])
+  const b = readRamps(before)
+  expect(Object.values(b).every((r) => r !== null), `no curve at one of the probes: ${JSON.stringify(b)}`).toBe(true)
+
+  // (0) THE INSTRUMENT SEES THE 4-BAR PERIOD: a ramp that rises to bar 4 and resets there.
+  const beforeExtent = Math.abs((b.start as number) - (b.beforeBar4 as number))
+  expect(beforeExtent, `the first ramp barely moves: ${JSON.stringify(b)}`).toBeGreaterThan(10)
+  expect(Math.abs((b.beforeBar4 as number) - (b.afterBar4 as number)), `no reset at bar 4: ${JSON.stringify(b)}`).toBeGreaterThan(0.5 * beforeExtent)
+
+  // ── EXPAND the curve's lane and open the RATE field — the one reading 4.
+  await page.locator('[data-full-song-lane-expand]').first().click()
+  await page.waitForTimeout(800)
+  expect(await openCaptionField(page, '4', 'period in bars'), 'no rate field reading 4 was reachable on the caption').toBe(true)
+
+  // (1) THE EDIT REACHES THE DOCUMENT, and only the rate call changed.
+  await page.keyboard.press(`${MOD}+A`)
+  await page.keyboard.type('8')
+  await page.keyboard.press('Enter')
+  await expect.poll(() => readDoc(page), { timeout: 5_000 })
+    .toBe('$: s("bd*8").cutoff(saw.slow(8).range(200, 2000))\n$: s("<hh cp hh cp hh cp hh sd>")')
+  expect(await page.locator('[data-full-song="automation-bound"]').count(), 'the editor lingered after its commit').toBe(0)
+
+  // (2) THE CAPTION READS THE NEW RATE BACK.
+  expect(await openCaptionField(page, '8', 'period in bars'), 'the rate field did not read back 8').toBe(true)
+  await page.keyboard.press('Escape')
+
+  // ── COLLAPSE again, so the canvas matches the control's geometry.
+  await page.locator('[data-full-song-lane-expand]').first().click()
+  await expect.poll(() => barsOnView(page), { timeout: 15_000 }).toBe(8)
+  await page.waitForTimeout(800)
+  const after = await blueChannel(page)
+  expect([after.W, after.H]).toEqual([control.W, control.H])
+  const a = readRamps(after)
+  expect(Object.values(a).every((r) => r !== null), `no curve at one of the probes: ${JSON.stringify(a)}`).toBe(true)
+
+  // (3) ONE RAMP OVER ALL 8 BARS: it keeps rising to the end, and does not reset at bar 4.
+  const afterExtent = Math.abs((a.start as number) - (a.beforeEnd as number))
+  expect(afterExtent, `the ramp barely moves: ${JSON.stringify(a)}`).toBeGreaterThan(10)
+  expect(Math.abs((a.beforeBar4 as number) - (a.afterBar4 as number)), `still a reset at bar 4: ${JSON.stringify({ b, a })}`).toBeLessThan(0.15 * afterExtent)
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})

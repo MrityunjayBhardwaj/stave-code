@@ -60,6 +60,8 @@ const NO_SPANS = { shape: null, rate: null, range: null, chainEnd: null } as con
 
 const auto = (over: Partial<SignalAutomation> = {}): SignalAutomation => ({
   trackId: 'd1', paramKey: 'cutoff', kind: 'sine', periodCycles: 1,
+  // Under no route time change the lane shows the signal's own period.
+  lanePeriodCycles: over.periodCycles ?? 1,
   // Spans are Stage 2's WRITE coordinates; nothing on the drawing path reads
   // them, which is why the drawing fixtures leave them empty.
   lo: 0, hi: 1, ranged: true, offset: 0, spans: NO_SPANS, placements: [[]], ...over,
@@ -201,22 +203,23 @@ describe('automation curve — the three legs visibly change it', () => {
 
   it('RANGE: the bounds are stated on an expanded lane', () => {
     const { texts } = run([auto({ paramKey: 'cutoff', lo: 200, hi: 2000 })], true)
-    expect(texts.map((t) => t.text)).toContain('cutoff 200→2000')
+    expect(texts.map((t) => t.text)).toContain('cutoff 200→2000 ~1 bar')
   })
 
   it('RANGE: a different range reads differently', () => {
     const { texts } = run([auto({ paramKey: 'pan', lo: 0.4, hi: 0.6 })], true)
-    expect(texts.map((t) => t.text)).toContain('pan 0.4→0.6')
+    expect(texts.map((t) => t.text)).toContain('pan 0.4→0.6 ~1 bar')
   })
 
   it('marks a bound this module SUPPLIED so it is never read as the user\'s', () => {
     const { texts } = run([auto({ paramKey: 'gain', lo: 0, hi: 1, ranged: false })], true)
-    expect(texts.map((t) => t.text)).toContain('gain ~0→1')
+    expect(texts.map((t) => t.text)).toContain('gain ~0→1 ~1 bar')
   })
 
   it('states no bounds on a collapsed lane — that row is a contour view', () => {
     const { texts, paths } = run([auto({ paramKey: 'cutoff', lo: 200, hi: 2000 })], false)
-    expect(texts.map((t) => t.text)).not.toContain('cutoff 200→2000')
+    // The expanded lane's exact caption, so this cannot pass by the text having changed.
+    expect(texts.map((t) => t.text)).not.toContain('cutoff 200→2000 ~1 bar')
     expect(paths).toHaveLength(1) // the curve itself still draws
   })
 })
@@ -259,6 +262,23 @@ describe('automation curve — too fast to resolve at this zoom', () => {
     const { paths, fills } = run([auto({ periodCycles: 1 })])
     expect(paths).toHaveLength(1)
     expect(fills.filter((f) => f.style === '#AUTO')).toHaveLength(0)
+  })
+
+  it('judges the period the lane DRAWS, whole-track time changes included (#1608)', () => {
+    // 1.5625px/cycle here and a 28px threshold, so the line sits near 18 cycles.
+    // A 12-cycle signal under a whole-track slow(2) spans 24 cycles on screen: a curve.
+    // Judged by its own 12, the rival reading, it was a band.
+    const band = (m: ReturnType<typeof runWide>) => m.fills.filter((f) => f.style === '#AUTO').length
+    const slowed = runWide([auto({ periodCycles: 12, lanePeriodCycles: 24, placements: [[{ times: 1, per: 2, shift: 0 }]] })])
+    expect([slowed.paths.length, band(slowed)], 'slowed to 24: a curve, not a band').toEqual([1, 0])
+    // The mirror: a 24-cycle signal under a whole-track fast(2) spans 12 — a band.
+    const sped = runWide([auto({ periodCycles: 24, lanePeriodCycles: 12, placements: [[{ times: 2, per: 1, shift: 0 }]] })])
+    expect([sped.paths.length, band(sped)], 'sped up to 12: a band, not a curve').toEqual([0, 1])
+    // Controls: the same signal periods under no time change go the other way.
+    const plain12 = runWide([auto({ periodCycles: 12 })])
+    expect([plain12.paths.length, band(plain12)]).toEqual([0, 1])
+    const plain24 = runWide([auto({ periodCycles: 24 })])
+    expect([plain24.paths.length, band(plain24)]).toEqual([1, 0])
   })
 })
 

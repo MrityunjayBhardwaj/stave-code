@@ -79,6 +79,13 @@ export interface SignalAutomation {
   /** The signal's RATE, as the cycles one full period spans. `sine` is 1;
    *  `.slow(4)` makes it 4; `.fast(2)` makes it 0.5. Always finite and > 0. */
   readonly periodCycles: number
+  /** The bars one period of the curve spans ON THE LANE (#1464 Stage 3):
+   *  `periodCycles` with every whole-track time change on its route applied — under
+   *  `.slow(2)`, `saw.slow(4)` repeats every 8 (engine-checked). A section does not
+   *  scale it: a section plays its own cycles one bar to a bar. Null when the routes
+   *  disagree (one binding under two different time changes), which leaves no one
+   *  number for a lane to show or a control to edit. */
+  readonly lanePeriodCycles: number | null
   /** The signal's RANGE — its output floor and ceiling. */
   readonly lo: number
   readonly hi: number
@@ -346,6 +353,24 @@ function childNodes(node: PatternIR): PatternIR[] {
  * song time 0 (measured), below the floor a lane wraps its phase to. An earlier
  * shift (`.late(−o)`) never goes negative and is kept.
  */
+/**
+ * `SignalAutomation.lanePeriodCycles`. A warp hands the curve `t · times / per`, so
+ * it comes back round `per / times` times as late — the scaling `songPeriodOf`
+ * applies to a stepped parameter (#1595). That function answers a different
+ * question (when the whole SONG repeats, sections folded in as passes); this one is
+ * what one lane shows repeating inside the bars it plays.
+ */
+function lanePeriodOf(periodCycles: number, placements: readonly (readonly TimeStep[])[]): number | null {
+  let agreed: number | null = null
+  for (const placement of placements) {
+    let p = periodCycles
+    for (const step of placement) if (!isSectionWindow(step)) p = (p * step.per) / step.times
+    if (agreed !== null && agreed !== p) return null
+    agreed = p
+  }
+  return agreed
+}
+
 export function signalAutomations(ir: PatternIR | null | undefined): readonly SignalAutomation[] {
   const out: SignalAutomation[] = []
   for (const { trackId, param, placements } of playableParameters(ir)) {
@@ -367,6 +392,7 @@ export function signalAutomations(ir: PatternIR | null | undefined): readonly Si
       paramKey: param.key,
       kind: read.signal.kind,
       periodCycles: read.periodCycles,
+      lanePeriodCycles: lanePeriodOf(read.periodCycles, placements),
       lo,
       hi,
       ranged,

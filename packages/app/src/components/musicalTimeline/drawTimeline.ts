@@ -809,8 +809,13 @@ function drawAutomation(
     ({ automation: a }) => a.periodCycles > 0 && Number.isFinite(a.periodCycles),
   )
   // Too fast to draw cycle-by-cycle at this zoom (see the band comment below).
-  const tooFast = drawable.filter(({ automation: a }) => a.periodCycles * pxPerCycle < AUTOMATION_MIN_PERIOD_PX)
-  const curves = drawable.filter(({ automation: a }) => a.periodCycles * pxPerCycle >= AUTOMATION_MIN_PERIOD_PX)
+  // ⚠ Judged by the period the LANE draws, not the signal's own (#1608): the curve is
+  // sampled through `timeAt`, so under a whole-track `.slow(2)` a 1-cycle saw spans
+  // two bars on screen. Where the routes disagree there is no one drawn period, and
+  // the signal's own is the fallback.
+  const drawnPeriod = (a: SignalAutomation): number => a.lanePeriodCycles ?? a.periodCycles
+  const tooFast = drawable.filter(({ automation: a }) => drawnPeriod(a) * pxPerCycle < AUTOMATION_MIN_PERIOD_PX)
+  const curves = drawable.filter(({ automation: a }) => drawnPeriod(a) * pxPerCycle >= AUTOMATION_MIN_PERIOD_PX)
 
   /**
    * The curve's colour, and the same colour its caption gets (#1485).
