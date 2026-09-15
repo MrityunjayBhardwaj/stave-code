@@ -2202,11 +2202,11 @@ describe('FullSongTimeline — the shape menu measures a swap against the song i
   })
   const settle = () => act(async () => { await Promise.resolve() })
 
-  it('a re-evaluation while the preview is measuring does not move the "(was N)" beside it', async () => {
-    // ⚠ jsdom has no canvas, so the caption's text measures 0 wide and no name can be
-    // pressed. The stub answers only an OFFSCREEN canvas, which is the measurer's own
-    // (`measureCaption` creates one and never attaches it); the drawn canvases keep
-    // jsdom's null, so the draw path is not handed a context it would half-use.
+  /** ⚠ jsdom has no canvas, so the caption's text measures 0 wide and no name can be
+   *  pressed. The stub answers only an OFFSCREEN canvas, which is the measurer's own
+   *  (`measureCaption` creates one and never attaches it); the drawn canvases keep
+   *  jsdom's null, so the draw path is not handed a context it would half-use. */
+  async function withMeasuredCaptions(run: () => Promise<void>): Promise<void> {
     const realGetContext = HTMLCanvasElement.prototype.getContext
     const spy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (
       this: HTMLCanvasElement,
@@ -2216,38 +2216,48 @@ describe('FullSongTimeline — the shape menu measures a swap against the song i
       return { font: '', measureText: (t: string) => ({ width: t.length * 6 }) } as never
     } as never)
     try {
+      await run()
+    } finally {
+      spy.mockRestore()
+    }
+  }
+
+  /** The song at 16 bars with `bd` expanded, and a press on its caption's name. */
+  async function renderSignal(onPreviewShape: NonNullable<React.ComponentProps<typeof FullSongTimeline>['onPreviewShape']>) {
+    const props = { ir: SIGNAL_IR as never, source, analysis: loopOf(16), onEditAutomation: vi.fn(), onPreviewShape }
+    const utils = renderFull(props)
+    const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    await settle()
+    await act(async () => {
+      ;(utils.container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement).click()
+    })
+    // The name `gain` is the caption's first field: x from CAPTION_PAD_X (4) over four
+    // 6px glyphs, y inside the first line (the lane's top inset is 3).
+    const pressName = () => fireEvent.pointerDown(grid, { clientX: 10, clientY: 5, pointerId: 1 })
+    const menu = () => utils.container.querySelector('[data-full-song="automation-shape"]') as HTMLSelectElement | null
+    /** The cross-class options' labels, the ones a preview speaks for. */
+    const across = () => Array.from(menu()?.options ?? []).map((o) => o.textContent ?? '').filter((l) => l.includes(' · '))
+    return { ...utils, props, pressName, menu, across }
+  }
+
+  it('a re-evaluation while the preview is measuring does not move the "(was N)" beside it', async () => {
+    await withMeasuredCaptions(async () => {
       let answer: (a: SongAnalysis | null) => void = () => {}
       const onPreviewShape = vi.fn(() => new Promise<SongAnalysis | null>((resolve) => { answer = resolve }))
-      const props = {
-        ir: SIGNAL_IR as never,
-        source,
-        analysis: loopOf(16),
-        onEditAutomation: vi.fn(),
-        onPreviewShape,
-      }
-      const utils = renderFull(props)
-      const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
-      grid.getBoundingClientRect = () =>
-        ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
-      await settle()
-      await act(async () => {
-        ;(utils.container.querySelector('[data-full-song-lane-expand="bd"]') as HTMLElement).click()
-      })
-      // The name `gain` is the caption's first field: x from CAPTION_PAD_X (4) over four
-      // 6px glyphs, y inside the first line (the lane's top inset is 3).
-      fireEvent.pointerDown(grid, { clientX: 10, clientY: 5, pointerId: 1 })
-      const menu = () => utils.container.querySelector('[data-full-song="automation-shape"]') as HTMLSelectElement | null
+      const { props, pressName, menu, across, rerender, onSeek } = await renderSignal(onPreviewShape)
+      pressName()
       expect(menu(), 'a press on the name did not open the shape menu').not.toBeNull()
       expect(onPreviewShape).toHaveBeenCalledTimes(1)
-      const across = () => Array.from(menu()!.options).map((o) => o.textContent ?? '').filter((l) => l.includes(' · '))
       expect(across().length, 'no shape across classes was offered').toBeGreaterThan(0)
       expect(across().every((l) => l.endsWith('measuring song length…'))).toBe(true)
 
       // The song is re-evaluated under the open menu, to a length the preview never saw.
-      utils.rerender(
+      rerender(
         <FullSongTimeline
           getSongPosition={() => null}
-          onSeek={utils.onSeek}
+          onSeek={onSeek}
           getDrawerOpen={() => true}
           getActiveTabId={() => 'musical-timeline'}
           {...props}
@@ -2262,8 +2272,40 @@ describe('FullSongTimeline — the shape menu measures a swap against the song i
       // The preview was measured from the song at 16; its baseline must be that song's.
       expect(across().length).toBeGreaterThan(0)
       for (const label of across()) expect(label).toMatch(/ · song repeats every 4 bars \(was 16\)$/)
-    } finally {
-      spy.mockRestore()
-    }
+    })
+  })
+
+  it('a preview for a menu that closed does not land on the next one opened', async () => {
+    await withMeasuredCaptions(async () => {
+      const answers: Array<(a: SongAnalysis | null) => void> = []
+      const onPreviewShape = vi.fn(() => new Promise<SongAnalysis | null>((resolve) => { answers.push(resolve) }))
+      const { pressName, menu, across } = await renderSignal(onPreviewShape)
+      pressName()
+      expect(menu(), 'a press on the name did not open the shape menu').not.toBeNull()
+      fireEvent.keyDown(menu()!, { key: 'Escape' })
+      expect(menu(), 'Escape did not close the menu').toBeNull()
+      pressName()
+      expect(menu(), 'the menu did not open again').not.toBeNull()
+      expect(onPreviewShape).toHaveBeenCalledTimes(2)
+
+      // The FIRST menu's answer arrives late, for a menu nobody is looking at any more.
+      await act(async () => {
+        answers[0](loopOf(4))
+        await Promise.resolve()
+      })
+      expect(across().length).toBeGreaterThan(0)
+      expect(
+        across().every((l) => l.endsWith('measuring song length…')),
+        `the closed menu's preview landed on the open one: ${across().join(' / ')}`,
+      ).toBe(true)
+
+      // Control: the open menu's own answer does land, so the arm above is not a menu
+      // that ignores every answer.
+      await act(async () => {
+        answers[1](loopOf(2))
+        await Promise.resolve()
+      })
+      for (const label of across()) expect(label).toMatch(/ · song repeats every 2 bars \(was 16\)$/)
+    })
   })
 })
