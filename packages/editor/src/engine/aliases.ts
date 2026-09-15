@@ -110,3 +110,30 @@ export const SOUND_ALIASES: Readonly<Record<string, string>> = Object.freeze({
 export function resolveAlias(rawS: string): string | undefined {
   return SOUND_ALIASES[rawS.toLowerCase()]
 }
+
+/**
+ * #1635 — the alias step, applied to a hap's value before superdough sees it.
+ *
+ * Live playback (`wrappedOutput`) and the offline render (`renderPatternReport`)
+ * both call this, so a name like `kick` sounds the same in a bounce as it does
+ * live. Only the live path used to rewrite it, and a bounce of `s("kick*4")`
+ * came out silent.
+ *
+ * Returns `value` untouched when nothing applies: `s` is not a string, the
+ * loaded sound map already has the name (user-registered names always win,
+ * looked up lowercased like superdough does), or there is no curated alias.
+ * Otherwise returns a shallow COPY with `s` rewritten, so the caller's hap value
+ * is never mutated, plus the resolution for the engine's accumulator.
+ */
+export function aliasSoundValue<T>(
+  value: T,
+  soundMap: Record<string, unknown> | undefined
+): { value: T; resolution?: { from: string; to: string } } {
+  if (value === null || typeof value !== 'object') return { value }
+  const rawS = (value as { s?: unknown }).s
+  if (typeof rawS !== 'string') return { value }
+  if (soundMap && soundMap[rawS.toLowerCase()] !== undefined) return { value }
+  const aliased = resolveAlias(rawS)
+  if (!aliased || aliased === rawS) return { value }
+  return { value: { ...value, s: aliased } as T, resolution: { from: rawS, to: aliased } }
+}

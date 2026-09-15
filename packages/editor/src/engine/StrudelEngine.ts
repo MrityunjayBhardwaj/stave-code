@@ -2,7 +2,7 @@ import { HapStream } from './HapStream'
 import { BreakpointStore } from './BreakpointStore'
 import { LiveRecorder } from './LiveRecorder'
 import { perf } from '../perf/profiler'
-import { WavEncoder } from './WavEncoder'
+import { WavEncoder, SilentCaptureError } from './WavEncoder'
 import { emitLog } from './engineLog'
 import { renderPatternOffline, describeSkipped, type SkippedSounds } from './renderPatternOffline'
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
@@ -17,7 +17,7 @@ import { buildNodeLocIndex } from '../ir/nodeIdentity'
 import type { PatternIR } from '../ir/PatternIR'
 import type { IREvent } from '../ir/IREvent'
 import { getTierFlags, type TierFlags } from './tierFlags'
-import { resolveAlias } from './aliases'
+import { aliasSoundValue } from './aliases'
 import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
 import { installMiniStringParser } from './stringParser'
 import { resolveBareCaptureId } from './bareCapture'
@@ -969,22 +969,16 @@ export class StrudelEngine implements LiveCodingEngine {
       // win (RESEARCH §3 + §7 open-question #4). Sub-microsecond per hap
       // (one Map.get + one Object index lookup); negligible vs scheduler
       // overhead.
-      const rawS = hap?.value?.s
-      if (typeof rawS === 'string') {
-        const lower = rawS.toLowerCase()
-        // Live read — user `samples(...)` calls between init and trigger
-        // should be honored.
-        const liveSoundMap: Record<string, unknown> | undefined =
-          this.soundMapRef?.get?.() ?? undefined
-        if (!liveSoundMap || liveSoundMap[lower] === undefined) {
-          const aliased = resolveAlias(rawS)
-          if (aliased && aliased !== rawS) {
-            this.lastAliasResolutions.push({ from: rawS, to: aliased })
-            // Shallow clone the value so downstream consumers that snapshot
-            // the original hap reference see a stable shape; only this hap's
-            // `s` is rewritten for the audio side.
-            hap.value = { ...hap.value, s: aliased }
-          }
+      // #1635 — the same step the offline render applies (`renderPatternReport`),
+      // so a name like `kick` sounds the same live and in a bounce. Live read of
+      // the sound map: user `samples(...)` calls between init and trigger count.
+      // The step returns a shallow copy, so consumers that snapshot the original
+      // hap reference see a stable shape.
+      if (hap) {
+        const aliased = aliasSoundValue(hap.value, this.soundMapRef?.get?.() ?? undefined)
+        if (aliased.resolution) {
+          this.lastAliasResolutions.push(aliased.resolution)
+          hap.value = aliased.value
         }
       }
 
@@ -2002,7 +1996,11 @@ export class StrudelEngine implements LiveCodingEngine {
         getSuperdoughAudioController: wa.getSuperdoughAudioController,
         setSuperdoughAudioController: wa.setSuperdoughAudioController,
         initAudio: wa.initAudio,
-        superdough: wa.superdough,
+        // #1635 — the alias step live playback applies in `wrappedOutput`. The
+        // render calls superdough directly, so without this `kick` was "not
+        // found" in a bounce while it played live.
+        superdough: (value, t, hapDuration, cps, cycle) =>
+          wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? undefined).value, t, hapDuration, cps, cycle),
         createContext: (frames, rate) => new OfflineAudioContext(2, frames, rate),
       }
     ))
@@ -2018,12 +2016,22 @@ export class StrudelEngine implements LiveCodingEngine {
       })
     }
 
-    return {
-      blob: WavEncoder.encode(result.buffer),
-      haps: result.haps,
-      played: result.played,
-      skipped: result.skipped,
+    let blob: Blob
+    try {
+      blob = WavEncoder.encode(result.buffer)
+    } catch (err) {
+      // #1635 — a render is silent most often because every sound was left out,
+      // and the refusal alone says only "silent". Name what was left out on the
+      // error the caller reads. The instance is kept: callers branch on it and
+      // read `refused` from it.
+      if (err instanceof SilentCaptureError && result.skipped.length > 0) {
+        const left = result.skipped.reduce((n, s) => n + s.count, 0)
+        err.message = `${err.message} The render left out ${left} of ${result.haps} sounds: ${describeSkipped(result.skipped)}`
+      }
+      throw err
     }
+
+    return { blob, haps: result.haps, played: result.played, skipped: result.skipped }
   }
 
   /**

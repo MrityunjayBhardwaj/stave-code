@@ -1218,3 +1218,54 @@ describe('StrudelEngine.renderLoadedReport refusals (#1344)', () => {
     engine.dispose()
   })
 })
+
+// ---------------------------------------------------------------------------
+// #1635 — `wrappedOutput` applies the alias step the offline render shares
+// (`aliasSoundValue`). These arms pin that the live path still rewrites and
+// still records the resolution after the step moved out of it. The render side
+// is observed in the browser (`bounce-paths.spec.ts`, #1635 describe).
+// ---------------------------------------------------------------------------
+describe('StrudelEngine live output applies the shared alias step (#1635)', () => {
+  const played = (s: string) => ({ whole: { begin: 0, end: 1 }, value: { s }, context: { locations: [] } })
+
+  beforeEach(() => {
+    capturedDefaultOutput = null
+    vi.clearAllMocks()
+  })
+
+  it('a curated alias reaches the audio output rewritten, and is recorded', async () => {
+    const { webaudioOutput } = await import('@strudel/webaudio')
+    const engine = new StrudelEngine()
+    await engine.init()
+    await engine.evaluate('one-track')
+    expect(capturedDefaultOutput, 'init() handed the repl no output — this arm tests nothing').not.toBeNull()
+    await capturedDefaultOutput!(played('kick'), 0, 0.25, 1, 0)
+    // The mock is typed from an untyped module, so name the one field read here.
+    const calls = vi.mocked(webaudioOutput).mock.calls as unknown as Array<[{ value?: { s?: string } }]>
+    expect({
+      s: calls[0]?.[0]?.value?.s,
+      resolutions: engine.getLastAliasResolutions(),
+    }).toEqual({ s: 'bd', resolutions: [{ from: 'kick', to: 'bd' }] })
+    engine.dispose()
+  })
+
+  it('a name the loaded sound map has is played as written', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wa: any = await import('@strudel/webaudio')
+    const get = vi.mocked(wa.soundMap.get)
+    get.mockImplementation(() => ({ kick: {} }))
+    try {
+      const engine = new StrudelEngine()
+      await engine.init()
+      await engine.evaluate('one-track')
+      await capturedDefaultOutput!(played('kick'), 0, 0.25, 1, 0)
+      expect({
+        s: vi.mocked(wa.webaudioOutput).mock.calls[0]?.[0]?.value?.s,
+        resolutions: engine.getLastAliasResolutions(),
+      }).toEqual({ s: 'kick', resolutions: [] })
+      engine.dispose()
+    } finally {
+      get.mockImplementation(() => ({}))
+    }
+  })
+})
