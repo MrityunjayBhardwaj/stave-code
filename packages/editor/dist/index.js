@@ -2235,6 +2235,9 @@ function songExtent(ir) {
       case "Fast":
         walk5(node.body, node.factor > 0 && Number.isFinite(node.factor) ? factor / node.factor : factor, opaque);
         return;
+      case "Param":
+        walk5(node.body, factor, opaque);
+        return;
       case "Range":
         walk5(node.body, factor, opaque);
         return;

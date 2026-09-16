@@ -67,6 +67,9 @@ function scaled(cycles: number, factor: number): number {
  *   also the answer for a song whose tracks carry DIFFERENT section timelines:
  *   the piece is as long as its longest track, never their sum.
  * - `Track` / `Loop` → transparent.
+ * - `Param` → transparent (#1644). A control sets a value ON events and cannot
+ *   move one; see the case body for the census that says no corpus document
+ *   changes verdict.
  * - `Fast` / `Slow` → scale what is below them.
  * - `Code` → TAINT. A `Code` node is either an opaque wrapper around a
  *   `.method(args)` Stave could not parse (with the real receiver at
@@ -173,6 +176,25 @@ export function songExtent(ir: PatternIR | null): SongExtent {
         return
       case 'Fast':
         walk(node.body, node.factor > 0 && Number.isFinite(node.factor) ? factor / node.factor : factor, opaque)
+        return
+      case 'Param':
+        // #1644 — named for the reason `Range` is named below, and on the same
+        // evidence. A control parameter sets a VALUE on events (`gain`, `room`,
+        // `lpf`); it cannot move one in cycle-space, so an arrangement under it
+        // is as measurable as an arrangement under a `Track`. Left to `default`
+        // it tainted, and `arrange(...).gain(.8)` — a master level over a song,
+        // which is simply how a song gets mixed — had no definite end at all:
+        // no bounce length offered, nothing for "stop at the end" to stop at.
+        //
+        // ⚠ THE BIAS IN THE HEADER IS NOT BEING RELAXED. Wrong towards
+        // `arranged` truncates a bounce, so this is a claim about a node whose
+        // time behaviour IS modelled, not a general loosening. Census over the
+        // 150-document corpus: all 6 opaque documents carry a `Code` on the path
+        // to their arrangement, so none of them moves — `Param` sits on 4 of
+        // those spines but never without a `Code` beside it. `When` and `Struct`
+        // reach `default` too and must keep tainting; `.struct` really does move
+        // events.
+        walk(node.body, factor, opaque)
         return
       case 'Range':
         // #1481 — named explicitly rather than left to `default`, which would

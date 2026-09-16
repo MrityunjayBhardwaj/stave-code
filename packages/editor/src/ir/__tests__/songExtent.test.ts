@@ -165,6 +165,31 @@ describe('songExtent', () => {
     expect(songExtent(wrapped)).toEqual({ kind: 'opaque' })
   })
 
+  it('a CONTROL over an arrangement keeps its definite end (#1644)', () => {
+    // How a song gets mixed: a master level over the whole arrangement. The
+    // control sets a value ON events and cannot move one, so the ending is as
+    // measurable as it was without it — which is the control arm right beside it.
+    const a = IR.arrange('arrange', [arm(2), arm(2)])
+    expect(songExtent(a)).toEqual({ kind: 'arranged', cycles: 4 })
+    expect(songExtent(IR.param('gain', 0.8, '0.8', a))).toEqual({ kind: 'arranged', cycles: 4 })
+    // Stacked controls, and one under a Track, the way a real document reads.
+    const mixed = IR.param('room', 0.25, '0.25', IR.param('gain', 0.8, '0.8', a))
+    expect(songExtent(mixed)).toEqual({ kind: 'arranged', cycles: 4 })
+    // A control does not DISCOVER an arrangement either: no arrangement, still a loop.
+    expect(songExtent(IR.param('gain', 0.8, '0.8', bd))).toEqual({ kind: 'loop' })
+  })
+
+  it('a control does not excuse a transform that DOES move events (#1644)', () => {
+    // The narrowing, stated as an arm: `Param` is named because its time
+    // behaviour is modelled, not because nodes above arrangements are harmless.
+    // `.struct` re-places events and still taints, control or no control.
+    const a = IR.arrange('arrange', [arm(2), arm(2)])
+    expect(songExtent(IR.struct('x ~ x ~', a))).toEqual({ kind: 'opaque' })
+    expect(songExtent(IR.param('gain', 0.8, '0.8', IR.struct('x ~ x ~', a)))).toEqual({ kind: 'opaque' })
+    // …and a scaling transform still scales through a control.
+    expect(songExtent(IR.param('gain', 0.8, '0.8', IR.slow(2, a)))).toEqual({ kind: 'arranged', cycles: 8 })
+  })
+
   it('a Code node with NO arrangement under it stays a loop', () => {
     // `opaque` means "there is an arrangement we cannot measure". A document
     // that is merely unparseable and has no arrangement is still just a loop,
