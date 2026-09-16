@@ -855,6 +855,64 @@ export function signalDimensionsOf(ir: PatternIR | null | undefined, swap?: Shap
 }
 
 /**
+ * How many cycles an ARRANGED song takes to come back round: the arrangement's
+ * own length, folded with the song-period of every parameter playing over it
+ * (#1580).
+ *
+ * An arrangement is a definite end — but only of the STRUCTURE. A parameter
+ * whose period does not divide that length keeps moving after the last bar:
+ * `arrange([2, bd],[2, hh]).gain("<.2 .5 .9>")` is four bars of structure and a
+ * three-step gain, so the song first repeats at twelve. Bouncing four would hand
+ * back `.2 .5 .9 .2` and loop it, which is not what the song does.
+ *
+ * ⚠ IT REUSES THE THREE READINGS THE PIPELINE ALREADY HAS, rather than measuring
+ * a period again: `songPeriodOf` for a stepped parameter (sections and warps
+ * folded in, measured against the engine), `signalDimensionsOf` for the periodic
+ * curves — which already applies the same function, and already skips muted
+ * tracks and shapes with no true period — and `repeatOf` for the fold and its
+ * cap. The one thing this adds is the arrangement's own length as another member
+ * of that set.
+ *
+ * ⚠ STRUCTURAL, AND THAT IS LOAD-BEARING. Every reading above comes off the
+ * parsed IR, so the arranged branch of `measureSongLength` keeps the property
+ * its own arm pins: it answers before a note has been evaluated or heard.
+ *
+ * ⚠ MUTED TRACKS ARE EXCLUDED, and the two readers do NOT agree about that on
+ * their own. `signalDimensionsOf` walks `audibleTracks`; `steppedAutomations`
+ * walks `playableParameters`, which never looks at `muted` — so a `_$:` track's
+ * stepped gain would stretch a bounce with a length nothing can be heard playing.
+ * The filter is applied here, on the same rule the curves already follow.
+ *
+ * Where a period cannot be vouched for, that parameter neither extends the song
+ * nor blocks the others; where the fold itself fails (a null pair, or a result
+ * past the cap) the answer stays the arrangement's own length — the bias
+ * `repeatBeside` already takes, and the answer this branch gave before.
+ */
+export function arrangedRepeatCycles(
+  ir: PatternIR | null | undefined,
+  arrangedCycles: number,
+  cap: number = DEFAULT_CAP,
+): number {
+  if (!(arrangedCycles > 0) || !Number.isFinite(arrangedCycles)) return arrangedCycles
+  const tracks = audibleTracks(ir)
+  const named = tracks.filter((t) => t.tag === 'Track' && typeof t.trackId === 'string')
+  // A document with no Track nodes at all is one unmuted thing; filtering by a
+  // set of ids nobody has would drop every parameter it carries.
+  const audible: ReadonlySet<string> | null = named.length > 0
+    ? new Set(named.map((t) => (t as { trackId: string }).trackId))
+    : null
+  const periods: number[] = [arrangedCycles]
+  for (const a of steppedAutomations(ir)) {
+    if (audible !== null && !audible.has(a.trackId)) continue
+    const p = songPeriodOf(a)
+    if (p !== null && p > 0) periods.push(p)
+  }
+  for (const p of signalDimensionsOf(ir).periods) if (p > 0) periods.push(p)
+  const repeat = repeatOf(periods, cap)
+  return repeat ?? arrangedCycles
+}
+
+/**
  * How many SONG cycles a curve's value takes to come back round (#1590), or null
  * when that cannot be said.
  *

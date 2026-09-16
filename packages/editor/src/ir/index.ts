@@ -88,7 +88,7 @@ export type { FixedParameter } from './fixedParameters'
 // #1602 — change a stepped parameter's step count, and preview the song's length first.
 export { stepCountEdit } from './stepCount'
 export type { StepCountEdit } from './stepCount'
-export { previewRepeat, songPeriodOf } from './songAnalysis'
+export { previewRepeat, songPeriodOf, arrangedRepeatCycles } from './songAnalysis'
 export type { LanePeriod } from './songAnalysis'
 // #1611 — a shape swap across periodicity, and the song it would give.
 export { previewShapeSwap } from './songAnalysis'
