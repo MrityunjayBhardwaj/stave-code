@@ -19,10 +19,14 @@ import {
   stepEdit,
   stepHitAt,
   stepSegments,
+  stepTravel,
   stepY,
+  travelledPx,
+  withFineDrag,
   unitOnAxis,
   valueAtUnit,
   withStepValue,
+  FINE_DRAG_RATIO,
   STEP_HIT_TOLERANCE_PX,
   type RangeFor,
   type StepAxis,
@@ -345,6 +349,62 @@ describe('the drag geometry — a level that follows the pointer (#1578)', () =>
     // Up is louder: 9px of a 90px band is a tenth of the axis.
     expect(stepDragValue(0.8, -9, LIN, BAND)).toBe(0.9)
     expect(stepDragValue(0.8, 9, LIN, BAND)).toBe(0.7)
+  })
+
+  // ── #1582: the fine drag ──────────────────────────────────────────────────
+  // A SHORT band is the whole reason this exists, so these arms use one: an
+  // expanded lane can be 25px when the panel has no room to grow it, and 25px
+  // leaves a 19px band.
+  const SHORT: StepBand = { top: 0, rowHeight: 25, padY: 3, minBandH: 10 }
+
+  it('prices travel at a tenth while the modifier is held', () => {
+    const coarse = stepTravel(100, false)
+    expect(travelledPx(coarse, 110)).toBe(10)
+    const fine = stepTravel(100, true)
+    expect(travelledPx(fine, 110)).toBeCloseTo(1, 10)
+    expect(FINE_DRAG_RATIO).toBe(0.1)
+  })
+
+  it('a modifier pressed mid-drag banks what was travelled and re-prices only what follows', () => {
+    // 10px of plain travel, then the key goes down where the pointer stands.
+    const before = stepTravel(100, false)
+    const after = withFineDrag(before, 110, true)
+    // The level must not move on the keypress itself.
+    expect(travelledPx(after, 110)).toBe(travelledPx(before, 110))
+    // The next 10px are worth 1.
+    expect(travelledPx(after, 120)).toBeCloseTo(11, 10)
+    // And releasing it banks again: the 10 after that are worth 10.
+    const released = withFineDrag(after, 120, false)
+    expect(travelledPx(released, 120)).toBeCloseTo(11, 10)
+    expect(travelledPx(released, 130)).toBeCloseTo(21, 10)
+  })
+
+  it('returns the same travel when the mode has not changed', () => {
+    const t = stepTravel(100, false)
+    expect(withFineDrag(t, 150, false)).toBe(t)
+  })
+
+  it('makes 0.60 reachable from 0.9 on a 19px band, which a plain drag cannot (#1582)', () => {
+    // The issue's own complaint, stated as an arm: on this band one pixel is
+    // about 0.05 of gain, so the values a plain drag can produce SKIP 0.60. Both
+    // sweeps below travel the same 80 screen pixels — the only difference is the
+    // modifier, which is what makes this a control rather than two claims.
+    const sweep = (fine: boolean): Set<number> => {
+      const travel = stepTravel(0, fine)
+      const out = new Set<number>()
+      for (let px = 0; px <= 80; px++) out.add(stepDragValue(0.9, travelledPx(travel, px), LIN, SHORT))
+      return out
+    }
+    const plain = sweep(false)
+    const held = sweep(true)
+    expect(plain.has(0.6), 'a plain drag could already land on 0.60').toBe(false)
+    // The control on the control: the plain sweep DOES land either side of 0.6,
+    // so its miss is the band's coarseness and not an empty sweep. These are the
+    // issue's own measured neighbours — 4px gives 0.69, 5px 0.64, 6px 0.58.
+    expect(plain.has(0.64) && plain.has(0.58), 'the plain sweep produced nothing near 0.6 — wrong band?').toBe(true)
+    expect(held.has(0.6)).toBe(true)
+    // Not merely "more values": every hundredth from 0.5 to 0.9 is now landable.
+    for (let v = 50; v <= 90; v++) expect(held.has(v / 100), `missing ${v / 100}`).toBe(true)
   })
 
   it('the drawn level lands where the pointer went — on a log axis too', () => {

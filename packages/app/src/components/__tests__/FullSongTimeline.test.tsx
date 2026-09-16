@@ -1799,6 +1799,69 @@ describe('FullSongTimeline — edit a STEP on a stepped lane (#1463 Stage 3)', (
     expect(stepEditor(container), 'a drag also opened the typed editor').toBeNull()
   })
 
+  // ── #1582: the fine drag ──────────────────────────────────────────────────
+  // This lane's band is 90px, so a plain 9px of travel is exactly a tenth of
+  // `gain`'s 0…1 axis — which makes every number below exact rather than
+  // approximately right.
+  const moveFine = (grid: HTMLElement, x: number, y: number) =>
+    fireEvent.pointerMove(grid, { clientX: x, clientY: y, pointerId: 1, shiftKey: true })
+
+  it('holds the modifier and the same travel moves a TENTH as far', async () => {
+    const onEditAutomation = vi.fn()
+    const { grid, container } = renderStepped({ onEditAutomation })
+    await expandBd(container)
+    const from = levelY(container, 0.8) + 3
+    // The control first: 9px of plain travel is a tenth of the axis.
+    down(grid, 300, from)
+    move(grid, 300, from - 9)
+    up(grid, 300, from - 9)
+    expect(onEditAutomation).toHaveBeenLastCalledWith({ range: [44, 47], text: '0.9' }, 'automation gain step 1')
+    // The same 9px with the modifier held moves a hundredth. Held from before
+    // the press — the other way in is the arm below.
+    fireEvent.pointerDown(grid, { clientX: 300, clientY: from, pointerId: 1, shiftKey: true })
+    moveFine(grid, 300, from - 9)
+    expect(dragLabel(container)?.textContent, 'the fine drag previewed the plain value').toContain('0.81')
+    up(grid, 300, from - 9)
+    expect(onEditAutomation).toHaveBeenLastCalledWith({ range: [44, 47], text: '0.81' }, 'automation gain step 1')
+  })
+
+  it('the modifier pressed after the press but BEFORE the first move still prices that move', async () => {
+    // The ordinary way in: press, then hold the key, then start moving. The
+    // browser sends that keydown before any pointermove, so a handler that only
+    // listened once a drag was under way would charge the whole first move — and
+    // the first move is most of a short drag — at full speed.
+    const onEditAutomation = vi.fn()
+    const { grid, container } = renderStepped({ onEditAutomation })
+    await expandBd(container)
+    const from = levelY(container, 0.8) + 3
+    down(grid, 300, from)
+    fireEvent.keyDown(window, { key: 'Shift', shiftKey: true })
+    moveFine(grid, 300, from - 9)
+    up(grid, 300, from - 9)
+    expect(onEditAutomation).toHaveBeenCalledWith({ range: [44, 47], text: '0.81' }, 'automation gain step 1')
+  })
+
+  it('pressing or releasing the modifier mid-drag does not move the level, and re-prices only what follows', async () => {
+    const onEditAutomation = vi.fn()
+    const { grid, container } = renderStepped({ onEditAutomation })
+    await expandBd(container)
+    const from = levelY(container, 0.8) + 3
+    down(grid, 300, from)
+    move(grid, 300, from + 9) // 9px down, plain → 0.7
+    expect(dragLabel(container)?.textContent).toContain('0.7')
+    // The key goes down where the pointer is STANDING. Nothing may move.
+    fireEvent.keyDown(window, { key: 'Shift', shiftKey: true })
+    expect(dragLabel(container)?.textContent, 'the level leapt when the modifier went down').toContain('0.7')
+    moveFine(grid, 300, from + 18) // 9 more, priced at a tenth → 0.69
+    expect(dragLabel(container)?.textContent).toContain('0.69')
+    // And released, again with the pointer standing still.
+    fireEvent.keyUp(window, { key: 'Shift', shiftKey: false })
+    expect(dragLabel(container)?.textContent, 'the level leapt when the modifier came up').toContain('0.69')
+    move(grid, 300, from + 27) // 9 more at full price → 0.59
+    up(grid, 300, from + 27)
+    expect(onEditAutomation).toHaveBeenCalledWith({ range: [44, 47], text: '0.59' }, 'automation gain step 1')
+  })
+
   it('a press released without travel — or with less than the threshold — opens the typed editor and writes nothing', async () => {
     const onEditAutomation = vi.fn()
     const { grid, container } = renderStepped({ onEditAutomation })

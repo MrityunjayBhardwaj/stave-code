@@ -102,7 +102,7 @@ import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMa
 import { declaredTracks } from './musicalTimeline/trackOrder'
 import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf, shapeAlternatives, crossClassShapes } from '@stave/editor'
 import type { FixedParameter } from '@stave/editor'
-import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepY, withStepValue, type StepBand, type StepHit } from './musicalTimeline/steppedLane'
+import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepTravel, stepY, travelledPx, withFineDrag, withStepValue, type StepBand, type StepHit, type StepTravel } from './musicalTimeline/steppedLane'
 import { stepCountOptions, type StepCountGroup } from './musicalTimeline/stepCountMenu'
 import { songLoopCycles } from './songLength'
 import type { SceneSignal, SceneStepped } from './musicalTimeline/timelineScene'
@@ -1927,6 +1927,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     laneKey: string
     startClientY: number
     band: StepBand
+    /** Travel so far, priced by whether the fine modifier was held for it (#1582). */
+    travel: StepTravel
+    /** Where the pointer is standing — what the modifier's own key events move
+     *  from, since pressing a key sends no pointer event (#1582). */
+    lastClientY: number
     /** Where the typed editor opens if this press turns out to be a click. */
     left: number
     color: string
@@ -1957,16 +1962,64 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     }
   }, [scene, stepPreview])
 
-  /** Move the dragged level to wherever the pointer is now. */
-  const applyStepDrag = React.useCallback((clientY: number): void => {
+  /**
+   * Move the dragged level to wherever the pointer is now, at the speed `fine`
+   * asks for (#1582).
+   *
+   * ⚠ THE TRAVEL IS BANKED HERE, NOT RECOMPUTED FROM THE PRESS. `withFineDrag`
+   * closes the current run when the modifier changes, so the pixels already
+   * spent keep the price they were spent at and the level stays under the
+   * pointer when the speed changes.
+   */
+  const applyStepDrag = React.useCallback((clientY: number, fine: boolean): void => {
     const drag = stepDragRef.current
     if (!drag) return
     const { automation, axis } = drag.hit.entry
     const start = automation.steps[drag.hit.index].value
-    const value = stepDragValue(start, clientY - drag.startClientY, axis, drag.band)
+    drag.travel = withFineDrag(drag.travel, clientY, fine)
+    drag.lastClientY = clientY
+    const value = stepDragValue(start, travelledPx(drag.travel, clientY), axis, drag.band)
     drag.value = value
     setStepPreview({ laneKey: drag.laneKey, hit: drag.hit, value, left: drag.left, y: stepY(value, axis, drag.band), color: drag.color })
   }, [])
+
+  /**
+   * The fine modifier, pressed or released with the pointer standing still
+   * (#1582).
+   *
+   * ⚠ A KEY SENDS NO POINTER EVENT. Without this the new speed would not take
+   * effect until the pointer moved, and the first move after it would be priced
+   * from an anchor set before the key — a leap, in the direction of travel. The
+   * listener re-anchors at the pointer's current position, which by
+   * construction leaves the level exactly where it is.
+   *
+   * Bound for the life of the grid rather than per drag: `stepDragRef` is a ref,
+   * so a drag starting does not re-render, and there is no state change to hang
+   * an effect on. The handler costs a null check when no drag is running.
+   */
+  useEffect(() => {
+    const onModifier = (e: KeyboardEvent): void => {
+      const drag = stepDragRef.current
+      if (!drag || e.key !== 'Shift') return
+      // ⚠ BEFORE THE THRESHOLD, RECORD THE MODE WITHOUT PREVIEWING. Holding the
+      // modifier and then starting to move is the ordinary way to ask for a fine
+      // drag, and the browser sends that keydown BEFORE the first pointermove.
+      // Skipping it here would price the first move — every pixel up to the
+      // threshold and beyond — at full speed, and previewing here would draw a
+      // level for a press that is still only a click.
+      if (!drag.dragging) {
+        drag.travel = withFineDrag(drag.travel, drag.lastClientY, e.shiftKey)
+        return
+      }
+      applyStepDrag(drag.lastClientY, e.shiftKey)
+    }
+    window.addEventListener('keydown', onModifier)
+    window.addEventListener('keyup', onModifier)
+    return () => {
+      window.removeEventListener('keydown', onModifier)
+      window.removeEventListener('keyup', onModifier)
+    }
+  }, [applyStepDrag])
 
   /**
    * End a step press. No travel → a click: open the typed editor. Travel → write
@@ -2281,6 +2334,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           hit: step.hit,
           laneKey: step.lane.laneKey,
           startClientY: e.clientY,
+          travel: stepTravel(e.clientY, e.shiftKey),
+          lastClientY: e.clientY,
           // `stepAt` hit-tested against this same box, so it is present; the
           // fallback only keeps the type honest.
           band: {
@@ -2445,9 +2500,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // the axis, which the band already holds on screen.
       const sd = stepDragRef.current
       if (sd && e.pointerId === sd.pointerId) {
+        // ⚠ The threshold is SCREEN travel, not the priced travel: whether the
+        // press became a drag is a question about the hand, not about the speed
+        // the modifier asked for. Scaling it would make a fine press need 40px
+        // to stop being a click.
         if (!sd.dragging && Math.abs(e.clientY - sd.startClientY) < CLIP_MOVE_THRESHOLD_PX) return
         sd.dragging = true
-        applyStepDrag(e.clientY)
+        applyStepDrag(e.clientY, e.shiftKey)
         return
       }
       // Move drag (Phase 5c): once the press travels past the threshold, preview

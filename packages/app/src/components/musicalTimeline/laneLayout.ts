@@ -15,6 +15,27 @@
  * PURE — no React, no canvas, only the lane keys. Unit-tested directly.
  */
 
+import { AUTOMATION_PAD_Y } from './automationCaption'
+
+/**
+ * The shortest BAND an expanded lane may draw a stepped automation in (#1582).
+ *
+ * The band is where a level is drawn and where it is dragged, so its height IS
+ * the resolution of the gesture: 19px of band makes one pixel worth 0.05 of
+ * `gain`. A held modifier answers precision (`FINE_DRAG_RATIO`); this answers
+ * the ordinary drag, by not letting a lane that is showing an automation be
+ * shorter than the automation needs. 32px puts a plain drag at about 0.03 per
+ * pixel, and the fine drag at 0.003.
+ *
+ * ⚠ ONLY WHERE A LANE DRAWS ONE AND IS EXPANDED. A collapsed row is a contour
+ * view whose height belongs to the clip body, and a multi-voice expanded lane is
+ * already taller than this floor by its voice count.
+ */
+export const AUTOMATION_MIN_DRAG_BAND_H = 32
+
+/** The row height that leaves `AUTOMATION_MIN_DRAG_BAND_H` after the band's inset. */
+export const AUTOMATION_MIN_ROW_H = AUTOMATION_MIN_DRAG_BAND_H + AUTOMATION_PAD_Y * 2
+
 /** Default per-voice sub-row height (px) when an expanded lane splits into voice
  *  sub-rows (#424). Each voice gets a fixed band (live-monitor parity — the lane
  *  grows with voice count rather than cramming a fixed height), as tall as a
@@ -59,6 +80,10 @@ export interface LaneVoiceInput {
 export interface LaneLayoutInput {
   readonly laneKey: string
   readonly voices?: readonly LaneVoiceInput[]
+  /** The lane's stepped automations — only the COUNT is read, to decide whether
+   *  this lane needs the automation floor (#1582). `SceneLane` satisfies it
+   *  structurally, so the caller passes its lanes unchanged. */
+  readonly stepped?: readonly unknown[]
 }
 
 /** One lane's vertical box in content space (CSS px, before DPR). */
@@ -81,6 +106,20 @@ export interface LaneLayout {
   readonly boxes: readonly LaneBox[]
   /** Sum of all box heights — the canvas/grid content height. ≥ 0. */
   readonly totalHeight: number
+}
+
+/**
+ * `height`, raised to the automation floor when this lane draws a stepped
+ * automation (#1582).
+ *
+ * ⚠ SINGLE-BAND LANES ONLY, which is why this is called from those two branches
+ * and not at the end. A multi-voice expanded lane's height is the sum of its
+ * sub-rows, and the sub-rows are what fill it — raising the total there would
+ * leave a strip below the last voice that nothing draws in, and every sub-row
+ * hit-test would still answer for the old geometry.
+ */
+function withAutomationFloor(height: number, lane: LaneLayoutInput): number {
+  return (lane.stepped?.length ?? 0) > 0 ? Math.max(height, AUTOMATION_MIN_ROW_H) : height
 }
 
 /**
@@ -126,14 +165,14 @@ export function computeLaneLayout(
     // many — responds to the same density slider.
     if (isExpanded && voices.length === 1 && sub > 0) {
       const rows = voices[0].melodic ? MELODIC_SINGLE_VOICE_ROWS : 1
-      const height = rows * sub
+      const height = withAutomationFloor(rows * sub, lane)
       const box: LaneBox = { laneKey: lane.laneKey, top, height, expanded: true }
       top += height
       return box
     }
     // Collapsed lanes, and the degenerate no-voice / sub=0 expanded fallback,
     // use the plain row / `expandedHeight` band.
-    const height = isExpanded ? big : base
+    const height = isExpanded ? withAutomationFloor(big, lane) : base
     const box: LaneBox = { laneKey: lane.laneKey, top, height, expanded: isExpanded }
     top += height
     return box
