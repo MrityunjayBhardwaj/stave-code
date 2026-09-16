@@ -140,6 +140,64 @@ export function valueAtUnit(unit: number, axis: StepAxis): number {
 }
 
 /**
+ * How much slower a step drag moves while the fine modifier is held (#1582).
+ *
+ * A tenth is the DAW convention for a modified drag, and it is what this lane
+ * needs: an expanded single-voice lane can be 25px tall when the panel has no
+ * room to grow it, which leaves a 19px band — about 0.05 of `gain` per pixel, so
+ * 0.60 is not reachable from 0.9 by any pixel. At a tenth, one pixel is 0.005 and
+ * every value on the control's own quantum can be landed on.
+ */
+export const FINE_DRAG_RATIO = 0.1
+
+/**
+ * What a step drag has travelled so far, in the band's own pixels (#1582).
+ *
+ * ⚠ TRAVEL IS ACCUMULATED, NOT RE-DERIVED FROM THE PRESS. The modifier can go
+ * down or up in the middle of a drag, and the pixels moved before it changed
+ * were worth ten times the pixels moved after. Reading `clientY - startClientY`
+ * and scaling the whole thing would re-price travel the user already spent: the
+ * level would LEAP the moment the key went down, away from the pointer that is
+ * holding it. So each change of mode closes the current run — banking what it
+ * was worth — and starts the next one from where the pointer is standing.
+ */
+export interface StepTravel {
+  /** Screen y where the current run began — the last mode change, or the press. */
+  readonly anchorClientY: number
+  /** Band pixels banked by the runs BEFORE the current one. */
+  readonly beforePx: number
+  /** Whether the current run is moving at the fine ratio. */
+  readonly fine: boolean
+}
+
+/** A drag's travel at the moment of the press. */
+export function stepTravel(clientY: number, fine: boolean): StepTravel {
+  return { anchorClientY: clientY, beforePx: 0, fine }
+}
+
+/** The band pixels travelled by the time the pointer reaches `clientY`. */
+export function travelledPx(travel: StepTravel, clientY: number): number {
+  if (!Number.isFinite(clientY)) return travel.beforePx
+  const run = (clientY - travel.anchorClientY) * (travel.fine ? FINE_DRAG_RATIO : 1)
+  return travel.beforePx + run
+}
+
+/**
+ * The travel with the fine mode set to `fine`, re-anchored at `clientY` if that
+ * is a change (#1582).
+ *
+ * Called on every move AND on the modifier's own key events, because a key
+ * pressed while the pointer stands still sends no pointer event at all — and the
+ * value must not move when it is pressed, only the speed of what comes next.
+ * Identity is returned unchanged when the mode is the same, so the common path
+ * allocates nothing.
+ */
+export function withFineDrag(travel: StepTravel, clientY: number, fine: boolean): StepTravel {
+  if (fine === travel.fine) return travel
+  return { anchorClientY: clientY, beforePx: travelledPx(travel, clientY), fine }
+}
+
+/**
  * The value a step's level holds after the pointer has travelled `dyPx` from
  * where the drag began (#1578). `dyPx` is screen travel: positive is DOWN the
  * lane and lowers the value, as pulling a fader down does.

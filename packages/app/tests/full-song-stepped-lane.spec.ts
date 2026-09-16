@@ -774,6 +774,120 @@ test('a step dragged on the lane previews without writing, then changes what the
   expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
 })
 
+test('the same travel with the modifier held moves a step a TENTH as far, and pressing it mid-drag does not move the level (#1582)', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+  // ⚠ WITHOUT THIS FLAG `gainsByBar` READS NOTHING, and an empty reading looks
+  // exactly like "the engine plays no steps" — a product failure. The first run
+  // of this arm failed that way, on its own control.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('stave:debug.timelineMarks', '1')
+    } catch {
+      /* ignore */
+    }
+  })
+
+  await bootShell(page)
+  await setSongAndEval(page, EDIT_SONG)
+  await page.locator('[data-full-song-canvas]').waitFor({ timeout: 10_000 })
+  await page.waitForTimeout(500)
+  await expect.poll(() => gainsByBar(page), { timeout: 10_000 })
+    .toEqual({ 0: [0.2, 0.2], 1: [0.9, 0.9], 2: [0.2, 0.2], 3: [0.9, 0.9] })
+
+  const canvas = page.locator('[data-full-song-canvas]')
+  const grid = page.locator('[data-full-song="grid"]')
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error('no canvas')
+  const barX = (bar: number) => Math.round(box.width * ((bar + 0.5) / 4))
+  await page.mouse.dblclick(box.x + barX(2), box.y + 8)
+  await page.waitForTimeout(800)
+
+  // The level, found the way the #1578 arm finds it: the rows whose cursor
+  // promises a drag ARE the level.
+  const rows: number[] = []
+  for (let y = 1; y <= 120; y++) {
+    await page.mouse.move(box.x + barX(1), box.y + y)
+    if ((await grid.evaluate((el) => (el as HTMLElement).style.cursor)) === 'ns-resize') rows.push(y)
+  }
+  expect(rows.length, 'no row over bar 1 promised a step drag').toBeGreaterThan(0)
+  const levelY = rows[Math.floor(rows.length / 2)]
+
+  const doc = await readDoc(page)
+  const label = page.locator('[data-full-song="automation-step-drag"]')
+
+  /**
+   * Drag down `travel`, read the level the label shows, then come back to where
+   * the press began and release.
+   *
+   * ⚠ IT RETURNS TO THE START ON PURPOSE. A drag that ends where it began writes
+   * nothing, so the two measurements below are taken on the SAME document from
+   * the SAME step value — the only difference between them is the modifier,
+   * which is the whole claim. The document is checked afterwards to prove it.
+   */
+  const dragBy = async (travel: number, fine: boolean): Promise<number> => {
+    await page.mouse.move(box.x + barX(1), box.y + levelY)
+    await page.mouse.down()
+    if (fine) await page.keyboard.down('Shift')
+    for (let dy = 1; dy <= travel; dy++) await page.mouse.move(box.x + barX(1), box.y + levelY + dy)
+    await page.waitForTimeout(200)
+    const shown = (await label.textContent()) ?? ''
+    expect(shown.startsWith('gain '), `label: ${shown}`).toBe(true)
+    const value = Number(shown.split(' ')[1])
+    for (let dy = travel - 1; dy >= 0; dy--) await page.mouse.move(box.x + barX(1), box.y + levelY + dy)
+    if (fine) await page.keyboard.up('Shift')
+    await page.mouse.up()
+    await page.waitForTimeout(300)
+    return value
+  }
+
+  // The band is read off the lane, never assumed — #1578's own caution, and the
+  // lane is taller now that it draws an automation (#1582's floor).
+  const laneH = await page
+    .locator('[data-full-song-lane][data-expanded="true"]')
+    .first()
+    .evaluate((el) => parseFloat((el as HTMLElement).style.height))
+  const bandH = laneH - 6
+  const travel = Math.max(8, Math.round(bandH * 0.35))
+
+  const plain = await dragBy(travel, false)
+  const held = await dragBy(travel, true)
+
+  // The claim: the same pixels move the value a tenth as far. Compared as a
+  // DROP from the step's own value, and allowed one quantum of snap either way.
+  const dropPlain = 0.9 - plain
+  const dropHeld = 0.9 - held
+  expect(dropPlain, `a plain drag of ${travel}px did not move the level: ${plain}`).toBeGreaterThan(0.05)
+  expect(dropHeld, `a fine drag of ${travel}px moved nothing at all: ${held}`).toBeGreaterThan(0)
+  expect(Math.abs(dropHeld - dropPlain / 10), `plain ${dropPlain}, held ${dropHeld}`).toBeLessThanOrEqual(0.011)
+
+  // Neither drag wrote: both came back to where they started.
+  expect(await readDoc(page), 'a drag that returned to its start wrote to the document').toBe(doc)
+
+  // …and the modifier pressed MID-DRAG, with the pointer standing still, does
+  // not move the level — it only re-prices what comes next.
+  await page.mouse.move(box.x + barX(1), box.y + levelY)
+  await page.mouse.down()
+  for (let dy = 1; dy <= travel; dy++) await page.mouse.move(box.x + barX(1), box.y + levelY + dy)
+  await page.waitForTimeout(200)
+  const beforeKey = (await label.textContent()) ?? ''
+  await page.keyboard.down('Shift')
+  await page.waitForTimeout(200)
+  expect((await label.textContent()) ?? '', 'the level leapt when the modifier went down').toBe(beforeKey)
+  await page.keyboard.up('Shift')
+  await page.waitForTimeout(200)
+  expect((await label.textContent()) ?? '', 'the level leapt when the modifier came up').toBe(beforeKey)
+  for (let dy = travel - 1; dy >= 0; dy--) await page.mouse.move(box.x + barX(1), box.y + levelY + dy)
+  await page.mouse.up()
+  await page.waitForTimeout(300)
+  expect(await readDoc(page), 'the mid-drag modifier arm wrote to the document').toBe(doc)
+
+  expect(errors, `page/console errors: ${errors.join(' | ')}`).toEqual([])
+})
+
 // ── #1601: automate a fixed value from its lane ─────────────────────────────
 
 /** A kick with a FIXED gain beside a four-cycle hat line, so the song is four bars

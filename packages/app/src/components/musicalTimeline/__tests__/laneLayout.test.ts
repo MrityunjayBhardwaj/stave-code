@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeLaneLayout, laneAtY } from '../laneLayout'
+import { AUTOMATION_MIN_ROW_H, computeLaneLayout, laneAtY } from '../laneLayout'
 
 const lanes = [{ laneKey: 'bd' }, { laneKey: 'lead' }, { laneKey: 'bass' }]
 
@@ -131,5 +131,43 @@ describe('computeLaneLayout — per-voice sub-rows (#424)', () => {
     const layout = computeLaneLayout(drums, new Set(['drums']), 22, 96, 0)
     expect(layout.boxes[0].height).toBe(96)
     expect(layout.boxes[0].subRows).toBeUndefined()
+  })
+
+  // ── #1582: a lane drawing an automation is not shorter than the gesture needs ─
+  describe('the automation floor', () => {
+    const step = [{}] // only the COUNT is read
+    const quiet = [{ laneKey: 'kick', voices: [v('bd')] }]
+    const automated = [{ laneKey: 'kick', voices: [v('bd')], stepped: step }]
+
+    it('raises a short single-voice expanded lane to the floor', () => {
+      // The lane in #1582: one percussive voice, a 25px sub-row, 19px of band.
+      expect(computeLaneLayout(quiet, new Set(['kick']), 22, 96, 25).boxes[0].height).toBe(25)
+      expect(computeLaneLayout(automated, new Set(['kick']), 22, 96, 25).boxes[0].height).toBe(AUTOMATION_MIN_ROW_H)
+      expect(AUTOMATION_MIN_ROW_H).toBe(38) // 32 of band + the 3px inset, twice
+    })
+
+    it('never SHORTENS a lane that is already taller', () => {
+      const tall = computeLaneLayout(automated, new Set(['kick']), 22, 96, 60)
+      expect(tall.boxes[0].height).toBe(60)
+    })
+
+    it('leaves a COLLAPSED lane alone — its height belongs to the clip body', () => {
+      expect(computeLaneLayout(automated, new Set(), 22, 96, 25).boxes[0].height).toBe(22)
+    })
+
+    it('leaves a multi-voice lane alone, so its sub-rows still tile it exactly', () => {
+      const many = [{ laneKey: 'drums', voices: [v('bd'), v('hh')], stepped: step }]
+      const box = computeLaneLayout(many, new Set(['drums']), 22, 96, 25).boxes[0]
+      expect(box.height).toBe(50) // 2 × 25, NOT raised to the floor
+      const rows = box.subRows ?? []
+      expect(rows.at(-1)!.top + rows.at(-1)!.height - box.top).toBe(box.height)
+    })
+
+    it('pushes the lanes below it down, and the total with them', () => {
+      const pair = [{ laneKey: 'kick', voices: [v('bd')], stepped: step }, { laneKey: 'bass' }]
+      const layout = computeLaneLayout(pair, new Set(['kick']), 22, 96, 25)
+      expect(layout.boxes[1].top).toBe(AUTOMATION_MIN_ROW_H)
+      expect(layout.totalHeight).toBe(AUTOMATION_MIN_ROW_H + 22)
+    })
   })
 })
