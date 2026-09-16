@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { expectNoUncaught, watchUncaught } from './_uncaught'
 
 /**
  * The instrument behind #1344, #1345 and #1346.
@@ -49,6 +50,7 @@ function nonZeroCount(mono: Float64Array): number {
 }
 
 async function openApp(page: Page): Promise<void> {
+  await watchUncaught(page)
   await page.addInitScript(() => {
     ;(window as unknown as { __STAVE_E2E__: boolean }).__STAVE_E2E__ = true
   })
@@ -310,6 +312,8 @@ test.describe('#1400 — does an offline render leave the live graph alive?', ()
       renderOk: render.ok,
       afterAudible: afterPeak > 0.05,
     }).toEqual({ beforeAudible: true, renderOk: true, afterAudible: true })
+    // #1647 — a render over live audio must not leave an uncaught error behind (#1639).
+    await expectNoUncaught(page)
   })
 })
 
@@ -689,6 +693,8 @@ test.describe('#1627 — an offline render while the transport plays', () => {
     // is green for the reason the first measurement was (see LONG_RENDER).
     if ((playing.renderMs ?? 0) < 300) throw new Error(`render too short to span ticks: ${playing.renderMs}ms`)
     expect(diff).toBeLessThan(1e-4)
+    // #1647 — a render over live audio must not leave an uncaught error behind (#1639).
+    await expectNoUncaught(page)
   })
 
   test('leaves a playing transport playing', async ({ page }) => {
@@ -701,6 +707,8 @@ test.describe('#1627 — an offline render while the transport plays', () => {
       before: true,
       after: true,
     })
+    // #1647 — a render over live audio must not leave an uncaught error behind (#1639).
+    await expectNoUncaught(page)
   })
 
   test('a Stop pressed during the render is not undone when the render ends', async ({ page }) => {
@@ -714,6 +722,8 @@ test.describe('#1627 — an offline render while the transport plays', () => {
       pressed: true,
       after: false,
     })
+    // #1647 — a render over live audio must not leave an uncaught error behind (#1639).
+    await expectNoUncaught(page)
   })
 
   test('a Play pressed during the render starts after it, and none of it lands in the file', async ({
@@ -744,6 +754,54 @@ test.describe('#1627 — an offline render while the transport plays', () => {
       before: false,
       after: false,
     })
+  })
+
+  /**
+   * #1639 — a render note in a cut group must not choke the LIVE note holding it.
+   *
+   * superdough keeps one page-wide list of which note holds each cut group, and a
+   * sample note with `.cut(n)` fades out whatever holds group n. Before the fix a
+   * render's first `cut(1)` note faded out the sounding live `cut(1)` note, which
+   * stayed silent for the rest of the take, with no error anywhere. Measured in the
+   * app: live RMS 0.0149 before the render, 0.0000 after it.
+   *
+   * The live note is ONE looping hh that lasts 16s, so it is sounding across the whole
+   * take, and anything that silences it shows. The same render in cut group 2 is the
+   * control: it proves the take and the ratio can read "still playing" in this page.
+   *
+   * ⚠ The hh buffer is loaded first. A cold load outlasts the single note's start time,
+   * and superdough drops the note, so every reading (the control's included) would be
+   * silent and the arm would say nothing.
+   */
+  test('a render in the same cut group does not silence the live note', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    const warm = await call(page, 'recordLive', 's("hh*8")', 2)
+    expect(warm.ok, `warming the hh buffer failed: ${warm.error}`).toBe(true)
+
+    const LIVE_CUT = 's("hh").loop(1).cut(1).slow(8).gain(0.8)'
+    const liveAround = (o: RenderWhilePlayingOutcome) => {
+      const l = readWav(o.liveWav!)
+      const s = o.renderStartMs!
+      const e = s + o.renderMs!
+      return {
+        sr: l.sampleRate,
+        before: rmsBetween(l.mono, l.sampleRate, s - 400, s),
+        after: rmsBetween(l.mono, l.sampleRate, e + 200, e + 600),
+      }
+    }
+    const control = await callRenderWhilePlaying(page, LIVE_CUT, 's("hh*4").cut(2)', LONG_RENDER_SECS, true)
+    const same = await callRenderWhilePlaying(page, LIVE_CUT, 's("hh*4").cut(1)', LONG_RENDER_SECS, true)
+    if (!control.ok || !same.ok) throw new Error(`probe failed: ${control.error ?? ''} ${same.error ?? ''}`)
+    const c = liveAround(control)
+    const m = liveAround(same)
+    console.log(
+      `[#1639 cut] sr=${m.sr} control(cut 2) before=${c.before.toFixed(4)} after=${c.after.toFixed(4)} ` +
+        `same(cut 1) before=${m.before.toFixed(4)} after=${m.after.toFixed(4)}`,
+    )
+    expect(c.after / c.before, 'the control lost its live note, so this page cannot tell').toBeGreaterThan(0.5)
+    expect(m.after / m.before, 'the render choked the live note in its cut group').toBeGreaterThan(0.5)
+    await expectNoUncaught(page)
   })
 })
 
