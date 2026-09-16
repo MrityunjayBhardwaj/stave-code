@@ -1,5 +1,5 @@
 diff --git a/dist/index.mjs b/dist/index.mjs
-index da81977b3a8f9cb8af08440c61990437041f69b7..eeffaa53d13263846c1dd5f365fe63567886e0de 100644
+index da81977b3a8f9cb8af08440c61990437041f69b7..91ec09c39357ea6a6853b4459a74b4459519e4fc 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -93,13 +93,19 @@ const st = /* @__PURE__ */ new Map(), ut = Symbol("nodePoolKey"), hn = (e) => !!
@@ -26,6 +26,58 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..eeffaa53d13263846c1dd5f365fe6356
    return a || (o = t()), o[ut] = e, o;
  }, Xn = (e) => {
    if (typeof e != "string")
+@@ -342,7 +348,11 @@ function Qo(e, t, n = z()) {
+   pe(n, e, o, t);
+ }
+ function pe(e, t, n, o) {
+-  const a = new ConstantSourceNode(e), c = T(0);
++  // Stave: build the muting gain on the context we were given, not the global one.
++  // A render swaps the global context; a live note ending during it otherwise built this
++  // gain on the render's context and threw on connect, inside the source's `ended` event.
++  const a = new ConstantSourceNode(e), c = e.createGain();
++  c.gain.value = 0;
+   return c.connect(e.destination), a.connect(c), ue(a, () => {
+     Y(c), Y(a), t();
+   }), a.start(n), a.stop(o), a;
+@@ -962,7 +972,7 @@ const ao = async (e, t = e._base || "", n = {}) => {
+     },
+     t
+   );
+-}, Kt = [];
++}, Kt = /* Stave: cut groups per audio context */ new WeakMap();
+ async function so(e, t, n, o, a) {
+   let {
+     s: c,
+@@ -1006,8 +1016,10 @@ async function so(e, t, n, o, a) {
+     y.stop(k);
+   }, I = { node: g, nodes: { source: [y], ...W?.nodes }, stop: K };
+   if (d !== void 0) {
+-    const k = Kt[d];
+-    k && (k.node.gain.setValueAtTime(1, S), k.node.gain.linearRampToValueAtTime(0, S + 0.01)), Kt[d] = I;
++    let cutGroups = Kt.get(u);
++    cutGroups || Kt.set(u, cutGroups = []);
++    const k = cutGroups[d];
++    k && (k.node.gain.setValueAtTime(1, S), k.node.gain.linearRampToValueAtTime(0, S + 0.01)), cutGroups[d] = I;
+   }
+   return I;
+ }
+diff --git a/helpers.mjs b/helpers.mjs
+index 07199aff6e3ce288b4151b86d9e0dbf39e143025..490c8fb8234a230988b8fec45c7fbfefcdd353ce 100644
+--- a/helpers.mjs
++++ b/helpers.mjs
+@@ -374,7 +374,11 @@ export function webAudioTimeout(audioContext, onComplete, startTime, stopTime) {
+ 
+   // Certain browsers requires audio nodes to be connected in order for their onended events
+   // to fire, so we _mute it_ and then connect it to the destination
+-  const zeroGain = gainNode(0);
++  // Stave: build the muting gain on the context we were given, not the global one.
++  // A render swaps the global context; a live note ending during it otherwise built this
++  // gain on the render's context and threw on connect, inside the source's `ended` event.
++  const zeroGain = audioContext.createGain();
++  zeroGain.gain.value = 0;
+   zeroGain.connect(audioContext.destination);
+   constantNode.connect(zeroGain);
+ 
 diff --git a/nodePools.mjs b/nodePools.mjs
 index 90b4c0ae7e968a4bb78430ba9384c60f69910af9..61997d333f86eaf4769f18e10964ec7a1189b834 100644
 --- a/nodePools.mjs
@@ -62,3 +114,27 @@ index 90b4c0ae7e968a4bb78430ba9384c60f69910af9..61997d333f86eaf4769f18e10964ec7a
        found = true;
        break;
      }
+diff --git a/sampler.mjs b/sampler.mjs
+index 25c34c641ccff7292fe917bf3a5489ff7b512340..b904e93c8144144b3b193a5b8f5dce9cf64e9e13 100644
+--- a/sampler.mjs
++++ b/sampler.mjs
+@@ -262,7 +262,9 @@ export const samples = async (sampleMap, baseUrl = sampleMap._base || '', option
+   );
+ };
+ 
+-const cutGroups = [];
++// Stave: cut groups are kept per audio context. A render plays into its own context, and
++// with one shared list its first `cut` note faded out the live note holding that group.
++const cutGroupsByContext = new WeakMap();
+ 
+ export async function onTriggerSample(t, value, onended, bank, resolveUrl) {
+   let {
+@@ -339,6 +341,8 @@ export async function onTriggerSample(t, value, onended, bank, resolveUrl) {
+ 
+   // cut groups
+   if (cut !== undefined) {
++    let cutGroups = cutGroupsByContext.get(ac);
++    if (!cutGroups) cutGroupsByContext.set(ac, (cutGroups = []));
+     const prev = cutGroups[cut];
+     if (prev) {
+       prev.node.gain.setValueAtTime(1, time);
