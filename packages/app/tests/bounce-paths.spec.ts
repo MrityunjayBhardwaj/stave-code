@@ -784,6 +784,10 @@ test.describe('#1627 — an offline render while the transport plays', () => {
       const l = readWav(o.liveWav!)
       const s = o.renderStartMs!
       const e = s + o.renderMs!
+      // The take is 4s. A render slow enough to push the after-window past its end
+      // reads an EMPTY slice as RMS 0, which would look exactly like a choked note.
+      const takeMs = (l.mono.length / l.sampleRate) * 1000
+      if (e + 600 > takeMs) throw new Error(`render too slow to read after it: ends ${e.toFixed(0)}ms into a ${takeMs.toFixed(0)}ms take`)
       return {
         sr: l.sampleRate,
         before: rmsBetween(l.mono, l.sampleRate, s - 400, s),
