@@ -13,6 +13,7 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
 import type { KnobRange } from './knobRanges'
+import { positionOfValue, snapToStep, valueAtPosition } from './knobScale'
 
 export interface KnobProps {
   label: string
@@ -35,27 +36,16 @@ export interface KnobProps {
 /** pixels of vertical drag to sweep the full range */
 const DRAG_SPAN_PX = 160
 
-/** value → slider position in [0, 1] */
+/** value → slider position in [0, 1]. The map itself lives in `knobScale` — the
+ *  stepped lane reads the same one, so a level dragged there and this dial turned
+ *  to the same place mean the same number (#1581). */
 function toPosition(value: number, r: KnobRange): number {
-  if (r.scale === 'log' && r.min > 0 && value > 0) {
-    return Math.log(value / r.min) / Math.log(r.max / r.min)
-  }
-  return (value - r.min) / (r.max - r.min || 1)
+  return positionOfValue(value, r.min, r.max, r.scale)
 }
 
-/** slider position in [0, 1] → value, quantized to the range step */
+/** slider position in [0, 1] → value, quantized to the range step (#1581). */
 function fromPosition(pos: number, r: KnobRange): number {
-  const clamped = Math.max(0, Math.min(1, pos))
-  let value: number
-  if (r.scale === 'log' && r.min > 0) {
-    value = r.min * Math.pow(r.max / r.min, clamped)
-  } else {
-    value = r.min + clamped * (r.max - r.min)
-  }
-  const stepped = Math.round(value / r.step) * r.step
-  // step can be fractional (0.01) — clean the float noise the multiply leaves.
-  const decimals = (String(r.step).split('.')[1] ?? '').length
-  return Number(stepped.toFixed(decimals))
+  return snapToStep(valueAtPosition(pos, r.min, r.max, r.scale), r.step)
 }
 
 export function Knob({
@@ -144,7 +134,7 @@ export function Knob({
     }
   }, [editing])
 
-  const pos = Math.max(0, Math.min(1, toPosition(value, range)))
+  const pos = toPosition(value, range)
   // sweep the indicator across a 270° arc (−135° … +135°)
   const angle = -135 + pos * 270
 
@@ -178,8 +168,11 @@ export function Knob({
     else return
     e.preventDefault()
     next = Math.max(range.min, Math.min(range.max, next))
-    const decimals = (String(range.step).split('.')[1] ?? '').length
-    next = Number(next.toFixed(decimals))
+    // Same quantum rule as a drag (#1581): a nudge from a value the document
+    // wrote off the grid (`.gain(0.435)`) lands ON the grid, still one step in
+    // the direction pressed — rounding to nearest moves it by at most half a
+    // step, so the direction can never reverse.
+    next = snapToStep(next, range.step)
     if (next !== value) {
       onGestureStart?.()
       onChange(next)

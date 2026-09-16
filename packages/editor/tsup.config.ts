@@ -7,7 +7,12 @@ export default defineConfig({
   // each entry a self-contained bundle; `p5` is `import()`'d lazily inside the
   // host (PV70 condition 1 — shim before p5 eval) so the final app bundler (Next)
   // emits it as the worker's own sub-chunk.
-  entry: ['src/index.ts', 'src/visualizers/worker/index.ts'],
+  // A THIRD entry (#1581): the value↔position map two packages share. The app's
+  // stepped lane may not import the barrel at runtime — that drags a CommonJS
+  // dependency into its test loader — so the map ships as its own tiny,
+  // dependency-free bundle (`@stave/editor/knobScale`), the same arrangement the
+  // worker entry uses for the same reason.
+  entry: ['src/index.ts', 'src/visualizers/worker/index.ts', 'src/visualEdit/panels/knobScale.ts'],
   format: ['esm', 'cjs'],
   dts: true,
   sourcemap: true,

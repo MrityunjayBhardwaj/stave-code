@@ -34864,25 +34864,39 @@ function PianoRollGrid({
   );
 }
 __name(PianoRollGrid, "PianoRollGrid");
+
+// src/visualEdit/panels/knobScale.ts
+function clamp014(pos) {
+  return Math.min(1, Math.max(0, pos));
+}
+__name(clamp014, "clamp01");
+function positionOfValue(value, min, max, scale) {
+  if (!Number.isFinite(value) || !(max > min)) return 0;
+  if (scale === "log" && min > 0 && value > 0) {
+    return clamp014(Math.log(value / min) / Math.log(max / min));
+  }
+  return clamp014((value - min) / (max - min));
+}
+__name(positionOfValue, "positionOfValue");
+function valueAtPosition(pos, min, max, scale) {
+  const t = clamp014(Number.isFinite(pos) ? pos : 0);
+  if (scale === "log" && min > 0 && max > min) return min * Math.pow(max / min, t);
+  return min + t * (max - min);
+}
+__name(valueAtPosition, "valueAtPosition");
+function snapToStep(value, step) {
+  if (!(step > 0) || !Number.isFinite(value)) return value;
+  const decimals = (String(step).split(".")[1] ?? "").length;
+  return Number((Math.round(value / step) * step).toFixed(decimals));
+}
+__name(snapToStep, "snapToStep");
 var DRAG_SPAN_PX = 160;
 function toPosition(value, r) {
-  if (r.scale === "log" && r.min > 0 && value > 0) {
-    return Math.log(value / r.min) / Math.log(r.max / r.min);
-  }
-  return (value - r.min) / (r.max - r.min || 1);
+  return positionOfValue(value, r.min, r.max, r.scale);
 }
 __name(toPosition, "toPosition");
 function fromPosition(pos, r) {
-  const clamped = Math.max(0, Math.min(1, pos));
-  let value;
-  if (r.scale === "log" && r.min > 0) {
-    value = r.min * Math.pow(r.max / r.min, clamped);
-  } else {
-    value = r.min + clamped * (r.max - r.min);
-  }
-  const stepped = Math.round(value / r.step) * r.step;
-  const decimals = (String(r.step).split(".")[1] ?? "").length;
-  return Number(stepped.toFixed(decimals));
+  return snapToStep(valueAtPosition(pos, r.min, r.max, r.scale), r.step);
 }
 __name(fromPosition, "fromPosition");
 function Knob({
@@ -34955,7 +34969,7 @@ function Knob({
       window.removeEventListener("scroll", onScroll, true);
     };
   }, [editing]);
-  const pos = Math.max(0, Math.min(1, toPosition(value, range2)));
+  const pos = toPosition(value, range2);
   const angle = -135 + pos * 270;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
     e.preventDefault();
@@ -34984,8 +34998,7 @@ function Knob({
     else return;
     e.preventDefault();
     next = Math.max(range2.min, Math.min(range2.max, next));
-    const decimals = (String(range2.step).split(".")[1] ?? "").length;
-    next = Number(next.toFixed(decimals));
+    next = snapToStep(next, range2.step);
     if (next !== value) {
       onGestureStart?.();
       onChange(next);
@@ -36987,13 +37000,13 @@ __name(Mixer, "Mixer");
 var MAX_FADER_GAIN = 10 ** (6 / 20);
 var TAPER = 4;
 function faderPosToGain(pos) {
-  const p = clamp014(pos);
+  const p = clamp015(pos);
   return MAX_FADER_GAIN * p ** TAPER;
 }
 __name(faderPosToGain, "faderPosToGain");
 function gainToFaderPos(gain) {
   if (!(gain > 0)) return 0;
-  return clamp014((gain / MAX_FADER_GAIN) ** (1 / TAPER));
+  return clamp015((gain / MAX_FADER_GAIN) ** (1 / TAPER));
 }
 __name(gainToFaderPos, "gainToFaderPos");
 function gainToDb(gain) {
@@ -37008,10 +37021,10 @@ function formatDb(gain) {
   return (r > 0 ? "+" : "") + r.toFixed(1);
 }
 __name(formatDb, "formatDb");
-function clamp014(v) {
+function clamp015(v) {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
-__name(clamp014, "clamp01");
+__name(clamp015, "clamp01");
 
 // src/visualEdit/mixer/meterMath.ts
 var DEFAULT_BALLISTICS = {
@@ -37383,7 +37396,7 @@ function panLabel(pan) {
   return `R${Math.round((pan - 0.5) * 200)}`;
 }
 __name(panLabel, "panLabel");
-var clamp015 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
+var clamp016 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
 function compactBtn(bg3, color, enabled) {
   return {
     flexShrink: 0,
@@ -37467,7 +37480,7 @@ function ChannelStrip({
     const d = faderDrag.current;
     if (!d) return;
     const delta = horizontal ? e.clientX - d.start : d.start - e.clientY;
-    const next = faderPosToGain(clamp015(d.startPos + delta / DRAG_SPAN_PX2));
+    const next = faderPosToGain(clamp016(d.startPos + delta / DRAG_SPAN_PX2));
     onGainChange?.(Math.round(next * 1e3) / 1e3);
   }, "onFaderMove");
   const endFader = /* @__PURE__ */ __name((e) => {
@@ -37489,7 +37502,7 @@ function ChannelStrip({
   const onPanMove = /* @__PURE__ */ __name((e) => {
     const d = panDrag.current;
     if (!d) return;
-    const next = clamp015(d.startPan + (e.clientX - d.startX) / DRAG_SPAN_PX2);
+    const next = clamp016(d.startPan + (e.clientX - d.startX) / DRAG_SPAN_PX2);
     onPanChange?.(Math.round(next * 100) / 100);
   }, "onPanMove");
   const endPan = /* @__PURE__ */ __name((e) => {
@@ -38430,7 +38443,7 @@ function useMasterMeter() {
 __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
 var DRAG_SPAN_PX3 = 160;
-var clamp016 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
+var clamp017 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
 function panLabel2(pan) {
   if (pan === 0.5) return "C";
   if (pan < 0.5) return `L${Math.round((0.5 - pan) * 200)}`;
@@ -38474,7 +38487,7 @@ function MasterStrip({
   const onMove = /* @__PURE__ */ __name((e) => {
     const d = drag.current;
     if (!d) return;
-    const next = faderPosToGain(clamp016(d.startPos + (d.startY - e.clientY) / DRAG_SPAN_PX3));
+    const next = faderPosToGain(clamp017(d.startPos + (d.startY - e.clientY) / DRAG_SPAN_PX3));
     onGainChange(Math.round(next * 1e3) / 1e3);
   }, "onMove");
   const onUp = /* @__PURE__ */ __name((e) => {
@@ -38499,7 +38512,7 @@ function MasterStrip({
   const onPanMove = /* @__PURE__ */ __name((e) => {
     const d = panDrag.current;
     if (!d) return;
-    const next = clamp016(d.startPan + (e.clientX - d.startX) / DRAG_SPAN_PX3);
+    const next = clamp017(d.startPan + (e.clientX - d.startX) / DRAG_SPAN_PX3);
     onPanChange?.(Math.round(next * 100) / 100);
   }, "onPanMove");
   const endPan = /* @__PURE__ */ __name((e) => {
