@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { expectNoUncaught, watchUncaught } from './_uncaught'
 
 /**
  * #1371 — a bounce of an ARRANGED document exports the song from the top.
@@ -130,6 +131,7 @@ test.use({
 test('a bounce taken mid-listen still exports the song from its first bar', async ({ page }) => {
   test.setTimeout(240_000)
 
+  await watchUncaught(page)
   await boot(page)
   await setStrudelCode(page, SONG)
 
@@ -182,4 +184,6 @@ test('a bounce taken mid-listen still exports the song from its first bar', asyn
   for (let w = 12; w < 16; w++) {
     expect(windows[w], `cycle ${w} should be the quiet outro — profile: ${profile}`).toBeLessThan(QUIET)
   }
+  // #1647 — a render over live audio must not leave an uncaught error behind (#1639).
+  await expectNoUncaught(page)
 })

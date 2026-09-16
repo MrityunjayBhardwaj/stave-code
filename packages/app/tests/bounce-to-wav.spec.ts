@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { expectNoUncaught, watchUncaught } from './_uncaught'
 
 /**
  * #1346 — Bounce to WAV, driven through the real File menu.
@@ -21,6 +22,8 @@ const MISSING_SOUND = 'nosuchsound'
 const SKIPPED_DOC = `$: stack(s("bd*4"), s("${MISSING_SOUND}*4"))`
 
 test.beforeEach(async ({ page }) => {
+  // Before the navigation: the listeners must be in the page from its first line (#1647).
+  await watchUncaught(page)
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await page.locator('[data-workspace-shell="root"]').waitFor({ timeout: 15000 })
   await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
@@ -306,6 +309,8 @@ test('a bounce started right after a stop is not thickened by the previous take'
   // would pass for the wrong reason.
   expect(cleanRms, 'the clean reference bounce was silent').toBeGreaterThan(0.05)
   expect(ratio, 'the bounce is thickened by the previous take').toBeLessThan(1.107)
+  // #1647 — a render over live audio must not leave an uncaught error behind (#1639).
+  await expectNoUncaught(page)
 })
 
 test('a bounce from a quiet graph reads at the reference level', async ({ page }) => {
