@@ -25,7 +25,7 @@ export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp 
 export { fixedParameters, fixedToStepsEdit } from './ir'
 export type { FixedParameter } from './ir'
 // #1602 — a stepped parameter's step count, and the song length it would give.
-export { stepCountEdit, previewRepeat, songPeriodOf } from './ir'
+export { stepCountEdit, previewRepeat, songPeriodOf, arrangedRepeatCycles } from './ir'
 export type { StepCountEdit, LanePeriod } from './ir'
 // #1611 — a shape swap across periodicity, and the song it would give.
 export { previewShapeSwap } from './ir'

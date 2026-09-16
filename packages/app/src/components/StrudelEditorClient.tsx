@@ -92,6 +92,7 @@ import {
   analyzeSong,
   songExtent,
   signalDimensionsOf,
+  arrangedRepeatCycles,
   listAssetRecords,
   registerAssets,
   type SongExtent,
@@ -1875,6 +1876,10 @@ export default function StrudelEditorClient({
             analyzeSong,
             // #1465 — read off the IR here because only a caller holds one.
             signalDimensionsOf,
+            // #1580 — an arrangement's length folded with the period of every
+            // parameter over it, so a bounce of a four-bar arrangement under a
+            // three-step gain offers the twelve bars the song actually takes.
+            arrangedRepeatCycles,
             // The SHARED factory the timeline uses, threaded with this file's
             // accessors — not a second collector, whose key space would drift.
             createCollector: (nodeIr) =>

@@ -1954,6 +1954,22 @@ function signalDimensionsOf(ir, swap) {
   return { keys, periods };
 }
 __name(signalDimensionsOf, "signalDimensionsOf");
+function arrangedRepeatCycles(ir, arrangedCycles, cap = DEFAULT_CAP) {
+  if (!(arrangedCycles > 0) || !Number.isFinite(arrangedCycles)) return arrangedCycles;
+  const tracks = audibleTracks(ir);
+  const named = tracks.filter((t) => t.tag === "Track" && typeof t.trackId === "string");
+  const audible = named.length > 0 ? new Set(named.map((t) => t.trackId)) : null;
+  const periods = [arrangedCycles];
+  for (const a of steppedAutomations(ir)) {
+    if (audible !== null && !audible.has(a.trackId)) continue;
+    const p = songPeriodOf(a);
+    if (p !== null && p > 0) periods.push(p);
+  }
+  for (const p of signalDimensionsOf(ir).periods) if (p > 0) periods.push(p);
+  const repeat = repeatOf(periods, cap);
+  return repeat ?? arrangedCycles;
+}
+__name(arrangedRepeatCycles, "arrangedRepeatCycles");
 function songPeriodOf(a) {
   let out = null;
   for (const placement of a.placements) {
@@ -48045,6 +48061,7 @@ exports.applyPersistedUiIconSize = applyPersistedUiIconSize;
 exports.applyPersistedVizQuality = applyPersistedVizQuality;
 exports.applyTheme = applyTheme;
 exports.armSourceSpan = armSourceSpan;
+exports.arrangedRepeatCycles = arrangedRepeatCycles;
 exports.auditionSound = auditionSound;
 exports.backdropQualityFactor = backdropQualityFactor;
 exports.banksFromDrumMachineManifest = banksFromDrumMachineManifest;

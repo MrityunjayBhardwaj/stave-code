@@ -17,7 +17,8 @@
 import { describe, it, expect } from 'vitest'
 import { IR, type PatternIR } from '../../../../editor/src/ir/PatternIR'
 import { songExtent } from '../../../../editor/src/ir/songExtent'
-import { analyzeSong, signalDimensionsOf } from '../../../../editor/src/ir/songAnalysis'
+import { analyzeSong, arrangedRepeatCycles, signalDimensionsOf } from '../../../../editor/src/ir/songAnalysis'
+import { parseStrudel } from '../../../../editor/src/ir/parseStrudel'
 import type { IREvent } from '../../../../editor/src/ir/IREvent'
 import {
   measureSongLength,
@@ -56,6 +57,7 @@ function depsWith(onsets: IREvent[]): SongLengthDeps {
     songExtent,
     analyzeSong,
     signalDimensionsOf,
+    arrangedRepeatCycles,
     createCollector: () => ({
       collectFn: (startCycle, endCycle) =>
         onsets.filter((e) => e.begin >= startCycle && e.begin < endCycle),
@@ -99,6 +101,7 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     const deps: SongLengthDeps = {
       songExtent,
       signalDimensionsOf,
+      arrangedRepeatCycles,
       analyzeSong: () => {
         throw new Error('analyzeSong must not be reached for an arrangement')
       },
@@ -107,6 +110,34 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     expect(await measureSongLength({ structural: ir, analysis: null }, deps)).toEqual({
       kind: 'arranged',
       cycles: 28,
+    })
+  })
+
+  it('an arrangement under an automation offers the length the SONG takes (#1580)', async () => {
+    // Four bars of structure under a three-step gain: the structure ends at 4,
+    // the song first comes back round at 12, and a bounce of 4 would loop
+    // `.2 .5 .9 .2`. Still without consulting the analysis — the fold is read
+    // off the parsed document, so this branch keeps answering before a note has
+    // been evaluated, which is the property the arm above pins.
+    const ir = parseStrudel('arrange([2,s("bd*2")],[2,s("hh*4")]).gain("<.2 .5 .9>")')
+    const deps: SongLengthDeps = {
+      songExtent,
+      signalDimensionsOf,
+      arrangedRepeatCycles,
+      analyzeSong: () => {
+        throw new Error('analyzeSong must not be reached for an arrangement')
+      },
+      createCollector: () => ({ collectFn: undefined, hasUnheardTrack: undefined }),
+    }
+    expect(await measureSongLength({ structural: ir, analysis: null }, deps)).toEqual({
+      kind: 'arranged',
+      cycles: 12,
+    })
+    // The control, same document, a period that divides: the offer must NOT move.
+    const divides = parseStrudel('arrange([2,s("bd*2")],[2,s("hh*4")]).gain("<.2 .5>")')
+    expect(await measureSongLength({ structural: divides, analysis: null }, deps)).toEqual({
+      kind: 'arranged',
+      cycles: 4,
     })
   })
 

@@ -140,6 +140,10 @@ export interface SongLengthDeps {
    *  it is silently the old behaviour, and a bounce dialog quietly back to
    *  "pick a length" is precisely the defect the issue was filed against. */
   readonly signalDimensionsOf: (ir: PatternIR | null) => SignalDimensions
+  /** `arrangedRepeatCycles` — the arrangement's length folded with the period of
+   *  every parameter playing over it (#1580). Injected like the rest so this
+   *  module keeps no second reading of what a song's length is. */
+  readonly arrangedRepeatCycles: (ir: PatternIR | null, arrangedCycles: number) => number
 }
 
 /**
@@ -168,7 +172,13 @@ export async function measureSongLength(
   // that can actually contain an `Arrange` (see `SongIRs`).
   const extent = deps.songExtent(irs.structural)
   if (extent.kind === 'arranged' && extent.cycles > 0) {
-    return { kind: 'arranged', cycles: extent.cycles }
+    // #1580 — the arrangement is a definite end of the STRUCTURE. A parameter
+    // whose period does not divide it keeps moving after the last bar, so the
+    // song first repeats at the fold of the two: four bars under a three-step
+    // gain repeat at twelve, and a bounce of four would loop `.2 .5 .9 .2`,
+    // which is not what the song does. Structural, like everything else in this
+    // branch — no evaluation, so it still answers before a note has sounded.
+    return { kind: 'arranged', cycles: deps.arrangedRepeatCycles(irs.structural, extent.cycles) }
   }
 
   // `opaque` means an arrangement IS present but something unparsed sits above
