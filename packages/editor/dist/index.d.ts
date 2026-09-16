@@ -1171,6 +1171,9 @@ type SongExtent =
  *   also the answer for a song whose tracks carry DIFFERENT section timelines:
  *   the piece is as long as its longest track, never their sum.
  * - `Track` / `Loop` → transparent.
+ * - `Param` → transparent (#1644). A control sets a value ON events and cannot
+ *   move one; see the case body for the census that says no corpus document
+ *   changes verdict.
  * - `Fast` / `Slow` → scale what is below them.
  * - `Code` → TAINT. A `Code` node is either an opaque wrapper around a
  *   `.method(args)` Stave could not parse (with the real receiver at
