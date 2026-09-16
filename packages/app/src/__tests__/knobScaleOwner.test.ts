@@ -44,8 +44,19 @@ interface Rule {
 const RULES: readonly Rule[] = [
   { what: 'value → position on a log range', pattern: /Math\.log\([^)]*\)\s*\/\s*Math\.log\(/ },
   { what: 'position → value on a log range', pattern: /Math\.pow\([^,]*\/[^,]*,/ },
-  { what: "the quantum's decimal places", pattern: /split\('\.'\)\[1\]/ },
+  { what: "the quantum's decimal places", pattern: /split\(['"]\.['"]\)\[1\]/ },
 ]
+
+/**
+ * ⚠ THE OBVIOUS FOURTH PATTERN IS DELIBERATELY ABSENT. `Math.round(x / q) * q`
+ * — rounding to a quantum — reads like the snap rule, but a census of it finds
+ * four honest non-knob uses: a BPM from a ratio (`StrudelEditor`), a runtime's
+ * cps arithmetic, a grid column snap (`division.ts`) and an event-value quantum
+ * (`eventValueKey.ts`). Guarding it would mean an allowlist, and an allowlist is
+ * where a real second spelling goes to hide. What makes the knob's rule ITS own
+ * is the pair: round to the quantum AND spell the result on the quantum's own
+ * decimals — and the decimals half is what the pattern above matches.
+ */
 
 /** Every non-test source file in the two packages, repo-relative. */
 function sourceFiles(): string[] {

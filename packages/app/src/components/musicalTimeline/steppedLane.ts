@@ -28,11 +28,11 @@
  * lane and the same control turned on the knob land on the same number.
  */
 import type { FixedParameter, OffsetEdit, SteppedAutomation } from '@stave/editor'
-import { positionOfValue, snapToStep as snapValueToStep, valueAtPosition } from '@stave/editor/knobScale'
+import { positionOfValue, snapToStep, valueAtPosition } from '@stave/editor/knobScale'
 
 /** `value` on the grid of `step`, spelled without float noise — the mixer knob's
  *  own rule, re-exported so the lane's callers keep one import (#1581). */
-export { snapToStep } from '@stave/editor/knobScale'
+export { snapToStep }
 
 /**
  * Controls the knob table ranges that a lane still does not offer to automate
@@ -159,7 +159,7 @@ export function stepDragValue(startValue: number, dyPx: number, axis: StepAxis, 
   const bandH = band.rowHeight - band.padY * 2
   if (!(bandH > 0)) return startValue
   const unit = unitOnAxis(startValue, axis) - dyPx / bandH
-  return snapValueToStep(valueAtUnit(unit, axis), axis.step)
+  return snapToStep(valueAtUnit(unit, axis), axis.step)
 }
 
 /**

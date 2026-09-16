@@ -14,6 +14,8 @@
  * surfaces.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import * as React from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Knob } from '../Knob'
@@ -27,6 +29,24 @@ const CUTOFF: KnobRange = { min: 20, max: 20000, step: 1, scale: 'log' }
 /** A quantum that is NOT a power of ten, where landing on the grid and merely
  *  cutting the decimals are different answers (`resonance`, from the range table). */
 const RESONANCE: KnobRange = { min: 0, max: 40, step: 0.5, scale: 'linear' }
+
+describe('the owner stays importable from anywhere (#1581)', () => {
+  it('has no imports at all, so the lane can reach it without the barrel', () => {
+    // The whole arrangement rests on this: `@stave/editor/knobScale` is a
+    // separate entry precisely so the app's stepped lane can import the map at
+    // runtime, which it cannot do through the barrel (a CommonJS dependency
+    // comes with it and the lane stops collecting). One import added here and
+    // that dependency follows the map into the app's test loader. The failure
+    // would surface far away, as a collection error in another package, so it is
+    // stated here where the rule lives.
+    const source = readFileSync(path.join(__dirname, '..', 'knobScale.ts'), 'utf8')
+    const imports = source.match(/^\s*(import\s|export\s+\{[^}]*\}\s*from|.*\brequire\()/gm) ?? []
+    expect(imports).toEqual([])
+    // Control: the same read on a file that DOES import finds one.
+    const knob = readFileSync(path.join(__dirname, '..', 'Knob.tsx'), 'utf8')
+    expect(knob.match(/^\s*import\s/gm)?.length ?? 0).toBeGreaterThan(0)
+  })
+})
 
 describe('positionOfValue', () => {
   it('spreads a linear range evenly', () => {
@@ -96,9 +116,13 @@ describe('snapToStep', () => {
 describe('Knob — the dial reads the shared map (#1581)', () => {
   // ⚠ Built as MouseEvents on purpose. jsdom has no `PointerEvent`, so
   // `fireEvent.pointerDown(el, { clientY })` dispatches a bare `Event` and the
-  // coordinate is silently DROPPED — the drag then reads `undefined`, every
-  // arithmetic step is NaN, and the dial reports its floor. That failure looks
-  // exactly like a broken map, so the arm would accuse the code under test.
+  // coordinate is silently DROPPED (measured here: both a native listener and a
+  // React handler read `undefined`). The drag then reads `undefined`, every
+  // arithmetic step is NaN, and the dial reports its floor — a failure that
+  // looks exactly like a broken map, so the arm would accuse the code under
+  // test. The app's timeline arms meet the same wall and answer it the other
+  // way, with a `PointerEvent extends MouseEvent` shim at the top of
+  // `FullSongTimeline.test.tsx`; either works, and a knob drag needs one.
   const drag = (fromY: number, toY: number): void => {
     const dial = screen.getByRole('slider')
     fireEvent(dial, new MouseEvent('pointerdown', { bubbles: true, clientY: fromY }))
