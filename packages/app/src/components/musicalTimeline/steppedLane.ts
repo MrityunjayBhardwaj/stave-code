@@ -15,13 +15,24 @@
  * the other. Merging by value would draw the same line and hand Stage 3 the wrong
  * index.
  *
- * Pure, and it imports only TYPES from `@stave/editor`. A runtime import from the
- * barrel drags a CommonJS dependency into the app's test loader and the file fails
- * to collect — so the range function and the step selection (`stepIndexAtCycle`,
+ * Pure, and it imports only TYPES from the editor's BARREL. A runtime import from
+ * it drags a CommonJS dependency into the app's test loader and the file fails to
+ * collect — so the range function and the step selection (`stepIndexAtCycle`,
  * which knows the arrangement sections, #1585) are passed IN by the caller that already
  * holds the real one.
+ *
+ * `@stave/editor/knobScale` is a different door and may be imported at runtime
+ * (#1581): it is the editor's own entry for the value↔position map, bundled
+ * alone with no dependencies at all, so nothing follows it in. That map is where
+ * the mixer knob reads the same three rules — one owner, so a level dragged on a
+ * lane and the same control turned on the knob land on the same number.
  */
 import type { FixedParameter, OffsetEdit, SteppedAutomation } from '@stave/editor'
+import { positionOfValue, snapToStep as snapValueToStep, valueAtPosition } from '@stave/editor/knobScale'
+
+/** `value` on the grid of `step`, spelled without float noise — the mixer knob's
+ *  own rule, re-exported so the lane's callers keep one import (#1581). */
+export { snapToStep } from '@stave/editor/knobScale'
 
 /**
  * Controls the knob table ranges that a lane still does not offer to automate
@@ -109,15 +120,10 @@ export function stepAxis(a: SteppedAutomation, rangeFor: RangeFor): StepAxis {
   return { lo, hi, scale, step }
 }
 
-/** Where `value` sits on the axis, 0 (floor) … 1 (ceiling), clamped. */
+/** Where `value` sits on the axis, 0 (floor) … 1 (ceiling), clamped — the mixer
+ *  knob's map over this lane's axis (#1581). */
 export function unitOnAxis(value: number, axis: StepAxis): number {
-  const { lo, hi, scale } = axis
-  if (!(hi > lo) || !Number.isFinite(value)) return 0
-  const t =
-    scale === 'log' && value > 0
-      ? Math.log(value / lo) / Math.log(hi / lo)
-      : (value - lo) / (hi - lo)
-  return Math.min(1, Math.max(0, t))
+  return positionOfValue(value, axis.lo, axis.hi, axis.scale)
 }
 
 /**
@@ -130,23 +136,7 @@ export function unitOnAxis(value: number, axis: StepAxis): number {
  * while it moved. The pair is pinned by a round-trip arm over both scales.
  */
 export function valueAtUnit(unit: number, axis: StepAxis): number {
-  const { lo, hi, scale } = axis
-  const t = Math.min(1, Math.max(0, Number.isFinite(unit) ? unit : 0))
-  if (scale === 'log' && lo > 0 && hi > lo) return lo * Math.pow(hi / lo, t)
-  return lo + t * (hi - lo)
-}
-
-/**
- * `value` on the grid of `step`, spelled without float noise.
- *
- * The rule the mixer knob applies to its own drag (`Knob.fromPosition`): round to
- * a whole number of quanta, then cut to the step's own decimal places, because
- * `3 * 0.1` is `0.30000000000000004` and that is the text a write would carry.
- */
-export function snapToStep(value: number, step: number): number {
-  if (!(step > 0) || !Number.isFinite(value)) return value
-  const decimals = (String(step).split('.')[1] ?? '').length
-  return Number((Math.round(value / step) * step).toFixed(decimals))
+  return valueAtPosition(unit, axis.lo, axis.hi, axis.scale)
 }
 
 /**
@@ -169,7 +159,7 @@ export function stepDragValue(startValue: number, dyPx: number, axis: StepAxis, 
   const bandH = band.rowHeight - band.padY * 2
   if (!(bandH > 0)) return startValue
   const unit = unitOnAxis(startValue, axis) - dyPx / bandH
-  return snapToStep(valueAtUnit(unit, axis), axis.step)
+  return snapValueToStep(valueAtUnit(unit, axis), axis.step)
 }
 
 /**

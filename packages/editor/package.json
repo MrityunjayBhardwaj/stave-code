@@ -17,6 +17,11 @@
       "types": "./dist/visualizers/worker/index.d.ts",
       "import": "./dist/visualizers/worker/index.js",
       "require": "./dist/visualizers/worker/index.cjs"
+    },
+    "./knobScale": {
+      "types": "./dist/visualEdit/panels/knobScale.d.ts",
+      "import": "./dist/visualEdit/panels/knobScale.js",
+      "require": "./dist/visualEdit/panels/knobScale.cjs"
     }
   },
   "files": [
