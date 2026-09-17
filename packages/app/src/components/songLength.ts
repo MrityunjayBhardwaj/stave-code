@@ -269,9 +269,19 @@ export function cyclesToSeconds(cycles: number, cps: number | null): number | nu
  * kHz behaves the same. Nothing failed up to three hours. The next hard limit is
  * the WAV format's 4 GiB size field, about 6.2 hours at 48 kHz. Unmeasured: a
  * smaller machine, another browser, and whether the tab stays responsive during
- * a long render. So the number below is a product choice, not a measured limit.
+ * a long render. So the numbers below are a product choice, not a measured limit.
+ *
+ * Decided on #1652: a live take stays at ten minutes, because every second
+ * offered there is a second waited. An offline render goes to an hour — 3.0 GB
+ * and 44 s on the machine above, well inside what it handled.
  */
-export const MAX_BOUNCE_SECONDS = 600
+export const MAX_LIVE_BOUNCE_SECONDS = 600
+export const MAX_OFFLINE_BOUNCE_SECONDS = 3600
+
+/** The longest bounce offered on a path. */
+export function maxBounceSeconds(offline: boolean): number {
+  return offline ? MAX_OFFLINE_BOUNCE_SECONDS : MAX_LIVE_BOUNCE_SECONDS
+}
 
 /** How many repeats of a loop the modal offers. */
 const REPEAT_CHOICES = [1, 2, 4, 8] as const
@@ -302,14 +312,21 @@ export function formatDuration(seconds: number): string {
  * and found no period, or never measured one at all — and the user can act on
  * the difference (an aperiodic sketch will not gain a period; an unevaluated one
  * will, if they press play).
+ *
+ * `offline` picks the ceiling (#1652): a render is offered far more than a live
+ * take, which costs its own length in wall clock.
  */
-export function bounceOffers(sizing: BounceSizing | null): {
+export function bounceOffers(sizing: BounceSizing | null, offline: boolean): {
   readonly offers: readonly BounceOffer[]
   readonly note: string | null
 } {
   if (sizing == null) return { offers: [], note: null }
 
   const { length, cps } = sizing
+  const ceiling = maxBounceSeconds(offline)
+  const tooLong = offline
+    ? 'longer than a bounce can render in one go'
+    : 'longer than a bounce can record in one take'
   if (length.kind === 'unknown') {
     return {
       offers: [],
@@ -335,13 +352,13 @@ export function bounceOffers(sizing: BounceSizing | null): {
 
   if (length.kind === 'arranged') {
     const seconds = cyclesToSeconds(length.cycles, cps)
-    if (seconds == null || seconds > MAX_BOUNCE_SECONDS) {
+    if (seconds == null || seconds > ceiling) {
       return {
         offers: [],
         note:
           seconds == null
             ? null
-            : `The whole arrangement runs ${formatDuration(seconds)}, longer than a bounce can record in one take.`,
+            : `The whole arrangement runs ${formatDuration(seconds)}, ${tooLong}.`,
       }
     }
     return {
@@ -353,7 +370,7 @@ export function bounceOffers(sizing: BounceSizing | null): {
   const offers: BounceOffer[] = []
   for (const n of REPEAT_CHOICES) {
     const seconds = cyclesToSeconds(length.periodCycles * n, cps)
-    if (seconds == null || seconds > MAX_BOUNCE_SECONDS) continue
+    if (seconds == null || seconds > ceiling) continue
     offers.push({
       id: `loop-${n}`,
       label: n === 1 ? '1 repeat' : `${n} repeats`,
@@ -369,7 +386,7 @@ export function bounceOffers(sizing: BounceSizing | null): {
       note:
         one == null
           ? null
-          : `One pass of this loop runs ${formatDuration(one)}, longer than a bounce can record in one take.`,
+          : `One pass of this loop runs ${formatDuration(one)}, ${tooLong}.`,
     }
   }
   return { offers, note: null }

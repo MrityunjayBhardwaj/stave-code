@@ -94,7 +94,9 @@ export function BounceModal({
   const [selected, setSelected] = useState<number>(DURATIONS[0]);
   const startBtnRef = useRef<HTMLButtonElement>(null);
 
-  const { offers, note } = useMemo(() => bounceOffers(sizing), [sizing]);
+  // #1652 — the path sets the ceiling, so an offline render is offered repeats a
+  // live take would not be.
+  const { offers, note } = useMemo(() => bounceOffers(sizing, offline), [sizing, offline]);
 
   // When the measurement lands, move the default onto the document's own answer
   // — the whole point is that the user should not have to translate bars into

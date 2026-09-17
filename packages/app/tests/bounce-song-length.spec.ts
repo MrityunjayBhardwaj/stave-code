@@ -249,3 +249,33 @@ test('the fixed-length picker still works when the song cannot be sized', async 
   await expect(page.getByRole('button', { name: '8s' })).toBeVisible()
   await expect(page.getByRole('button', { name: '300s' })).toBeVisible()
 })
+
+/**
+ * #1652 — an offline render is offered up to an hour; a live take stays at ten
+ * minutes. At 0.01 cps a cycle is 100 s, so the 4-cycle loop repeats every
+ * 400 s and its offers are 6:40 / 13:20 / 26:40 / 53:20. Under the old single
+ * ten-minute ceiling only the first survived. The modal must be on the offline
+ * path for this to hold, so the arm reads that from its own copy first.
+ */
+const SLOW_SONG = 'setcps(0.01)\n$: s("<bd sd cp hh>")'
+
+test('an offline render is offered repeats up to an hour (#1652)', async ({ page }) => {
+  test.setTimeout(90_000)
+  await boot(page)
+  await page.locator('.monaco-editor').first().click()
+  await page.evaluate((code) => {
+    const eds = ((window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { setValue: (s: string) => void; getLanguageId?: () => string } | null }> } } }).monaco?.editor?.getEditors?.()) ?? []
+    const target = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+    target?.getModel()?.setValue(code)
+  }, SLOW_SONG)
+  await playOnce(page)
+  await openBounceModal(page)
+
+  const dialog = page.getByRole('dialog', { name: 'Bounce to WAV' })
+  await expect(dialog.getByText(/faster than real time/)).toBeVisible()
+
+  const offers = page.getByTestId('bounce-song-offers')
+  await expect(offers).toBeVisible({ timeout: 15000 })
+  const labels = (await offers.getByRole('button').allTextContents()).map((t) => /(\d+:\d\d)/.exec(t)?.[1])
+  expect(labels).toEqual(['6:40', '13:20', '26:40', '53:20'])
+})

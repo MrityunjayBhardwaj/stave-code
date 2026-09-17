@@ -25,7 +25,8 @@ import {
   cyclesToSeconds,
   bounceOffers,
   formatDuration,
-  MAX_BOUNCE_SECONDS,
+  MAX_LIVE_BOUNCE_SECONDS,
+  MAX_OFFLINE_BOUNCE_SECONDS,
   type SongLengthDeps,
   type BounceSizing,
   type SongIRs,
@@ -279,7 +280,7 @@ describe('bounceOffers — what the user is actually shown', () => {
 
   it('offers repeats of a measured loop, each costed in wall clock', () => {
     // 8 cycles at 0.5 cps = 16s per pass.
-    const { offers, note } = bounceOffers(loop(8, 0.5))
+    const { offers, note } = bounceOffers(loop(8, 0.5), false)
     expect(note).toBeNull()
     expect(offers.map((o) => [o.label, o.seconds])).toEqual([
       ['1 repeat', 16],
@@ -293,7 +294,7 @@ describe('bounceOffers — what the user is actually shown', () => {
     const { offers } = bounceOffers({
       length: { kind: 'arranged', cycles: 28 },
       cps: 0.5,
-    })
+    }, false)
     expect(offers).toEqual([{ id: 'whole', label: 'Whole song', seconds: 56 }])
   })
 
@@ -303,17 +304,17 @@ describe('bounceOffers — what the user is actually shown', () => {
     const { offers, note } = bounceOffers({
       length: { kind: 'unknown', why: 'no-period' },
       cps: 0.5,
-    })
+    }, false)
     expect(offers).toEqual([])
     expect(note).toMatch(/no repeating section/i)
   })
 
   it('distinguishes a silent document from an unmeasurable one', () => {
-    const silent = bounceOffers({ length: { kind: 'unknown', why: 'silent' }, cps: 0.5 })
+    const silent = bounceOffers({ length: { kind: 'unknown', why: 'silent' }, cps: 0.5 }, false)
     const unmeasured = bounceOffers({
       length: { kind: 'unknown', why: 'no-period' },
       cps: 0.5,
-    })
+    }, false)
     expect(silent.note).not.toEqual(unmeasured.note)
     expect(silent.note).toMatch(/no sound/i)
   })
@@ -322,29 +323,57 @@ describe('bounceOffers — what the user is actually shown', () => {
     // The reason length and cps are separate fields. Assuming Strudel's 0.5
     // default here would hand back a confident duration that is wrong for every
     // document running at any other tempo — and wrong silently.
-    const { offers, note } = bounceOffers(loop(8, null))
+    const { offers, note } = bounceOffers(loop(8, null), false)
     expect(offers).toEqual([])
     expect(note).toMatch(/tempo is not known/i)
   })
 
-  it('drops repeats past the ceiling instead of offering an hour-long bounce', () => {
+  it('drops repeats past the LIVE ceiling instead of offering an hour-long take', () => {
     // 300 cycles at 0.5 cps = 600s per pass — exactly the ceiling, so one fits
     // and nothing beyond it does. A bounce is real time; 8 repeats here would be
     // an 80-minute wait behind a progress bar.
-    const { offers } = bounceOffers(loop(300, 0.5))
+    const { offers } = bounceOffers(loop(300, 0.5), false)
     expect(offers.map((o) => o.label)).toEqual(['1 repeat'])
-    expect(offers[0].seconds).toBe(MAX_BOUNCE_SECONDS)
+    expect(offers[0].seconds).toBe(MAX_LIVE_BOUNCE_SECONDS)
   })
 
-  it('says so when even a single pass is longer than a bounce can record', () => {
-    const { offers, note } = bounceOffers(loop(1000, 0.5))
+  it('says so when even a single pass is longer than a live take can record', () => {
+    const { offers, note } = bounceOffers(loop(1000, 0.5), false)
     expect(offers).toEqual([])
     expect(note).toMatch(/one pass of this loop runs 33:20/i)
   })
 
+  // #1652 — an offline render is offered up to an hour; a live take stays at ten
+  // minutes. Same document, two paths, two answers.
+  it('offers an offline render the repeats a live take drops', () => {
+    // 300 cycles at 0.5 cps = 600s per pass: live fits one, offline fits six.
+    const live = bounceOffers(loop(300, 0.5), false)
+    const offline = bounceOffers(loop(300, 0.5), true)
+    expect(live.offers.map((o) => o.label)).toEqual(['1 repeat'])
+    expect(offline.offers.map((o) => o.label)).toEqual(['1 repeat', '2 repeats', '4 repeats'])
+  })
+
+  it('offers an offline render exactly an hour, and nothing past it', () => {
+    // 1800 cycles at 0.5 cps = 3600s.
+    const atCeiling = bounceOffers({ length: { kind: 'arranged', cycles: 1800 }, cps: 0.5 }, true)
+    expect(atCeiling.offers).toEqual([
+      { id: 'whole', label: 'Whole song', seconds: MAX_OFFLINE_BOUNCE_SECONDS },
+    ])
+    const past = bounceOffers({ length: { kind: 'arranged', cycles: 1802 }, cps: 0.5 }, true)
+    expect(past.offers).toEqual([])
+    expect(past.note).toMatch(/runs 60:04, longer than a bounce can render in one go/i)
+  })
+
+  it('refuses a twenty-minute arrangement live, and offers it offline', () => {
+    // 600 cycles at 0.5 cps = 1200s.
+    const song = { length: { kind: 'arranged', cycles: 600 }, cps: 0.5 } as const
+    expect(bounceOffers(song, false).note).toMatch(/runs 20:00, longer than a bounce can record in one take/i)
+    expect(bounceOffers(song, true).offers).toEqual([{ id: 'whole', label: 'Whole song', seconds: 1200 }])
+  })
+
   it('offers nothing and says nothing while the measurement is still in flight', () => {
     // `null` is "not measured yet", which must not render as a refusal.
-    expect(bounceOffers(null)).toEqual({ offers: [], note: null })
+    expect(bounceOffers(null, false)).toEqual({ offers: [], note: null })
   })
 })
 
