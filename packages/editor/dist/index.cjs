@@ -5429,6 +5429,8 @@ function makeFixedKey(runtime, source) {
 __name(makeFixedKey, "makeFixedKey");
 
 // src/engine/renderPatternOffline.ts
+var RENDER_WINDOW_SECONDS = 4;
+var RENDER_WINDOW_LEAD_SECONDS = 0.05;
 async function renderPatternOffline(pattern, { cps, duration, sampleRate }, deps) {
   const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
   const liveCtx = deps.getAudioContext();
@@ -5436,11 +5438,8 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate }, deps
   const ctx = deps.createContext(Math.ceil(duration * sampleRate), sampleRate);
   let played = 0;
   const skipped = /* @__PURE__ */ new Map();
-  try {
-    deps.setAudioContext(ctx);
-    deps.setSuperdoughAudioController(null);
-    await deps.initAudio({});
-    for (const hap of haps) {
+  const schedule = /* @__PURE__ */ __name(async (window2) => {
+    for (const hap of window2) {
       hap.ensureObjectValue?.();
       const begin = hap.whole.begin.valueOf();
       try {
@@ -5457,7 +5456,30 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate }, deps
         skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
       }
     }
+  }, "schedule");
+  try {
+    deps.setAudioContext(ctx);
+    deps.setSuperdoughAudioController(null);
+    await deps.initAudio({});
+    const windows = ctx.suspend && ctx.resume ? windowsOf(haps, cps) : [haps];
+    await schedule(windows[0] ?? []);
+    const failures = [];
+    const pauses = windows.slice(1).map((window2, i) => {
+      if (window2.length === 0) return Promise.resolve();
+      const at = (i + 1) * RENDER_WINDOW_SECONDS - RENDER_WINDOW_LEAD_SECONDS;
+      return ctx.suspend(at).then(async () => {
+        try {
+          await schedule(window2);
+        } catch (err) {
+          failures.push(err);
+        } finally {
+          await ctx.resume();
+        }
+      });
+    });
     const buffer = await ctx.startRendering();
+    await Promise.all(pauses);
+    if (failures.length > 0) throw failures[0];
     return {
       buffer,
       haps: haps.length,
@@ -5470,6 +5492,16 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate }, deps
   }
 }
 __name(renderPatternOffline, "renderPatternOffline");
+function windowsOf(haps, cps) {
+  const windows = [];
+  for (const hap of haps) {
+    const k = Math.max(0, Math.floor(hap.whole.begin.valueOf() / cps / RENDER_WINDOW_SECONDS));
+    while (windows.length <= k) windows.push([]);
+    windows[k].push(hap);
+  }
+  return windows;
+}
+__name(windowsOf, "windowsOf");
 function describeSkipped(skipped) {
   return skipped.map((s) => `${s.count} \xD7 ${s.reason}`).join("; ");
 }

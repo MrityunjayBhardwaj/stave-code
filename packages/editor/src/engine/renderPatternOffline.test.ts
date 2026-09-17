@@ -1,6 +1,12 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
-import { renderPatternOffline, describeSkipped, type OfflineGraphDeps } from './renderPatternOffline'
+import {
+  renderPatternOffline,
+  describeSkipped,
+  RENDER_WINDOW_SECONDS,
+  RENDER_WINDOW_LEAD_SECONDS,
+  type OfflineGraphDeps,
+} from './renderPatternOffline'
 
 /**
  * #1353 — the offline render's bookkeeping, driven by fakes.
@@ -145,5 +151,138 @@ describe('renderPatternOffline (#1353)', () => {
     const h = harness()
     await renderPatternOffline(patternOf([]), { cps: 0.5, duration: 4.00001, sampleRate: 44100 }, h.deps)
     expect([h.state.framesAsked, h.state.rateAsked]).toEqual([Math.ceil(4.00001 * 44100), 44100])
+  })
+})
+
+/**
+ * #1658 — a context that can pause. The fake plays its render forward through
+ * the pause times in order, the way the audio thread reaches them: each pause
+ * resolves, and the render does not move on until `resume` is called.
+ */
+function pausingHarness() {
+  const log: string[] = []
+  const state = { ctx: LIVE_CTX as unknown, controller: LIVE_CONTROLLER as unknown, now: 0 }
+  const calls: Array<{ s: unknown; t: number; now: number; live: boolean }> = []
+  const pauses: number[] = []
+  const buffer = { length: 1 } as unknown as AudioBuffer
+  const deps: OfflineGraphDeps = {
+    getAudioContext: () => state.ctx,
+    setAudioContext: (c) => { state.ctx = c },
+    getSuperdoughAudioController: () => state.controller,
+    setSuperdoughAudioController: (c) => { state.controller = c },
+    initAudio: async () => {},
+    superdough: async (value, t) => {
+      // A real sample load yields; the render must still wait for it.
+      await new Promise((r) => setTimeout(r, 0))
+      calls.push({ s: value.s, t, now: state.now, live: state.ctx === LIVE_CTX })
+    },
+    createContext: () => {
+      const waiting: Array<{ at: number; fire: () => void }> = []
+      let resumed: (() => void) | null = null
+      return {
+        suspend: (at: number) => {
+          pauses.push(at)
+          return new Promise<void>((fire) => waiting.push({ at, fire }))
+        },
+        resume: async () => {
+          log.push(`resume@${state.now}`)
+          resumed?.()
+        },
+        startRendering: async () => {
+          log.push('render')
+          for (const w of [...waiting].sort((a, b) => a.at - b.at)) {
+            state.now = w.at
+            await new Promise<void>((r) => {
+              resumed = r
+              w.fire()
+            })
+          }
+          state.now = Infinity
+          return buffer
+        },
+      }
+    },
+  }
+  return { deps, calls, pauses, log, state }
+}
+
+describe('renderPatternOffline — notes are scheduled a window at a time (#1658)', () => {
+  const W = RENDER_WINDOW_SECONDS
+  // cps 1: a hap's cycle is its second.
+  const CPS1 = { cps: 1, duration: 3 * W, sampleRate: 48000 }
+
+  it('schedules a later window only once the render has reached its pause', async () => {
+    const h = pausingHarness()
+    await renderPatternOffline(
+      patternOf([hap(0, { s: 'w0' }), hap(W + 1, { s: 'w1' }), hap(2 * W + 0.5, { s: 'w2' })]),
+      CPS1,
+      h.deps
+    )
+    expect(h.calls.map((c) => [c.s, c.now])).toEqual([
+      ['w0', 0],
+      ['w1', W - RENDER_WINDOW_LEAD_SECONDS],
+      ['w2', 2 * W - RENDER_WINDOW_LEAD_SECONDS],
+    ])
+  })
+
+  it('never schedules a note before the render time it is scheduled at', async () => {
+    // superdough drops a note in the past with only a warning, so a note on a
+    // window's very first instant is the case that matters.
+    const h = pausingHarness()
+    await renderPatternOffline(
+      patternOf([hap(W, { s: 'edge' }), hap(2 * W, { s: 'edge2' }), hap(W - 0.01, { s: 'justBefore' })]),
+      CPS1,
+      h.deps
+    )
+    expect(h.calls.every((c) => c.t >= c.now)).toBe(true)
+    expect(h.calls.map((c) => c.s)).toEqual(['justBefore', 'edge', 'edge2'])
+  })
+
+  it('keeps onset order across windows, and pauses only where there is something to schedule', async () => {
+    const h = pausingHarness()
+    await renderPatternOffline(
+      patternOf([hap(2 * W + 1, { s: 'c' }), hap(0.5, { s: 'a' }), hap(2 * W, { s: 'b' })]),
+      CPS1,
+      h.deps
+    )
+    expect(h.calls.map((c) => c.s)).toEqual(['a', 'b', 'c'])
+    expect(h.pauses).toEqual([2 * W - RENDER_WINDOW_LEAD_SECONDS])
+  })
+
+  it('schedules against the OFFLINE context during a pause, and restores the live one after', async () => {
+    const h = pausingHarness()
+    await renderPatternOffline(patternOf([hap(0, { s: 'a' }), hap(W, { s: 'b' })]), CPS1, h.deps)
+    expect(h.calls.map((c) => c.live)).toEqual([false, false])
+    expect([h.state.ctx, h.state.controller]).toEqual([LIVE_CTX, LIVE_CONTROLLER])
+  })
+
+  it('a window that throws still resumes the render, and the error reaches the caller', async () => {
+    const h = pausingHarness()
+    const bad = { ...hap(W, { s: 'bad' }), ensureObjectValue: () => { throw new Error('bad value') } }
+    await expect(
+      renderPatternOffline(patternOf([hap(0, { s: 'a' }), bad, hap(2 * W, { s: 'c' })]), CPS1, h.deps)
+    ).rejects.toThrow('bad value')
+    // The render ran past the failing window to its end rather than hanging.
+    expect(h.calls.map((c) => c.s)).toEqual(['a', 'c'])
+    expect([h.state.ctx, h.state.controller]).toEqual([LIVE_CTX, LIVE_CONTROLLER])
+  })
+
+  it('counts played and skipped the same as an upfront render', async () => {
+    const h = pausingHarness()
+    const inner = h.deps.superdough
+    h.deps.superdough = async (value, ...rest) => {
+      await inner(value, ...rest)
+      if (value.s === 'nope') throw new Error('not found')
+    }
+    const out = await renderPatternOffline(
+      patternOf([hap(0, { s: 'a' }), hap(W, { s: 'nope' }), hap(2 * W, { s: 'nope' })]),
+      CPS1,
+      h.deps
+    )
+    expect({ haps: out.haps, played: out.played, skipped: out.skipped }).toEqual({
+      haps: 3,
+      played: 1,
+      skipped: [{ reason: 'not found', count: 2 }],
+    })
   })
 })
