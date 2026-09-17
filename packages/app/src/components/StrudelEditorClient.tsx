@@ -341,7 +341,13 @@ export interface BounceHandle {
    */
   songSizing(signal?: { aborted: boolean }): Promise<BounceSizing>;
   /** #1648 — true when the active tab can export one WAV per track (offline only). */
-  bouncesStems(): boolean;
+  /**
+   * #1648/#1666 — how many stems the active tab would export, 0 when it cannot.
+   * A count, not a flag: it is what sets the length a stems export is offered,
+   * because the export renders the song once per track and holds every result
+   * at once.
+   */
+  stemTracks(): number;
   /**
    * #1648 — render `seconds` of the active file as one WAV per track, in
    * document order, each named as the mixer names the track. Resolves to null
@@ -1889,9 +1895,18 @@ export default function StrudelEditorClient({
       // — otherwise the handle could report "no offline render" and "yes, one
       // WAV per track" in the same breath. Unchanged in production: the engine
       // that renders stems is the engine that renders offline.
-      bouncesStems: () => {
+      //
+      // #1666 — the count comes from the runtime, which takes the larger of
+      // what the engine has registered and what the document's text declares:
+      // the dialog is routinely opened before a document has ever been
+      // evaluated, and an engine-only count reads as one track then. It can
+      // still under-count by one when the song's own chain makes sound no
+      // track owns — that arrives as an extra `(song)` stem, unknowable until
+      // the render, and under-counting is the safe direction for a ceiling.
+      stemTracks: () => {
         const rt = activeRuntime();
-        return rt ? rendersOffline(rt) && rt.canBounceStems() : false;
+        if (!rt || !rendersOffline(rt) || !rt.canBounceStems()) return 0;
+        return rt.stemTrackCount();
       },
       bounceStems: async (seconds, signal, onRenderProgress) => {
         const rt = activeRuntime();

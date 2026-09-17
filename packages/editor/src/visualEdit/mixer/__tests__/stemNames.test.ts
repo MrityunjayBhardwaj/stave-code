@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 
 import { detectAllChunks } from '../../chunkDetect'
 import { buildStripModels } from '../stripModel'
-import { stemFileNames, SONG_LEVEL_STEM_NAME } from '../stemNames'
+import { countStemTracks, stemFileNames, SONG_LEVEL_STEM_NAME } from '../stemNames'
 import { SONG_LEVEL_STEM } from '../../../engine/stemSplit'
 
 /**
@@ -45,5 +45,28 @@ describe('stemFileNames (#1648)', () => {
 
   it('a document the chunker cannot read still names its stems', () => {
     expect(stemFileNames('this is ( not code', ['$0'])).toEqual(['01-0.wav'])
+  })
+})
+
+describe('countStemTracks — what the document says before it has ever run (#1666)', () => {
+  it('counts one per track, from the text alone', () => {
+    expect(
+      countStemTracks(`setcps(0.5)
+drums: s("bd*4")
+$: note("c3 e3")
+bass: note("c2")`),
+    ).toBe(3)
+  })
+
+  it('counts a bare document as the one track it exports', () => {
+    // No `$:` and no `name:`: nothing is registered with the engine, and the
+    // whole played pattern is the single stem. The strips say one, which is
+    // exactly what such a document exports — measured, not assumed; an earlier
+    // version of this arm expected 0 and the strips disagreed.
+    expect(countStemTracks('s("bd*4")')).toBe(1)
+  })
+
+  it('answers 0 rather than throwing on a document it cannot read', () => {
+    expect(countStemTracks('$: note("c3"')).toBe(0)
   })
 })

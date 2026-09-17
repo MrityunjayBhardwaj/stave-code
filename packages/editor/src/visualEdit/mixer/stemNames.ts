@@ -23,6 +23,26 @@ function safe(name: string): string {
   return cleaned || 'track'
 }
 
+/**
+ * #1666 — how many stems this document DECLARES, read from its text.
+ *
+ * The engine only knows its tracks once the document has been evaluated, and
+ * the Bounce dialog is routinely opened before that ever happens — so a count
+ * taken from the engine alone reads 0 for a thirteen-track song and the stems
+ * ceiling does not apply. The source always knows: the same strips that give
+ * each stem its name are one per track.
+ *
+ * 0 when the chunker cannot read the document, which the caller treats as "no
+ * answer" rather than "no tracks".
+ */
+export function countStemTracks(code: string): number {
+  try {
+    return new Set(buildStripModels(detectAllChunks(code)).map((s) => s.captureId)).size
+  } catch {
+    return 0
+  }
+}
+
 /** `ids` in order → file names like `01-drums.wav`, unique within the set. */
 export function stemFileNames(code: string, ids: readonly string[]): string[] {
   const byCapture = new Map<string, string>()

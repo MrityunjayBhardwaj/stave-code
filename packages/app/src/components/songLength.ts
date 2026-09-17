@@ -283,6 +283,55 @@ export function maxBounceSeconds(offline: boolean): number {
   return offline ? MAX_OFFLINE_BOUNCE_SECONDS : MAX_LIVE_BOUNCE_SECONDS
 }
 
+/**
+ * #1666 — the longest STEMS export offered for a song of `tracks` tracks.
+ *
+ * ⚠ A STEMS EXPORT'S COST IS SECONDS x TRACKS, SO ITS CEILING CANNOT BE A
+ * NUMBER OF SECONDS. It renders the whole song once per track and holds every
+ * result until the zip is built, so six tracks of ten minutes cost what one
+ * track of an hour costs. The dialog used to offer stems the mix's ceiling
+ * flat -- an hour, whatever the track count -- which is six times the audio
+ * that hour was measured and approved for.
+ *
+ * Measured (#1666, headless Chromium, `__staveBounceProbe.stemsStats`), audio
+ * held at once and peak RSS across the whole browser:
+ *
+ *    10 min x 6    659 MB held    3.3 GB peak    ok
+ *    30 min x 6   1978 MB held    4.9 GB peak    ok
+ *    60 min x 6   4147 MB held    9.8 GB peak    FAILED
+ *
+ * The failure is a blob-storage read error (`NotReadableError`) raised while
+ * the archive is built, and the app reports it as "Stems export failed" after
+ * the renders have already been paid for.
+ *
+ * ⚠ THE FAILING SIZE IS THE MACHINE'S, NOT THE PRODUCT'S -- proven, not
+ * assumed. The 30-minute case passed with 3.2 GB of free disk and FAILED on a
+ * re-run with 845 MB free, because Chromium pages blob storage to disk. So no
+ * threshold here is a product limit, and the rule rests instead on the two
+ * things that did not move: the cost is exactly linear in seconds x tracks
+ * (659 MB and 1978 MB are both exactly `secs * tracks * 48000 * 4`), and peak
+ * memory runs about 2.2-2.5x the audio held.
+ *
+ * ⚠ AND STREAMING THE ZIP WOULD NOT HAVE FIXED IT. Reading the stems back
+ * with no archive at all -- no jszip, no second copy, just a chunked read --
+ * fails identically at the same size. What is expensive is the PILE, not the
+ * copy, so the lever is how much audio is asked for, which is this.
+ *
+ * The budget is the one already decided: a stems export is offered the same
+ * TOTAL audio as a mix bounce (#1652's hour), divided among its tracks. Six
+ * tracks get ten minutes -- 659 MB, peaking at 3.3 GB, which is about what the
+ * approved hour-long mix peaked at (3.0 GB). A typical song fits comfortably;
+ * an hour of twelve-track stems does not, and can no longer be asked for.
+ *
+ * ⚠ It may under-count by one stem: a document whose song-level chain
+ * makes sound no track owns gets an extra `(song)` stem, which cannot be known
+ * until the render. That is the safe direction for a ceiling with this much
+ * headroom.
+ */
+export function maxStemsSeconds(tracks: number): number {
+  return Math.floor(MAX_OFFLINE_BOUNCE_SECONDS / Math.max(1, tracks))
+}
+
 /** How many repeats of a loop the modal offers. */
 const REPEAT_CHOICES = [1, 2, 4, 8] as const
 
@@ -315,18 +364,34 @@ export function formatDuration(seconds: number): string {
  *
  * `offline` picks the ceiling (#1652): a render is offered far more than a live
  * take, which costs its own length in wall clock.
+ *
+ * `stemTracks` is how many stems the export would render, and 0 for a mix
+ * (#1666). It is not a third path — it is the same offline render, asked for
+ * `stemTracks` times over, so it takes the same shape of answer at a lower
+ * ceiling. See `maxStemsSeconds`.
  */
-export function bounceOffers(sizing: BounceSizing | null, offline: boolean): {
+export function bounceOffers(
+  sizing: BounceSizing | null,
+  offline: boolean,
+  stemTracks = 0,
+): {
   readonly offers: readonly BounceOffer[]
   readonly note: string | null
 } {
   if (sizing == null) return { offers: [], note: null }
 
   const { length, cps } = sizing
-  const ceiling = maxBounceSeconds(offline)
-  const tooLong = offline
-    ? 'longer than a bounce can render in one go'
-    : 'longer than a bounce can record in one take'
+  const stems = stemTracks > 0
+  const ceiling = stems ? maxStemsSeconds(stemTracks) : maxBounceSeconds(offline)
+  // Names the reason the user can act on: with stems it is the track count that
+  // brought the ceiling down, and dropping a track or shortening the span are
+  // both things they can do. "Longer than a bounce can render" would be false
+  // here — the same length renders fine as a mix.
+  const tooLong = stems
+    ? `longer than a ${stemTracks}-track stems export can hold at once`
+    : offline
+      ? 'longer than a bounce can render in one go'
+      : 'longer than a bounce can record in one take'
   if (length.kind === 'unknown') {
     return {
       offers: [],

@@ -114,7 +114,7 @@ import {
   type LoopRange,
 } from '../../engine/transportFrame'
 import { workspaceAudioBus } from '../WorkspaceAudioBus'
-import { stemFileNames } from '../../visualEdit/mixer/stemNames'
+import { countStemTracks, stemFileNames } from '../../visualEdit/mixer/stemNames'
 import type {
   AudioPayload,
   LiveCodingRuntime as LiveCodingRuntimeInterface,
@@ -796,6 +796,25 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
    * #1648 — whether this runtime can export stems: the engine renders its loaded
    * document one track at a time. Duck-typed like `canBounceOffline`.
    */
+  /**
+   * #1666 — how many stems a stems export of this document would render.
+   *
+   * The LARGER of what the engine has registered and what the document's own
+   * text declares, and never less than one. Each is right where the other is
+   * blind: the engine knows nothing until the document has been evaluated (and
+   * the Bounce dialog is usually opened before that), while the source cannot
+   * see a track that only exists once the code has run. A ceiling computed from
+   * this wants the bigger number — under-counting offers an export that cannot
+   * be held, over-counting only offers a shorter one.
+   *
+   * Never zero: a BARE document has entered no track at all, and its whole
+   * played pattern is the single stem.
+   */
+  stemTrackCount(): number {
+    if (this.isDisposed) return 1
+    return Math.max(1, this.getSongTrackIds().length, countStemTracks(this.getFileContent()))
+  }
+
   canBounceStems(): boolean {
     if (this.isDisposed) return false
     return typeof (this.engine as { renderLoadedStemsReport?: unknown }).renderLoadedStemsReport === 'function'

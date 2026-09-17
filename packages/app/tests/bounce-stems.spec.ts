@@ -115,3 +115,41 @@ test('stems export one WAV per track in a zip, and they add back up to the mix (
   expect(residual).toBeLessThan(0.01)
   await expectNoUncaught(page)
 })
+
+/**
+ * #1666 — a stems export renders the song once per track and holds every result
+ * until the zip is built, so its cost is seconds × tracks. Six tracks of an
+ * hour held 4.1 GB and failed in the archive step, after paying for every
+ * render. The dialog is where that has to be caught, because it is the only
+ * place the length is chosen.
+ *
+ * Driven through the real menu because the track count is the part a unit test
+ * cannot supply: it comes from the engine's own registered tracks, through the
+ * bounce handle, and only once the document has been evaluated.
+ */
+const THIRTEEN_TRACKS = `setcps(0.5)
+${Array.from({ length: 13 }, (_, i) => `$: note("c${2 + (i % 4)}").s("sine").gain(0.1)`).join('\n')}`
+
+test('a stems export of many tracks is offered less than the mix (#1666)', async ({ page }) => {
+  test.setTimeout(120_000)
+  await setDocument(page, THIRTEEN_TRACKS)
+  // The count comes from the engine's registered tracks, so the document has to
+  // have been evaluated — pressing play is how a user gets there.
+  // PROBE: no play — is the track count known?
+
+  await openBounceModal(page)
+  const dialog = page.getByRole('dialog', { name: 'Bounce to WAV' })
+  // As a mix, the whole fixed grid is on offer.
+  await expect(dialog.getByRole('button', { name: '300s', exact: true })).toBeVisible()
+
+  await page.getByTestId('bounce-export-kind').getByRole('button', { name: 'Stems' }).click()
+  // 3600 / 13 = 276s, so the longest fixed pick goes and the next one stays.
+  await expect(dialog.getByRole('button', { name: '300s', exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: '120s', exact: true })).toBeVisible()
+
+  // …and it comes back on Mix, so this is the stems ceiling and not a document
+  // that could never offer 300s in the first place.
+  await page.getByTestId('bounce-export-kind').getByRole('button', { name: 'Mix' }).click()
+  await expect(dialog.getByRole('button', { name: '300s', exact: true })).toBeVisible()
+  await expectNoUncaught(page)
+})
