@@ -45,6 +45,13 @@
  *    window's notes, and resumes, so the live node count stays near one
  *    window's worth. A context without `suspend` gets the upfront schedule.
  *
+ * 5. ⚠ A CANCEL TAKES EFFECT AT THE NEXT PAUSE (#1655). A render cannot be
+ *    stopped halfway, but it can stop being fed: once `signal` aborts, no
+ *    further window is scheduled, the rest renders with nothing new in it, and
+ *    the render rejects with `RenderCancelledError` instead of returning a
+ *    buffer. Without pauses the whole song is already scheduled, so a cancel
+ *    there is only honoured when the render ends.
+ *
  * Deliberately free of imports so every step can be driven by fakes: the
  * accessors arrive as `deps`.
  */
@@ -115,6 +122,16 @@ export interface OfflineGraphOptions {
   /** Seconds. */
   duration: number
   sampleRate: number
+  /** Stops scheduling at the next pause; the render then rejects (#1655). */
+  signal?: AbortSignal
+}
+
+/** A render whose `signal` aborted. It carries no buffer: nothing was kept. */
+export class RenderCancelledError extends Error {
+  constructor() {
+    super('The render was cancelled.')
+    this.name = 'RenderCancelledError'
+  }
 }
 
 interface RenderableHap {
@@ -131,7 +148,7 @@ interface QueryablePattern {
 
 export async function renderPatternOffline(
   pattern: QueryablePattern,
-  { cps, duration, sampleRate }: OfflineGraphOptions,
+  { cps, duration, sampleRate, signal }: OfflineGraphOptions,
   deps: OfflineGraphDeps
 ): Promise<OfflineGraphResult> {
   // Ascending onset order matters for controls that depend on graph state,
@@ -186,7 +203,7 @@ export async function renderPatternOffline(
       const at = (i + 1) * RENDER_WINDOW_SECONDS - RENDER_WINDOW_LEAD_SECONDS
       return ctx.suspend!(at).then(async () => {
         try {
-          await schedule(window)
+          if (!signal?.aborted) await schedule(window)
         } catch (err) {
           failures.push(err)
         } finally {
@@ -198,6 +215,7 @@ export async function renderPatternOffline(
     const buffer = await ctx.startRendering()
     await Promise.all(pauses)
     if (failures.length > 0) throw failures[0]
+    if (signal?.aborted) throw new RenderCancelledError()
     return {
       buffer,
       haps: haps.length,

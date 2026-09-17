@@ -1890,6 +1890,39 @@ describe('offline bounce loads the document in the song frame, then renders it (
     runtime.dispose()
   })
 
+  it('a render cancelled mid-way returns null, passes the signal down, and gives the loop back (#1655)', async () => {
+    const { engine, getLoop } = makeBounceEngine()
+    const runtime = new LiveCodingRuntime('bo-6', engine, () => 'code')
+    await runtime.setLoopRange({ startCycle: 3, cycles: 2 })
+    const controller = new AbortController()
+    let signalSeen: unknown
+    ;(engine as unknown as Record<string, unknown>).renderLoadedReport = vi.fn(
+      async (_s: number, _rate: number | undefined, signal: AbortSignal) => {
+        signalSeen = signal
+        controller.abort() // Cancel pressed while it renders.
+        throw Object.assign(new Error('The render was cancelled.'), { name: 'RenderCancelledError' })
+      }
+    )
+
+    expect(await runtime.bounceOffline(4, controller.signal)).toBeNull()
+    expect(signalSeen).toBe(controller.signal)
+    expect(getLoop()).toEqual({ startCycle: 3, cycles: 2 })
+    runtime.dispose()
+  })
+
+  it('a render that FAILS while a cancel is pending still throws — only a cancelled render is quiet (#1655)', async () => {
+    const { engine } = makeBounceEngine()
+    const runtime = new LiveCodingRuntime('bo-7', engine, () => 'code')
+    const controller = new AbortController()
+    ;(engine as unknown as Record<string, unknown>).renderLoadedReport = vi.fn(async () => {
+      controller.abort()
+      throw new Error('capture is silent')
+    })
+
+    await expect(runtime.bounceOffline(4, controller.signal)).rejects.toThrow('capture is silent')
+    runtime.dispose()
+  })
+
   it('an engine that cannot render what it loaded returns null and touches nothing (non-Strudel)', async () => {
     const engine = createMockEngine()
     const runtime = new LiveCodingRuntime('bo-5', engine, () => 'code')

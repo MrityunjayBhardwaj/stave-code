@@ -5405,7 +5405,15 @@ __name(makeFixedKey, "makeFixedKey");
 // src/engine/renderPatternOffline.ts
 var RENDER_WINDOW_SECONDS = 4;
 var RENDER_WINDOW_LEAD_SECONDS = 0.05;
-async function renderPatternOffline(pattern, { cps, duration, sampleRate }, deps) {
+var _RenderCancelledError = class _RenderCancelledError extends Error {
+  constructor() {
+    super("The render was cancelled.");
+    this.name = "RenderCancelledError";
+  }
+};
+__name(_RenderCancelledError, "RenderCancelledError");
+var RenderCancelledError = _RenderCancelledError;
+async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal }, deps) {
   const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
   const liveCtx = deps.getAudioContext();
   const liveController = deps.getSuperdoughAudioController();
@@ -5443,7 +5451,7 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate }, deps
       const at = (i + 1) * RENDER_WINDOW_SECONDS - RENDER_WINDOW_LEAD_SECONDS;
       return ctx.suspend(at).then(async () => {
         try {
-          await schedule(window2);
+          if (!signal?.aborted) await schedule(window2);
         } catch (err) {
           failures.push(err);
         } finally {
@@ -5454,6 +5462,7 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate }, deps
     const buffer = await ctx.startRendering();
     await Promise.all(pauses);
     if (failures.length > 0) throw failures[0];
+    if (signal?.aborted) throw new RenderCancelledError();
     return {
       buffer,
       haps: haps.length,
@@ -9645,7 +9654,7 @@ var _StrudelEngine = class _StrudelEngine {
    * document plays nothing. Tempo is `getCps()`, which the document's own
    * `setcps`/`setcpm` set during that evaluate.
    */
-  async renderLoadedReport(duration, sampleRate) {
+  async renderLoadedReport(duration, sampleRate, signal) {
     if (!this.audioCtx) {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
@@ -9661,15 +9670,16 @@ var _StrudelEngine = class _StrudelEngine {
     if (!loaded.pattern) {
       throw new Error("renderLoadedReport: the loaded document plays nothing");
     }
-    return this.renderPatternReport(loaded.pattern, duration, sampleRate);
+    return this.renderPatternReport(loaded.pattern, duration, sampleRate, signal);
   }
   /** The render both entry points share: hold the transport, render, report, encode. */
-  async renderPatternReport(pattern, duration, sampleRate) {
+  async renderPatternReport(pattern, duration, sampleRate, signal) {
     if (!this.audioCtx) {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
     const wa = await import('@strudel/webaudio');
     const options = {
+      signal,
       cps: this.getCps() ?? 0.5,
       duration,
       sampleRate: sampleRate ?? this.audioCtx.sampleRate
@@ -42200,8 +42210,9 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
   /**
    * Render `seconds` of this runtime's document OFFLINE — faster than real time,
    * through the real audio graph — as a WAV, with what could not play (#1344).
-   * Returns null when the engine cannot, or when `signal` aborted before the
-   * render began.
+   * Returns null when the engine cannot, or when `signal` aborted — before the
+   * render began, or during it (#1655: the render stops being fed at its next
+   * pause and keeps nothing).
    *
    * ⚠ IT RENDERS THE DOCUMENT AS LOADED, SO IT LOADS IT FIRST, THE WAY PLAY
    * DOES. The engine's evaluate window is the only place `setcps`, `$:` and
@@ -42240,7 +42251,12 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
         throw error;
       }
       if (signal?.aborted) return null;
-      return await engine.renderLoadedReport(seconds);
+      try {
+        return await engine.renderLoadedReport(seconds, void 0, signal);
+      } catch (err) {
+        if (signal?.aborted && err?.name === "RenderCancelledError") return null;
+        throw err;
+      }
     } finally {
       if (loopBeforeBounce) engine.setLoopRange?.(loopBeforeBounce);
     }

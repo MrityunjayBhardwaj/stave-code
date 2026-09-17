@@ -74,6 +74,21 @@ describe("the rendering phase (#1631)", () => {
     expect(buttonLabels()).not.toContain("Stop");
   });
 
+  it("#1649 — once cancelled it says so, and the button cannot be pressed again", () => {
+    renderAt({ phase: "rendering", seconds: 30, cancelling: true }, true);
+    expect(body()).toContain("Cancelling…");
+    expect(body()).not.toContain("Rendering");
+    const cancel = [...document.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === "Cancel");
+    expect(cancel?.disabled).toBe(true);
+  });
+
+  it("#1649 CONTROL — before Cancel is pressed the button is live", () => {
+    renderAt({ phase: "rendering", seconds: 30 }, true);
+    expect(body()).not.toContain("Cancelling");
+    const cancel = [...document.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === "Cancel");
+    expect(cancel?.disabled).toBe(false);
+  });
+
   it("CONTROL — a live take still offers Stop beside its progress bar", () => {
     renderAt({ phase: "recording", seconds: 30, elapsed: 3 }, false);
     expect(document.querySelector('[role="progressbar"]')).not.toBeNull();

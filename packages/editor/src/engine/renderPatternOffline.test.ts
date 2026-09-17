@@ -5,6 +5,7 @@ import {
   describeSkipped,
   RENDER_WINDOW_SECONDS,
   RENDER_WINDOW_LEAD_SECONDS,
+  RenderCancelledError,
   type OfflineGraphDeps,
 } from './renderPatternOffline'
 
@@ -284,5 +285,51 @@ describe('renderPatternOffline — notes are scheduled a window at a time (#1658
       played: 1,
       skipped: [{ reason: 'not found', count: 2 }],
     })
+  })
+})
+
+describe('renderPatternOffline — a cancel takes effect at the next pause (#1655)', () => {
+  const W = RENDER_WINDOW_SECONDS
+  const CPS1 = { cps: 1, duration: 4 * W, sampleRate: 48000 }
+
+  it('schedules nothing after the cancel, still finishes the render, and keeps nothing', async () => {
+    const h = pausingHarness()
+    const controller = new AbortController()
+    const inner = h.deps.superdough
+    h.deps.superdough = async (value, ...rest) => {
+      await inner(value, ...rest)
+      if (value.s === 'w1') controller.abort() // Cancel pressed while window 1 is scheduled.
+    }
+    await expect(
+      renderPatternOffline(
+        patternOf([hap(0, { s: 'w0' }), hap(W, { s: 'w1' }), hap(2 * W, { s: 'w2' }), hap(3 * W, { s: 'w3' })]),
+        { ...CPS1, signal: controller.signal },
+        h.deps
+      )
+    ).rejects.toBeInstanceOf(RenderCancelledError)
+    expect(h.calls.map((c) => c.s)).toEqual(['w0', 'w1'])
+    // Every pause was resumed, so the render ran to its end rather than hanging.
+    expect(h.log.filter((l) => l.startsWith('resume'))).toHaveLength(3)
+    expect([h.state.ctx, h.state.controller]).toEqual([LIVE_CTX, LIVE_CONTROLLER])
+  })
+
+  it('CONTROL — an unaborted signal renders every window and returns the buffer', async () => {
+    const h = pausingHarness()
+    const out = await renderPatternOffline(
+      patternOf([hap(0, { s: 'w0' }), hap(W, { s: 'w1' }), hap(2 * W, { s: 'w2' })]),
+      { ...CPS1, signal: new AbortController().signal },
+      h.deps
+    )
+    expect(out.played).toBe(3)
+  })
+
+  it('without pauses the cancel is honoured when the render ends — nothing is kept', async () => {
+    const h = harness()
+    const controller = new AbortController()
+    h.deps.superdough = async () => { controller.abort() }
+    await expect(
+      renderPatternOffline(patternOf([hap(0, { s: 'a' }), hap(1, { s: 'b' })]), { ...OPTS, signal: controller.signal }, h.deps)
+    ).rejects.toBeInstanceOf(RenderCancelledError)
+    expect([h.state.ctx, h.state.controller]).toEqual([LIVE_CTX, LIVE_CONTROLLER])
   })
 })

@@ -309,17 +309,17 @@ export interface BounceHandle {
   bouncesOffline(): boolean;
   /**
    * Bounce `seconds` of the active file. Resolves to null when there is no
-   * active runtime that can bounce, or when `signal` aborted before an offline
-   * render began.
+   * active runtime that can bounce, or when `signal` aborted an offline render,
+   * before or during it.
    *
    * Live: `signal` stops early and keeps what was captured. `onCaptureStart`
    * fires once the graph has settled and playback is running, i.e. at the
    * first captured sample — so a progress display measures the capture and not
    * the preparation before it (#1356).
    *
-   * Offline: a render cannot be cut short once it starts, so `signal` is read
-   * before it, and a caller that aborts during the render discards what comes
-   * back. `onCaptureStart` is never called: there is no capture to wait for.
+   * Offline: `signal` is read before the render, and during it the render stops
+   * at its next pause and resolves to null, keeping nothing (#1655).
+   * `onCaptureStart` is never called: there is no capture to wait for.
    */
   bounce(
     seconds: number,

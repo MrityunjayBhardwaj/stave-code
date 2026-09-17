@@ -752,8 +752,9 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   /**
    * Render `seconds` of this runtime's document OFFLINE — faster than real time,
    * through the real audio graph — as a WAV, with what could not play (#1344).
-   * Returns null when the engine cannot, or when `signal` aborted before the
-   * render began.
+   * Returns null when the engine cannot, or when `signal` aborted — before the
+   * render began, or during it (#1655: the render stops being fed at its next
+   * pause and keeps nothing).
    *
    * ⚠ IT RENDERS THE DOCUMENT AS LOADED, SO IT LOADS IT FIRST, THE WAY PLAY
    * DOES. The engine's evaluate window is the only place `setcps`, `$:` and
@@ -780,6 +781,8 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     const engine = this.engine as {
       renderLoadedReport?: (
         s: number,
+        sampleRate?: number,
+        signal?: AbortSignal,
       ) => Promise<{ blob: Blob; haps: number; played: number; skipped: Array<{ reason: string; count: number }> }>
       setTransportOffset?: (offset: number) => void
       getLoopRange?: () => LoopRange | null
@@ -804,7 +807,14 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
         throw error
       }
       if (signal?.aborted) return null
-      return await engine.renderLoadedReport(seconds)
+      try {
+        return await engine.renderLoadedReport(seconds, undefined, signal)
+      } catch (err) {
+        // A cancelled render is not a failure. Decided by the signal, not by
+        // the error's name alone: the name is a string any error could carry.
+        if (signal?.aborted && (err as { name?: unknown })?.name === 'RenderCancelledError') return null
+        throw err
+      }
     } finally {
       // The locators are the user's — given back on every exit, as `record` does.
       if (loopBeforeBounce) engine.setLoopRange?.(loopBeforeBounce)

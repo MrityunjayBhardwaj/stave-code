@@ -13,8 +13,10 @@ import {
  * #1631 — a bounce RENDERS OFFLINE when the file's engine can, through the
  * same audio graph as playback but faster than the song plays. There is no
  * clock to show, because an offline render reports no progress, and nothing to
- * keep from a Cancel, because a render cannot stop halfway. So that phase is a
- * plain "Rendering…" line and a Cancel that saves nothing.
+ * keep from a Cancel: a cancelled render stops at its next pause and keeps
+ * nothing (#1655). So that phase is a plain "Rendering…" line and a Cancel that
+ * saves nothing, which reads "Cancelling…" until the render has wound down
+ * (#1649).
  *
  * Otherwise it falls back to `LiveRecorder`, which captures the live output in
  * REAL TIME — thirty seconds of audio costs thirty seconds of wall clock. That
@@ -46,8 +48,12 @@ export type BounceState =
    * #1631 — an offline render of `seconds` of audio is under way. There is no
    * elapsed time: the render reports no progress, and it finishes faster than
    * the song would play.
+   *
+   * #1649 — `cancelling` once Cancel has been pressed. The render stops being
+   * fed at its next pause and then ends, so the press is acknowledged at once
+   * rather than when the render resolves.
    */
-  | { phase: "rendering"; seconds: number }
+  | { phase: "rendering"; seconds: number; cancelling?: boolean }
   | { phase: "encoding" };
 
 interface BounceModalProps {
@@ -252,7 +258,7 @@ export function BounceModal({
             </>
           )}
 
-          {state.phase === "rendering" && (
+          {state.phase === "rendering" && !state.cancelling && (
             <>
               <div style={styles.sectionLabel}>
                 Rendering {formatDuration(state.seconds)} of audio…
@@ -261,6 +267,10 @@ export function BounceModal({
                 Cancel discards the render — nothing is saved.
               </p>
             </>
+          )}
+
+          {state.phase === "rendering" && state.cancelling && (
+            <div style={styles.sectionLabel}>Cancelling…</div>
           )}
 
           {state.phase === "preparing" && (
@@ -289,7 +299,9 @@ export function BounceModal({
               // Live during `preparing` too: aborting before the first sample is
               // well-defined (the recorder sees an already-aborted signal and
               // resolves at once), so the user is never stranded in the settle.
-              disabled={state.phase === "encoding"}
+              // #1649 — and once a cancel is under way: a second press has
+              // nothing left to do.
+              disabled={state.phase === "encoding" || (state.phase === "rendering" && state.cancelling === true)}
             >
               {/* #1631 — a render keeps nothing from a cancel, so it is not
                   called Stop, which on the live path keeps a shorter take. */}
