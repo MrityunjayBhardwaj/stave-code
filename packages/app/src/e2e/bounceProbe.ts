@@ -103,6 +103,36 @@ export interface BounceProbe {
     secs: number,
     setup?: BounceLoadedSetup,
   ): Promise<BounceLoadedOutcome>;
+  /**
+   * #1652 — how a LONG render behaves, without shipping the file back. Loads
+   * `code` the way a bounce does, renders `secs` at `sampleRate` through
+   * `renderLoadedReport`, and reports where the time went, how big the file is,
+   * and the level of one second at the start of each tenth — enough to tell a
+   * whole file from a truncated or silent one. The WAV itself stays in the page:
+   * at an hour it would be larger than the channel back can carry.
+   */
+  bounceStats(code: string, secs: number, sampleRate: number): Promise<BounceStatsOutcome>;
+}
+
+/** #1652 — one long render, measured. */
+export interface BounceStatsOutcome {
+  ok: boolean;
+  error?: string;
+  /** Where it failed: loading the document, or the render/encode itself. */
+  stage?: "load" | "render";
+  sampleRate?: number;
+  secs?: number;
+  /** Start of the call to `startRendering()` — querying and scheduling the first window. */
+  scheduleMs?: number;
+  /** Inside `startRendering()`, pauses included. */
+  renderMs?: number;
+  /** After the render resolved: encoding the WAV. */
+  encodeMs?: number;
+  bytes?: number;
+  /** 16-bit stereo frames in the file. */
+  frames?: number;
+  /** RMS of one second at the start of each tenth of the file. */
+  blockRms?: number[];
 }
 
 /** #1344 — the transport state to bounce from. */
@@ -475,6 +505,68 @@ export function installBounceProbe(): () => void {
         };
       } catch (err) {
         return { ok: false, error: String(err) };
+      }
+    },
+
+    bounceStats: async (code, secs, sampleRate) => {
+      let stage: "load" | "render" = "load";
+      const proto = OfflineAudioContext.prototype;
+      const realStartRendering = proto.startRendering;
+      try {
+        const e = await booted();
+        const rt = await runtimeOver(e);
+        rt.stop();
+        e.setTransportOffset(0);
+        e.setLoopRange(null);
+        loadedCode = code;
+        // Load the document exactly as a bounce does; the one-second render is
+        // only the side effect of that.
+        if (!(await rt.bounceOffline(1))) throw new Error("bounceOffline returned null");
+        stage = "render";
+        let renderStart = 0;
+        let renderEnd = 0;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (proto as any).startRendering = function (this: OfflineAudioContext) {
+          renderStart = performance.now();
+          const p = realStartRendering.call(this);
+          p.then(() => {
+            renderEnd = performance.now();
+          });
+          return p;
+        };
+        const t0 = performance.now();
+        const report = await e.renderLoadedReport(secs, sampleRate);
+        const t1 = performance.now();
+        const blob = report.blob;
+        const frames = (blob.size - 44) / 4;
+        const blockRms: number[] = [];
+        const second = sampleRate * 4;
+        for (let k = 0; k < 10; k++) {
+          const start = 44 + Math.floor((frames * k) / 10) * 4;
+          const view = new DataView(await blob.slice(start, start + second).arrayBuffer());
+          let sum = 0;
+          const n = Math.floor(view.byteLength / 2);
+          for (let i = 0; i < n; i++) {
+            const v = view.getInt16(i * 2, true) / 32768;
+            sum += v * v;
+          }
+          blockRms.push(n === 0 ? 0 : Math.sqrt(sum / n));
+        }
+        return {
+          ok: true,
+          sampleRate,
+          secs,
+          scheduleMs: renderStart - t0,
+          renderMs: renderEnd - renderStart,
+          encodeMs: t1 - renderEnd,
+          bytes: blob.size,
+          frames,
+          blockRms,
+        };
+      } catch (err) {
+        return { ok: false, stage, error: String(err) };
+      } finally {
+        proto.startRendering = realStartRendering;
       }
     },
 

@@ -253,11 +253,23 @@ export function cyclesToSeconds(cycles: number, cps: number | null): number | nu
  * was the user's patience, not the format.
  *
  * #1631 made the offline render the default, and it runs faster than the song
- * plays, so patience no longer sets the limit for most files. The ceiling stays
- * for a different reason: an offline render holds the whole take in memory
- * before encoding it (two float channels at 48 kHz for 600 s is about 230 MB),
- * and how far past that a browser tab gets has not been measured. The live
- * fallback still spends real time.
+ * plays, so patience no longer sets the limit for most files. The live fallback
+ * still spends real time: ten minutes offered there is ten minutes waited.
+ *
+ * ⚠ MEMORY IS NOT WHAT HOLDS THIS AT TEN MINUTES — MEASURED (#1652). The
+ * starter song through `renderLoadedReport` in headless Chromium on a 24 GB
+ * Mac (probe: `__staveBounceProbe.bounceStats`), peak renderer memory and wall
+ * clock:
+ *
+ *    10 min   0.9 GB    8 s        60 min   3.0 GB    44 s
+ *    20 min   1.2 GB   15 s        90 min   3.7 GB    67 s
+ *    40 min   2.1 GB   30 s       180 min   5.8 GB   133 s
+ *
+ * Every file came out whole (full length, level steady in every tenth); 44.1
+ * kHz behaves the same. Nothing failed up to three hours. The next hard limit is
+ * the WAV format's 4 GiB size field, about 6.2 hours at 48 kHz. Unmeasured: a
+ * smaller machine, another browser, and whether the tab stays responsive during
+ * a long render. So the number below is a product choice, not a measured limit.
  */
 export const MAX_BOUNCE_SECONDS = 600
 
