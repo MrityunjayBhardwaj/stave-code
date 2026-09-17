@@ -2059,7 +2059,9 @@ declare class StrudelEngine implements LiveCodingEngine {
      */
     renderLoadedReport(duration: number, sampleRate?: number, 
     /** #1655 — stops the render at its next pause; it then rejects with `RenderCancelledError`. */
-    signal?: AbortSignal): Promise<{
+    signal?: AbortSignal, 
+    /** #1650 — seconds of the song rendered so far, at each pause and at the end. */
+    onProgress?: (renderedSeconds: number) => void): Promise<{
         blob: Blob;
         haps: number;
         played: number;
@@ -8818,7 +8820,9 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
      * ⚠ A DOCUMENT THAT DOES NOT EVALUATE THROWS ITS ERROR AND RENDERS NOTHING.
      * What is loaded after a failed evaluate is the previous document.
      */
-    bounceOffline(seconds: number, signal?: AbortSignal): Promise<{
+    bounceOffline(seconds: number, signal?: AbortSignal, 
+    /** #1650 — seconds of the song rendered so far. */
+    onProgress?: (renderedSeconds: number) => void): Promise<{
         blob: Blob;
         haps: number;
         played: number;

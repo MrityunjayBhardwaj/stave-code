@@ -320,11 +320,14 @@ export interface BounceHandle {
    * Offline: `signal` is read before the render, and during it the render stops
    * at its next pause and resolves to null, keeping nothing (#1655).
    * `onCaptureStart` is never called: there is no capture to wait for.
+   * `onRenderProgress` hears the seconds rendered so far (#1650); the live
+   * path never calls it, because its progress is its own clock.
    */
   bounce(
     seconds: number,
     signal?: AbortSignal,
     onCaptureStart?: () => void,
+    onRenderProgress?: (renderedSeconds: number) => void,
   ): Promise<BounceResult | null>;
   /**
    * How long the active document is, and at what tempo — so the bounce modal can
@@ -1822,7 +1825,7 @@ export default function StrudelEditorClient({
         return rt ? rt.canBounceOffline() || rt.canRecord() : false;
       },
       bouncesOffline: () => activeRuntime()?.canBounceOffline() ?? false,
-      bounce: async (seconds, signal, onCaptureStart) => {
+      bounce: async (seconds, signal, onCaptureStart, onRenderProgress) => {
         const rt = activeRuntime();
         if (!rt) return null;
         // #1631 — offline whenever the engine can render its loaded document.
@@ -1831,7 +1834,7 @@ export default function StrudelEditorClient({
         // nothing fails the same way live, and retrying would spend the song's
         // whole length in real time to report the same error.
         if (rt.canBounceOffline()) {
-          const out = await rt.bounceOffline(seconds, signal);
+          const out = await rt.bounceOffline(seconds, signal, onRenderProgress);
           return out ? { blob: out.blob, offline: true, skipped: out.skipped } : null;
         }
         const blob = await rt.record(seconds, signal, onCaptureStart);

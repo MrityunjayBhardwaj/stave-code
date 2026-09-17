@@ -333,3 +333,56 @@ describe('renderPatternOffline — a cancel takes effect at the next pause (#165
     expect([h.state.ctx, h.state.controller]).toEqual([LIVE_CTX, LIVE_CONTROLLER])
   })
 })
+
+describe('renderPatternOffline — progress is reported from the pauses (#1650)', () => {
+  const W = RENDER_WINDOW_SECONDS
+
+  it('reports each pause as the song time it reached, in order, then the full length', async () => {
+    const h = pausingHarness()
+    const heard: number[] = []
+    await renderPatternOffline(
+      patternOf([hap(0, { s: 'a' }), hap(W, { s: 'b' }), hap(2 * W + 1, { s: 'c' })]),
+      { cps: 1, duration: 3 * W, sampleRate: 48000, onProgress: (s) => heard.push(s) },
+      h.deps
+    )
+    expect(heard).toEqual([W, 2 * W, 3 * W])
+  })
+
+  it('a report is made while the render is still paused, before that window is scheduled', async () => {
+    const h = pausingHarness()
+    const seen: Array<[number, number]> = []
+    await renderPatternOffline(
+      patternOf([hap(0, { s: 'a' }), hap(W, { s: 'b' })]),
+      { cps: 1, duration: 2 * W, sampleRate: 48000, onProgress: (s) => seen.push([s, h.calls.length]) },
+      h.deps
+    )
+    // At the pause for window 1, only window 0's note has been scheduled.
+    expect(seen[0]).toEqual([W, 1])
+  })
+
+  it('without pauses it reports only the end', async () => {
+    const h = harness()
+    const heard: number[] = []
+    await renderPatternOffline(patternOf([hap(0, { s: 'a' })]), { ...OPTS, onProgress: (s) => heard.push(s) }, h.deps)
+    expect(heard).toEqual([OPTS.duration])
+  })
+
+  it('a cancelled render never reports the end', async () => {
+    const h = pausingHarness()
+    const controller = new AbortController()
+    const heard: number[] = []
+    const inner = h.deps.superdough
+    h.deps.superdough = async (value, ...rest) => {
+      await inner(value, ...rest)
+      controller.abort()
+    }
+    await expect(
+      renderPatternOffline(
+        patternOf([hap(0, { s: 'a' }), hap(W, { s: 'b' })]),
+        { cps: 1, duration: 2 * W, sampleRate: 48000, signal: controller.signal, onProgress: (s) => heard.push(s) },
+        h.deps
+      )
+    ).rejects.toBeInstanceOf(RenderCancelledError)
+    expect(heard).not.toContain(2 * W)
+  })
+})

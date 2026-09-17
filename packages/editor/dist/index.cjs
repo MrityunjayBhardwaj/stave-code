@@ -5439,7 +5439,7 @@ var _RenderCancelledError = class _RenderCancelledError extends Error {
 };
 __name(_RenderCancelledError, "RenderCancelledError");
 var RenderCancelledError = _RenderCancelledError;
-async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal }, deps) {
+async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal, onProgress }, deps) {
   const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
   const liveCtx = deps.getAudioContext();
   const liveController = deps.getSuperdoughAudioController();
@@ -5477,6 +5477,7 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
       const at = (i + 1) * RENDER_WINDOW_SECONDS - RENDER_WINDOW_LEAD_SECONDS;
       return ctx.suspend(at).then(async () => {
         try {
+          onProgress?.(Math.min(duration, (i + 1) * RENDER_WINDOW_SECONDS));
           if (!signal?.aborted) await schedule(window2);
         } catch (err) {
           failures.push(err);
@@ -5489,6 +5490,7 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
     await Promise.all(pauses);
     if (failures.length > 0) throw failures[0];
     if (signal?.aborted) throw new RenderCancelledError();
+    onProgress?.(duration);
     return {
       buffer,
       haps: haps.length,
@@ -9680,7 +9682,7 @@ var _StrudelEngine = class _StrudelEngine {
    * document plays nothing. Tempo is `getCps()`, which the document's own
    * `setcps`/`setcpm` set during that evaluate.
    */
-  async renderLoadedReport(duration, sampleRate, signal) {
+  async renderLoadedReport(duration, sampleRate, signal, onProgress) {
     if (!this.audioCtx) {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
@@ -9696,16 +9698,17 @@ var _StrudelEngine = class _StrudelEngine {
     if (!loaded.pattern) {
       throw new Error("renderLoadedReport: the loaded document plays nothing");
     }
-    return this.renderPatternReport(loaded.pattern, duration, sampleRate, signal);
+    return this.renderPatternReport(loaded.pattern, duration, sampleRate, signal, onProgress);
   }
   /** The render both entry points share: hold the transport, render, report, encode. */
-  async renderPatternReport(pattern, duration, sampleRate, signal) {
+  async renderPatternReport(pattern, duration, sampleRate, signal, onProgress) {
     if (!this.audioCtx) {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
     const wa = await import('@strudel/webaudio');
     const options = {
       signal,
+      onProgress,
       cps: this.getCps() ?? 0.5,
       duration,
       sampleRate: sampleRate ?? this.audioCtx.sampleRate
@@ -42258,7 +42261,7 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    * ⚠ A DOCUMENT THAT DOES NOT EVALUATE THROWS ITS ERROR AND RENDERS NOTHING.
    * What is loaded after a failed evaluate is the previous document.
    */
-  async bounceOffline(seconds, signal) {
+  async bounceOffline(seconds, signal, onProgress) {
     const engine = this.engine;
     if (this.isDisposed || typeof engine.renderLoadedReport !== "function") return null;
     this.stop();
@@ -42278,7 +42281,7 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
       }
       if (signal?.aborted) return null;
       try {
-        return await engine.renderLoadedReport(seconds, void 0, signal);
+        return await engine.renderLoadedReport(seconds, void 0, signal, onProgress);
       } catch (err) {
         if (signal?.aborted && err?.name === "RenderCancelledError") return null;
         throw err;
