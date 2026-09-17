@@ -22,10 +22,71 @@
  * `index` is the track's 0-based position among the `$:`/`name:` statements
  * (single-track callers pass 0 → `d1`). PURE — no IR, no barrel — so it stays
  * out of the vitest CJS-`gifenc` trap (P172) and is freely unit-testable.
+ *
+ * ⚠ PROPERTY 2 IS ONLY TRUE OF A DOCUMENT, NOT OF A TRACK (#1667): `d{index+1}`
+ * is distinct from its siblings' positional ids, but a user may have written
+ * `d2:` as a real label, and then the two ids are the same string. A caller with
+ * more than one track uses `trackIdsFromLabels` below, which assigns them
+ * together and can see the collision; this per-track entry point is for the
+ * single-track case (index 0), where there are no siblings to collide with.
  */
 export function trackIdFromLabel(label: string | undefined, index: number): string {
+  return namedIdOf(label) ?? `d${index + 1}`
+}
+
+/**
+ * The id a track's label claims OUTRIGHT, or null when the label names nothing
+ * and the id has to be positional. The `_` strip (property 1) and the `$`/empty
+ * test (property 2) both live here so the per-track rule above and the
+ * whole-document rule below cannot read a label two different ways.
+ */
+function namedIdOf(label: string | undefined): string | null {
   const bare = label && label.startsWith('_') ? label.slice(1) : label
-  return bare && bare !== '$' ? bare : `d${index + 1}`
+  return bare && bare !== '$' ? bare : null
+}
+
+/**
+ * Every track's id, assigned for the WHOLE document at once (#1667).
+ *
+ * ⚠ THE POSITIONAL RULE CANNOT BE DECIDED ONE TRACK AT A TIME, which is the
+ * thing `trackIdFromLabel` above quietly assumes. `d{index+1}` is unique only
+ * while no user has written `d{N}:` as a real label — and nothing stops them:
+ *
+ *     d2: s("bd*2")
+ *     $:  s("hh*4")     // position 2 → `d2` → the SAME id as the track above
+ *
+ * That is not a display blemish. Two tracks under one id is one track as far as
+ * every consumer keyed by id is concerned: `declaredTracks` de-dupes by id and
+ * DROPS the second (trackOrder.ts), so the Song timeline loses its row outright,
+ * and `laneKeyOf` folds both tracks' events into one lane. The mixer showed two
+ * strips called `d2` in the same colour, which is how it was found (#1648's stem
+ * names had to de-duplicate them).
+ *
+ * The rule: a positional id starts at its own position — so EVERY document whose
+ * names do not collide keeps byte-identical ids, which is the whole safety
+ * property here — and counts up to the first `d{N}` nothing else has taken. The
+ * taken set is seeded with every label-claimed id and grows with each positional
+ * id assigned, because two positional ids can collide with each other once
+ * skipping is in play (labels `d2`,`d3` over four statements sends position 2 to
+ * `d4`, which position 4 would otherwise take as its own).
+ *
+ * Labels are NOT auto-renamed and the document is never rewritten: the user's
+ * `d2:` keeps `d2`, and only the id the tool made up moves. Which track has to
+ * move is a consequence of where the user wrote the label, not a choice.
+ *
+ * `labels` is in source order, one per `$:`/`name:` statement. Same purity as
+ * above — no IR, no barrel.
+ */
+export function trackIdsFromLabels(labels: readonly (string | undefined)[]): string[] {
+  const named = labels.map(namedIdOf)
+  const taken = new Set(named.filter((id): id is string => id !== null))
+  return named.map((id, index) => {
+    if (id !== null) return id
+    let n = index + 1
+    while (taken.has(`d${n}`)) n++
+    taken.add(`d${n}`)
+    return `d${n}`
+  })
 }
 
 /**

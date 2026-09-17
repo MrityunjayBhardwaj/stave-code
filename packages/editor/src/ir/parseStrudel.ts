@@ -18,7 +18,7 @@ import { parse as acornParse } from 'acorn'
 import { IR, type PatternIR, type ArrangeArm } from './PatternIR'
 import type { SourceLocation } from './IREvent'
 import { parseMini } from './parseMini'
-import { trackIdFromLabel, isMutedLabel } from './trackId'
+import { trackIdFromLabel, trackIdsFromLabels, isMutedLabel } from './trackId'
 import { NON_TRACK_HEAD_RE } from './statementHeads'
 // #928 (Tier 2) — the deny-list authority. `isControlName(m)` is Strudel's OWN
 // control-registry membership predicate (main names + aliases), queried LIVE so
@@ -1428,6 +1428,13 @@ function parseDocument(
     // is synthetic (no loc / no userMethod) — same shape as today.
     // Commented `$:` lines get Track wrappers with IR.pure() bodies so
     // they keep their slot in the numbering.
+    // #1667 — assigned for the whole document at once, not per track. A
+    // positional `d{i+1}` is unique among positions but NOT against a label the
+    // user wrote (`d2: … / $: …` gave two `Track('d2')`), and two tracks under
+    // one id is one track to `declaredTracks`, which drops the second and takes
+    // the timeline row with it. Same ids as before for every document whose
+    // names don't collide.
+    const trackIds = trackIdsFromLabels(tracks.map((t) => t.label))
     return IR.stack(
       ...tracks.map((t, i) => {
         const body = t.commented ? silent() : top(t.expr, t.offset, trackBindings)
@@ -1437,7 +1444,7 @@ function parseDocument(
         // source-anchored slot identity for BOTH forms — mixed `$:` +
         // `name:` interleave correctly because the unified regex matches
         // both in one scan and dollarStart is always line-start.
-        const trackId = trackIdFromLabel(t.label, i)
+        const trackId = trackIds[i]
         return IR.track(trackId, body, {
           loc: [{ start: t.dollarStart, end: t.end }],
         }, isMutedLabel(t.label))

@@ -20,6 +20,7 @@ import { readChainMethod } from '../panels/chainMethod'
 import { trackIdentity } from '../trackColor'
 import { type GainState, readGainState } from './gain'
 import { NON_TRACK_HEADS } from '../../ir/statementHeads'
+import { trackIdsFromLabels } from '../../ir/trackId'
 
 /** which surface a strip's pattern belongs to (mirrors `ChunkType` + groups). */
 export type StripKind = 'step' | 'roll' | 'group' | 'unknown'
@@ -256,15 +257,24 @@ function isForeign(chunk: ChunkInfo, name: string): boolean {
  * DISTINCT from the strip's stable UI `id` (`#k` for anon, mute-safe per #555)
  * and from the engine-join `captureId` (`$k`): those serve identity/metering;
  * this serves DISPLAY and matches the Timeline.
+ *
+ * ⚠ UNIQUENESS IS A PROPERTY OF THE DOCUMENT, SO THE KEYS ARE ASSIGNED FOR THE
+ * DOCUMENT (#1667). `d{ordinal}` is distinct from the other positional keys but
+ * not from a label the user wrote: `d2: … / $: …` made two strips called `d2`,
+ * in the same colour (the key is its own colour seed), and #1648's stem files
+ * had to de-duplicate them. The assignment is the IR's own
+ * `trackIdsFromLabels` — the same rule that names the Song timeline's lanes, so
+ * the two views still read one name per track, which is the whole point of
+ * V-track-1. Non-colliding documents keep byte-identical keys.
  */
-function displayKey(label: string | null, ordinal: number): string {
-  return bareLabel(label) ?? `d${ordinal}`
+function displayKeys(trackChunks: readonly ChunkInfo[]): string[] {
+  return trackIdsFromLabels(trackChunks.map((c) => c.label ?? undefined))
 }
 
 function buildStripModel(
   chunk: ChunkInfo,
   index: number,
-  ordinal: number,
+  displayKey: string,
   id: string,
   captureId: string,
 ): StripModel {
@@ -278,7 +288,7 @@ function buildStripModel(
   // track reads `d1`/`d2` identically in both views (and stays distinct from a
   // same-sample sibling). The marker-stripped label is still kept for the
   // `label`/muted/muteable fields.
-  const identity = trackIdentity(displayKey(chunk.label, ordinal))
+  const identity = trackIdentity(displayKey)
   return {
     id,
     index,
@@ -336,6 +346,10 @@ export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
   // not three, and giving them all the same key would meter the same audio on
   // every strip.
   const trackChunks = chunks.filter(isTrackChunk)
+  // Display keys, decided for the whole document (#1667) — a positional key has
+  // to see the labels it must not repeat. Indexed by `ordinal - 1`, which counts
+  // exactly `trackChunks` in the same order.
+  const keys = displayKeys(trackChunks)
   const bareId = bareCaptureIdFor(trackChunks)
   const bareOwner = bareId === null ? null : trackChunks[trackChunks.length - 1]
   chunks.forEach((chunk, index) => {
@@ -375,7 +389,7 @@ export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
     else if (chunk.label === null)
       captureId = bareId !== null && chunk === bareOwner ? bareId : unjoinableId(index)
     else captureId = `$${anonLive++}`
-    models.push(buildStripModel(chunk, index, ordinal, id, captureId))
+    models.push(buildStripModel(chunk, index, keys[ordinal - 1], id, captureId))
   })
   return models
 }

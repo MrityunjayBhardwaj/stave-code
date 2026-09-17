@@ -35,12 +35,23 @@ describe('stemFileNames (#1648)', () => {
     expect(stemFileNames(DOC, ['$9'])).toEqual(['01-9.wav'])
   })
 
-  it('two tracks with the same name get distinct files', () => {
-    // An anonymous second track is shown as \`d2\`, the name the first one chose.
+  it('two tracks the user could name alike are named apart upstream (#1667)', () => {
+    // `d2:` is a legal label and the second track's positional name was `d2`
+    // too, so this file used to have to de-duplicate them into
+    // `02-d2-2.wav`. The strips no longer hand it a duplicate — the positional
+    // name counts past anything a label claimed.
     const doc = `d2: s("bd*2")\n$: s("hh*4")`
     const strips = buildStripModels(detectAllChunks(doc))
-    expect(strips.map((s) => s.name)).toEqual(['d2', 'd2'])
-    expect(stemFileNames(doc, strips.map((s) => s.captureId))).toEqual(['01-d2.wav', '02-d2-2.wav'])
+    expect(strips.map((s) => s.name)).toEqual(['d2', 'd3'])
+    expect(stemFileNames(doc, strips.map((s) => s.captureId))).toEqual(['01-d2.wav', '02-d3.wav'])
+  })
+
+  it('still de-duplicates names it is handed directly', () => {
+    // The suffix rule stays: `stemFileNames` takes ids, and an id no strip
+    // carries falls back to the id itself, which nothing upstream de-duplicates
+    // (`$0` and `_0` both sanitise to `0`). A stem file must never overwrite
+    // another stem file, whatever the strips did.
+    expect(stemFileNames('this is ( not code', ['$0', '_0'])).toEqual(['01-0.wav', '02-0-2.wav'])
   })
 
   it('a document the chunker cannot read still names its stems', () => {
