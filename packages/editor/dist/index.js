@@ -5521,6 +5521,7 @@ function createTransportHold(transport) {
       }
       depth++;
       try {
+        if (depth === 1) await transport.drain?.();
         return await render();
       } finally {
         depth--;
@@ -5546,6 +5547,33 @@ function createTransportHold(transport) {
   };
 }
 __name(createTransportHold, "createTransportHold");
+
+// src/engine/liveTriggerDrain.ts
+function createLiveTriggerDrain() {
+  const inFlight2 = /* @__PURE__ */ new Map();
+  return {
+    track(done, startTime) {
+      inFlight2.set(done, startTime);
+      const settle = /* @__PURE__ */ __name(() => {
+        inFlight2.delete(done);
+      }, "settle");
+      done.then(settle, settle);
+    },
+    pending: /* @__PURE__ */ __name(() => inFlight2.size, "pending"),
+    async drain({ now: now2, sleep, capSeconds, marginSeconds }) {
+      const waitingOn = [...inFlight2.entries()];
+      if (waitingOn.length === 0) return { waited: 0, gaveUp: 0 };
+      const latest = Math.max(...waitingOn.map(([, t]) => t));
+      const untilStart = Number.isFinite(latest) ? latest - now2() + marginSeconds : capSeconds;
+      const limitMs = Math.max(0, Math.min(capSeconds, untilStart)) * 1e3;
+      const settled = Promise.all(waitingOn.map(([p]) => p.then(() => void 0, () => void 0)));
+      await Promise.race([settled, sleep(limitMs)]);
+      const gaveUp = waitingOn.filter(([p]) => inFlight2.has(p)).length;
+      return { waited: waitingOn.length, gaveUp };
+    }
+  };
+}
+__name(createLiveTriggerDrain, "createLiveTriggerDrain");
 
 // src/visualizers/blockScan.ts
 function startsTopLevelBlock(trimmed) {
@@ -8640,6 +8668,8 @@ var _StrudelEngine = class _StrudelEngine {
      * #1627 — holds the live transport still while an offline render borrows
      * superdough's globals, and restores it after. See `transportHold.ts`.
      */
+    /** #1656 — live triggers still under way, so a render can wait for them. */
+    this.liveTriggers = createLiveTriggerDrain();
     this.transportHold = createTransportHold({
       isPlaying: /* @__PURE__ */ __name(() => Boolean(this.repl?.scheduler?.started), "isPlaying"),
       pause: /* @__PURE__ */ __name(() => this.repl?.scheduler?.pause?.(), "pause"),
@@ -8651,7 +8681,24 @@ var _StrudelEngine = class _StrudelEngine {
         level: "warn",
         runtime: "strudel",
         message: `Playback could not resume after the bounce: ${error instanceof Error ? error.message : String(error)}`
-      }), "onResumeError")
+      }), "onResumeError"),
+      drain: /* @__PURE__ */ __name(async () => {
+        const ctx = this.audioCtx;
+        if (!ctx || this.liveTriggers.pending() === 0) return;
+        const { gaveUp } = await this.liveTriggers.drain({
+          now: /* @__PURE__ */ __name(() => ctx.currentTime, "now"),
+          sleep: /* @__PURE__ */ __name((ms) => new Promise((r) => setTimeout(r, ms)), "sleep"),
+          capSeconds: 2,
+          marginSeconds: 0.05
+        });
+        if (gaveUp > 0) {
+          emitLog({
+            level: "warn",
+            runtime: "strudel",
+            message: `The bounce started while ${gaveUp} live ${gaveUp === 1 ? "sound was" : "sounds were"} still loading. ${gaveUp === 1 ? "It" : "They"} will not play; the bounce itself is unaffected.`
+          });
+        }
+      }, "drain")
     });
     this.audioCtx = null;
     this.analyserNode = null;
@@ -9103,7 +9150,9 @@ var _StrudelEngine = class _StrudelEngine {
         return;
       }
       try {
-        return await webaudioOutput(hap, deadline, duration, cps, t);
+        const triggered = webaudioOutput(hap, deadline, duration, cps, t);
+        this.liveTriggers.track(Promise.resolve(triggered), t);
+        return await triggered;
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         if (isSoundfontZoneError(error.message)) {

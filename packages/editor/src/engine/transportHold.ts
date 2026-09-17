@@ -23,6 +23,13 @@
  * each stem's render asks again; only the outermost hold pauses and resumes,
  * so the transport does not stutter back to life between stems.
  *
+ * ⚠ PAUSING STOPS NEW TRIGGERS, NOT ONES ALREADY UNDER WAY (#1656). A live note
+ * triggered just before the hold can still be loading its sample, and it reads
+ * the globals again when the load finishes. `drain` waits for those before the
+ * render borrows the globals. It runs for the outermost hold only, and whether
+ * or not the transport was playing: a bounce stops the transport first, so the
+ * notes most at risk belong to a transport that already reads as stopped.
+ *
  * ⚠ A RESUME THAT THROWS IS REPORTED, NOT SWALLOWED, and never replaces the
  * render's own result or error: the render finished, and the caller is owed it.
  *
@@ -39,6 +46,8 @@ export interface HoldableTransport {
   resume(): void | Promise<void>
   /** Called when `resume` throws, so the failure reaches the user. */
   onResumeError?(error: unknown): void
+  /** Wait for live triggers already under way to settle (#1656). Must not throw. */
+  drain?(): Promise<void>
 }
 
 export interface TransportHold {
@@ -67,6 +76,7 @@ export function createTransportHold(transport: HoldableTransport): TransportHold
       }
       depth++
       try {
+        if (depth === 1) await transport.drain?.()
         return await render()
       } finally {
         depth--

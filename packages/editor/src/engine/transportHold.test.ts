@@ -119,6 +119,41 @@ describe('createTransportHold (#1627)', () => {
     })
   })
 
+  it('#1656 — the outermost hold drains live triggers BEFORE the render, even with the transport stopped', async () => {
+    const f = fakeTransport(false)
+    const order: string[] = []
+    const h = createTransportHold({
+      ...f.transport,
+      drain: async () => {
+        order.push('drain')
+        await tick()
+        order.push('drained')
+      },
+    })
+    await h.hold(async () => {
+      order.push('render')
+      await h.hold(async () => {
+        order.push('nested render')
+      })
+    })
+    expect(order).toEqual(['drain', 'drained', 'render', 'nested render'])
+  })
+
+  it('#1656 — a Play pressed during the drain is deferred like one pressed during the render', async () => {
+    const f = fakeTransport(false)
+    let deferred: boolean | undefined
+    const h = createTransportHold({
+      ...f.transport,
+      drain: async () => {
+        deferred = h.requestPlay()
+      },
+    })
+    await h.hold(async () => {
+      expect(f.state.playing).toBe(false)
+    })
+    expect({ deferred, after: f.state.playing }).toEqual({ deferred: true, after: true })
+  })
+
   it('a resume that throws is reported and does not replace the render result', async () => {
     const boom = new Error('Scheduler: no pattern set!')
     const f = fakeTransport(true, boom)

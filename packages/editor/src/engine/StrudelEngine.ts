@@ -7,6 +7,7 @@ import { emitLog } from './engineLog'
 import { renderPatternOffline, describeSkipped, type SkippedSounds } from './renderPatternOffline'
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { createTransportHold } from './transportHold'
+import { createLiveTriggerDrain } from './liveTriggerDrain'
 import { normalizeStrudelHap, declaredLocationKeys } from './NormalizedHap'
 import type { HapEvent } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
@@ -397,6 +398,8 @@ export class StrudelEngine implements LiveCodingEngine {
    * #1627 — holds the live transport still while an offline render borrows
    * superdough's globals, and restores it after. See `transportHold.ts`.
    */
+  /** #1656 — live triggers still under way, so a render can wait for them. */
+  private liveTriggers = createLiveTriggerDrain()
   private transportHold = createTransportHold({
     isPlaying: () => Boolean(this.repl?.scheduler?.started),
     pause: () => this.repl?.scheduler?.pause?.(),
@@ -410,6 +413,25 @@ export class StrudelEngine implements LiveCodingEngine {
         runtime: 'strudel',
         message: `Playback could not resume after the bounce: ${error instanceof Error ? error.message : String(error)}`,
       }),
+    drain: async () => {
+      const ctx = this.audioCtx
+      if (!ctx || this.liveTriggers.pending() === 0) return
+      const { gaveUp } = await this.liveTriggers.drain({
+        now: () => ctx.currentTime,
+        sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+        capSeconds: 2,
+        marginSeconds: 0.05,
+      })
+      if (gaveUp > 0) {
+        emitLog({
+          level: 'warn',
+          runtime: 'strudel',
+          message:
+            `The bounce started while ${gaveUp} live ${gaveUp === 1 ? 'sound was' : 'sounds were'} still loading. ` +
+            `${gaveUp === 1 ? 'It' : 'They'} will not play; the bounce itself is unaffected.`,
+        })
+      }
+    },
   })
   private audioCtx: AudioContext | null = null
   private analyserNode: AnalyserNode | null = null
@@ -1003,7 +1025,11 @@ export class StrudelEngine implements LiveCodingEngine {
 
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return await (webaudioOutput as any)(hap, deadline, duration, cps, t)
+        // #1656 — tracked until it settles, so a render can wait for it.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const triggered = (webaudioOutput as any)(hap, deadline, duration, cps, t) as Promise<unknown>
+        this.liveTriggers.track(Promise.resolve(triggered), t)
+        return await triggered
       } catch (err) {
         // Route scheduler-time errors (e.g. "sound X not found", "cannot parse as numeral")
         // through the registered handler so they surface in the editor UI, not just the console.
