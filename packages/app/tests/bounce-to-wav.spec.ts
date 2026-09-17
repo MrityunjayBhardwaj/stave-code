@@ -541,10 +541,12 @@ test.describe('the live capture path (#1651)', () => {
     await expect(dialog.getByText(/^Recording — /)).toBeVisible({ timeout: 30_000 })
     const bar = dialog.getByRole('progressbar')
     await expect(bar).toHaveAttribute('aria-valuemax', '30')
-    // #1356 — the clock starts at the first captured sample, not at Start, so
-    // it must still be near zero once the bar appears...
+    // Near zero when the bar appears — so what the poll below sees is the
+    // readout MOVING, not a bar that was already part-filled when it arrived.
+    // (It is too coarse to be the detector for #1356's settle, which is about a
+    // second: `LiveRecorder`'s own unit tests own that.)
     expect(Number(await bar.getAttribute('aria-valuenow'))).toBeLessThan(3)
-    // ...and then move, which is the readout this arm exists for.
+    // ...and then moves, which is the readout this arm exists for.
     await expect
       .poll(async () => Number(await bar.getAttribute('aria-valuenow')), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(4)

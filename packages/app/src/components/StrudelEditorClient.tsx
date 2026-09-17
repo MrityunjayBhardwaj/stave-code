@@ -1895,7 +1895,10 @@ export default function StrudelEditorClient({
       },
       bounceStems: async (seconds, signal, onRenderProgress) => {
         const rt = activeRuntime();
-        if (!rt || !rt.canBounceStems()) return null;
+        // Through `rendersOffline` for the same reason the mix path is: the
+        // capability question and the executor are two readings of one fact,
+        // and the point of the predicate is that they cannot differ.
+        if (!rt || !rendersOffline(rt) || !rt.canBounceStems()) return null;
         const out = await rt.bounceStemsOffline(seconds, signal, onRenderProgress);
         return out ? out.stems : null;
       },
