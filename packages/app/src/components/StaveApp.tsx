@@ -557,9 +557,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
           clearInterval(bounceTickRef.current);
           bounceTickRef.current = null;
         }
-        // #1631 — Cancel pressed during an offline render. A render cannot stop
-        // halfway, so what it finished is discarded rather than saved as though
-        // the user had let it run. (A live Stop still keeps its shorter take.)
+        // #1631 — Cancel pressed during an offline render. The render stops at
+        // its next pause and keeps nothing (#1655), rather than saving a partial
+        // song as though the user had let it run. (A live Stop still keeps its
+        // shorter take.)
         // Decided by the path the bounce REPORTS, not the `offline` predicted at
         // Start: those are two reads, and a live take discarded on a stale
         // prediction loses exactly what Stop promises to keep. A null after an

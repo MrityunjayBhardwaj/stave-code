@@ -13,8 +13,10 @@ import {
  * #1631 — a bounce RENDERS OFFLINE when the file's engine can, through the
  * same audio graph as playback but faster than the song plays. There is no
  * clock to show, because an offline render reports no progress, and nothing to
- * keep from a Cancel, because a render cannot stop halfway. So that phase is a
- * plain "Rendering…" line and a Cancel that saves nothing.
+ * keep from a Cancel: a cancelled render stops at its next pause and keeps
+ * nothing (#1655). So that phase is a plain "Rendering…" line and a Cancel that
+ * saves nothing, which reads "Cancelling…" until the render has wound down
+ * (#1649).
  *
  * Otherwise it falls back to `LiveRecorder`, which captures the live output in
  * REAL TIME — thirty seconds of audio costs thirty seconds of wall clock. That
