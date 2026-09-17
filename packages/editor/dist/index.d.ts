@@ -2057,7 +2057,9 @@ declare class StrudelEngine implements LiveCodingEngine {
      * document plays nothing. Tempo is `getCps()`, which the document's own
      * `setcps`/`setcpm` set during that evaluate.
      */
-    renderLoadedReport(duration: number, sampleRate?: number): Promise<{
+    renderLoadedReport(duration: number, sampleRate?: number, 
+    /** #1655 — stops the render at its next pause; it then rejects with `RenderCancelledError`. */
+    signal?: AbortSignal): Promise<{
         blob: Blob;
         haps: number;
         played: number;
@@ -8794,8 +8796,9 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
     /**
      * Render `seconds` of this runtime's document OFFLINE — faster than real time,
      * through the real audio graph — as a WAV, with what could not play (#1344).
-     * Returns null when the engine cannot, or when `signal` aborted before the
-     * render began.
+     * Returns null when the engine cannot, or when `signal` aborted — before the
+     * render began, or during it (#1655: the render stops being fed at its next
+     * pause and keeps nothing).
      *
      * ⚠ IT RENDERS THE DOCUMENT AS LOADED, SO IT LOADS IT FIRST, THE WAY PLAY
      * DOES. The engine's evaluate window is the only place `setcps`, `$:` and

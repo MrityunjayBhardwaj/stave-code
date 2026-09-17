@@ -630,6 +630,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   const handleBounceStop = useCallback(() => {
     bounceAbortRef.current?.abort();
+    // #1649 — a render keeps going until its next pause, so say the press was
+    // heard now. A live take needs no such state: its Stop resolves at once.
+    setBounceState((prev) =>
+      prev.phase === "rendering" ? { ...prev, cancelling: true } : prev,
+    );
   }, []);
 
   const openBounceModal = useCallback(() => {

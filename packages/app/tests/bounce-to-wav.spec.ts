@@ -134,10 +134,44 @@ test('a bounce renders faster than the song plays, at full length (#1631)', asyn
   })
 })
 
+/**
+ * #1631 / #1655 / #1649 — Cancel pressed while a render is running.
+ *
+ * ⚠ THE RENDER IS HELD, NOT RACED. This arm used to pick the longest length and
+ * hope the render was still running when the click landed, then wait for the
+ * render to end. That made it depend on the machine's speed in both directions:
+ * under load the render outlasted the wait, and alone the click often landed
+ * before rendering began, so the arm passed on a different path from the one it
+ * names. Now the render pauses between windows of notes (#1658), and this arm
+ * holds it at its first pause until the click has landed. So the cancel is
+ * always mid-render, and the state the user sees while it winds down (#1649)
+ * can be read while the render is still stopped.
+ */
 test('cancelling a render saves nothing and says so (#1631)', async ({ page }) => {
-  test.setTimeout(240_000)
+  test.setTimeout(120_000)
+  await page.addInitScript(() => {
+    const w = window as unknown as { __renderHold: { reached: boolean; release: (() => void) | null } }
+    w.__renderHold = { reached: false, release: null }
+    const proto = OfflineAudioContext.prototype
+    const realSuspend = proto.suspend
+    let held = false
+    proto.suspend = function (this: OfflineAudioContext, at: number) {
+      const paused = realSuspend.call(this, at)
+      // Only a render as long as this bounce; shorter offline renders pass.
+      if (held || this.length < this.sampleRate * 100) return paused
+      held = true
+      return paused.then(
+        () =>
+          new Promise<void>((resolve) => {
+            w.__renderHold.reached = true
+            w.__renderHold.release = resolve
+          }),
+      )
+    }
+  })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
   await openBounceModal(page)
-  // The longest fixed pick, so the render is still running when Cancel lands.
   await page.getByRole('button', { name: '300s' }).click()
 
   let downloaded = false
@@ -146,15 +180,26 @@ test('cancelling a render saves nothing and says so (#1631)', async ({ page }) =
   })
   await page.getByRole('button', { name: 'Start Bounce' }).click()
   const dialog = page.getByRole('dialog', { name: 'Bounce to WAV' })
-  await expect(dialog.getByText(/^Rendering/)).toBeVisible({ timeout: 15_000 })
+  // The render has started and is stopped at its first pause.
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __renderHold: { reached: boolean } }).__renderHold.reached), {
+      timeout: 30_000,
+    })
+    .toBe(true)
+  await expect(dialog.getByText(/^Rendering/)).toBeVisible()
   await dialog.getByRole('button', { name: 'Cancel' }).click()
 
-  // The render runs to its end before the cancel can be honoured, so the toast
-  // arrives when it does. If the render had finished BEFORE the click, the file
-  // would have saved and this toast would never appear.
+  // #1649 — acknowledged while the render is still held, so it cannot be the
+  // render ending that shows it.
+  await expect(dialog.getByText('Cancelling…')).toBeVisible({ timeout: 2_000 })
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+
+  const releasedAt = Date.now()
+  await page.evaluate(() => (window as unknown as { __renderHold: { release: () => void } }).__renderHold.release())
   await expect(
     page.locator('[data-testid="toast"]').filter({ hasText: 'Bounce cancelled' }),
-  ).toBeVisible({ timeout: 200_000 })
+  ).toBeVisible({ timeout: 60_000 })
+  console.log(`[#1655 cancel] toast ${((Date.now() - releasedAt) / 1000).toFixed(1)}s after the render was released`)
   expect(downloaded, 'a cancelled render must not save a file').toBe(false)
   await expect(dialog).toBeHidden({ timeout: 10_000 })
 })
