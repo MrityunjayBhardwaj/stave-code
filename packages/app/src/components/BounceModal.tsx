@@ -53,7 +53,13 @@ export type BounceState =
    * fed at its next pause and then ends, so the press is acknowledged at once
    * rather than when the render resolves.
    */
-  | { phase: "rendering"; seconds: number; cancelling?: boolean }
+  | {
+      phase: "rendering";
+      seconds: number;
+      cancelling?: boolean;
+      /** #1650 — seconds rendered so far; absent until the render first reports. */
+      rendered?: number;
+    }
   | { phase: "encoding" };
 
 interface BounceModalProps {
@@ -263,6 +269,25 @@ export function BounceModal({
               <div style={styles.sectionLabel}>
                 Rendering {formatDuration(state.seconds)} of audio…
               </div>
+              {/* #1650 — the same bar the live take draws, filled from how far
+                  the render has got. Absent until the first report, rather
+                  than an empty bar that reads as stuck. */}
+              {state.rendered !== undefined && (
+                <div
+                  style={styles.track}
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={state.seconds}
+                  aria-valuenow={Math.floor(state.rendered)}
+                >
+                  <div
+                    style={{
+                      ...styles.fill,
+                      width: `${Math.min(100, (state.rendered / Math.max(state.seconds, 1e-9)) * 100)}%`,
+                    }}
+                  />
+                </div>
+              )}
               <p style={styles.note}>
                 Cancel discards the render — nothing is saved.
               </p>

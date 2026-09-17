@@ -63,8 +63,21 @@ describe("the rendering phase (#1631)", () => {
     expect(body()).not.toContain("72.72727272727272");
   });
 
-  it("shows no progress bar, because a render reports no progress", () => {
+  it("shows no progress bar before the render first reports (#1650)", () => {
     renderAt({ phase: "rendering", seconds: 30 }, true);
+    expect(document.querySelector('[role="progressbar"]')).toBeNull();
+  });
+
+  it("#1650 — once the render reports, the bar shows how far it has got", () => {
+    renderAt({ phase: "rendering", seconds: 40, rendered: 10 }, true);
+    const bar = document.querySelector('[role="progressbar"]') as HTMLElement | null;
+    expect(bar?.getAttribute("aria-valuenow")).toBe("10");
+    expect(bar?.getAttribute("aria-valuemax")).toBe("40");
+    expect((bar?.firstElementChild as HTMLElement | null)?.style.width).toBe("25%");
+  });
+
+  it("#1650 — a cancelled render hides its bar while it winds down", () => {
+    renderAt({ phase: "rendering", seconds: 40, rendered: 10, cancelling: true }, true);
     expect(document.querySelector('[role="progressbar"]')).toBeNull();
   });
 

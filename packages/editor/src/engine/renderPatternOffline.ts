@@ -52,6 +52,11 @@
  *    buffer. Without pauses the whole song is already scheduled, so a cancel
  *    there is only honoured when the render ends.
  *
+ * 6. PROGRESS IS REPORTED FROM THE PAUSES (#1650). An offline render reports
+ *    nothing while it runs, but each pause is a point it has provably reached,
+ *    so `onProgress` hears the song time of every pause and then the full
+ *    length when the render ends. Without pauses it hears only the end.
+ *
  * Deliberately free of imports so every step can be driven by fakes: the
  * accessors arrive as `deps`.
  */
@@ -124,6 +129,8 @@ export interface OfflineGraphOptions {
   sampleRate: number
   /** Stops scheduling at the next pause; the render then rejects (#1655). */
   signal?: AbortSignal
+  /** Seconds of the song rendered so far, at each pause and at the end (#1650). */
+  onProgress?: (renderedSeconds: number) => void
 }
 
 /** A render whose `signal` aborted. It carries no buffer: nothing was kept. */
@@ -148,7 +155,7 @@ interface QueryablePattern {
 
 export async function renderPatternOffline(
   pattern: QueryablePattern,
-  { cps, duration, sampleRate, signal }: OfflineGraphOptions,
+  { cps, duration, sampleRate, signal, onProgress }: OfflineGraphOptions,
   deps: OfflineGraphDeps
 ): Promise<OfflineGraphResult> {
   // Ascending onset order matters for controls that depend on graph state,
@@ -203,6 +210,7 @@ export async function renderPatternOffline(
       const at = (i + 1) * RENDER_WINDOW_SECONDS - RENDER_WINDOW_LEAD_SECONDS
       return ctx.suspend!(at).then(async () => {
         try {
+          onProgress?.(Math.min(duration, (i + 1) * RENDER_WINDOW_SECONDS))
           if (!signal?.aborted) await schedule(window)
         } catch (err) {
           failures.push(err)
@@ -216,6 +224,7 @@ export async function renderPatternOffline(
     await Promise.all(pauses)
     if (failures.length > 0) throw failures[0]
     if (signal?.aborted) throw new RenderCancelledError()
+    onProgress?.(duration)
     return {
       buffer,
       haps: haps.length,

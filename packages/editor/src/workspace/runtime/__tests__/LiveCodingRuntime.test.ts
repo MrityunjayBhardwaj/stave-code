@@ -1910,6 +1910,22 @@ describe('offline bounce loads the document in the song frame, then renders it (
     runtime.dispose()
   })
 
+  it('passes the progress callback down to the render (#1650)', async () => {
+    const { engine } = makeBounceEngine()
+    const runtime = new LiveCodingRuntime('bo-8', engine, () => 'code')
+    const onProgress = vi.fn()
+    let seen: unknown
+    ;(engine as unknown as Record<string, unknown>).renderLoadedReport = vi.fn(
+      async (_s: number, _rate: number | undefined, _signal: AbortSignal | undefined, progress: unknown) => {
+        seen = progress
+        return { blob: new Blob([new Uint8Array(8)]), haps: 1, played: 1, skipped: [] }
+      }
+    )
+    await runtime.bounceOffline(4, undefined, onProgress)
+    expect(seen).toBe(onProgress)
+    runtime.dispose()
+  })
+
   it('a render that FAILS while a cancel is pending still throws — only a cancelled render is quiet (#1655)', async () => {
     const { engine } = makeBounceEngine()
     const runtime = new LiveCodingRuntime('bo-7', engine, () => 'code')

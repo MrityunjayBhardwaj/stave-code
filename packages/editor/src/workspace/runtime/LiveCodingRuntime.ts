@@ -777,12 +777,15 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
   async bounceOffline(
     seconds: number,
     signal?: AbortSignal,
+    /** #1650 — seconds of the song rendered so far. */
+    onProgress?: (renderedSeconds: number) => void,
   ): Promise<{ blob: Blob; haps: number; played: number; skipped: Array<{ reason: string; count: number }> } | null> {
     const engine = this.engine as {
       renderLoadedReport?: (
         s: number,
         sampleRate?: number,
         signal?: AbortSignal,
+        onProgress?: (renderedSeconds: number) => void,
       ) => Promise<{ blob: Blob; haps: number; played: number; skipped: Array<{ reason: string; count: number }> }>
       setTransportOffset?: (offset: number) => void
       getLoopRange?: () => LoopRange | null
@@ -808,7 +811,7 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
       }
       if (signal?.aborted) return null
       try {
-        return await engine.renderLoadedReport(seconds, undefined, signal)
+        return await engine.renderLoadedReport(seconds, undefined, signal, onProgress)
       } catch (err) {
         // A cancelled render is not a failure. Decided by the signal, not by
         // the error's name alone: the name is a string any error could carry.

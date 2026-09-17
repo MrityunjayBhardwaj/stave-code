@@ -135,6 +135,44 @@ test('a bounce renders faster than the song plays, at full length (#1631)', asyn
 })
 
 /**
+ * #1655 — hold a bounce-sized render at its `n`th pause (0-based) until the test
+ * releases it with `__renderHold.release()`. Shorter offline renders pass.
+ * The render has reported progress for every pause BEFORE the held one (#1650):
+ * a pause reports when its handler runs, and the held pause's has not.
+ */
+async function holdRenderAtPause(page: import('@playwright/test').Page, n: number) {
+  await page.addInitScript((holdAt: number) => {
+    const w = window as unknown as { __renderHold: { reached: boolean; release: (() => void) | null } }
+    w.__renderHold = { reached: false, release: null }
+    const proto = OfflineAudioContext.prototype
+    const realSuspend = proto.suspend
+    const seen = new WeakMap<OfflineAudioContext, number>()
+    proto.suspend = function (this: OfflineAudioContext, at: number) {
+      const paused = realSuspend.call(this, at)
+      if (this.length < this.sampleRate * 100) return paused
+      const index = seen.get(this) ?? 0
+      seen.set(this, index + 1)
+      if (index !== holdAt) return paused
+      return paused.then(
+        () =>
+          new Promise<void>((resolve) => {
+            w.__renderHold.reached = true
+            w.__renderHold.release = resolve
+          }),
+      )
+    }
+  }, n)
+}
+
+async function renderHeld(page: import('@playwright/test').Page) {
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __renderHold: { reached: boolean } }).__renderHold.reached), {
+      timeout: 30_000,
+    })
+    .toBe(true)
+}
+
+/**
  * #1631 / #1655 / #1649 — Cancel pressed while a render is running.
  *
  * ⚠ THE RENDER IS HELD, NOT RACED. This arm used to pick the longest length and
@@ -149,26 +187,7 @@ test('a bounce renders faster than the song plays, at full length (#1631)', asyn
  */
 test('cancelling a render saves nothing and says so (#1631)', async ({ page }) => {
   test.setTimeout(120_000)
-  await page.addInitScript(() => {
-    const w = window as unknown as { __renderHold: { reached: boolean; release: (() => void) | null } }
-    w.__renderHold = { reached: false, release: null }
-    const proto = OfflineAudioContext.prototype
-    const realSuspend = proto.suspend
-    let held = false
-    proto.suspend = function (this: OfflineAudioContext, at: number) {
-      const paused = realSuspend.call(this, at)
-      // Only a render as long as this bounce; shorter offline renders pass.
-      if (held || this.length < this.sampleRate * 100) return paused
-      held = true
-      return paused.then(
-        () =>
-          new Promise<void>((resolve) => {
-            w.__renderHold.reached = true
-            w.__renderHold.release = resolve
-          }),
-      )
-    }
-  })
+  await holdRenderAtPause(page, 0)
   await page.reload({ waitUntil: 'domcontentloaded' })
   await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
   await openBounceModal(page)
@@ -181,11 +200,7 @@ test('cancelling a render saves nothing and says so (#1631)', async ({ page }) =
   await page.getByRole('button', { name: 'Start Bounce' }).click()
   const dialog = page.getByRole('dialog', { name: 'Bounce to WAV' })
   // The render has started and is stopped at its first pause.
-  await expect
-    .poll(() => page.evaluate(() => (window as unknown as { __renderHold: { reached: boolean } }).__renderHold.reached), {
-      timeout: 30_000,
-    })
-    .toBe(true)
+  await renderHeld(page)
   await expect(dialog.getByText(/^Rendering/)).toBeVisible()
   await dialog.getByRole('button', { name: 'Cancel' }).click()
 
@@ -202,6 +217,34 @@ test('cancelling a render saves nothing and says so (#1631)', async ({ page }) =
   console.log(`[#1655 cancel] toast ${((Date.now() - releasedAt) / 1000).toFixed(1)}s after the render was released`)
   expect(downloaded, 'a cancelled render must not save a file').toBe(false)
   await expect(dialog).toBeHidden({ timeout: 10_000 })
+})
+
+/**
+ * #1650 — a render shows how far it has got. Held at its third pause, it has
+ * reported two, so the bar reads 8 of 300 seconds while nothing moves; released,
+ * it runs to the end and saves the whole file.
+ */
+test('a render shows how far it has got, and still saves the whole song (#1650)', async ({ page }) => {
+  test.setTimeout(120_000)
+  await holdRenderAtPause(page, 2)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
+  await openBounceModal(page)
+  await page.getByRole('button', { name: '300s' }).click()
+
+  const downloadPromise = page.waitForEvent('download', { timeout: 60_000 })
+  await page.getByRole('button', { name: 'Start Bounce' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Bounce to WAV' })
+  await renderHeld(page)
+
+  const bar = dialog.getByRole('progressbar')
+  await expect(bar).toBeVisible()
+  await expect(bar).toHaveAttribute('aria-valuemax', '300')
+  await expect(bar).toHaveAttribute('aria-valuenow', '8')
+
+  await page.evaluate(() => (window as unknown as { __renderHold: { release: () => void } }).__renderHold.release())
+  const download = await downloadPromise
+  expect(framesOf((await download.path())!)).toBeGreaterThanOrEqual(300 * 40_000)
 })
 
 /**

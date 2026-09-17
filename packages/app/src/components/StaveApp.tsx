@@ -550,8 +550,17 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       }, 200);
     };
 
+    // #1650 — a render reports how far it has got at each of its pauses. A
+    // cancelled render keeps reporting while it winds down; the bar is hidden
+    // then, so the value is kept but not shown.
+    const onRenderProgress = (rendered: number) => {
+      setBounceState((prev) =>
+        prev.phase === "rendering" ? { ...prev, rendered } : prev,
+      );
+    };
+
     void handle
-      .bounce(seconds, controller.signal, beginTicking)
+      .bounce(seconds, controller.signal, beginTicking, onRenderProgress)
       .then((result) => {
         if (bounceTickRef.current) {
           clearInterval(bounceTickRef.current);

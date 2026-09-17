@@ -1951,7 +1951,9 @@ export class StrudelEngine implements LiveCodingEngine {
     duration: number,
     sampleRate?: number,
     /** #1655 — stops the render at its next pause; it then rejects with `RenderCancelledError`. */
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    /** #1650 — seconds of the song rendered so far, at each pause and at the end. */
+    onProgress?: (renderedSeconds: number) => void
   ): Promise<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }> {
     if (!this.audioCtx) {
       throw new Error('StrudelEngine not initialized — call init() first')
@@ -1969,7 +1971,7 @@ export class StrudelEngine implements LiveCodingEngine {
     if (!loaded.pattern) {
       throw new Error('renderLoadedReport: the loaded document plays nothing')
     }
-    return this.renderPatternReport(loaded.pattern, duration, sampleRate, signal)
+    return this.renderPatternReport(loaded.pattern, duration, sampleRate, signal, onProgress)
   }
 
   /** The render both entry points share: hold the transport, render, report, encode. */
@@ -1978,7 +1980,8 @@ export class StrudelEngine implements LiveCodingEngine {
     pattern: any,
     duration: number,
     sampleRate?: number,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onProgress?: (renderedSeconds: number) => void
   ): Promise<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }> {
     if (!this.audioCtx) {
       throw new Error('StrudelEngine not initialized — call init() first')
@@ -1987,6 +1990,7 @@ export class StrudelEngine implements LiveCodingEngine {
     const wa: any = await import('@strudel/webaudio')
     const options = {
       signal,
+      onProgress,
       cps: this.getCps() ?? 0.5,
       duration,
       sampleRate: sampleRate ?? this.audioCtx.sampleRate,
