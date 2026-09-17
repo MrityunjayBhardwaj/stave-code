@@ -97,6 +97,7 @@ import {
   registerAssets,
   type SongExtent,
   type SkippedSounds,
+  type BouncedStem,
 } from "@stave/editor";
 import { reportWriteRefusal } from "../lib/writeRefusal";
 import { effectiveLoopRange, subscribeLoopState } from "../state/loopRange";
@@ -339,6 +340,19 @@ export interface BounceHandle {
    * document is must never be the reason a bounce cannot happen.
    */
   songSizing(signal?: { aborted: boolean }): Promise<BounceSizing>;
+  /** #1648 — true when the active tab can export one WAV per track (offline only). */
+  bouncesStems(): boolean;
+  /**
+   * #1648 — render `seconds` of the active file as one WAV per track, in
+   * document order, each named as the mixer names the track. Resolves to null
+   * when the active runtime cannot, or when `signal` aborted, before or during
+   * the set. A silent or failed stem comes back without a blob.
+   */
+  bounceStems(
+    seconds: number,
+    signal?: AbortSignal,
+    onRenderProgress?: (renderedSeconds: number, totalSeconds: number) => void,
+  ): Promise<BouncedStem[] | null>;
 }
 
 interface StrudelEditorClientProps {
@@ -1825,6 +1839,13 @@ export default function StrudelEditorClient({
         return rt ? rt.canBounceOffline() || rt.canRecord() : false;
       },
       bouncesOffline: () => activeRuntime()?.canBounceOffline() ?? false,
+      bouncesStems: () => activeRuntime()?.canBounceStems() ?? false,
+      bounceStems: async (seconds, signal, onRenderProgress) => {
+        const rt = activeRuntime();
+        if (!rt || !rt.canBounceStems()) return null;
+        const out = await rt.bounceStemsOffline(seconds, signal, onRenderProgress);
+        return out ? out.stems : null;
+      },
       bounce: async (seconds, signal, onCaptureStart, onRenderProgress) => {
         const rt = activeRuntime();
         if (!rt) return null;

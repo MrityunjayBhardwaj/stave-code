@@ -4,8 +4,9 @@ import { LiveRecorder } from './LiveRecorder'
 import { perf } from '../perf/profiler'
 import { WavEncoder, SilentCaptureError } from './WavEncoder'
 import { emitLog } from './engineLog'
-import { renderPatternOffline, describeSkipped, type SkippedSounds } from './renderPatternOffline'
+import { renderPatternOffline, describeSkipped, RenderCancelledError, type SkippedSounds } from './renderPatternOffline'
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
+import { planStems, tagTrack } from './stemSplit'
 import { createTransportHold } from './transportHold'
 import { createLiveTriggerDrain } from './liveTriggerDrain'
 import { normalizeStrudelHap, declaredLocationKeys } from './NormalizedHap'
@@ -507,7 +508,15 @@ export class StrudelEngine implements LiveCodingEngine {
    * evaluate: the old pattern keeps playing, but it is no longer the document.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private loadedRender: { pattern: any; transportOffset: number; loopRange: LoopRange | null } | null = null
+  private loadedRender: {
+    pattern: any
+    transportOffset: number
+    loopRange: LoopRange | null
+    /** #1648 — the tracks of this load, in document order (the `songPatterns` keys). */
+    trackIds: string[]
+    /** #1648 — false for a bare document: nothing went through `.p`, so nothing is tagged. */
+    tagged: boolean
+  } | null = null
 
   // Phase 20-07 (PK13 step 9) — engine-attached breakpoint registry.
   // Per-engine scope (PV33). The hit-check in `wrappedOutput` reads
@@ -1351,7 +1360,11 @@ export class StrudelEngine implements LiveCodingEngine {
                 try { effectivePattern = effectivePattern.late(transportOffset) } catch { /* keep unshifted */ }
               }
               capturedPatterns.set(captureId, effectivePattern)
-              return strudelFn.call(effectivePattern, id)
+              // #1648 — TAG what the repl registers, and only that. Strudel stacks
+              // the registered patterns and applies `all(...)` after this point, so
+              // the tag is how a played hap still names its track (`stemSplit.ts`).
+              // The captures above stay untagged: they already know their track.
+              return strudelFn.call(tagTrack(effectivePattern, captureId), id)
             }
             // Strudel's `.p()` only accepts strings (registers pattern in
             // D registry keyed by the id). Strudel's double-quoted-string-
@@ -1569,6 +1582,8 @@ export class StrudelEngine implements LiveCodingEngine {
           pattern: isQueryablePattern(playedPattern) ? playedPattern : null,
           transportOffset,
           loopRange,
+          trackIds: [...capturedSongPatterns.keys()],
+          tagged: bareId === null,
         }
       } else {
         // Failed evaluate — clear stale IR
@@ -1981,23 +1996,75 @@ export class StrudelEngine implements LiveCodingEngine {
     /** #1650 — seconds of the song rendered so far, at each pause and at the end. */
     onProgress?: (renderedSeconds: number) => void
   ): Promise<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }> {
+    const loaded = this.renderableLoad('renderLoadedReport')
+    return this.renderPatternReport(loaded.pattern, duration, sampleRate, signal, onProgress)
+  }
+
+  /**
+   * #1648 — render the LOADED document as one WAV per track, each the full
+   * `duration` and lined up with the master `renderLoadedReport` makes.
+   *
+   * A stem is its track's share of what PLAYS: the played pattern filtered to the
+   * track's tag (`stemSplit.ts`), so `all(...)`, solo and each track's own sends
+   * are all in it — what Ableton calls exporting individual tracks with "Include
+   * Return and Main Effects". Sound that `all(...)` adds and no track owns comes
+   * back as `SONG_LEVEL_STEM`, so the stems add up to the master. Measured in the
+   * browser: within 0.4% of the master's RMS, except where a render draws fresh
+   * randomness (supersaw phases, reverb impulse responses, #1665).
+   *
+   * Same refusals as `renderLoadedReport`, one transport hold for the whole set
+   * (#1627), stems in document order, one at a time (`renderStemsInOrder`). A
+   * stem that fails or is silent is `{ ok: false }` and costs no other stem. A
+   * cancel stops the set and rejects with `RenderCancelledError`. `onProgress`
+   * reports seconds rendered across the whole set, out of `duration` × stems.
+   */
+  async renderLoadedStemsReport(
+    duration: number,
+    sampleRate?: number,
+    signal?: AbortSignal,
+    onProgress?: (renderedSeconds: number, totalSeconds: number) => void
+  ): Promise<{
+    order: string[]
+    stems: Record<string, StemOutcome<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }>>
+  }> {
+    const loaded = this.renderableLoad('renderLoadedStemsReport')
+    const cps = this.getCps() ?? 0.5
+    const planned = planStems(loaded.pattern, loaded.trackIds, loaded.tagged, Math.ceil(duration * cps))
+    const byId: Record<string, unknown> = {}
+    for (const p of planned) byId[p.id] = p.pattern
+    const total = duration * planned.length
+    const stems = await this.transportHold.hold(() =>
+      renderStemsInOrder(
+        byId,
+        (pattern, _id, i) =>
+          this.renderPatternReport(pattern, duration, sampleRate, signal, (s) => onProgress?.(i * duration + s, total)),
+        undefined,
+        signal ? { signal, error: () => new RenderCancelledError() } : undefined
+      )
+    )
+    return { order: planned.map((p) => p.id), stems }
+  }
+
+  /** The load both loaded renders use, or the reason it cannot be rendered. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private renderableLoad(caller: string): { pattern: any; trackIds: string[]; tagged: boolean } {
     if (!this.audioCtx) {
       throw new Error('StrudelEngine not initialized — call init() first')
     }
     const loaded = this.loadedRender
     if (!loaded) {
-      throw new Error('renderLoadedReport: no document is loaded — the last evaluate failed or never ran')
+      throw new Error(`${caller}: no document is loaded — the last evaluate failed or never ran`)
     }
     if (loaded.transportOffset !== 0 || loaded.loopRange !== null) {
       throw new Error(
-        'renderLoadedReport: the document was evaluated with a seek or a loop armed, so the render ' +
+        `${caller}: the document was evaluated with a seek or a loop armed, so the render ` +
           'would be shifted or looped — clear both and evaluate again'
       )
     }
     if (!loaded.pattern) {
-      throw new Error('renderLoadedReport: the loaded document plays nothing')
+      throw new Error(`${caller}: the loaded document plays nothing`)
     }
-    return this.renderPatternReport(loaded.pattern, duration, sampleRate, signal, onProgress)
+    return loaded
   }
 
   /** The render both entry points share: hold the transport, render, report, encode. */
