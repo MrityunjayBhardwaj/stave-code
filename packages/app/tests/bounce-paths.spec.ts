@@ -1126,3 +1126,119 @@ test('#1356 the tail after stop decays quickly', async ({ page }) => {
   // this arm is here to catch.
   expect(lastAudible).toBeLessThan(2500)
 })
+
+/**
+ * #1656 — a live sample note whose FIRST load is still in flight when a bounce
+ * starts.
+ *
+ * The sampler reads superdough's global context again when its load finishes
+ * (`sampler.mjs:61`). If a render has swapped the global in the meantime, the
+ * note's source is built on the render's context and its `connect` to the live
+ * gain throws (caught, so the note is simply lost). Measured before the fix: a
+ * bounce straight after Play swaps 3-4 ms after the first sample request, with
+ * live notes still due 0.29 s later, and releasing the load at +60 ms crossed
+ * contexts on every run.
+ *
+ * The instrument, not the product, times the sample loads: `page.route` answers
+ * every audio file request with a short generated WAV, `releaseMs` after the
+ * first request (never before), so the load time does not depend on the
+ * network. A real fetch released at the same moment arrived after the note was
+ * due and was dropped, which reads as a pass for the wrong reason. The page
+ * records every `connect` between nodes of different contexts, and every live
+ * `AudioBufferSourceNode.start`.
+ */
+test.describe('#1656 — a live sample still loading when a bounce starts', () => {
+  const DOC = `setcps(0.5)
+$: note("c4*32").s("sine").gain(0.001)
+$: s("hh*16").gain(0.3)`
+
+  /** 50 ms of a 1 kHz tone, 16-bit mono 44.1 kHz — any sample name gets this. */
+  function toneWav(): Buffer {
+    const rate = 44100
+    const n = Math.floor(rate * 0.05)
+    const buf = Buffer.alloc(44 + n * 2)
+    buf.write('RIFF', 0)
+    buf.writeUInt32LE(36 + n * 2, 4)
+    buf.write('WAVEfmt ', 8)
+    buf.writeUInt32LE(16, 16)
+    buf.writeUInt16LE(1, 20)
+    buf.writeUInt16LE(1, 22)
+    buf.writeUInt32LE(rate, 24)
+    buf.writeUInt32LE(rate * 2, 28)
+    buf.writeUInt16LE(2, 32)
+    buf.writeUInt16LE(16, 34)
+    buf.write('data', 36)
+    buf.writeUInt32LE(n * 2, 40)
+    for (let i = 0; i < n; i++) buf.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 1000 * i) / rate) * 12000), 44 + i * 2)
+    return buf
+  }
+
+  async function bounceWithHeldSamples(page: Page, releaseMs: number) {
+    const body = toneWav()
+    let firstRequest = 0
+    await page.route(/\.(wav|mp3|ogg)(\?|$)/i, async (route) => {
+      if (!firstRequest) firstRequest = Date.now()
+      const wait = Math.max(0, firstRequest + releaseMs - Date.now())
+      await new Promise((r) => setTimeout(r, wait))
+      await route.fulfill({ status: 200, contentType: 'audio/wav', body }).catch(() => {})
+    })
+    await page.addInitScript(() => {
+      const w = window as unknown as { __race: { cross: string[]; liveSampleStarts: number } }
+      w.__race = { cross: [], liveSampleStarts: 0 }
+      const realConnect = AudioNode.prototype.connect as (...a: unknown[]) => unknown
+      ;(AudioNode.prototype as unknown as { connect: unknown }).connect = function (this: AudioNode, ...a: unknown[]) {
+        const dest = a[0] as { context?: BaseAudioContext } | undefined
+        if (dest?.context && dest.context !== this.context) {
+          w.__race.cross.push(`${this.constructor.name} -> ${(dest as object).constructor.name}`)
+        }
+        return realConnect.apply(this, a)
+      }
+      const realStart = AudioBufferSourceNode.prototype.start
+      AudioBufferSourceNode.prototype.start = function (this: AudioBufferSourceNode, ...a: number[]) {
+        if (this.context instanceof AudioContext) w.__race.liveSampleStarts++
+        return (realStart as (...x: number[]) => void).apply(this, a)
+      }
+    })
+    await openApp(page)
+    const out = await page.evaluate(
+      (code) =>
+        (
+          window as unknown as {
+            __staveBounceProbe: { bounceLoaded: (c: string, s: number, o: unknown) => Promise<{ ok: boolean; error?: string }> }
+          }
+        ).__staveBounceProbe.bounceLoaded(code, 4, { playing: true }),
+      DOC,
+    )
+    // Long enough for any late live note to have been built or dropped.
+    await page.waitForTimeout(1000)
+    const race = await page.evaluate(() => (window as unknown as { __race: { cross: string[]; liveSampleStarts: number } }).__race)
+    const log = await page.evaluate(() =>
+      ((window as unknown as { __staveGetLog?: () => Array<{ message: string }> }).__staveGetLog?.() ?? []).map((e) => e.message),
+    )
+    return { out, race, log, heldAtAll: firstRequest > 0 }
+  }
+
+  test('a load that finishes before its note is due builds the note on the LIVE context', async ({ page }) => {
+    test.setTimeout(90_000)
+    const r = await bounceWithHeldSamples(page, 60)
+    console.log(`[#1656 +60ms] ok=${r.out.ok} cross=${JSON.stringify(r.race.cross)} liveSampleStarts=${r.race.liveSampleStarts}`)
+    expect(r.heldAtAll, 'no sample request was held — the arm did not exercise a load').toBe(true)
+    expect(r.out.ok, r.out.error).toBe(true)
+    expect(r.race.cross).toEqual([])
+    // The note played live: without this, "no crossed connect" would also pass
+    // for a note the sampler simply dropped.
+    expect(r.race.liveSampleStarts).toBeGreaterThan(0)
+    await expectNoUncaught(page)
+  })
+
+  test('a load that never answers in time does not hold the bounce, and the bounce says so', async ({ page }) => {
+    test.setTimeout(90_000)
+    const r = await bounceWithHeldSamples(page, 3000)
+    console.log(`[#1656 +3000ms] ok=${r.out.ok} cross=${JSON.stringify(r.race.cross)} warned=${r.log.some((m) => /still loading/.test(m))}`)
+    expect(r.heldAtAll).toBe(true)
+    expect(r.out.ok, r.out.error).toBe(true)
+    expect(r.race.cross).toEqual([])
+    expect(r.log.filter((m) => /live sounds? (was|were) still loading/.test(m))).toHaveLength(1)
+    await expectNoUncaught(page)
+  })
+})

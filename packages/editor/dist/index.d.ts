@@ -1758,6 +1758,8 @@ declare class StrudelEngine implements LiveCodingEngine {
      * #1627 — holds the live transport still while an offline render borrows
      * superdough's globals, and restores it after. See `transportHold.ts`.
      */
+    /** #1656 — live triggers still under way, so a render can wait for them. */
+    private liveTriggers;
     private transportHold;
     private audioCtx;
     private analyserNode;
