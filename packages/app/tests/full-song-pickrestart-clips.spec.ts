@@ -7,7 +7,12 @@
  * pressing Delete edits the `<…@w …>` control directly (string-surgery), leaving
  * the section patterns + the pickRestart object byte-verbatim.
  *
- * Discriminating: the source MUST change (the control loses the deleted section).
+ * What Delete MEANS follows the arrange spelling (#1462): a plain Delete leaves a
+ * gap — the section's arm becomes a rest of the same width, so later sections keep
+ * their place in time — and the ripple chord (Cmd/Ctrl+Shift+Delete, #1460)
+ * removes the arm and closes the gap. One arm per gesture below.
+ *
+ * Discriminating: the source MUST change in the way the gesture names.
  */
 import { test, expect, type Page } from '@playwright/test'
 
@@ -57,13 +62,7 @@ function strudelSource(page: Page): Promise<string> {
   })
 }
 
-test('selecting a pickRestart section clip and pressing Delete edits the <…@w> control', async ({ page }) => {
-  const errors: string[] = []
-  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
-  page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
-  })
-
+async function selectVerseClip(page: Page): Promise<ReturnType<Page['locator']>> {
   await bootShell(page)
   await typeSongAndEval(page, SONG)
   expect(await strudelSource(page)).toContain('<verse@2 chorus@2>')
@@ -80,17 +79,50 @@ test('selecting a pickRestart section clip and pressing Delete edits the <…@w>
   if (!box) throw new Error('no grid box')
   await page.mouse.click(box.x + box.width * 0.25, box.y + 8)
   await expect(page.locator('[data-full-song="clip-selection"]')).toBeVisible({ timeout: 5_000 })
+  return grid
+}
 
-  // Delete the selected section → removeArm rewrites the control to `<chorus@2>`.
+test('selecting a pickRestart section clip and pressing Delete leaves a gap in the <…@w> control', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  const grid = await selectVerseClip(page)
+
+  // Delete the selected section → silenceArm rewrites verse@2 to a rest of the
+  // same width, so chorus stays at cycle 2.
   await grid.press('Delete')
 
-  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain('<chorus@2>')
+  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain('<~@2 chorus@2>')
   const after = await strudelSource(page)
-  // The verse ARM is gone from the control...
+  // The verse arm is a rest now, not removed...
   expect(after).not.toContain('<verse@2 chorus@2>')
-  // ...but the section patterns + pickRestart object stay byte-verbatim.
+  expect(after).not.toContain('"<chorus@2>"')
+  // ...and the section patterns + pickRestart object stay byte-verbatim.
   expect(after).toContain('.pickRestart({verse: s("bd"), chorus: s("hh")})')
 
   await page.screenshot({ path: 'test-results/full-song-pickrestart-clips.png' })
+  expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
+})
+
+test('the ripple chord on a pickRestart section clip removes its arm and closes the gap', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  const grid = await selectVerseClip(page)
+
+  // Ripple delete → removeArm drops the verse arm, so chorus moves to cycle 0.
+  await grid.press(`${MOD}+Shift+Delete`)
+
+  await expect.poll(() => strudelSource(page), { timeout: 8_000 }).toContain('"<chorus@2>"')
+  const after = await strudelSource(page)
+  expect(after).not.toContain('~@2')
+  expect(after).toContain('.pickRestart({verse: s("bd"), chorus: s("hh")})')
+
   expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
 })

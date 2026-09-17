@@ -150,14 +150,24 @@ test('expanded voice rows hold their order across a DRAG clip reorder (#480)', a
   expect(before).toEqual(['bd', 'hh', 'sn'])
 
   // The song spans 8 cycles: arm 0 (bd) over [0,2) = x∈[0,0.25W), arm 1 (hh)
-  // over [2,4) = x∈[0.25W,0.5W). Grab arm 0's clip body at cycle ~1 (0.125W) and
-  // drag it into arm 1's span at cycle ~2.8 (0.35W) → reorderArm rewrites the
-  // source, swapping the first two arms.
+  // over [2,4) = x∈[0.25W,0.5W). Grab arm 0's clip body at cycle 1.125 and drag
+  // it into arm 1's span at cycle ~2.8 (0.35W) → reorderArm rewrites the source,
+  // swapping the first two arms.
+  //
+  // ⚠ The grab is the MIDDLE of a bd hit ([1, 1.25)), not a whole cycle. On an
+  // expanded lane the few px just inside a sample mark's edge trim what it plays
+  // (#1527), so a press at cycle 1 — exactly where a `bd*4` hit begins — is a
+  // `.begin` drag, not a move. That is the timeline's intended priority, and it
+  // is why the cursor is read before pressing: the canvas says `grab` over a
+  // movable body and `col-resize` over an edge, in the same order the press
+  // resolves, so this arm fails on the press it is about to make rather than on
+  // a document it did not mean to write.
   const grid = page.locator('[data-full-song="grid"]')
   const box = await grid.boundingBox()
   if (!box) throw new Error('no grid box')
   const y = box.y + 8
-  await page.mouse.move(box.x + box.width * 0.125, y)
+  await page.mouse.move(box.x + box.width * (1.125 / 8), y)
+  await expect.poll(() => grid.evaluate((el) => (el as HTMLElement).style.cursor), { timeout: 2_000 }).toBe('grab')
   await page.mouse.down()
   await page.mouse.move(box.x + box.width * 0.25, y, { steps: 5 })
   await page.mouse.move(box.x + box.width * 0.35, y, { steps: 5 })
