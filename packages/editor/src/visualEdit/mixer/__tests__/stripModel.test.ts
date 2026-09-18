@@ -58,6 +58,14 @@ describe('a track has the SAME name in the Mixer as on the Song timeline (#1678,
     expect(stripsOf(src).map((s) => s.name)).toEqual(['d2'])
   })
 
+  it('an INDENTED statement in a document with no labels is matched too (#1685)', () => {
+    // with no labels the parser anchors a Track at the statement, not its line
+    const src = 's("bd")\n  s("hh")'
+    expect(stripsOf(src).map((s) => s.name)).toEqual(['d1', 'd2'])
+    // and a sibling of the archive shape: an indented first statement
+    expect(stripsOf('  s("bd")\n  s("hh")\ns("cp")').map((s) => s.name)).toEqual(['d1', 'd2', 'd3'])
+  })
+
   it('agrees with the timeline strip for strip, over mixed shapes', () => {
     const docs = [
       '//$: s("hh*4")\n$: s("bd*2")\nd1: s("cp")',

@@ -282,14 +282,17 @@ function displayKeys(trackChunks: readonly ChunkInfo[], doc: string): string[] {
   // So a strip reads its name from the parsed IR: the top-level Track whose
   // label line holds the strip's statement — the same Track `declaredTracks`
   // hands the timeline. That covers named, anonymous and bare documents alike
-  // with no rule of our own to keep in step. `loc` is the LINE start,
-  // indentation included; a chunk starts at the label itself.
+  // with no rule of our own to keep in step. A labelled Track's `loc` is the
+  // LINE start, indentation included, while a chunk starts at the label itself;
+  // in a document with no labels the parser anchors each Track at the statement
+  // instead, so an indented bare statement is found only there (#1685). Both
+  // anchors are looked up — two statements cannot share either.
   const idAtLine = trackIdsByLine(doc)
   const taken = new Set(idAtLine.values())
   return trackChunks.map((chunk, i) => {
     let line = chunk.statementRange[0]
     while (line > 0 && (doc[line - 1] === ' ' || doc[line - 1] === '\t')) line--
-    const id = idAtLine.get(line)
+    const id = idAtLine.get(line) ?? idAtLine.get(chunk.statementRange[0])
     if (id !== undefined) return id
     // No Track for this statement — the parser does not consider it a track
     // (a statement that never plays, #1682), or the document is a single bare

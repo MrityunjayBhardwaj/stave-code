@@ -8501,7 +8501,7 @@ function displayKeys(trackChunks, doc) {
   return trackChunks.map((chunk, i) => {
     let line = chunk.statementRange[0];
     while (line > 0 && (doc[line - 1] === " " || doc[line - 1] === "	")) line--;
-    const id = idAtLine.get(line);
+    const id = idAtLine.get(line) ?? idAtLine.get(chunk.statementRange[0]);
     if (id !== void 0) return id;
     let n = i + 1;
     while (taken.has(`d${n}`)) n++;
