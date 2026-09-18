@@ -28,6 +28,7 @@ import {
 } from "@stave/editor";
 import { seedProjectFromTemplate } from "../templates";
 import { exportProjectAsZip } from "../exportProject";
+import { buildStemsArchive, stemDisplayName } from "../stemsArchive";
 import { importProjectFromZip } from "../importProject";
 import {
   buildShareUrl,
@@ -147,6 +148,10 @@ interface StaveAppProps {
  */
 const SILENT_BOUNCE_TOAST_MS = 20_000;
 
+function safeFileName(name: string, fallback: string): string {
+  return name.replace(/[^a-z0-9_-]+/gi, "_") || fallback;
+}
+
 /**
  * Hand a finished WAV to the browser as a download (#1410).
  *
@@ -156,11 +161,15 @@ const SILENT_BOUNCE_TOAST_MS = 20_000;
  * and neither route can drift into naming or revoking differently.
  */
 function saveWavBlob(blob: Blob, projectName: string): void {
-  const safeName = projectName.replace(/[^a-z0-9_-]+/gi, "_");
+  saveBlob(blob, `${safeFileName(projectName, "stave-bounce")}.wav`);
+}
+
+/** #1648 — shared by the WAV and the stems zip. */
+function saveBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${safeName || "stave-bounce"}.wav`;
+  a.download = fileName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -493,6 +502,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // #1631 — whether the active file's bounce renders offline. Read when the
   // modal opens, so its copy says what Start will cost before it is pressed.
   const [bounceOffline, setBounceOffline] = useState(false);
+  /** #1648 — whether the active file can export stems. Read with `bounceOffline`. */
+  const [bounceStemsAvailable, setBounceStemsAvailable] = useState(false);
   /** What the active document says about its length; `null` until measured. */
   const [bounceSizing, setBounceSizing] = useState<BounceSizing | null>(null);
   /** Supersedes an in-flight measurement when the modal is reopened. */
@@ -521,7 +532,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     setBounceState({ phase: "choosing" });
   }, []);
 
-  const handleBounceStart = useCallback((seconds: number) => {
+  const handleBounceStart = useCallback((seconds: number, stems = false) => {
     const handle = bounceRef.current;
     if (!handle) {
       showToast("Open a pattern file before bouncing.", "error");
@@ -530,6 +541,54 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     }
     const controller = new AbortController();
     bounceAbortRef.current = controller;
+
+    // #1648 — one WAV per track, in one zip. Offline only: the dialog offers it
+    // only when the active file renders offline.
+    if (stems) {
+      setBounceState({ phase: "rendering", seconds, stems: { total: 0 } });
+      void handle
+        .bounceStems(seconds, controller.signal, (rendered, total) => {
+          setBounceState((prev) =>
+            prev.phase === "rendering" ? { ...prev, rendered, stems: { total } } : prev,
+          );
+        })
+        .then(async (result) => {
+          if (controller.signal.aborted) {
+            showToast("Bounce cancelled — nothing was saved.", "info");
+            return;
+          }
+          if (!result) {
+            showToast("This file cannot export stems.", "error");
+            return;
+          }
+          setBounceState({ phase: "encoding" });
+          const archive = await buildStemsArchive(result, (e) => e instanceof SilentCaptureError);
+          for (const f of archive.failed) console.error(`[stave] stem ${f.fileName} failed:`, f.error);
+          if (archive.included.length === 0) {
+            showToast("No track made a sound in this length, so there are no stems to save.", "error");
+            return;
+          }
+          saveBlob(archive.zip, `${safeFileName(activeProject.name, "stave-bounce")}-stems.zip`);
+          const left = [...archive.silent, ...archive.failed.map((f) => f.fileName)].map(stemDisplayName);
+          const skipped = result.reduce((n, st) => n + st.skipped.reduce((m, k) => m + k.count, 0), 0);
+          const notes: string[] = [];
+          if (left.length > 0) notes.push(`no file for ${left.join(", ")} (${archive.failed.length > 0 ? "silent or failed" : "silent in this length"})`);
+          if (skipped > 0) notes.push(`${skipped} ${skipped === 1 ? "sound" : "sounds"} could not play`);
+          showToast(
+            notes.length === 0
+              ? `Stems saved — ${archive.included.length} ${archive.included.length === 1 ? "track" : "tracks"}.`
+              : `Stems saved — ${archive.included.length} ${archive.included.length === 1 ? "track" : "tracks"}; ${notes.join("; ")}.`,
+            notes.length === 0 ? "info" : "error",
+            notes.length === 0 ? undefined : SILENT_BOUNCE_TOAST_MS,
+          );
+        })
+        .catch((err: unknown) => {
+          console.error("[stave] stems export failed:", err);
+          showToast("Stems export failed — see console for details.", "error");
+        })
+        .finally(finishBounceUi);
+      return;
+    }
     // #1631 — an offline render has no capture to wait for and no clock to
     // show: it reports no progress and finishes faster than the song plays.
     // #1356 — a live take lets the graph fall silent before it starts playing,
@@ -650,6 +709,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const openBounceModal = useCallback(() => {
     setBounceState({ phase: "choosing" });
     setBounceOffline(bounceRef.current?.bouncesOffline() ?? false);
+    setBounceStemsAvailable(bounceRef.current?.bouncesStems() ?? false);
     setBounceOpen(true);
     // Measure asynchronously and let the modal open immediately (#1365). The
     // analysis walks a growing horizon and can take a moment; blocking the modal
@@ -1833,6 +1893,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         state={bounceState}
         sizing={bounceSizing}
         offline={bounceOffline}
+        stemsAvailable={bounceStemsAvailable}
         onClose={() => setBounceOpen(false)}
         onStart={handleBounceStart}
         onStop={handleBounceStop}

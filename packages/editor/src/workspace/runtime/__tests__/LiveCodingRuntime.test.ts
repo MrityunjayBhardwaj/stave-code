@@ -1949,4 +1949,91 @@ describe('offline bounce loads the document in the song frame, then renders it (
     expect(engine.callLog).toEqual([])
     runtime.dispose()
   })
+
+  // #1648 — stems load the document exactly as the master bounce does, so the
+  // two line up. The split itself is `stemSplit.test.ts`; the audio is measured
+  // in `bounce-stems.spec.ts`.
+  function withStems(engine: ReturnType<typeof makeBounceEngine>['engine']) {
+    const anyEngine = engine as unknown as Record<string, unknown>
+    const calls: unknown[][] = []
+    anyEngine.renderLoadedStemsReport = vi.fn(async (...args: unknown[]) => {
+      engine.callLog.push('renderLoadedStemsReport')
+      calls.push(args)
+      return {
+        order: ['drums', '$0', '(song)'],
+        stems: {
+          drums: { ok: true, blob: new Blob([new Uint8Array(8)]), haps: 2, played: 2, skipped: [] },
+          $0: { ok: false, error: new Error('capture is silent') },
+          '(song)': { ok: true, blob: new Blob([new Uint8Array(8)]), haps: 1, played: 1, skipped: [] },
+        },
+      }
+    })
+    return calls
+  }
+
+  it('stems: stops, clears the frame, loads the file, renders the stems, gives the loop back (#1648)', async () => {
+    const { engine } = makeBounceEngine()
+    withStems(engine)
+    const runtime = new LiveCodingRuntime('bs-1', engine, () => 'drums: s("bd sd")\n$: s("hh*4")')
+    await runtime.play()
+    await runtime.setLoopRange({ startCycle: 3, cycles: 2 })
+    engine.callLog.length = 0
+
+    const out = await runtime.bounceStemsOffline(4)
+
+    expect(runtime.canBounceStems()).toBe(true)
+    expect(engine.callLog).toEqual([
+      'stop',
+      'setTransportOffset(0)',
+      'setLoopRange(null)',
+      'evaluate',
+      'renderLoadedStemsReport',
+      'setLoopRange(3,2)',
+    ])
+    expect(runtime.getIsPlaying()).toBe(false)
+    expect(out?.stems.map((s) => [s.id, s.fileName, s.blob !== undefined, s.error !== undefined])).toEqual([
+      ['drums', '01-drums.wav', true, false],
+      ['$0', '02-d2.wav', false, true],
+      ['(song)', '03-song-level.wav', true, false],
+    ])
+    runtime.dispose()
+  })
+
+  it('stems: passes the signal and progress down, and a cancel returns null (#1648)', async () => {
+    const { engine, getLoop } = makeBounceEngine()
+    const runtime = new LiveCodingRuntime('bs-2', engine, () => 'code')
+    await runtime.setLoopRange({ startCycle: 3, cycles: 2 })
+    const controller = new AbortController()
+    const onProgress = vi.fn()
+    let seen: unknown[] = []
+    ;(engine as unknown as Record<string, unknown>).renderLoadedStemsReport = vi.fn(async (...args: unknown[]) => {
+      seen = args
+      controller.abort()
+      throw Object.assign(new Error('The render was cancelled.'), { name: 'RenderCancelledError' })
+    })
+    expect(await runtime.bounceStemsOffline(4, controller.signal, onProgress)).toBeNull()
+    expect(seen).toEqual([4, undefined, controller.signal, onProgress])
+    expect(getLoop()).toEqual({ startCycle: 3, cycles: 2 })
+    runtime.dispose()
+  })
+
+  it('stems: a document that does not evaluate throws and renders nothing (#1648)', async () => {
+    const { engine } = makeBounceEngine()
+    withStems(engine)
+    const runtime = new LiveCodingRuntime('bs-3', engine, () => 'broken')
+    engine.setEvalResult({ error: new Error('nosuchmethod is not a function') })
+    await expect(runtime.bounceStemsOffline(4)).rejects.toThrow('nosuchmethod')
+    expect(engine.callLog).not.toContain('renderLoadedStemsReport')
+    runtime.dispose()
+  })
+
+  it('stems: an engine that cannot split returns null and touches nothing (#1648)', async () => {
+    const engine = createMockEngine()
+    const runtime = new LiveCodingRuntime('bs-4', engine, () => 'code')
+    engine.callLog.length = 0
+    expect(runtime.canBounceStems()).toBe(false)
+    expect(await runtime.bounceStemsOffline(4)).toBeNull()
+    expect(engine.callLog).toEqual([])
+    runtime.dispose()
+  })
 })

@@ -73,6 +73,8 @@ export { BufferedScheduler } from './engine/BufferedScheduler'
 export { WavEncoder, SilentCaptureError, SILENCE_FLOOR } from './engine/WavEncoder'
 export type { EncodeOptions } from './engine/WavEncoder'
 export type { StemOutcome } from './engine/renderStemsInOrder'
+export { SONG_LEVEL_STEM } from './engine/stemSplit'
+export { SONG_LEVEL_STEM_NAME } from './visualEdit/mixer/stemNames'
 export { describeSkipped } from './engine/renderPatternOffline'
 export type { SkippedSounds } from './engine/renderPatternOffline'
 export { LiveRecorder } from './engine/LiveRecorder'
@@ -526,6 +528,7 @@ export type { AudioSourceRef, AudioPayload, WorkspaceAudioBus } from './workspac
 
 // Runtime provider registry + built-ins
 export { LiveCodingRuntime } from './workspace/runtime/LiveCodingRuntime'
+export type { BouncedStem } from './workspace/runtime/LiveCodingRuntime'
 export type {
   LiveCodingRuntime as LiveCodingRuntimeInterface,
   LiveCodingRuntimeProvider,

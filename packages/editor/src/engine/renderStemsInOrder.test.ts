@@ -84,4 +84,43 @@ describe('renderStemsInOrder (#1409)', () => {
     const out = await renderStemsInOrder({}, f.render, (s) => seen.push(s))
     expect({ out, seen, renders: f.state.order.length }).toEqual({ out: {}, seen: [], renders: 0 })
   })
+
+  it('a cancel before a stem stops the set and throws the cancel (#1648)', async () => {
+    const f = fakeRender()
+    const controller = new AbortController()
+    const cancelled = new Error('cancelled')
+    const run = renderStemsInOrder({ a: 'A', b: 'B', c: 'C' }, f.render, (stem) => {
+      if (stem === 'a') controller.abort()
+    }, { signal: controller.signal, error: () => cancelled })
+    await expect(run).rejects.toBe(cancelled)
+    expect(f.state.order).toEqual(['A'])
+  })
+
+  it('a stem that throws while cancelled rethrows, rather than counting as one failed stem (#1648)', async () => {
+    const controller = new AbortController()
+    const thrown = new Error('render cancelled mid-stem')
+    const f = fakeRender((code) => {
+      if (code === 'B') {
+        controller.abort()
+        return thrown
+      }
+      return null
+    })
+    const run = renderStemsInOrder({ a: 'A', b: 'B', c: 'C' }, f.render, undefined, {
+      signal: controller.signal,
+      error: () => new Error('not this one'),
+    })
+    await expect(run).rejects.toBe(thrown)
+    expect(f.state.order).toEqual(['A', 'B'])
+  })
+
+  it('without a cancel, a failure is still one failed stem (#1648 control)', async () => {
+    const controller = new AbortController()
+    const f = fakeRender((code) => (code === 'B' ? new Error('x') : null))
+    const out = await renderStemsInOrder({ a: 'A', b: 'B', c: 'C' }, f.render, undefined, {
+      signal: controller.signal,
+      error: () => new Error('cancel'),
+    })
+    expect(Object.values(out).map((o) => o.ok)).toEqual([true, false, true])
+  })
 })

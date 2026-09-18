@@ -59,6 +59,11 @@ export type BounceState =
       cancelling?: boolean;
       /** #1650 — seconds rendered so far; absent until the render first reports. */
       rendered?: number;
+      /**
+       * #1648 — set when this render is a stems export. `rendered` then counts
+       * across every stem, out of `total`.
+       */
+      stems?: { total: number };
     }
   | { phase: "encoding" };
 
@@ -77,8 +82,14 @@ interface BounceModalProps {
    * while choosing, which has to say what Start will cost before it is pressed.
    */
   offline: boolean;
+  /**
+   * #1648 — whether the active file can export one WAV per track. Stems render
+   * offline only, so the choice is shown only when both hold.
+   */
+  stemsAvailable?: boolean;
   onClose: () => void;
-  onStart: (seconds: number) => void;
+  /** `stems` is true when the user chose one WAV per track (#1648). */
+  onStart: (seconds: number, stems: boolean) => void;
   onStop: () => void;
 }
 
@@ -87,11 +98,20 @@ export function BounceModal({
   state,
   sizing,
   offline,
+  stemsAvailable = false,
   onClose,
   onStart,
   onStop,
 }: BounceModalProps) {
   const [selected, setSelected] = useState<number>(DURATIONS[0]);
+  // #1648 — Mix or Stems. Reset to Mix each time the dialog opens, so a stems
+  // export is always a choice made for this bounce.
+  const [stemsChosen, setStemsChosen] = useState(false);
+  const canStems = offline && stemsAvailable;
+  const stems = canStems && stemsChosen;
+  useEffect(() => {
+    if (!open) setStemsChosen(false);
+  }, [open]);
   const startBtnRef = useRef<HTMLButtonElement>(null);
 
   // #1652 — the path sets the ceiling, so an offline render is offered repeats a
@@ -136,7 +156,7 @@ export function BounceModal({
     return () => document.removeEventListener("keydown", handler);
   }, [open, state.phase, onClose, onStop]);
 
-  const handleStart = useCallback(() => onStart(selected), [onStart, selected]);
+  const handleStart = useCallback(() => onStart(selected, stems), [onStart, selected, stems]);
 
   if (!open) return null;
 
@@ -223,7 +243,36 @@ export function BounceModal({
                   </button>
                 ))}
               </div>
-              {offline ? (
+              {canStems && (
+                <>
+                  <div style={{ ...styles.sectionLabel, marginTop: 14 }}>Export</div>
+                  <div style={styles.grid} data-testid="bounce-export-kind">
+                    {[
+                      { label: "Mix", value: false },
+                      { label: "Stems", value: true },
+                    ].map((o) => (
+                      <button
+                        key={o.label}
+                        onClick={() => setStemsChosen(o.value)}
+                        aria-pressed={o.value === stems}
+                        style={{
+                          ...styles.card,
+                          ...(o.value === stems ? styles.cardSelected : {}),
+                        }}
+                      >
+                        <div style={styles.cardName}>{o.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {stems ? (
+                <p style={styles.note}>
+                  Exports one WAV per track in a zip, each {selectedLabel} long and
+                  lined up with the mix, with the song&apos;s shared effects on every
+                  track. Playback stops while it renders.
+                </p>
+              ) : offline ? (
                 <p style={styles.note}>
                   Bouncing renders {selectedLabel} of audio faster than real time,
                   through the same sounds as playback. Playback stops while it
@@ -269,7 +318,9 @@ export function BounceModal({
           {state.phase === "rendering" && !state.cancelling && (
             <>
               <div style={styles.sectionLabel}>
-                Rendering {formatDuration(state.seconds)} of audio…
+                {state.stems
+                  ? `Rendering stems — ${formatDuration(state.seconds)} each…`
+                  : `Rendering ${formatDuration(state.seconds)} of audio…`}
               </div>
               {/* #1650 — the same bar the live take draws, filled from how far
                   the render has got. Absent until the first report, rather
@@ -279,13 +330,13 @@ export function BounceModal({
                   style={styles.track}
                   role="progressbar"
                   aria-valuemin={0}
-                  aria-valuemax={state.seconds}
+                  aria-valuemax={state.stems?.total ?? state.seconds}
                   aria-valuenow={Math.floor(state.rendered)}
                 >
                   <div
                     style={{
                       ...styles.fill,
-                      width: `${Math.min(100, (state.rendered / Math.max(state.seconds, 1e-9)) * 100)}%`,
+                      width: `${Math.min(100, (state.rendered / Math.max(state.stems?.total ?? state.seconds, 1e-9)) * 100)}%`,
                     }}
                   />
                 </div>

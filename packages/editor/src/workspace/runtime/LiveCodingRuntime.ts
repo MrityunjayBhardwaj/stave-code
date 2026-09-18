@@ -114,6 +114,7 @@ import {
   type LoopRange,
 } from '../../engine/transportFrame'
 import { workspaceAudioBus } from '../WorkspaceAudioBus'
+import { stemFileNames } from '../../visualEdit/mixer/stemNames'
 import type {
   AudioPayload,
   LiveCodingRuntime as LiveCodingRuntimeInterface,
@@ -145,6 +146,19 @@ const LIVE_MODE_DEBOUNCE_MS = 500
  * disposer is called by the runtime when it tears down the subscription.
  */
 export type SubscribeToRuntimeFile = (cb: () => void) => () => void
+
+/** #1648 — one track of a stems export. `blob` is absent when the stem was silent or failed. */
+export interface BouncedStem {
+  /** The engine's track id (`d1`, `drums`, `$0`), or `SONG_LEVEL_STEM`. */
+  id: string
+  /** Numbered, file-system safe, named as the mixer names the track. */
+  fileName: string
+  blob?: Blob
+  /** Why there is no blob. A `SilentCaptureError` for a track that made no sound. */
+  error?: unknown
+  haps: number
+  skipped: Array<{ reason: string; count: number }>
+}
 
 /**
  * Parse `setcps(numerator/denominator)` (or `setcps(value)`) out of the
@@ -756,6 +770,82 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
    * render began, or during it (#1655: the render stops being fed at its next
    * pause and keeps nothing).
    *
+   * It loads the document first, in the song frame, and leaves the transport
+   * stopped: `renderLoadedDocument` owns that, and says why.
+   */
+  async bounceOffline(
+    seconds: number,
+    signal?: AbortSignal,
+    /** #1650 — seconds of the song rendered so far. */
+    onProgress?: (renderedSeconds: number) => void,
+  ): Promise<{ blob: Blob; haps: number; played: number; skipped: Array<{ reason: string; count: number }> } | null> {
+    const engine = this.engine as {
+      renderLoadedReport?: (
+        s: number,
+        sampleRate?: number,
+        signal?: AbortSignal,
+        onProgress?: (renderedSeconds: number) => void,
+      ) => Promise<{ blob: Blob; haps: number; played: number; skipped: Array<{ reason: string; count: number }> }>
+    }
+    if (this.isDisposed || typeof engine.renderLoadedReport !== 'function') return null
+    const render = engine.renderLoadedReport.bind(this.engine)
+    return this.renderLoadedDocument(signal, () => render(seconds, undefined, signal, onProgress))
+  }
+
+  /**
+   * #1648 — whether this runtime can export stems: the engine renders its loaded
+   * document one track at a time. Duck-typed like `canBounceOffline`.
+   */
+  canBounceStems(): boolean {
+    if (this.isDisposed) return false
+    return typeof (this.engine as { renderLoadedStemsReport?: unknown }).renderLoadedStemsReport === 'function'
+  }
+
+  /**
+   * #1648 — render `seconds` of this runtime's document as one WAV per track,
+   * each named as the mixer names it (`stemFileNames`), in document order.
+   *
+   * Loads the document exactly as `bounceOffline` does, in the same frame and
+   * with the same refusals, because the stems must line up with a master bounce
+   * of the same document. Returns null when the engine cannot, or when `signal`
+   * aborted, before or during the set. A stem that is silent or fails comes back
+   * with its `error` and no blob.
+   */
+  async bounceStemsOffline(
+    seconds: number,
+    signal?: AbortSignal,
+    /** Seconds rendered across the whole set, out of `totalSeconds`. */
+    onProgress?: (renderedSeconds: number, totalSeconds: number) => void,
+  ): Promise<{ stems: BouncedStem[] } | null> {
+    type Report = { blob: Blob; haps: number; played: number; skipped: Array<{ reason: string; count: number }> }
+    const engine = this.engine as {
+      renderLoadedStemsReport?: (
+        s: number,
+        sampleRate?: number,
+        signal?: AbortSignal,
+        onProgress?: (renderedSeconds: number, totalSeconds: number) => void,
+      ) => Promise<{ order: string[]; stems: Record<string, ({ ok: true } & Report) | { ok: false; error: unknown }> }>
+    }
+    if (this.isDisposed || typeof engine.renderLoadedStemsReport !== 'function') return null
+    const render = engine.renderLoadedStemsReport.bind(this.engine)
+    const out = await this.renderLoadedDocument(signal, () => render(seconds, undefined, signal, onProgress))
+    if (!out) return null
+    const names = stemFileNames(this.getFileContent(), out.order)
+    return {
+      stems: out.order.map((id, i) => {
+        const o = out.stems[id]
+        return o.ok
+          ? { id, fileName: names[i], blob: o.blob, haps: o.haps, skipped: o.skipped }
+          : { id, fileName: names[i], error: o.error, haps: 0, skipped: [] }
+      }),
+    }
+  }
+
+  /**
+   * Load this runtime's document for an offline render and run `render` on it
+   * (#1344). Shared by the master bounce and the stems (#1648), so both render
+   * the same load in the same frame.
+   *
    * ⚠ IT RENDERS THE DOCUMENT AS LOADED, SO IT LOADS IT FIRST, THE WAY PLAY
    * DOES. The engine's evaluate window is the only place `setcps`, `$:` and
    * `.viz` exist, and a render that evaluates outside it refuses nearly every
@@ -773,26 +863,16 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
    *
    * ⚠ A DOCUMENT THAT DOES NOT EVALUATE THROWS ITS ERROR AND RENDERS NOTHING.
    * What is loaded after a failed evaluate is the previous document.
+   *
+   * Returns null when `signal` aborted before the render, or the render was
+   * cancelled (#1655).
    */
-  async bounceOffline(
-    seconds: number,
-    signal?: AbortSignal,
-    /** #1650 — seconds of the song rendered so far. */
-    onProgress?: (renderedSeconds: number) => void,
-  ): Promise<{ blob: Blob; haps: number; played: number; skipped: Array<{ reason: string; count: number }> } | null> {
+  private async renderLoadedDocument<T>(signal: AbortSignal | undefined, render: () => Promise<T>): Promise<T | null> {
     const engine = this.engine as {
-      renderLoadedReport?: (
-        s: number,
-        sampleRate?: number,
-        signal?: AbortSignal,
-        onProgress?: (renderedSeconds: number) => void,
-      ) => Promise<{ blob: Blob; haps: number; played: number; skipped: Array<{ reason: string; count: number }> }>
       setTransportOffset?: (offset: number) => void
       getLoopRange?: () => LoopRange | null
       setLoopRange?: (range: LoopRange | null) => void
     }
-    if (this.isDisposed || typeof engine.renderLoadedReport !== 'function') return null
-
     this.stop()
     engine.setTransportOffset?.(0)
     const loopBeforeBounce = engine.getLoopRange?.() ?? null
@@ -811,7 +891,7 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
       }
       if (signal?.aborted) return null
       try {
-        return await engine.renderLoadedReport(seconds, undefined, signal, onProgress)
+        return await render()
       } catch (err) {
         // A cancelled render is not a failure. Decided by the signal, not by
         // the error's name alone: the name is a string any error could carry.

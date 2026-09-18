@@ -21,24 +21,33 @@
  * field here either. A caller that wants it asks
  * `outcome.error instanceof SilentCaptureError` and reads `refused`.
  *
+ * ⚠ A CANCEL STOPS THE SET, it is not one more failed stem (#1648). Once `signal`
+ * has aborted, no further stem starts, and a stem that throws while the signal
+ * is aborted rethrows, so the caller sees the cancel rather than a set of stems
+ * each marked failed.
+ *
  * Deliberately free of imports so the ordering can be driven by fakes: the
- * render arrives as an argument.
+ * render arrives as an argument, and so does the error a cancel throws.
  */
 
 export type StemOutcome<R> = ({ ok: true } & R) | { ok: false; error: unknown }
 
-export async function renderStemsInOrder<R extends object>(
-  stems: Record<string, string>,
-  render: (code: string) => Promise<R>,
-  onProgress?: (stem: string, i: number, total: number) => void
+export async function renderStemsInOrder<I, R extends object>(
+  stems: Record<string, I>,
+  render: (input: I, key: string, i: number) => Promise<R>,
+  onProgress?: (stem: string, i: number, total: number) => void,
+  /** #1648 — stops the set: see above. */
+  cancel?: { signal: AbortSignal; error: () => Error },
 ): Promise<Record<string, StemOutcome<R>>> {
   const keys = Object.keys(stems)
   const outcomes: Record<string, StemOutcome<R>> = {}
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i]
+    if (cancel?.signal.aborted) throw cancel.error()
     try {
-      outcomes[key] = { ok: true, ...(await render(stems[key])) }
+      outcomes[key] = { ok: true, ...(await render(stems[key], key, i)) }
     } catch (error) {
+      if (cancel?.signal.aborted) throw error
       outcomes[key] = { ok: false, error }
     }
     onProgress?.(key, i + 1, keys.length)
