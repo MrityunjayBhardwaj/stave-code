@@ -2102,6 +2102,9 @@ export class StrudelEngine implements LiveCodingEngine {
         // found" in a bounce while it played live.
         superdough: (value, t, hapDuration, cps, cycle) =>
           wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? undefined).value, t, hapDuration, cps, cycle),
+        // #1675 — a reverb's impulse response lands asynchronously; the render
+        // waits for it at each window instead of rendering the room silent.
+        settle: wa.reverbsReady,
         createContext: (frames, rate) => new OfflineAudioContext(2, frames, rate),
       }
     ))

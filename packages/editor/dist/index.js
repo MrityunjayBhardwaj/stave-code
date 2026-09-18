@@ -5462,6 +5462,7 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
     await deps.initAudio({});
     const windows = ctx.suspend && ctx.resume ? windowsOf(haps, cps) : [haps];
     await schedule(windows[0] ?? []);
+    await deps.settle?.();
     const failures = [];
     const pauses = windows.slice(1).map((window2, i) => {
       if (window2.length === 0) return Promise.resolve();
@@ -5470,6 +5471,7 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
         try {
           onProgress?.(Math.min(duration, (i + 1) * RENDER_WINDOW_SECONDS));
           if (!signal?.aborted) await schedule(window2);
+          await deps.settle?.();
         } catch (err) {
           failures.push(err);
         } finally {
@@ -9837,6 +9839,9 @@ var _StrudelEngine = class _StrudelEngine {
         // render calls superdough directly, so without this `kick` was "not
         // found" in a bounce while it played live.
         superdough: /* @__PURE__ */ __name((value, t, hapDuration, cps, cycle) => wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? void 0).value, t, hapDuration, cps, cycle), "superdough"),
+        // #1675 — a reverb's impulse response lands asynchronously; the render
+        // waits for it at each window instead of rendering the room silent.
+        settle: wa.reverbsReady,
         createContext: /* @__PURE__ */ __name((frames, rate) => new OfflineAudioContext(2, frames, rate), "createContext")
       }
     ));

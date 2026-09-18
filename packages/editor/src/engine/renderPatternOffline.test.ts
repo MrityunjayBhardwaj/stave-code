@@ -386,3 +386,68 @@ describe('renderPatternOffline — progress is reported from the pauses (#1650)'
     expect(heard).not.toContain(2 * W)
   })
 })
+
+describe('renderPatternOffline — the render waits for what a window asked for (#1675)', () => {
+  const W = RENDER_WINDOW_SECONDS
+  const P = W - RENDER_WINDOW_LEAD_SECONDS
+
+  /** A settle that yields first, the way a reverb's impulse response lands later. */
+  function settling(h: ReturnType<typeof pausingHarness>) {
+    h.deps.settle = async () => {
+      await new Promise((r) => setTimeout(r, 0))
+      h.log.push(`settle@${h.state.now}:${h.calls.length}`)
+    }
+  }
+
+  it('settles after each window is scheduled and before the render moves on from it', async () => {
+    const h = pausingHarness()
+    settling(h)
+    await renderPatternOffline(
+      patternOf([hap(0, { s: 'w0' }), hap(W + 1, { s: 'w1' }), hap(2 * W, { s: 'w2' })]),
+      { cps: 1, duration: 3 * W, sampleRate: 48000 },
+      h.deps
+    )
+    // `:n` is how many notes had been scheduled when it settled: each settle
+    // follows its own window's notes, and comes before the render continues.
+    expect(h.log).toEqual([
+      'settle@0:1',
+      'render',
+      `settle@${P}:2`,
+      `resume@${P}`,
+      `settle@${2 * W - RENDER_WINDOW_LEAD_SECONDS}:3`,
+      `resume@${2 * W - RENDER_WINDOW_LEAD_SECONDS}`,
+    ])
+  })
+
+  it('without pauses it settles once, before rendering starts', async () => {
+    const h = harness()
+    const order: string[] = []
+    h.deps.settle = async () => {
+      await new Promise((r) => setTimeout(r, 0))
+      order.push(`settle:${h.calls.length}`)
+    }
+    const create = h.deps.createContext
+    h.deps.createContext = (frames, rate) => {
+      const ctx = create(frames, rate)
+      return { startRendering: () => (order.push('render'), ctx.startRendering()) }
+    }
+    await renderPatternOffline(patternOf([hap(0, { s: 'a' }), hap(1, { s: 'b' })]), OPTS, h.deps)
+    expect(order).toEqual(['settle:2', 'render'])
+  })
+
+  it('a settle that fails at a pause still resumes the render, and the error reaches the caller', async () => {
+    const h = pausingHarness()
+    h.deps.settle = async () => {
+      if (h.state.now > 0) throw new Error('impulse response failed')
+    }
+    await expect(
+      renderPatternOffline(
+        patternOf([hap(0, { s: 'a' }), hap(W, { s: 'b' }), hap(2 * W, { s: 'c' })]),
+        { cps: 1, duration: 3 * W, sampleRate: 48000 },
+        h.deps
+      )
+    ).rejects.toThrow('impulse response failed')
+    expect(h.log.filter((l) => l.startsWith('resume'))).toHaveLength(2)
+    expect([h.state.ctx, h.state.controller]).toEqual([LIVE_CTX, LIVE_CONTROLLER])
+  })
+})

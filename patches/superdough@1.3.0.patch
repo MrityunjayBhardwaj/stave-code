@@ -1,5 +1,5 @@
 diff --git a/dist/index.mjs b/dist/index.mjs
-index da81977b3a8f9cb8af08440c61990437041f69b7..1fdfb8c9459a952bdb7b55ad72b87288aac118cd 100644
+index da81977b3a8f9cb8af08440c61990437041f69b7..49f1bdcd262e5512572e1d9f58b97c5894bc40f9 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -24,32 +24,50 @@ function ct(e, t = "superdough") {
@@ -96,8 +96,21 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..1fdfb8c9459a952bdb7b55ad72b87288
    return c.connect(e.destination), a.connect(c), ue(a, () => {
      Y(c), Y(a), t();
    }), a.start(n), a.stop(o), a;
-@@ -480,9 +508,9 @@ const Bt = (e) => e / (1 + e), Kn = (e, t) => (e % t + t) % t, gn = (e, t) => (1
+@@ -478,11 +506,22 @@ const Bt = (e) => e / (1 + e), Kn = (e, t) => (e % t + t) % t, gn = (e, t) => (1
+ }, kn = (e, t) => {
+   ue(e, () => t.forEach((n) => Y(n)));
  };
++// Stave (#1675): an impulse response is built asynchronously (reverbGen renders it
++// through an OfflineAudioContext of its own) and the convolver is silent until it
++// lands. Live, that is a few milliseconds. An offline render runs far faster than
++// real time, so it was seconds of song with no reverb, ending at a point that
++// moved with wall-clock timing. `reverbsReady()` resolves once every impulse
++// response requested so far has been handed to its convolver, so a render can
++// wait for it before rendering on.
++const __sdPendingReverbs = /* @__PURE__ */ new Set();
++function __sdReverbsReady() {
++  return Promise.all([...__sdPendingReverbs]);
++}
  var mt = {};
  mt.generateReverb = function(e, t) {
 -  for (var n = e.audioContext || new AudioContext(), o = n.sampleRate, a = e.numChannels || 2, c = e.decayTime * 1.5, s = Math.round(e.decayTime * o), d = Math.round(c * o), l = Math.round((e.fadeInTime || 0) * o), i = Math.pow(1 / 1e3, 1 / s), p = n.createBuffer(a, d, o), r = 0; r < a; r++) {
@@ -108,7 +121,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..1fdfb8c9459a952bdb7b55ad72b87288
      for (var u = 0; u < l; u++)
        h[u] *= u / l;
    }
-@@ -512,8 +540,6 @@ var Pn = function(e, t, n, o, a) {
+@@ -512,8 +551,6 @@ var Pn = function(e, t, n, o, a) {
    for (var t = [], n = 0; n < e.numberOfChannels; n++)
      t[n] = e.getChannelData(n);
    return t;
@@ -117,7 +130,32 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..1fdfb8c9459a952bdb7b55ad72b87288
  };
  typeof AudioContext < "u" && (BaseAudioContext.prototype.adjustLength = function(e, t, n = 1, o = 0) {
    const a = Math.floor(se(o, 0, 1) * t.length), c = t.sampleRate * e, s = this.createBuffer(t.numberOfChannels, t.length, t.sampleRate);
-@@ -607,7 +633,7 @@ if (typeof GainNode < "u") {
+@@ -528,7 +565,14 @@ typeof AudioContext < "u" && (BaseAudioContext.prototype.adjustLength = function
+ }, BaseAudioContext.prototype.createReverb = function(e, t, n, o, a, c, s) {
+   const d = this.createConvolver();
+   return d.generate = (l = 2, i = 0.1, p = 15e3, r = 1e3, h, u, m) => {
+-    d.duration = l, d.fade = i, d.lp = p, d.dim = r, d.ir = h, d.irspeed = u, d.irbegin = m, h ? d.buffer = this.adjustLength(l, h, u, m) : mt.generateReverb(
++    if (h) {
++      d.duration = l, d.fade = i, d.lp = p, d.dim = r, d.ir = h, d.irspeed = u, d.irbegin = m, d.buffer = this.adjustLength(l, h, u, m);
++      return;
++    }
++    d.duration = l, d.fade = i, d.lp = p, d.dim = r, d.ir = h, d.irspeed = u, d.irbegin = m;
++    let __landed;
++    const __ready = new Promise((G) => __landed = G);
++    __sdPendingReverbs.add(__ready), mt.generateReverb(
+       {
+         audioContext: this,
+         numChannels: 2,
+@@ -538,7 +582,7 @@ typeof AudioContext < "u" && (BaseAudioContext.prototype.adjustLength = function
+         lpFreqEnd: r
+       },
+       (G) => {
+-        d.buffer = G;
++        d.buffer = G, __sdPendingReverbs.delete(__ready), __landed();
+       }
+     );
+   }, d.generate(e, t, n, o, a, c, s), d;
+@@ -607,7 +651,7 @@ if (typeof GainNode < "u") {
      return new e(this, t);
    };
  }
@@ -126,7 +164,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..1fdfb8c9459a952bdb7b55ad72b87288
    stretch: { node: "stretch", param: "pitchFactor" },
    gain: { node: "gain", param: "gain" },
    postgain: { node: "post", param: "gain" },
-@@ -962,7 +988,7 @@ const ao = async (e, t = e._base || "", n = {}) => {
+@@ -962,7 +1006,7 @@ const ao = async (e, t = e._base || "", n = {}) => {
      },
      t
    );
@@ -135,7 +173,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..1fdfb8c9459a952bdb7b55ad72b87288
  async function so(e, t, n, o, a) {
    let {
      s: c,
-@@ -1006,8 +1032,10 @@ async function so(e, t, n, o, a) {
+@@ -1006,8 +1050,10 @@ async function so(e, t, n, o, a) {
      y.stop(k);
    }, I = { node: g, nodes: { source: [y], ...W?.nodes }, stop: K };
    if (d !== void 0) {
@@ -148,7 +186,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..1fdfb8c9459a952bdb7b55ad72b87288
    }
    return I;
  }
-@@ -2297,6 +2325,16 @@ function ko(e = 1, t = 0.05, n = 220, o = 0, a = 0, c = 0.1, s = 0, d = 1, l = 0
+@@ -2297,6 +2343,16 @@ function ko(e = 1, t = 0.05, n = 220, o = 0, a = 0, c = 0.1, s = 0, d = 1, l = 0
      Math.cos(m * C++), g += E - E * u * (1 - (Math.sin(K) + 1) * 1e9 % 2), I && ++I > r && (n += p, F += p, I = 0), h && !(++k % h) && (n = F, l = Q, I ||= 1);
    return N;
  }
@@ -165,7 +203,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..1fdfb8c9459a952bdb7b55ad72b87288
  const Po = (e, t) => {
    let {
      s: n,
-@@ -2328,7 +2366,7 @@ const Po = (e, t) => {
+@@ -2328,7 +2384,7 @@ const Po = (e, t) => {
    p = n === "square" ? 0 : p;
    const g = (
      /* ZZFX. */
@@ -174,7 +212,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..1fdfb8c9459a952bdb7b55ad72b87288
        0.25,
        // volume
        c,
-@@ -2351,7 +2389,7 @@ const Po = (e, t) => {
+@@ -2351,7 +2407,7 @@ const Po = (e, t) => {
        // sustain volume!
        d,
        Z
@@ -183,6 +221,14 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..1fdfb8c9459a952bdb7b55ad72b87288
    ), C = z(), K = C.createBuffer(1, g.length, C.sampleRate);
    K.getChannelData(0).set(g);
    const I = z().createBufferSource();
+@@ -2533,5 +2589,6 @@ export {
+   pc as superdoughTrigger,
+   Ao as tables,
+   Fo as waveformN,
+-  pe as webAudioTimeout
++  pe as webAudioTimeout,
++  __sdReverbsReady as reverbsReady
+ };
 diff --git a/helpers.mjs b/helpers.mjs
 index 07199aff6e3ce288b4151b86d9e0dbf39e143025..490c8fb8234a230988b8fec45c7fbfefcdd353ce 100644
 --- a/helpers.mjs
@@ -200,6 +246,15 @@ index 07199aff6e3ce288b4151b86d9e0dbf39e143025..490c8fb8234a230988b8fec45c7fbfef
    zeroGain.connect(audioContext.destination);
    constantNode.connect(zeroGain);
  
+diff --git a/index.mjs b/index.mjs
+index c3d2f6c52e481aa38b4a56fb2e90766465ce65b5..143607432a02f35df0e40f0ad05783d5d6f4e73b 100644
+--- a/index.mjs
++++ b/index.mjs
+@@ -14,3 +14,4 @@ export * from './modulators.mjs';
+ export * from './dspworklet.mjs';
+ export * from './audioContext.mjs';
+ export * from './wavetable.mjs';
++export { reverbsReady } from './reverb.mjs';
 diff --git a/nodePools.mjs b/nodePools.mjs
 index 90b4c0ae7e968a4bb78430ba9384c60f69910af9..61997d333f86eaf4769f18e10964ec7a1189b834 100644
 --- a/nodePools.mjs
@@ -296,6 +351,49 @@ index 52d9306a18f68d286cee82df68a5ee3acb40660d..49ce3665b4c4913bd8f8af0eb6542f22
    o.loop = true;
    o.start(t);
    return {
+diff --git a/reverb.mjs b/reverb.mjs
+index c8b6eb3e5b3222b1d28b991582fb881c08cfbd26..06b6817dd9dc2f825c9f7927ab474873fdad3275 100644
+--- a/reverb.mjs
++++ b/reverb.mjs
+@@ -1,6 +1,19 @@
+ import reverbGen from './reverbGen.mjs';
+ import { clamp } from './util.mjs';
+ 
++// Stave (#1675): an impulse response is built asynchronously (reverbGen renders it
++// through an OfflineAudioContext of its own) and the convolver is silent until it
++// lands. Live, that is a few milliseconds. An offline render runs far faster than
++// real time, so it was seconds of song with no reverb, ending at a point that
++// moved with wall-clock timing. `reverbsReady()` resolves once every impulse
++// response requested so far has been handed to its convolver, so a render can
++// wait for it before rendering on.
++const pendingReverbs = new Set();
++
++export function reverbsReady() {
++  return Promise.all([...pendingReverbs]);
++}
++
+ if (typeof AudioContext !== 'undefined') {
+   BaseAudioContext.prototype.adjustLength = function (duration, buffer, speed = 1, offsetAmount = 0) {
+     const sampleOffset = Math.floor(clamp(offsetAmount, 0, 1) * buffer.length);
+@@ -36,6 +49,9 @@ if (typeof AudioContext !== 'undefined') {
+       if (ir) {
+         convolver.buffer = this.adjustLength(d, ir, irspeed, irbegin);
+       } else {
++        let landed;
++        const ready = new Promise((resolve) => (landed = resolve));
++        pendingReverbs.add(ready);
+         reverbGen.generateReverb(
+           {
+             audioContext: this,
+@@ -47,6 +63,8 @@ if (typeof AudioContext !== 'undefined') {
+           },
+           (buffer) => {
+             convolver.buffer = buffer;
++            pendingReverbs.delete(ready);
++            landed();
+           },
+         );
+       }
 diff --git a/reverbGen.mjs b/reverbGen.mjs
 index 0949a30d597a9775941440dccc54cadc61d0878e..52aaaa467bacda1fb42dc1e1adc97595fd296cab 100644
 --- a/reverbGen.mjs
