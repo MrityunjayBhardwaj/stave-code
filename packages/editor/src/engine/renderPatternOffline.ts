@@ -57,6 +57,16 @@
  *    so `onProgress` hears the song time of every pause and then the full
  *    length when the render ends. Without pauses it hears only the end.
  *
+ * 7. ⚠ THE RENDER WAITS FOR WHAT A WINDOW'S NOTES ASKED FOR (#1675). A reverb's
+ *    impulse response is built asynchronously, and its convolver is silent until
+ *    it lands. Live that is a few milliseconds; an offline render runs so much
+ *    faster than real time that it was seconds of song — measured, the room
+ *    arrived 3.95–4.63 s into the render, never at the same point twice, so
+ *    every bounce started dry and no two bounces matched. Every window is
+ *    scheduled while the render is held (before `startRendering`, or at a
+ *    pause), so waiting on `settle` there places anything a window requested
+ *    at the render time it was requested, on every run.
+ *
  * Deliberately free of imports so every step can be driven by fakes: the
  * accessors arrive as `deps`.
  */
@@ -74,6 +84,12 @@ export interface OfflineGraphDeps {
     cps: number,
     cycle: number
   ): Promise<unknown>
+  /**
+   * Resolves once everything the notes scheduled so far asked for is in place —
+   * a reverb's impulse response, which superdough builds asynchronously (#1675).
+   * Awaited after each window is scheduled, while the render is still held.
+   */
+  settle?(): Promise<unknown>
   /** A stereo offline context of `frames` length — `new OfflineAudioContext(2, frames, sampleRate)`. */
   createContext(frames: number, sampleRate: number): OfflineRenderContext
 }
@@ -199,6 +215,7 @@ export async function renderPatternOffline(
 
     const windows = ctx.suspend && ctx.resume ? windowsOf(haps, cps) : [haps]
     await schedule(windows[0] ?? [])
+    await deps.settle?.()
 
     // Every later window is scheduled from a pause the render reaches on its
     // own. The render is held until `resume`, so a window whose samples are
@@ -212,6 +229,7 @@ export async function renderPatternOffline(
         try {
           onProgress?.(Math.min(duration, (i + 1) * RENDER_WINDOW_SECONDS))
           if (!signal?.aborted) await schedule(window)
+          await deps.settle?.()
         } catch (err) {
           failures.push(err)
         } finally {

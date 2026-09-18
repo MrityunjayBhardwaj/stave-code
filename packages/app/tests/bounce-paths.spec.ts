@@ -529,6 +529,29 @@ test.describe('the three audio-bounce paths', () => {
     })
   })
 
+  test('a room that cannot be built does not hold the render forever (#1675)', async ({ page }) => {
+    test.setTimeout(120000)
+    await openApp(page)
+    // The render waits for every reverb's impulse response before it moves on.
+    // `size(0)` asks for a zero-length one, which throws while it is requested;
+    // measured before the guard, the render then waited forever. It must end
+    // like any other sound that cannot play: counted, with the rest audible.
+    const out = await Promise.race([
+      callReport(page, 'stack(note("c3*4").s("sawtooth"), note("e3*4").s("sawtooth").room(0.5).size(0))', 4),
+      page.waitForTimeout(30000).then(() => 'still rendering after 30s' as const),
+    ])
+    expect(out, 'the render ended').not.toBe('still rendering after 30s')
+    const report = out as ReportOutcome
+    const mono = report.wav ? readWav(report.wav).mono : new Float64Array()
+    console.log(`[#1675 size(0)] ok=${report.ok} played=${report.played} skipped=${JSON.stringify(report.skipped)}`)
+    expect({
+      ok: report.ok,
+      played: report.played,
+      skippedCount: report.skipped?.reduce((n, k) => n + k.count, 0),
+      audible: nonZeroCount(mono) > 0,
+    }).toEqual({ ok: true, played: 8, skippedCount: 8, audible: true })
+  })
+
   test('stems play their drums, and one silent stem costs no other stem (#1409)', async ({
     page,
   }) => {
