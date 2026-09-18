@@ -2765,9 +2765,19 @@ function namedIdOf(label) {
   return bare && bare !== "$" ? bare : null;
 }
 __name(namedIdOf, "namedIdOf");
-function trackIdsFromLabels(labels) {
-  const named = labels.map(namedIdOf);
-  const taken = new Set(named.filter((id) => id !== null));
+function trackIdsFromLabels(labels, commented = []) {
+  const claimed = labels.map(namedIdOf);
+  const taken = /* @__PURE__ */ new Set();
+  for (let i = 0; i < claimed.length; i++) {
+    const id = claimed[i];
+    if (id !== null && !commented[i]) taken.add(id);
+  }
+  const named = claimed.map((id, i) => {
+    if (id === null || !commented[i]) return id;
+    if (taken.has(id)) return null;
+    taken.add(id);
+    return id;
+  });
   return named.map((id, index) => {
     if (id !== null) return id;
     let n = index + 1;
@@ -3219,7 +3229,10 @@ function parseDocument(code, opts, record) {
         loc: [{ start: t.dollarStart, end: t.end }]
       }, isMutedLabel(t.label));
     }
-    const trackIds = trackIdsFromLabels(tracks.map((t) => t.label));
+    const trackIds = trackIdsFromLabels(
+      tracks.map((t) => t.label),
+      tracks.map((t) => t.commented)
+    );
     return IR.stack(
       ...tracks.map((t, i) => {
         const body = t.commented ? silent() : top(t.expr, t.offset, trackBindings);

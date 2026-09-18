@@ -74,12 +74,41 @@ function namedIdOf(label: string | undefined): string | null {
  * `d2:` keeps `d2`, and only the id the tool made up moves. Which track has to
  * move is a consequence of where the user wrote the label, not a choice.
  *
- * `labels` is in source order, one per `$:`/`name:` statement. Same purity as
- * above — no IR, no barrel.
+ * ⚠ A COMMENTED-OUT TRACK IS A SLOT, NOT A CLAIM (#1673). `//p1: …` keeps a
+ * `Track` of its own so the numbering holds still when a line is toggled — but
+ * written above a live `p1: …` it took the name verbatim, and `declaredTracks`
+ * kept the FIRST `p1`: the row was anchored on the comment and the statement
+ * the user was editing had none. Every duplicate id in the 558-document archive
+ * was this shape. So names are claimed in two rounds: every LIVE label first,
+ * then each commented label in source order if its name is still free (so
+ * commenting out a track with no live twin keeps its identity, and the first of
+ * two commented copies keeps the name). A commented label that loses falls back
+ * to a positional id exactly as `$:` does. A document with no such pair is
+ * assigned exactly what it was before.
+ *
+ * `labels` is in source order, one per `$:`/`name:` statement; `commented[i]`
+ * marks a `//`-commented one (absent = live). Same purity as above — no IR, no
+ * barrel.
  */
-export function trackIdsFromLabels(labels: readonly (string | undefined)[]): string[] {
-  const named = labels.map(namedIdOf)
-  const taken = new Set(named.filter((id): id is string => id !== null))
+export function trackIdsFromLabels(
+  labels: readonly (string | undefined)[],
+  commented: readonly boolean[] = [],
+): string[] {
+  const claimed = labels.map(namedIdOf)
+  const taken = new Set<string>()
+  for (let i = 0; i < claimed.length; i++) {
+    const id = claimed[i]
+    if (id !== null && !commented[i]) taken.add(id)
+  }
+  // #1673 — a COMMENTED label claims its name only where nothing live holds it,
+  // and the first commented copy wins. Settled here, before any positional id is
+  // handed out, so a positional id can never take a name a label still wants.
+  const named = claimed.map((id, i) => {
+    if (id === null || !commented[i]) return id
+    if (taken.has(id)) return null
+    taken.add(id)
+    return id
+  })
   return named.map((id, index) => {
     if (id !== null) return id
     let n = index + 1

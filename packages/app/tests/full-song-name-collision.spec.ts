@@ -117,3 +117,67 @@ test('a d2: label does not swallow the unlabelled tracks under it', async ({ pag
 
   expect(errors, errors.join('\n')).toEqual([])
 })
+
+/**
+ * #1673 — a `//`-commented copy of a named track sitting ABOVE the live one.
+ *
+ * A commented track keeps a row of its own (silent), so the numbering holds
+ * still when a line is toggled. But it took the name verbatim, the row source
+ * kept the FIRST track with a given name, and so the row called `p1` was the
+ * COMMENT: two rows for three statements, and the statement the user was
+ * editing had none. Every duplicate name in the 558-document archive was this
+ * shape.
+ *
+ * The third track is NAMED on purpose: an unnamed track under a commented one is
+ * numbered differently by the mixer (#1678), and this spec is about which track
+ * owns `p1`, not about that.
+ */
+const COMMENTED_SONG = ['//p1: s("bd*2")', 'p1: s("hh*4")', 'p2: s("cp*2")'].join('\n')
+
+test('a commented-out copy does not take the live track\'s name', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  await bootShell(page)
+  await typeSongAndEval(page, COMMENTED_SONG)
+
+  const timeline = await page.locator('[data-full-song-lane]').evaluateAll((els) =>
+    els.map((e) => ({
+      key: e.getAttribute('data-full-song-lane'),
+      dot: ((): string => {
+        const d = e.querySelector('[data-full-song-lane-dot]') as HTMLElement | null
+        return d ? getComputedStyle(d).backgroundColor : ''
+      })(),
+    })),
+  )
+
+  // Three statements, three rows — the commented one silent under a number of
+  // its own, the live `p1:` under its own name.
+  expect(timeline.map((l) => l.key)).toEqual(['d1', 'p1', 'p2'])
+
+  // The mixer has a strip only for what plays, so it lists the two live tracks.
+  // The live `p1` is the SAME track in both views: same name, same colour.
+  const root = page.locator('[data-bottom-panel="root"]')
+  await root.locator('[data-bottom-panel="toggle"]').click()
+  await root.locator('role=tab[name="Mixer"]').click()
+  const mixerPanel = root.locator('[data-bottom-panel-tab="mixer-console"]')
+  await mixerPanel.locator('[data-mixer-strip-name]').first().waitFor({ timeout: 10_000 })
+  const mixer = await mixerPanel.locator('[data-mixer-strip-id]').evaluateAll((els) =>
+    els.map((e) => ({
+      name: (e.querySelector('[data-mixer-strip-name]') as HTMLElement | null)?.textContent ?? '',
+      dot: ((): string => {
+        const d = e.querySelector('[data-mixer-strip-dot]') as HTMLElement | null
+        return d ? getComputedStyle(d).backgroundColor : ''
+      })(),
+    })),
+  )
+  expect(mixer.map((m) => m.name)).toEqual(['p1', 'p2'])
+  expect(timeline[1].dot).toMatch(/^rgb/)
+  expect(timeline[1].dot).toBe(mixer[0].dot)
+  expect(timeline[2].dot).toBe(mixer[1].dot)
+
+  expect(errors, errors.join('\n')).toEqual([])
+})
