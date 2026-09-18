@@ -7,7 +7,7 @@
  * same way the DISPLAY deriver (`labelAtOffset`) already does.
  */
 import { describe, it, expect } from 'vitest'
-import { trackIdFromLabel, isMutedLabel } from '../trackId'
+import { trackIdFromLabel, trackIdsFromLabels, isMutedLabel } from '../trackId'
 import { parseStrudel } from '../parseStrudel'
 import type { PatternIR } from '../PatternIR'
 
@@ -48,6 +48,77 @@ describe('parseStrudel — muted tracks keep their lane (#737 regression)', () =
 
   it('mixed muted/unmuted anon stay in their positional slots', () => {
     expect(trackIds(parseStrudel('$: s("bd")\n_$: s("hh")\n$: s("cp")'))).toEqual(['d1', 'd2', 'd3'])
+  })
+})
+
+describe('trackIdsFromLabels — ids are unique across the DOCUMENT (#1667)', () => {
+  it('leaves every non-colliding document byte-identical', () => {
+    // The safety property: the positional id starts at its own position, so a
+    // document whose names do not collide is assigned exactly what the
+    // per-track rule assigned before.
+    expect(trackIdsFromLabels(['$', '$', '$'])).toEqual(['d1', 'd2', 'd3'])
+    expect(trackIdsFromLabels(['drums', '$', 'bass'])).toEqual(['drums', 'd2', 'bass'])
+    expect(trackIdsFromLabels(['_$', '_drums'])).toEqual(['d1', 'drums'])
+    expect(trackIdsFromLabels([])).toEqual([])
+  })
+
+  it('counts a positional id past a name a LABEL claimed', () => {
+    // `d2:` is a legal label. The second statement's positional id was `d2` too
+    // — the same string, for a different track.
+    expect(trackIdsFromLabels(['d2', '$'])).toEqual(['d2', 'd3'])
+    // The claim holds wherever the label sits, before or after.
+    expect(trackIdsFromLabels(['$', 'd1'])).toEqual(['d2', 'd1'])
+  })
+
+  it('counts past a name ANOTHER POSITIONAL id took', () => {
+    // Positions 2 and 4 are unlabelled. Position 2 passes `d2` and `d3` (both
+    // claimed) to reach `d4`; position 4 must then pass THAT. Seeding the taken
+    // set with labels alone leaves these two positional ids equal — a collision
+    // between two ids the tool invented, with no label involved at all.
+    expect(trackIdsFromLabels(['d2', '$', 'd3', '$'])).toEqual(['d2', 'd4', 'd3', 'd5'])
+  })
+
+  it('assigns a distinct id to every track, for any arrangement of labels', () => {
+    const labels = ['d1', '$', 'd3', '$', 'd2', '$', '$']
+    const ids = trackIdsFromLabels(labels)
+    expect(new Set(ids).size).toBe(labels.length)
+    // and the user's own labels are never moved
+    expect([ids[0], ids[2], ids[4]]).toEqual(['d1', 'd3', 'd2'])
+  })
+
+  it('agrees with the per-track rule wherever that rule is still used', () => {
+    // `trackIdFromLabel` is the single-track entry point (index 0) — no
+    // siblings, so nothing to collide with. The two must not read a label
+    // differently.
+    for (const label of ['$', '_$', 'drums', '_drums', undefined]) {
+      expect(trackIdsFromLabels([label])).toEqual([trackIdFromLabel(label, 0)])
+    }
+  })
+})
+
+describe('parseStrudel — no two tracks share an id (#1667 regression)', () => {
+  it('a `d2:` label no longer swallows the track written after it', () => {
+    // Both statements became `Track('d2')`. `declaredTracks` de-dupes by id, so
+    // the Song timeline drew ONE row for two tracks and the second disappeared.
+    expect(trackIds(parseStrudel('d2: s("bd*2")\n$: s("hh*4")'))).toEqual(['d2', 'd3'])
+  })
+
+  it('keeps all three when a label collides with a later position', () => {
+    expect(trackIds(parseStrudel('d3: s("bd")\n$: s("hh")\n$: s("cp")'))).toEqual([
+      'd3',
+      'd2',
+      'd4',
+    ])
+  })
+
+  it('leaves a document with no collision exactly as it was', () => {
+    expect(trackIds(parseStrudel('drums: s("bd")\n$: s("hh")'))).toEqual(['drums', 'd2'])
+  })
+
+  it('holds for a muted colliding label too', () => {
+    // Identity strips the marker first, so `_d2:` claims `d2` just as `d2:`
+    // does — a muted track still owns its lane.
+    expect(trackIds(parseStrudel('_d2: s("bd")\n$: s("hh")'))).toEqual(['d2', 'd3'])
   })
 })
 

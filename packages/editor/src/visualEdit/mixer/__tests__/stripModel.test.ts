@@ -332,6 +332,28 @@ describe('buildStripModels — per-strip read model', () => {
     expect(dup[0].color).not.toBe(dup[1].color)
   })
 
+  it('never repeats a name a LABEL already claimed (#1667)', () => {
+    // `d2:` is a perfectly legal label, and the second track's positional name
+    // would have been `d2` too — two strips, one name, one colour. The
+    // positional name counts on past anything taken; the user's own label never
+    // moves.
+    const clash = stripsOf(['d2: s("bd*2")', '$: s("hh*4")'].join('\n'))
+    expect(clash.map((s) => s.name)).toEqual(['d2', 'd3'])
+    expect(clash[0].color).not.toBe(clash[1].color)
+  })
+
+  it('keeps counting past a name taken by a LATER label, and past itself (#1667)', () => {
+    // Positions 2 and 4 are both unlabelled. Position 2 must pass `d2` AND `d3`
+    // (both claimed by labels) and lands on `d4`; position 4 must then pass the
+    // `d4` position 2 just took. Without the second half two POSITIONAL names
+    // collide even though neither matches a label.
+    const strips = stripsOf(
+      ['d2: s("bd")', '$: s("hh")', 'd3: s("cp")', '$: s("sd")'].join('\n'),
+    )
+    expect(strips.map((s) => s.name)).toEqual(['d2', 'd4', 'd3', 'd5'])
+    expect(new Set(strips.map((s) => s.name)).size).toBe(4)
+  })
+
   it('classifies a stack(...) statement as a group', () => {
     expect(stripsOf('$: stack(s("bd"), note("c e"))')[0].kind).toBe('group')
   })

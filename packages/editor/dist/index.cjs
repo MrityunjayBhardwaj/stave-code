@@ -2757,10 +2757,26 @@ __name(requireObject, "requireObject");
 
 // src/ir/trackId.ts
 function trackIdFromLabel(label, index) {
-  const bare = label && label.startsWith("_") ? label.slice(1) : label;
-  return bare && bare !== "$" ? bare : `d${index + 1}`;
+  return namedIdOf(label) ?? `d${index + 1}`;
 }
 __name(trackIdFromLabel, "trackIdFromLabel");
+function namedIdOf(label) {
+  const bare = label && label.startsWith("_") ? label.slice(1) : label;
+  return bare && bare !== "$" ? bare : null;
+}
+__name(namedIdOf, "namedIdOf");
+function trackIdsFromLabels(labels) {
+  const named = labels.map(namedIdOf);
+  const taken = new Set(named.filter((id) => id !== null));
+  return named.map((id, index) => {
+    if (id !== null) return id;
+    let n = index + 1;
+    while (taken.has(`d${n}`)) n++;
+    taken.add(`d${n}`);
+    return `d${n}`;
+  });
+}
+__name(trackIdsFromLabels, "trackIdsFromLabels");
 function isMutedLabel(label) {
   return label !== void 0 && label.startsWith("_");
 }
@@ -3203,10 +3219,11 @@ function parseDocument(code, opts, record) {
         loc: [{ start: t.dollarStart, end: t.end }]
       }, isMutedLabel(t.label));
     }
+    const trackIds = trackIdsFromLabels(tracks.map((t) => t.label));
     return IR.stack(
       ...tracks.map((t, i) => {
         const body = t.commented ? silent() : top(t.expr, t.offset, trackBindings);
-        const trackId = trackIdFromLabel(t.label, i);
+        const trackId = trackIds[i];
         return IR.track(trackId, body, {
           loc: [{ start: t.dollarStart, end: t.end }]
         }, isMutedLabel(t.label));
@@ -8479,14 +8496,14 @@ function isForeign(chunk, name) {
   return call !== void 0 && call.args[0].numeric === null;
 }
 __name(isForeign, "isForeign");
-function displayKey(label, ordinal) {
-  return bareLabel(label) ?? `d${ordinal}`;
+function displayKeys(trackChunks) {
+  return trackIdsFromLabels(trackChunks.map((c) => c.label ?? void 0));
 }
-__name(displayKey, "displayKey");
-function buildStripModel(chunk, index, ordinal, id, captureId) {
+__name(displayKeys, "displayKeys");
+function buildStripModel(chunk, index, displayKey, id, captureId) {
   const kind = stripKind(chunk);
   const source = readSource(chunk, kind);
-  const identity = trackIdentity(displayKey(chunk.label, ordinal));
+  const identity = trackIdentity(displayKey);
   return {
     id,
     index,
@@ -8516,6 +8533,7 @@ function buildStripModels(chunks) {
   let ordinal = 0;
   const models = [];
   const trackChunks = chunks.filter(isTrackChunk);
+  const keys = displayKeys(trackChunks);
   const bareId = bareCaptureIdFor(trackChunks);
   const bareOwner = bareId === null ? null : trackChunks[trackChunks.length - 1];
   chunks.forEach((chunk, index) => {
@@ -8529,7 +8547,7 @@ function buildStripModels(chunks) {
     else if (chunk.label === null)
       captureId = bareId !== null && chunk === bareOwner ? bareId : unjoinableId(index);
     else captureId = `$${anonLive++}`;
-    models.push(buildStripModel(chunk, index, ordinal, id, captureId));
+    models.push(buildStripModel(chunk, index, keys[ordinal - 1], id, captureId));
   });
   return models;
 }
