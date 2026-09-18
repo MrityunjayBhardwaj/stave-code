@@ -296,3 +296,40 @@ test('an unnamed track under a commented one has one name in both views', async 
 
   expect(errors, errors.join('\n')).toEqual([])
 })
+
+/**
+ * #1682 — statements that never play get no strip.
+ *
+ * Beside a `$:` or named track, Strudel plays only what registered and throws
+ * away every other statement's value, so an assignment or a bare pattern above
+ * the tracks is silent. The Mixer used to give each a strip — a fader over
+ * nothing — under a name no timeline row has.
+ */
+const NEVER_PLAYS_SONG = ['window.stave1682 = 1', 's("cp*2")', '$: s("bd*2")', 'hats: s("hh*4")'].join('\n')
+
+test('a statement that never plays has no Mixer strip', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  await bootShell(page)
+  await typeSongAndEval(page, NEVER_PLAYS_SONG)
+
+  const timeline = await page.locator('[data-full-song-lane]').evaluateAll((els) =>
+    els.map((e) => e.getAttribute('data-full-song-lane')),
+  )
+  expect(timeline).toEqual(['d1', 'hats'])
+
+  const root = page.locator('[data-bottom-panel="root"]')
+  await root.locator('[data-bottom-panel="toggle"]').click()
+  await root.locator('role=tab[name="Mixer"]').click()
+  const mixerPanel = root.locator('[data-bottom-panel-tab="mixer-console"]')
+  await mixerPanel.locator('[data-mixer-strip-name]').first().waitFor({ timeout: 10_000 })
+  const mixer = await mixerPanel.locator('[data-mixer-strip-name]').allTextContents()
+  // one strip per track that plays, named as on the timeline
+  expect(mixer).toEqual(['d1', 'hats'])
+
+  expect(errors, errors.join('\n')).toEqual([])
+})

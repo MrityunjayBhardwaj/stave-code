@@ -46,11 +46,9 @@ describe('a track has the SAME name in the Mixer as on the Song timeline (#1678,
 
   it('a statement that never plays no longer shifts the real tracks after it', () => {
     const src = 'await initHydra()\ncpm = 110\n$: s("bd*4")\n$: s("hh*8")'
-    const strips = stripsOf(src)
-    // the two drum tracks read what the timeline reads
-    expect(strips.slice(-2).map((s) => s.name)).toEqual(['d1', 'd2'])
-    // and no two strips share a name (the non-playing ones are #1682's)
-    expect(new Set(strips.map((s) => s.name)).size).toBe(strips.length)
+    // the two drum tracks read what the timeline reads, and the two statements
+    // that never play have no strip at all (#1682)
+    expect(stripsOf(src).map((s) => s.name)).toEqual(['d1', 'd2'])
   })
 
   it('an INDENTED track is matched too — the parser anchors at the line start', () => {
@@ -105,6 +103,72 @@ describe('a track has the SAME name in the Mixer as on the Song timeline (#1678,
     expect(compared).toBe(2)
     // and a plain bare document keeps the names it always had
     expect(stripsOf('s("bd")\ns("hh")').map((s) => s.name)).toEqual(stripsOfBefore('s("bd")\ns("hh")'))
+  })
+})
+
+describe('a statement that never plays has no strip (#1682)', () => {
+  // Strudel stacks only what reached `.p()` and discards every other statement's
+  // value (`repl.mjs:238-257`); a `_`-muted label returns silence WITHOUT
+  // registering (`repl.mjs:171-174`). So whether an unlabelled statement can
+  // play depends on whether any LIVE label exists — not on its head.
+  const names = (src: string) => stripsOf(src).map((s) => s.name)
+
+  it('beside a live label, unlabelled statements of every kind get no strip', () => {
+    const src = [
+      'await initHydra()',
+      'cpm = 110',
+      "window.speechda = speechda",
+      "spagda('dog')",
+      'silence',
+      'osc(10, 0.1).out()',
+      's("cp*2")',
+      '$: s("bd*4")',
+      'hats: s("hh*8")',
+    ].join('\n')
+    expect(names(src)).toEqual(['d1', 'hats'])
+  })
+
+  it('a LABELLED track always keeps its strip, muted ones included', () => {
+    const src = 'await initHydra()\n$: s("bd")\n_$: s("hh")\ndrums_: s("cp")\nS$: s("oh")'
+    expect(stripsOf(src).map((s) => s.statementRange[0])).toEqual(
+      ['$: s', '_$: s', 'drums_: s', 'S$: s'].map((head) => src.indexOf(head)),
+    )
+  })
+
+  it('a document whose every label is MUTED plays its last expression, so it keeps it', () => {
+    // nothing registers, so strudel falls back to the evaluated value
+    for (const src of ['_$: s("hh")\ns("bd")', 'drums_: s("hh")\ns("bd")']) {
+      const strips = stripsOf(src)
+      expect(strips, src).toHaveLength(2)
+      expect(strips[1].headFn, src).toBe('s')
+    }
+  })
+
+  it('muting the last live track moves no strip id (#1688)', () => {
+    // The bare statement's strip comes back once nothing registers. It must not
+    // renumber the anonymous strips after it: their `#k` is what expand/solo
+    // state hangs on, and a mute toggle must never move it (#555).
+    const idsBySource = (src: string) =>
+      new Map(stripsOf(src).map((s) => [src.slice(s.statementRange[0]).replace(/^_/, '').slice(0, 12), s.id]))
+    const live = 's("cp")\n$: s("bd")\n_$: s("hh")'
+    const muted = 's("cp")\n_$: s("bd")\n_$: s("hh")'
+    const before = idsBySource(live)
+    const after = idsBySource(muted)
+    // not vacuous: both labelled strips exist on both sides
+    expect([...before.keys()].filter((k) => after.has(k))).toHaveLength(2)
+    for (const [k, id] of before) expect(after.get(k), k).toBe(id)
+  })
+
+  it('a document with no labels at all keeps every statement (strudel plays the last)', () => {
+    expect(names('cpm(120)\ns("bd")\ns("hh")')).toHaveLength(3)
+  })
+
+  it('agrees with the parser: no remaining strip lacks a timeline track in a labelled document', () => {
+    const src = 'await initHydra()\ncpm = 110\n$: s("bd*4")\nsilence\n$: s("hh*8")\nlead: note("c")'
+    const strips = stripsOf(src)
+    for (const s of strips) expect(timelineIdAt(src, s.statementRange[0]), `@${s.statementRange[0]}`).toBeDefined()
+    // not vacuous: three tracks were compared
+    expect(strips).toHaveLength(3)
   })
 })
 
@@ -259,7 +323,10 @@ describe('buildStripModels — transport/config statements are not tracks (#559)
   })
 
   it('keeps a bare pattern expression (unknown head) as a track — denylist is conservative', () => {
-    const strips = stripsOf(['s("bd")', '$: note("c e")'].join('\n'))
+    // A document with no labels, where the head is the only thing that decides.
+    // Beside a live label the same `s("bd")` never plays, and has no strip for
+    // THAT reason (#1682) — not because of its head.
+    const strips = stripsOf(['s("bd")', 'note("c e")'].join('\n'))
     expect(strips).toHaveLength(2)
     expect(strips[0].muteable).toBe(false) // bare expression, still a strip
   })
@@ -287,28 +354,29 @@ describe('buildStripModels — an unlabelled statement takes no engine slot (#11
 
   it('a bare statement above a labelled one leaves the labelled track at $0', () => {
     const strips = stripsOf(['s("bd*8")', '$: s("hh*16")'].join('\n'))
-    expect(strips).toHaveLength(2)
     // The engine registers only the `$:` statement, and it registers it FIRST —
     // so the labelled strip must join on `$0`. It used to get `$1` and therefore
     // read the scheduler belonging to nothing at all.
-    expect(strips[1].captureId).toBe('$0')
-    // ...and the bare statement joins on nothing live.
-    expect(strips[0].captureId).not.toMatch(/^\$\d+$/)
+    //
+    // The bare statement used to keep a strip that joined on nothing live. It
+    // never plays — strudel discards it once `$:` registers — so since #1682 it
+    // has no strip, and the labelled track is the only one.
+    expect(strips.map((s) => s.captureId)).toEqual(['$0'])
   })
 
   it('several bare statements do not push a labelled track along', () => {
     const strips = stripsOf(['s("bd*8")', 's("cp*4")', '$: s("hh*16")'].join('\n'))
-    expect(strips).toHaveLength(3)
-    expect(strips[2].captureId).toBe('$0')
+    expect(strips.map((s) => s.captureId)).toEqual(['$0'])
     expect(liveSlots(['s("bd*8")', 's("cp*4")', '$: s("hh*16")'].join('\n'))).toEqual(['$0'])
   })
 
   it('a transport head the denylist has never heard of also takes no slot', () => {
-    // `cpm` is absent from NON_TRACK_HEADS and so still draws a strip — but it is
-    // unlabelled, so it can no longer displace the real tracks' meters. This is
-    // the head case fixed WITHOUT extending the list.
+    // `cpm` is absent from NON_TRACK_HEADS, but it is unlabelled, so it can no
+    // longer displace the real tracks' meters. This is the head case fixed
+    // WITHOUT extending the list — and since #1682 it draws no strip either,
+    // because beside a `$:` it never plays.
     const strips = stripsOf(['cpm(120)', '$: s("bd*8")', '$: s("hh*16")'].join('\n'))
-    expect(strips.map((s) => s.captureId).slice(1)).toEqual(['$0', '$1'])
+    expect(strips.map((s) => s.captureId)).toEqual(['$0', '$1'])
   })
 
   it('the unjoinable statements do not collide, and only the LAST one joins', () => {

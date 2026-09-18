@@ -8559,12 +8559,20 @@ function buildStripModels(chunks, doc) {
   let anonLive = 0;
   let ordinal = 0;
   const models = [];
-  const trackChunks = chunks.filter(isTrackChunk);
+  const registers = chunks.some((c) => c.label !== null && !isMutedLabel(c.label));
+  const trackChunks = chunks.filter(
+    (c) => isTrackChunk(c) && (c.label !== null || !registers)
+  );
+  const drawn = new Set(trackChunks);
   const keys = displayKeys(trackChunks, doc);
   const bareId = bareCaptureIdFor(trackChunks);
   const bareOwner = bareId === null ? null : trackChunks[trackChunks.length - 1];
   chunks.forEach((chunk, index) => {
     if (!isTrackChunk(chunk)) return;
+    if (!drawn.has(chunk)) {
+      anonAll++;
+      return;
+    }
     ordinal++;
     const bare = bareLabel(chunk.label);
     const id = bare ?? `#${anonAll++}`;
