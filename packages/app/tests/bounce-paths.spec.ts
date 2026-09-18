@@ -634,7 +634,42 @@ const LIVE_WHILE_RENDERING = 'note("c6*16").s("square").gain(0.3)'
  * short. Long songs and first-time sample loads are what make it wide.
  */
 const LONG_RENDER = 'note("c3*16").s("sine")'
-const LONG_RENDER_SECS = 60
+
+/**
+ * How many scheduler ticks the render must span for a leak to have somewhere to
+ * appear. Three is the floor `MIN_RENDER_MS` encodes; the LENGTH below is chosen
+ * to clear it by a wide margin, because a margin is the only thing that keeps
+ * machine speed from deciding the arm (#1670).
+ */
+const TICK_MS = 100
+const MIN_RENDER_MS = 3 * TICK_MS
+
+/**
+ * ⚠ THIS IS A WALL-CLOCK BUDGET WEARING A DURATION'S CLOTHES (#1670). What the
+ * arm needs is `renderMs` — how long the render OCCUPIES THE LIVE CLOCK — and
+ * the only knob for it is how much audio is rendered. Since #1658 made the
+ * render windowed, the two are linear, so the length can be chosen from a
+ * measurement instead of guessed. Measured on this machine, `renderWhilePlaying`
+ * over `LONG_RENDER` (renderMs ≈ 4.9 × secs):
+ *
+ *     secs   60        120    180        240     300
+ *     ms     312, 331  603    912, 895   1178    1452
+ *
+ * At 60s the render took 296-308ms against a 300ms floor, so which side of the
+ * floor a run landed on was decided by a few milliseconds of machine speed —
+ * eight runs split 7 pass / 2 fail on that number alone, while the thing the arm
+ * measures (`maxSampleDiff = 0`, no leak) held in every one of them, failures
+ * included. 180s puts the render ~9 ticks wide, 3x the floor: the machine would
+ * have to run 3x FASTER than measured for the precondition to decide anything.
+ *
+ * Raising the floor instead would have been the wrong half to move — the floor
+ * is what stops this arm being green for the reason the first measurement was.
+ *
+ * The cost is bounded on the other side too: the probe records a 4s live take
+ * around the render, so `renderMs` must stay well under it. At 180s the render
+ * ends ~1.4s into that take, and the `after` window it reads lands at ~1.6-2.0s.
+ */
+const LONG_RENDER_SECS = 180
 
 /**
  * Largest per-sample difference between two renders. An offline render of a
@@ -691,7 +726,20 @@ test.describe('#1627 — an offline render while the transport plays', () => {
     console.log(`[#1627 leak] maxSampleDiff playing vs stopped = ${diff}`)
     // The render must not span fewer ticks than it takes to leak, or this arm
     // is green for the reason the first measurement was (see LONG_RENDER).
-    if ((playing.renderMs ?? 0) < 300) throw new Error(`render too short to span ticks: ${playing.renderMs}ms`)
+    //
+    // If this ever fires, the render got FASTER — raise LONG_RENDER_SECS, do not
+    // lower this floor. The message says so, because the last time it fired it
+    // named the render and not the threshold, and cost a full branch-versus-parent
+    // comparison to rule out a change that touches neither audio nor rendering.
+    if ((playing.renderMs ?? 0) < MIN_RENDER_MS) {
+      throw new Error(
+        `precondition, not a leak: the render spanned ${playing.renderMs?.toFixed(0)}ms ` +
+          `(< ${MIN_RENDER_MS}ms = ${MIN_RENDER_MS / TICK_MS} scheduler ticks), so a leak had nowhere to appear ` +
+          `and this arm proves nothing either way. maxSampleDiff was ${diff}. ` +
+          `Raise LONG_RENDER_SECS (currently ${LONG_RENDER_SECS}s, measured ~4.9ms per second rendered); ` +
+          `do not lower this floor.`,
+      )
+    }
     expect(diff).toBeLessThan(1e-4)
     // #1647 — a render over live audio must not leave an uncaught error behind (#1639).
     await expectNoUncaught(page)
