@@ -22,6 +22,11 @@
       "types": "./dist/visualEdit/panels/knobScale.d.ts",
       "import": "./dist/visualEdit/panels/knobScale.js",
       "require": "./dist/visualEdit/panels/knobScale.cjs"
+    },
+    "./trackId": {
+      "types": "./dist/ir/trackId.d.ts",
+      "import": "./dist/ir/trackId.js",
+      "require": "./dist/ir/trackId.cjs"
     }
   },
   "files": [

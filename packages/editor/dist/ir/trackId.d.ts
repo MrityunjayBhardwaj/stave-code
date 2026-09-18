@@ -31,21 +31,7 @@
  * together and can see the collision; this per-track entry point is for the
  * single-track case (index 0), where there are no siblings to collide with.
  */
-export function trackIdFromLabel(label: string | undefined, index: number): string {
-  return namedIdOf(label) ?? `d${index + 1}`
-}
-
-/**
- * The id a track's label claims OUTRIGHT, or null when the label names nothing
- * and the id has to be positional. The `_` strip (property 1) and the `$`/empty
- * test (property 2) both live here so the per-track rule above and the
- * whole-document rule below cannot read a label two different ways.
- */
-function namedIdOf(label: string | undefined): string | null {
-  const bare = label === undefined ? undefined : splitMuteMarker(label).bare
-  return bare && bare !== '$' ? bare : null
-}
-
+declare function trackIdFromLabel(label: string | undefined, index: number): string;
 /**
  * A label split into its bare name and its mute markers (#1679) — the ONE
  * reading of what a mute marker is. Identity (above), `isMutedLabel` (below), the
@@ -61,13 +47,11 @@ function namedIdOf(label: string | undefined): string | null {
  * The prefix is read first, so a lone `_` is one marker naming nothing
  * (`bare: ''`), not a prefix and a suffix.
  */
-export function splitMuteMarker(label: string): { bare: string; prefix: boolean; suffix: boolean } {
-  const prefix = label.startsWith('_')
-  const rest = prefix ? label.slice(1) : label
-  const suffix = rest.endsWith('_')
-  return { bare: suffix ? rest.slice(0, -1) : rest, prefix, suffix }
-}
-
+declare function splitMuteMarker(label: string): {
+    bare: string;
+    prefix: boolean;
+    suffix: boolean;
+};
 /**
  * Every track's id, assigned for the WHOLE document at once (#1667).
  *
@@ -113,34 +97,7 @@ export function splitMuteMarker(label: string): { bare: string; prefix: boolean;
  * marks a `//`-commented one (absent = live). Same purity as above — no IR, no
  * barrel.
  */
-export function trackIdsFromLabels(
-  labels: readonly (string | undefined)[],
-  commented: readonly boolean[] = [],
-): string[] {
-  const claimed = labels.map(namedIdOf)
-  const taken = new Set<string>()
-  for (let i = 0; i < claimed.length; i++) {
-    const id = claimed[i]
-    if (id !== null && !commented[i]) taken.add(id)
-  }
-  // #1673 — a COMMENTED label claims its name only where nothing live holds it,
-  // and the first commented copy wins. Settled here, before any positional id is
-  // handed out, so a positional id can never take a name a label still wants.
-  const named = claimed.map((id, i) => {
-    if (id === null || !commented[i]) return id
-    if (taken.has(id)) return null
-    taken.add(id)
-    return id
-  })
-  return named.map((id, index) => {
-    if (id !== null) return id
-    let n = index + 1
-    while (taken.has(`d${n}`)) n++
-    taken.add(`d${n}`)
-    return `d${n}`
-  })
-}
-
+declare function trackIdsFromLabels(labels: readonly (string | undefined)[], commented?: readonly boolean[]): string[];
 /**
  * Is this label's track MUTED? (#1488)
  *
@@ -158,8 +115,6 @@ export function trackIdsFromLabels(
  * so a bare `s("bd*4")` has nothing to prefix. `undefined` is therefore false,
  * not unknown (`trackOrder.ts` measured that across every spelling).
  */
-export function isMutedLabel(label: string | undefined): boolean {
-  if (label === undefined) return false
-  const { prefix, suffix } = splitMuteMarker(label)
-  return prefix || suffix
-}
+declare function isMutedLabel(label: string | undefined): boolean;
+
+export { isMutedLabel, splitMuteMarker, trackIdFromLabel, trackIdsFromLabels };

@@ -181,3 +181,63 @@ test('a commented-out copy does not take the live track\'s name', async ({ page 
 
   expect(errors, errors.join('\n')).toEqual([])
 })
+
+/**
+ * #1679 — a TRAILING `_` mutes a track too (`drums_:`, `$_:`).
+ *
+ * Strudel mutes an id that starts OR ends with `_`, and the engine's capture hook
+ * already skipped both, so these tracks were silent. Everything else read only
+ * the prefix: the timeline and mixer called them `drums_` and `$_`, showed them
+ * unmuted, and the two `$_:` lines shared one name — so one of them lost its row.
+ */
+const SUFFIX_SONG = ['drums_: s("bd*2")', '$_: s("hh*4")', '$_: s("cp*2")', 'bass: s("sd*2")'].join('\n')
+
+test('a trailing `_` reads as muted, and unmuting removes it', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  await bootShell(page)
+  await typeSongAndEval(page, SUFFIX_SONG)
+
+  // Four statements, four rows; the three muted ones drawn as silenced.
+  const lanes = await page.locator('[data-full-song-lane]').evaluateAll((els) =>
+    els.map((e) => ({
+      key: e.getAttribute('data-full-song-lane'),
+      silenced: e.hasAttribute('data-full-song-lane-silenced'),
+    })),
+  )
+  expect(lanes.map((l) => l.key)).toEqual(['drums', 'd2', 'd3', 'bass'])
+  expect(lanes.map((l) => l.silenced)).toEqual([true, true, true, false])
+
+  const root = page.locator('[data-bottom-panel="root"]')
+  await root.locator('[data-bottom-panel="toggle"]').click()
+  await root.locator('role=tab[name="Mixer"]').click()
+  const mixerPanel = root.locator('[data-bottom-panel-tab="mixer-console"]')
+  await mixerPanel.locator('[data-mixer-strip-name]').first().waitFor({ timeout: 10_000 })
+  const strips = await mixerPanel.locator('[data-mixer-strip-id]').evaluateAll((els) =>
+    els.map((e) => ({
+      name: (e.querySelector('[data-mixer-strip-name]') as HTMLElement | null)?.textContent ?? '',
+      muted: e.hasAttribute('data-mixer-strip-muted'),
+    })),
+  )
+  expect(strips.map((s) => s.name)).toEqual(['drums', 'd2', 'd3', 'bass'])
+  expect(strips.map((s) => s.muted)).toEqual([true, true, true, false])
+
+  // The real gesture: Unmute on the strip removes the marker the label HAS.
+  const mute = mixerPanel.locator('[data-mixer-strip-id="drums"] [data-mixer-strip-mute]')
+  await expect(mute).toHaveAttribute('aria-label', 'Unmute drums')
+  await mute.click()
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const eds = (window as unknown as { monaco: { editor: { getEditors: () => Array<{ getModel: () => { getValue: () => string } }> } } }).monaco.editor.getEditors()
+        return eds[0].getModel().getValue().split('\n')[0]
+      }),
+    )
+    .toBe('drums: s("bd*2")')
+
+  expect(errors, errors.join('\n')).toEqual([])
+})

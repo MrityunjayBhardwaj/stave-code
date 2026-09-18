@@ -12,7 +12,14 @@ export default defineConfig({
   // dependency into its test loader — so the map ships as its own tiny,
   // dependency-free bundle (`@stave/editor/knobScale`), the same arrangement the
   // worker entry uses for the same reason.
-  entry: ['src/index.ts', 'src/visualizers/worker/index.ts', 'src/visualEdit/panels/knobScale.ts'],
+  // A FOURTH (#1679), for the same reason: what a track's label means — its id
+  // and its mute marker — read by the app's timeline without the barrel.
+  entry: [
+    'src/index.ts',
+    'src/visualizers/worker/index.ts',
+    'src/visualEdit/panels/knobScale.ts',
+    'src/ir/trackId.ts',
+  ],
   format: ['esm', 'cjs'],
   dts: true,
   sourcemap: true,

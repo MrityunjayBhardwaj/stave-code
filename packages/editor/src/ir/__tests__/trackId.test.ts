@@ -7,7 +7,9 @@
  * same way the DISPLAY deriver (`labelAtOffset`) already does.
  */
 import { describe, it, expect } from 'vitest'
-import { trackIdFromLabel, trackIdsFromLabels, isMutedLabel } from '../trackId'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { trackIdFromLabel, trackIdsFromLabels, isMutedLabel, splitMuteMarker } from '../trackId'
 import { parseStrudel } from '../parseStrudel'
 import type { PatternIR } from '../PatternIR'
 
@@ -16,6 +18,23 @@ function trackIds(ir: PatternIR): string[] {
   if (ir.tag === 'Track') return [ir.trackId]
   return []
 }
+
+describe('the owner stays importable from anywhere (#1679)', () => {
+  it('has no imports at all, so the timeline can reach it without the barrel', () => {
+    // `@stave/editor/trackId` is its own bundle entry so the app's timeline can
+    // read what a mute marker is at runtime (`trackLabel.ts`). With
+    // `splitting: false` an import added here would travel into that bundle and
+    // drag its dependency into the app's test loader, where the failure would
+    // surface as a collection error in the other package. Same rule, same arm,
+    // as `knobScale.ts` (#1581).
+    const source = readFileSync(path.join(__dirname, '..', 'trackId.ts'), 'utf8')
+    const imports = source.match(/^\s*(import\s|export\s+\{[^}]*\}\s*from|.*\brequire\()/gm) ?? []
+    expect(imports).toEqual([])
+    // Control: the same read on a file that DOES import finds one.
+    const parser = readFileSync(path.join(__dirname, '..', 'parseStrudel.ts'), 'utf8')
+    expect(parser.match(/^\s*import\s/gm)?.length ?? 0).toBeGreaterThan(0)
+  })
+})
 
 describe('trackIdFromLabel — mute-invariant identity', () => {
   it('anon `$:` (bare or muted) keeps the positional `d{i+1}`', () => {
@@ -164,9 +183,11 @@ describe('a commented-out copy never takes a LIVE track\'s name (#1673)', () => 
     for (const [labels, commented] of shapes) {
       const ids = trackIdsFromLabels(labels, commented)
       expect(new Set(ids).size).toBe(labels.length)
-      // each live label still owns its name
+      // each live label still owns the name it claims — its bare name, once a
+      // mute marker is read off it (`$_` is a muted anonymous track, #1679)
       labels.forEach((l, i) => {
-        if (!commented[i]) expect(ids[i]).toBe(l)
+        const { bare } = splitMuteMarker(l)
+        if (!commented[i] && bare !== '$') expect(ids[i]).toBe(bare)
       })
     }
   })
@@ -182,6 +203,38 @@ describe('a commented-out copy never takes a LIVE track\'s name (#1673)', () => 
   it('leaves a document with no live twin exactly as it was', () => {
     expect(trackIds(parseStrudel('//p1: n("1 2 3")\n$: s("bd")'))).toEqual(['p1', 'd2'])
     expect(trackIds(parseStrudel('//$: s("hh")\n$: s("bd")'))).toEqual(['d1', 'd2'])
+  })
+})
+
+describe('a trailing `_` is a mute marker too (#1679)', () => {
+  // Strudel mutes an id that STARTS or ENDS with `_` (`@strudel/core`
+  // repl.mjs:172 — "allows muting a pattern x with x_ or _x"), and the engine's
+  // capture hook already mirrors both. Everything else read only the prefix, so
+  // `drums_:` became a playing track NAMED `drums_`.
+  it('strips a suffix marker from identity, exactly like a prefix one', () => {
+    expect(trackIdFromLabel('drums_', 0)).toBe('drums')
+    expect(trackIdFromLabel('$_', 1)).toBe('d2') // muted anonymous → positional
+    expect(trackIdFromLabel('_drums_', 0)).toBe('drums')
+  })
+
+  it('reports a suffix-marked label as muted', () => {
+    expect(isMutedLabel('drums_')).toBe(true)
+    expect(isMutedLabel('$_')).toBe(true)
+    expect(isMutedLabel('drums')).toBe(false)
+  })
+
+  it('splits a label into its bare name and its markers', () => {
+    expect(splitMuteMarker('drums')).toEqual({ bare: 'drums', prefix: false, suffix: false })
+    expect(splitMuteMarker('_drums')).toEqual({ bare: 'drums', prefix: true, suffix: false })
+    expect(splitMuteMarker('drums_')).toEqual({ bare: 'drums', prefix: false, suffix: true })
+    expect(splitMuteMarker('_$_')).toEqual({ bare: '$', prefix: true, suffix: true })
+    // a lone `_` is one marker, not two, and names nothing
+    expect(splitMuteMarker('_')).toEqual({ bare: '', prefix: true, suffix: false })
+  })
+
+  it('two `$_:` lines are two tracks, not one (the last duplicate ids in the archive)', () => {
+    const code = '$_: note("c2*4")\n$_: n("0 2 4")\n$: sound("hh")'
+    expect(trackIds(parseStrudel(code))).toEqual(['d1', 'd2', 'd3'])
   })
 })
 

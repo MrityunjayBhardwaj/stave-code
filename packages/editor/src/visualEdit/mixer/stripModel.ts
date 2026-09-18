@@ -20,7 +20,7 @@ import { readChainMethod } from '../panels/chainMethod'
 import { trackIdentity } from '../trackColor'
 import { type GainState, readGainState } from './gain'
 import { NON_TRACK_HEADS } from '../../ir/statementHeads'
-import { trackIdsFromLabels } from '../../ir/trackId'
+import { trackIdsFromLabels, isMutedLabel, splitMuteMarker } from '../../ir/trackId'
 
 /** which surface a strip's pattern belongs to (mirrors `ChunkType` + groups). */
 export type StripKind = 'step' | 'roll' | 'group' | 'unknown'
@@ -101,12 +101,13 @@ function namedLabel(label: string | null): string | null {
 }
 
 /** the `_`-prefix mute marker (S3, design §6.4): a statement is muted when its
- * label starts with `_`. Strudel's engine skips `_`-prefixed/-suffixed ids
+ * label starts (or, #1679, ends) with `_`. Strudel's engine skips `_`-prefixed/-suffixed ids
  * (`StrudelEngine.ts:735`) → no scheduler → silent + a dark meter, all without
  * touching `.gain` (orthogonal to the fader — V-mixer-2). Grounded: acorn parses
  * `_$:`/`_d1:` as labelled statements, so the marker rides on `chunk.label`. */
 function isMuted(label: string | null): boolean {
-  return label != null && label.startsWith('_')
+  // #1679 — a trailing `_` too; `trackId.ts` owns what a marker is.
+  return label != null && isMutedLabel(label)
 }
 
 /** the label with the mute marker removed, then resolved to a real name or null
@@ -114,7 +115,7 @@ function isMuted(label: string | null): boolean {
  * mute toggle: `_d1`→`d1`, `_$`→null, so muting a named track keeps its id. */
 function bareLabel(label: string | null): string | null {
   if (label == null) return null
-  return namedLabel(isMuted(label) ? label.slice(1) : label)
+  return namedLabel(splitMuteMarker(label).bare)
 }
 
 /**

@@ -14,6 +14,7 @@
 import type { ChunkInfo } from '../chunkDetect'
 import { formatNumber } from '../writeback'
 import { readGainState, scaleManagedGain } from './gain'
+import { splitMuteMarker } from '../../ir/trackId'
 
 /** a single surgical edit: replace `range` with `text` (insert = zero-width range). */
 export interface StripEdit {
@@ -72,12 +73,16 @@ export function panEdit(fresh: ChunkInfo, value: number): StripEdit | null {
  */
 export function muteEdit(fresh: ChunkInfo, muted: boolean): StripEdit | null {
   if (fresh.label === null) return null // unlabelled — can't carry the marker
-  const isMuted = fresh.label.startsWith('_')
+  const marker = splitMuteMarker(fresh.label)
+  const isMuted = marker.prefix || marker.suffix
   if (muted === isMuted) return null // already in the requested state
   const pos = fresh.statementRange[0]
-  return muted
-    ? { range: [pos, pos], text: '_' } // insert the marker
-    : { range: [pos, pos + 1], text: '' } // delete the leading `_`
+  if (muted) return { range: [pos, pos], text: '_' } // insert the marker
+  // #1679 — unmute removes the marker the label HAS. A trailing `_` (`drums_:`)
+  // is Strudel's other spelling; rewriting the label to its bare name covers it
+  // and both-sides alike. The prefix-only case keeps its one-character delete.
+  if (!marker.suffix) return { range: [pos, pos + 1], text: '' } // delete the leading `_`
+  return { range: [pos, pos + fresh.label.length], text: marker.bare }
 }
 
 /** A JS reserved word can't be a LabeledStatement label (`return: …` is a syntax
@@ -135,11 +140,11 @@ export function renameEdit(
 ): StripEdit | null {
   if (fresh.label === null) return null // a bare expression has no label slot
   if (!isValidTrackLabel(newLabel)) return null // invalid → caller reverts
-  const muted = fresh.label.startsWith('_')
-  const bareLabel = muted ? fresh.label.slice(1) : fresh.label
+  const { bare: bareLabel, prefix, suffix } = splitMuteMarker(fresh.label)
   if (newLabel === bareLabel) return null // no-op
   if (takenNames.has(newLabel)) return null // #585: would duplicate another track
-  const start = fresh.statementRange[0] + (muted ? 1 : 0) // keep the `_` marker
-  const end = fresh.statementRange[0] + fresh.label.length
+  // keep the `_` marker on whichever side it is (#1679: a trailing one too)
+  const start = fresh.statementRange[0] + (prefix ? 1 : 0)
+  const end = fresh.statementRange[0] + fresh.label.length - (suffix ? 1 : 0)
   return { range: [start, end], text: newLabel }
 }

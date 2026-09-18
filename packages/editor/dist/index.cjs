@@ -2761,10 +2761,17 @@ function trackIdFromLabel(label, index) {
 }
 __name(trackIdFromLabel, "trackIdFromLabel");
 function namedIdOf(label) {
-  const bare = label && label.startsWith("_") ? label.slice(1) : label;
+  const bare = label === void 0 ? void 0 : splitMuteMarker(label).bare;
   return bare && bare !== "$" ? bare : null;
 }
 __name(namedIdOf, "namedIdOf");
+function splitMuteMarker(label) {
+  const prefix = label.startsWith("_");
+  const rest = prefix ? label.slice(1) : label;
+  const suffix = rest.endsWith("_");
+  return { bare: suffix ? rest.slice(0, -1) : rest, prefix, suffix };
+}
+__name(splitMuteMarker, "splitMuteMarker");
 function trackIdsFromLabels(labels, commented = []) {
   const claimed = labels.map(namedIdOf);
   const taken = /* @__PURE__ */ new Set();
@@ -2788,7 +2795,9 @@ function trackIdsFromLabels(labels, commented = []) {
 }
 __name(trackIdsFromLabels, "trackIdsFromLabels");
 function isMutedLabel(label) {
-  return label !== void 0 && label.startsWith("_");
+  if (label === void 0) return false;
+  const { prefix, suffix } = splitMuteMarker(label);
+  return prefix || suffix;
 }
 __name(isMutedLabel, "isMutedLabel");
 
@@ -5662,7 +5671,8 @@ __name(createLiveTriggerDrain, "createLiveTriggerDrain");
 
 // src/visualizers/blockScan.ts
 function startsTopLevelBlock(trimmed) {
-  return /^_?\$:/.test(trimmed) || trimmed.startsWith("setcps") || /^all\s*\(/.test(trimmed) || trimmed.startsWith("/*");
+  return /^_?\$_?:/.test(trimmed) || // `$:`, `_$:`, and `$_:` — Strudel mutes `x_` too (#1679)
+  trimmed.startsWith("setcps") || /^all\s*\(/.test(trimmed) || trimmed.startsWith("/*");
 }
 __name(startsTopLevelBlock, "startsTopLevelBlock");
 function startsNamedTrack(rawLine) {
@@ -8463,12 +8473,12 @@ function namedLabel(label) {
 }
 __name(namedLabel, "namedLabel");
 function isMuted(label) {
-  return label != null && label.startsWith("_");
+  return label != null && isMutedLabel(label);
 }
 __name(isMuted, "isMuted");
 function bareLabel(label) {
   if (label == null) return null;
-  return namedLabel(isMuted(label) ? label.slice(1) : label);
+  return namedLabel(splitMuteMarker(label).bare);
 }
 __name(bareLabel, "bareLabel");
 function isTrackChunk(chunk) {
@@ -33470,10 +33480,13 @@ function panEdit(fresh, value) {
 __name(panEdit, "panEdit");
 function muteEdit(fresh, muted3) {
   if (fresh.label === null) return null;
-  const isMuted2 = fresh.label.startsWith("_");
+  const marker = splitMuteMarker(fresh.label);
+  const isMuted2 = marker.prefix || marker.suffix;
   if (muted3 === isMuted2) return null;
   const pos = fresh.statementRange[0];
-  return muted3 ? { range: [pos, pos], text: "_" } : { range: [pos, pos + 1], text: "" };
+  if (muted3) return { range: [pos, pos], text: "_" };
+  if (!marker.suffix) return { range: [pos, pos + 1], text: "" };
+  return { range: [pos, pos + fresh.label.length], text: marker.bare };
 }
 __name(muteEdit, "muteEdit");
 var RESERVED_LABELS = /* @__PURE__ */ new Set([
@@ -33533,12 +33546,11 @@ __name(isValidTrackLabel, "isValidTrackLabel");
 function renameEdit(fresh, newLabel, takenNames) {
   if (fresh.label === null) return null;
   if (!isValidTrackLabel(newLabel)) return null;
-  const muted3 = fresh.label.startsWith("_");
-  const bareLabel2 = muted3 ? fresh.label.slice(1) : fresh.label;
+  const { bare: bareLabel2, prefix, suffix } = splitMuteMarker(fresh.label);
   if (newLabel === bareLabel2) return null;
   if (takenNames.has(newLabel)) return null;
-  const start = fresh.statementRange[0] + (muted3 ? 1 : 0);
-  const end = fresh.statementRange[0] + fresh.label.length;
+  const start = fresh.statementRange[0] + (prefix ? 1 : 0);
+  const end = fresh.statementRange[0] + fresh.label.length - (suffix ? 1 : 0);
   return { range: [start, end], text: newLabel };
 }
 __name(renameEdit, "renameEdit");
@@ -33564,7 +33576,7 @@ function PatternTrackChip() {
   if (!strip) return null;
   const customColor = trackMeta.get(strip.name)?.color;
   const dotColor = trackIdentity(strip.name, customColor).color;
-  const bareLabel2 = strip.label?.replace(/^_/, "") ?? "";
+  const bareLabel2 = strip.label ?? "";
   const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
   const commitRename = /* @__PURE__ */ __name((raw) => {
     if (settledRef.current) return;
@@ -37662,7 +37674,7 @@ function ChannelStrip({
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
   const [renaming, setRenaming] = React36__namespace.useState(false);
-  const bareLabel2 = strip.label?.replace(/^_/, "") ?? "";
+  const bareLabel2 = strip.label ?? "";
   const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
   const renameEnabled = onRename !== void 0;
   const settledRef = React36__namespace.useRef(false);

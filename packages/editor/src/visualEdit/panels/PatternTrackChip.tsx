@@ -61,7 +61,8 @@ export function PatternTrackChip(): React.ReactElement | null {
 
   // Inline rename seed: the bare label (mute marker stripped); anon `$:` seeds
   // empty so the field invites a fresh name (mirrors ChannelStrip, #580).
-  const bareLabel = strip.label?.replace(/^_/, '') ?? ''
+  // `strip.label` is already bare — `stripModel` strips the marker (#1679).
+  const bareLabel = strip.label ?? ''
   const renameSeed = bareLabel !== '' && bareLabel !== '$' ? bareLabel : ''
 
   // ONE write per rename gesture, addressed by the STATEMENT (#877) — the same

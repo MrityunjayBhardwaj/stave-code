@@ -52,6 +52,17 @@ describe('buildStripModels — mute read-back (S3)', () => {
     expect(stripsOf('_$: s("bd")')[0].muted).toBe(true)
   })
 
+  it('reads a trailing `_` as muted too, and keeps the bare name (#1679)', () => {
+    // Strudel and the engine's capture hook both skip a suffixed id, so this
+    // strip is silent — it must not show an unmuted button.
+    const [s] = stripsOf('drums_: s("bd")')
+    expect(s.muted).toBe(true)
+    expect(s.name).toBe('drums')
+    expect(s.label).toBe('drums')
+    expect(stripsOf('$_: s("bd")')[0].muted).toBe(true)
+    expect(stripsOf('$_: s("bd")')[0].name).toBe('d1')
+  })
+
   it('keeps a named track id/name STABLE across mute (`_d1`→ id `d1`, name `d1`)', () => {
     const [s] = stripsOf('_d1: s("bd")')
     expect(s.id).toBe('d1')
