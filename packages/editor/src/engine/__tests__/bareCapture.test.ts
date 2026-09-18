@@ -20,7 +20,7 @@ import { buildStripModels, BARE_CAPTURE_ID } from '../../visualEdit/mixer/stripM
 
 /** the captureIds the mixer will draw for this document, in source order */
 const stripCaptureIds = (code: string): string[] =>
-  buildStripModels(detectAllChunks(code)).map((s) => s.captureId)
+  buildStripModels(detectAllChunks(code), code).map((s) => s.captureId)
 
 describe('resolveBareCaptureId — accepts only the unambiguous single bare track', () => {
   it('a lone bare statement resolves, and to the id the mixer gives that strip', () => {

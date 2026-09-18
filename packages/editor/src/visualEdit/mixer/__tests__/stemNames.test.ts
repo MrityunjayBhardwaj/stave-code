@@ -18,7 +18,7 @@ $: s("cp*2")`
 
 describe('stemFileNames (#1648)', () => {
   it('names each stem after its mixer strip, numbered in document order', () => {
-    const strips = buildStripModels(detectAllChunks(DOC)).filter((s) => !s.muted)
+    const strips = buildStripModels(detectAllChunks(DOC), DOC).filter((s) => !s.muted)
     const ids = strips.map((s) => s.captureId)
     const names = stemFileNames(DOC, ids)
     expect(names).toEqual(strips.map((s, i) => `${String(i + 1).padStart(2, '0')}-${s.name.replace(/[^a-z0-9_-]+/gi, '_')}.wav`))
@@ -41,7 +41,7 @@ describe('stemFileNames (#1648)', () => {
     // `02-d2-2.wav`. The strips no longer hand it a duplicate — the positional
     // name counts past anything a label claimed.
     const doc = `d2: s("bd*2")\n$: s("hh*4")`
-    const strips = buildStripModels(detectAllChunks(doc))
+    const strips = buildStripModels(detectAllChunks(doc), doc)
     expect(strips.map((s) => s.name)).toEqual(['d2', 'd3'])
     expect(stemFileNames(doc, strips.map((s) => s.captureId))).toEqual(['01-d2.wav', '02-d3.wav'])
   })

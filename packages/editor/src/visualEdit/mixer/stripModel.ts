@@ -21,6 +21,7 @@ import { trackIdentity } from '../trackColor'
 import { type GainState, readGainState } from './gain'
 import { NON_TRACK_HEADS } from '../../ir/statementHeads'
 import { trackIdsFromLabels, isMutedLabel, splitMuteMarker } from '../../ir/trackId'
+import { parseStrudel } from '../../ir/parseStrudel'
 
 /** which surface a strip's pattern belongs to (mirrors `ChunkType` + groups). */
 export type StripKind = 'step' | 'roll' | 'group' | 'unknown'
@@ -268,8 +269,64 @@ function isForeign(chunk: ChunkInfo, name: string): boolean {
  * the two views still read one name per track, which is the whole point of
  * V-track-1. Non-colliding documents keep byte-identical keys.
  */
-function displayKeys(trackChunks: readonly ChunkInfo[]): string[] {
-  return trackIdsFromLabels(trackChunks.map((c) => c.label ?? undefined))
+function displayKeys(trackChunks: readonly ChunkInfo[], doc: string): string[] {
+  // #1678 / #1682 — THE TIMELINE'S NAMES, NOT A SECOND NUMBERING. The two views
+  // used to count different statements: the parser keeps a Track for a
+  // `//`-commented label (so numbers hold still when a line is toggled) and this
+  // list never sees one; and this list counts statements the parser does not
+  // (`await initHydra()`, `cpm = 110`, `await samples(…)`, a bare helper call).
+  // Either way every unnamed track after the difference got a different `d{N}`
+  // in the Mixer than on the timeline — 242 strips in 59 of 558 archived
+  // documents.
+  //
+  // So a strip reads its name from the parsed IR: the top-level Track whose
+  // label line holds the strip's statement — the same Track `declaredTracks`
+  // hands the timeline. That covers named, anonymous and bare documents alike
+  // with no rule of our own to keep in step. A labelled Track's `loc` is the
+  // LINE start, indentation included, while a chunk starts at the label itself;
+  // in a document with no labels the parser anchors each Track at the statement
+  // instead, so an indented bare statement is found only there (#1685). Both
+  // anchors are looked up — two statements cannot share either.
+  const idAtLine = trackIdsByLine(doc)
+  const taken = new Set(idAtLine.values())
+  return trackChunks.map((chunk, i) => {
+    let line = chunk.statementRange[0]
+    while (line > 0 && (doc[line - 1] === ' ' || doc[line - 1] === '\t')) line--
+    const id = idAtLine.get(line) ?? idAtLine.get(chunk.statementRange[0])
+    if (id !== undefined) return id
+    // No Track for this statement — the parser does not consider it a track
+    // (a statement that never plays, #1682), or the document is a single bare
+    // expression whose Track carries no location. It keeps a strip for now,
+    // under a positional name no real track has.
+    let n = i + 1
+    while (taken.has(`d${n}`)) n++
+    taken.add(`d${n}`)
+    return `d${n}`
+  })
+}
+
+/**
+ * The IR's top-level Track ids by label-line offset, for ONE document text,
+ * cached on that text. Several hooks rebuild the strips for the same text on
+ * every edit (colour bars, folding, the silenced set, the Mixer itself); parsing
+ * once per text keeps that at one parse per edit (measured over the archive:
+ * median 0.28 ms, p95 3.5 ms, 33 ms for a 42 KB document).
+ */
+let cachedDoc: string | null = null
+let cachedIds: ReadonlyMap<number, string> = new Map()
+function trackIdsByLine(doc: string): ReadonlyMap<number, string> {
+  if (doc === cachedDoc) return cachedIds
+  const ir = parseStrudel(doc)
+  const roots = ir.tag === 'Stack' ? ir.tracks : [ir]
+  const ids = new Map<number, string>()
+  for (const node of roots) {
+    if (node.tag !== 'Track') continue
+    const at = node.loc?.[0]?.start
+    if (typeof at === 'number' && !ids.has(at)) ids.set(at, node.trackId)
+  }
+  cachedDoc = doc
+  cachedIds = ids
+  return ids
 }
 
 function buildStripModel(
@@ -335,7 +392,13 @@ function buildStripModel(
  * Both are unique: labels are unique; `#<index>` is unique by position and never
  * collides with a name (JS labels can't start with `#`) nor a captureId (`$`/`_$`).
  */
-export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
+/**
+ * `doc` is the text `chunks` were detected from. It is required, not optional:
+ * the display names come from the parser's track list for that text (#1678),
+ * and a caller that could leave it out would silently fall back to a numbering
+ * the timeline does not share.
+ */
+export function buildStripModels(chunks: ChunkInfo[], doc: string): StripModel[] {
   let anonAll = 0 // ALL anonymous tracks (muted + unmuted) → the stable id index
   let anonLive = 0 // UNMUTED anonymous `$:` only → the engine captureId index
   let ordinal = 0 // 1-based position among tracks → the `d{N}` display key
@@ -350,7 +413,7 @@ export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
   // Display keys, decided for the whole document (#1667) — a positional key has
   // to see the labels it must not repeat. Indexed by `ordinal - 1`, which counts
   // exactly `trackChunks` in the same order.
-  const keys = displayKeys(trackChunks)
+  const keys = displayKeys(trackChunks, doc)
   const bareId = bareCaptureIdFor(trackChunks)
   const bareOwner = bareId === null ? null : trackChunks[trackChunks.length - 1]
   chunks.forEach((chunk, index) => {
@@ -405,7 +468,7 @@ export function buildStripModels(chunks: ChunkInfo[]): StripModel[] {
  * instrument).
  */
 export function statementOffsetForSource(doc: string, source: string): number | null {
-  const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source)
+  const strip = buildStripModels(detectAllChunks(doc), doc).find((s) => s.source === source)
   return strip ? strip.statementRange[0] : null
 }
 
@@ -421,7 +484,7 @@ export function statementOffsetForSource(doc: string, source: string): number | 
  * collision.
  */
 export function otherTrackNames(doc: string, selfStatementStart: number): string[] {
-  return buildStripModels(detectAllChunks(doc))
+  return buildStripModels(detectAllChunks(doc), doc)
     .filter((s) => s.statementRange[0] !== selfStatementStart)
     .map((s) => s.name)
 }

@@ -91,7 +91,7 @@ export function useSilencedTrackNames(): ReadonlySet<string> {
         return
       }
       setStrips(
-        buildStripModels(detectAllChunks(model.getValue())).map((s) => ({
+        buildStripModels(detectAllChunks(model.getValue()), model.getValue()).map((s) => ({
           id: s.id,
           name: s.name,
           muted: s.muted,

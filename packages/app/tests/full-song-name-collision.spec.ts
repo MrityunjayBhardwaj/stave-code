@@ -241,3 +241,58 @@ test('a trailing `_` reads as muted, and unmuting removes it', async ({ page }) 
 
   expect(errors, errors.join('\n')).toEqual([])
 })
+
+/**
+ * #1678 — a commented-out track above an unnamed one.
+ *
+ * The timeline keeps a (silent) row for the commented line, so numbers hold still
+ * when a line is toggled; the Mixer has no strip for it. The Mixer used to number
+ * only its own strips, so the `bd` track below read `d1` there and `d2` on the
+ * timeline — two names, and two colours, for one track. Strips now take the
+ * timeline's name for their statement.
+ */
+const COMMENTED_ANON_SONG = ['//$: s("hh*4")', '$: s("bd*2")', 'kick: s("cp*2")'].join('\n')
+
+test('an unnamed track under a commented one has one name in both views', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  await bootShell(page)
+  await typeSongAndEval(page, COMMENTED_ANON_SONG)
+
+  const timeline = await page.locator('[data-full-song-lane]').evaluateAll((els) =>
+    els.map((e) => ({
+      key: e.getAttribute('data-full-song-lane'),
+      dot: ((): string => {
+        const d = e.querySelector('[data-full-song-lane-dot]') as HTMLElement | null
+        return d ? getComputedStyle(d).backgroundColor : ''
+      })(),
+    })),
+  )
+  expect(timeline.map((l) => l.key)).toEqual(['d1', 'd2', 'kick'])
+
+  const root = page.locator('[data-bottom-panel="root"]')
+  await root.locator('[data-bottom-panel="toggle"]').click()
+  await root.locator('role=tab[name="Mixer"]').click()
+  const mixerPanel = root.locator('[data-bottom-panel-tab="mixer-console"]')
+  await mixerPanel.locator('[data-mixer-strip-name]').first().waitFor({ timeout: 10_000 })
+  const mixer = await mixerPanel.locator('[data-mixer-strip-id]').evaluateAll((els) =>
+    els.map((e) => ({
+      name: (e.querySelector('[data-mixer-strip-name]') as HTMLElement | null)?.textContent ?? '',
+      dot: ((): string => {
+        const d = e.querySelector('[data-mixer-strip-dot]') as HTMLElement | null
+        return d ? getComputedStyle(d).backgroundColor : ''
+      })(),
+    })),
+  )
+  // no strip for the commented line; the `bd` track reads `d2`, as on the timeline
+  expect(mixer.map((m) => m.name)).toEqual(['d2', 'kick'])
+  expect(timeline[1].dot).toMatch(/^rgb/)
+  expect(mixer[0].dot).toBe(timeline[1].dot)
+  expect(mixer[1].dot).toBe(timeline[2].dot)
+
+  expect(errors, errors.join('\n')).toEqual([])
+})

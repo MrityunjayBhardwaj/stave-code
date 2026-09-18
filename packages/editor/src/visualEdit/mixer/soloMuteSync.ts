@@ -94,8 +94,9 @@ export function useSoloMuteSync(): {
       else newSolo.add(id)
 
       if (editor && model && monaco) {
-        const chunks = detectAllChunks(model.getValue())
-        const strips = buildStripModels(chunks)
+        const doc = model.getValue()
+        const chunks = detectAllChunks(doc)
+        const strips = buildStripModels(chunks, doc)
         const { targetMuted, nextSnapshot } = reconcileSoloMutes(
           strips.map((s) => ({ id: s.id, muted: s.muted, muteable: s.muteable })),
           newSolo,

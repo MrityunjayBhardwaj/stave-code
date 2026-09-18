@@ -8521,10 +8521,38 @@ function isForeign(chunk, name) {
   return call !== void 0 && call.args[0].numeric === null;
 }
 __name(isForeign, "isForeign");
-function displayKeys(trackChunks) {
-  return trackIdsFromLabels(trackChunks.map((c) => c.label ?? void 0));
+function displayKeys(trackChunks, doc) {
+  const idAtLine = trackIdsByLine(doc);
+  const taken = new Set(idAtLine.values());
+  return trackChunks.map((chunk, i) => {
+    let line = chunk.statementRange[0];
+    while (line > 0 && (doc[line - 1] === " " || doc[line - 1] === "	")) line--;
+    const id = idAtLine.get(line) ?? idAtLine.get(chunk.statementRange[0]);
+    if (id !== void 0) return id;
+    let n = i + 1;
+    while (taken.has(`d${n}`)) n++;
+    taken.add(`d${n}`);
+    return `d${n}`;
+  });
 }
 __name(displayKeys, "displayKeys");
+var cachedDoc = null;
+var cachedIds = /* @__PURE__ */ new Map();
+function trackIdsByLine(doc) {
+  if (doc === cachedDoc) return cachedIds;
+  const ir = parseStrudel(doc);
+  const roots = ir.tag === "Stack" ? ir.tracks : [ir];
+  const ids = /* @__PURE__ */ new Map();
+  for (const node of roots) {
+    if (node.tag !== "Track") continue;
+    const at = node.loc?.[0]?.start;
+    if (typeof at === "number" && !ids.has(at)) ids.set(at, node.trackId);
+  }
+  cachedDoc = doc;
+  cachedIds = ids;
+  return ids;
+}
+__name(trackIdsByLine, "trackIdsByLine");
 function buildStripModel(chunk, index, displayKey, id, captureId) {
   const kind = stripKind(chunk);
   const source = readSource(chunk, kind);
@@ -8552,13 +8580,13 @@ function buildStripModel(chunk, index, displayKey, id, captureId) {
   };
 }
 __name(buildStripModel, "buildStripModel");
-function buildStripModels(chunks) {
+function buildStripModels(chunks, doc) {
   let anonAll = 0;
   let anonLive = 0;
   let ordinal = 0;
   const models = [];
   const trackChunks = chunks.filter(isTrackChunk);
-  const keys = displayKeys(trackChunks);
+  const keys = displayKeys(trackChunks, doc);
   const bareId = bareCaptureIdFor(trackChunks);
   const bareOwner = bareId === null ? null : trackChunks[trackChunks.length - 1];
   chunks.forEach((chunk, index) => {
@@ -8578,12 +8606,12 @@ function buildStripModels(chunks) {
 }
 __name(buildStripModels, "buildStripModels");
 function statementOffsetForSource(doc, source) {
-  const strip = buildStripModels(detectAllChunks(doc)).find((s) => s.source === source);
+  const strip = buildStripModels(detectAllChunks(doc), doc).find((s) => s.source === source);
   return strip ? strip.statementRange[0] : null;
 }
 __name(statementOffsetForSource, "statementOffsetForSource");
 function otherTrackNames(doc, selfStatementStart) {
-  return buildStripModels(detectAllChunks(doc)).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
+  return buildStripModels(detectAllChunks(doc), doc).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
 }
 __name(otherTrackNames, "otherTrackNames");
 function stripContainingOffset(strips, offset) {
@@ -22292,7 +22320,7 @@ function useTrackColourBars(editor, fileId) {
         return;
       }
       const segments = trackBarSegments(
-        buildStripModels(detectAllChunks(model.getValue())),
+        buildStripModels(detectAllChunks(model.getValue()), model.getValue()),
         model,
         trackMetaRef.current
       );
@@ -22328,7 +22356,7 @@ __name(useTrackColourBars, "useTrackColourBars");
 // src/monaco/strudelFolding.ts
 function trackFoldingRanges(model) {
   const segments = trackBarSegments(
-    buildStripModels(detectAllChunks(model.getValue())),
+    buildStripModels(detectAllChunks(model.getValue()), model.getValue()),
     model,
     /* @__PURE__ */ new Map()
   );
@@ -33159,7 +33187,7 @@ function useMixerModel() {
       }
       const value = model2.getValue();
       const allChunks = detectAllChunks(value);
-      const strips = buildStripModels(allChunks);
+      const strips = buildStripModels(allChunks, value);
       setDerived({
         strips,
         chunks: strips.map((s) => allChunks[s.index]),
@@ -33181,8 +33209,9 @@ function useMixerModel() {
       if (!ed || !wb) return;
       const model = ed.getModel?.();
       if (!model) return;
-      const chunks = detectAllChunks(model.getValue());
-      const strip = buildStripModels(chunks).find((s) => s.id === id);
+      const doc = model.getValue();
+      const chunks = detectAllChunks(doc);
+      const strip = buildStripModels(chunks, doc).find((s) => s.id === id);
       if (!strip) return;
       const fresh = chunks[strip.index];
       const trackOffset = fresh.statementRange[0];
@@ -33279,7 +33308,7 @@ function useMixerModel() {
     if (!ed) return;
     const model = ed.getModel?.();
     if (!model) return;
-    const strip = buildStripModels(detectAllChunks(model.getValue())).find((s) => s.id === id);
+    const strip = buildStripModels(detectAllChunks(model.getValue()), model.getValue()).find((s) => s.id === id);
     if (!strip) return;
     jumpCursorToTrack(ed, model, strip.statementRange[0], lastJumpRef);
   }, []);
@@ -37528,8 +37557,9 @@ function useSoloMuteSync() {
       if (newSolo.has(id)) newSolo.delete(id);
       else newSolo.add(id);
       if (editor && model && monaco) {
-        const chunks = detectAllChunks(model.getValue());
-        const strips = buildStripModels(chunks);
+        const doc = model.getValue();
+        const chunks = detectAllChunks(doc);
+        const strips = buildStripModels(chunks, doc);
         const { targetMuted, nextSnapshot } = reconcileSoloMutes(
           strips.map((s) => ({ id: s.id, muted: s.muted, muteable: s.muteable })),
           newSolo,
@@ -41997,7 +42027,7 @@ function safe(name) {
 __name(safe, "safe");
 function countStemTracks(code) {
   try {
-    return new Set(buildStripModels(detectAllChunks(code)).map((s) => s.captureId)).size;
+    return new Set(buildStripModels(detectAllChunks(code), code).map((s) => s.captureId)).size;
   } catch {
     return 0;
   }
@@ -42006,7 +42036,7 @@ __name(countStemTracks, "countStemTracks");
 function stemFileNames(code, ids) {
   const byCapture = /* @__PURE__ */ new Map();
   try {
-    for (const s of buildStripModels(detectAllChunks(code))) {
+    for (const s of buildStripModels(detectAllChunks(code), code)) {
       if (!byCapture.has(s.captureId)) byCapture.set(s.captureId, s.name);
     }
   } catch {
@@ -48009,7 +48039,7 @@ __name(regionTrimEdit, "regionTrimEdit");
 // src/visualEdit/mixer/trackMetaPrune.ts
 function pruneTrackMetaForCode(fileId, code) {
   const names = /* @__PURE__ */ new Set();
-  for (const s of buildStripModels(detectAllChunks(code))) {
+  for (const s of buildStripModels(detectAllChunks(code), code)) {
     if (s.name) names.add(s.name);
   }
   if (names.size === 0) return;
@@ -48045,7 +48075,7 @@ function useSilencedTrackNames() {
         return;
       }
       setStrips(
-        buildStripModels(detectAllChunks(model2.getValue())).map((s) => ({
+        buildStripModels(detectAllChunks(model2.getValue()), model2.getValue()).map((s) => ({
           id: s.id,
           name: s.name,
           muted: s.muted
