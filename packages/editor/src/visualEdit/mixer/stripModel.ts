@@ -294,10 +294,12 @@ function displayKeys(trackChunks: readonly ChunkInfo[], doc: string): string[] {
     while (line > 0 && (doc[line - 1] === ' ' || doc[line - 1] === '\t')) line--
     const id = idAtLine.get(line) ?? idAtLine.get(chunk.statementRange[0])
     if (id !== undefined) return id
-    // No Track for this statement — the parser does not consider it a track
-    // (a statement that never plays, #1682), or the document is a single bare
-    // expression whose Track carries no location. It keeps a strip for now,
-    // under a positional name no real track has.
+    // No Track for this statement. A statement that never plays has no strip
+    // to name (#1682), so this is a document with no live label: a single bare
+    // expression, whose Track carries no location; a statement the parser
+    // leaves out of a bare document; or the statement that plays when every
+    // label is commented out, which the parser gives no Track (#1686). It keeps
+    // a positional name no real track has.
     let n = i + 1
     while (taken.has(`d${n}`)) n++
     taken.add(`d${n}`)
@@ -409,7 +411,20 @@ export function buildStripModels(chunks: ChunkInfo[], doc: string): StripModel[]
   // unjoinable — a document with three bare statements has one sounding pattern,
   // not three, and giving them all the same key would meter the same audio on
   // every strip.
-  const trackChunks = chunks.filter(isTrackChunk)
+  //
+  // #1682 — ONCE ANY STATEMENT REGISTERS, AN UNLABELLED ONE NEVER PLAYS. Strudel
+  // stacks only what reached `.p()` and throws away the evaluated value of every
+  // other statement (`@strudel/core` `repl.mjs:238-257`), and a `_`-muted label
+  // returns silence without registering (`repl.mjs:171-174`). So in a document
+  // with a live label, `await initHydra()`, `cpm = 110` or a helper call is not a
+  // track, and a strip for it was a fader over nothing. The parser declares no
+  // Track for these either: over the 558 archived documents, 0 of the 223 such
+  // strips had one, and no labelled strip lacked one. A document with no live
+  // label keeps every statement — strudel plays its last expression then.
+  const registers = chunks.some((c) => c.label !== null && !isMutedLabel(c.label))
+  const trackChunks = chunks.filter(
+    (c) => isTrackChunk(c) && (c.label !== null || !registers),
+  )
   // Display keys, decided for the whole document (#1667) — a positional key has
   // to see the labels it must not repeat. Indexed by `ordinal - 1`, which counts
   // exactly `trackChunks` in the same order.
@@ -421,7 +436,7 @@ export function buildStripModels(chunks: ChunkInfo[], doc: string): StripModel[]
     // them BEFORE numbering so the remaining anonymous tracks get `$0…$n` that
     // line up with the engine's anonIndex (#559). `index` stays the true
     // source-order position (preserving its documented meaning).
-    if (!isTrackChunk(chunk)) return
+    if (!trackChunks.includes(chunk)) return
     ordinal++ // 1-based, counts every track in source order (config already skipped),
     // matching the engine's `d{N}` hap numbering the Timeline displays.
     const bare = bareLabel(chunk.label)
