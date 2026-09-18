@@ -255,7 +255,7 @@ export function useMixerModel(): MixerModel {
       }
       const value = model.getValue()
       const allChunks = detectAllChunks(value)
-      const strips = buildStripModels(allChunks)
+      const strips = buildStripModels(allChunks, value)
       // Expose the chunks aligned 1:1 with strips by each strip's ABSOLUTE source
       // index. buildStripModels filters out config/transport statements (setcps,
       // samples — #559), so `strips[i]` is NOT `allChunks[i]`; `strips[i].index`
@@ -284,14 +284,15 @@ export function useMixerModel(): MixerModel {
       if (!ed || !wb) return
       const model = ed.getModel?.()
       if (!model) return
-      const chunks = detectAllChunks(model.getValue())
+      const doc = model.getValue()
+      const chunks = detectAllChunks(doc)
       // Write to the strip's chunk by its ABSOLUTE source index, NOT the strip
       // array position: buildStripModels drops config/transport lines (#559), so
       // the filtered strip index is off-by-one per preceding config line. Using
       // `chunks[idx]` wrote the fader/knob edit onto the PREVIOUS statement —
       // onto `setcps` for the first strip. `strip.index` is the chunk's real
       // position, so this ties every write to the strip's own track.
-      const strip = buildStripModels(chunks).find((s) => s.id === id)
+      const strip = buildStripModels(chunks, doc).find((s) => s.id === id)
       if (!strip) return
       const fresh = chunks[strip.index]
       // The track's statement start — where the cursor follows to (#595). Read
@@ -421,7 +422,7 @@ export function useMixerModel(): MixerModel {
     if (!ed) return
     const model = ed.getModel?.()
     if (!model) return
-    const strip = buildStripModels(detectAllChunks(model.getValue())).find((s) => s.id === id)
+    const strip = buildStripModels(detectAllChunks(model.getValue()), model.getValue()).find((s) => s.id === id)
     if (!strip) return
     // Move the caret to the track's statement; the cursor listener above then
     // re-derives `selectedId` to this strip. `lastJumpRef` is shared with the

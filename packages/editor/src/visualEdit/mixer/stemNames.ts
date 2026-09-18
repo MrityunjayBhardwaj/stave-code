@@ -37,7 +37,7 @@ function safe(name: string): string {
  */
 export function countStemTracks(code: string): number {
   try {
-    return new Set(buildStripModels(detectAllChunks(code)).map((s) => s.captureId)).size
+    return new Set(buildStripModels(detectAllChunks(code), code).map((s) => s.captureId)).size
   } catch {
     return 0
   }
@@ -47,7 +47,7 @@ export function countStemTracks(code: string): number {
 export function stemFileNames(code: string, ids: readonly string[]): string[] {
   const byCapture = new Map<string, string>()
   try {
-    for (const s of buildStripModels(detectAllChunks(code))) {
+    for (const s of buildStripModels(detectAllChunks(code), code)) {
       if (!byCapture.has(s.captureId)) byCapture.set(s.captureId, s.name)
     }
   } catch {

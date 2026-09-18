@@ -28,7 +28,7 @@ export function trackFoldingRanges(
   model: PositionModel & { getValue(): string },
 ): TrackFoldRange[] {
   const segments = trackBarSegments(
-    buildStripModels(detectAllChunks(model.getValue())),
+    buildStripModels(detectAllChunks(model.getValue()), model.getValue()),
     model,
     new Map(),
   )

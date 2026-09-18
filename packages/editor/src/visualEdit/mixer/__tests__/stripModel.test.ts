@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
 import { detectAllChunks, detectChunk } from '../../chunkDetect'
+import { parseStrudel } from '../../../ir/parseStrudel'
 import {
   buildStripModels,
   statementOffsetForSource,
@@ -12,8 +13,92 @@ import { colorForTrack } from '../../trackColor'
 
 /** strips for a whole document, the read path the Mixer actually uses */
 function stripsOf(src: string) {
-  return buildStripModels(detectAllChunks(src))
+  return buildStripModels(detectAllChunks(src), src)
 }
+/** the names a bare document had before #1678 — positional over its statements */
+function stripsOfBefore(src: string): string[] {
+  return detectAllChunks(src).map((_, i) => `d${i + 1}`)
+}
+
+/** the Song timeline's id for the statement at `start` — the IR Track whose
+ *  label line holds that statement (its `loc` is the LINE start, indentation
+ *  included), or undefined when the parser gave it no Track. */
+function timelineIdAt(src: string, start: number): string | undefined {
+  const ir = parseStrudel(src)
+  const roots = ir.tag === 'Stack' ? ir.tracks : [ir]
+  for (const t of roots) {
+    if (t.tag !== 'Track') continue
+    const at = t.loc?.[0]?.start
+    if (at !== undefined && at <= start && /^[ \t]*$/.test(src.slice(at, start))) return t.trackId
+  }
+  return undefined
+}
+
+describe('a track has the SAME name in the Mixer as on the Song timeline (#1678, #1682)', () => {
+  // The Mixer numbered only the statements IT counts as tracks; the timeline
+  // numbers the parser's list. Two ways they parted, both measured across the
+  // archive (59 of 558 documents, 242 strips).
+  it('a commented-out track above an unnamed one no longer shifts its number', () => {
+    const src = '//$: s("hh*4")\n$: s("bd*2")'
+    expect(stripsOf(src).map((s) => s.name)).toEqual(['d2'])
+    expect(stripsOf('//p1: n("1")\np1: n("4")\n$: s("bd")').map((s) => s.name)).toEqual(['p1', 'd3'])
+  })
+
+  it('a statement that never plays no longer shifts the real tracks after it', () => {
+    const src = 'await initHydra()\ncpm = 110\n$: s("bd*4")\n$: s("hh*8")'
+    const strips = stripsOf(src)
+    // the two drum tracks read what the timeline reads
+    expect(strips.slice(-2).map((s) => s.name)).toEqual(['d1', 'd2'])
+    // and no two strips share a name (the non-playing ones are #1682's)
+    expect(new Set(strips.map((s) => s.name)).size).toBe(strips.length)
+  })
+
+  it('an INDENTED track is matched too — the parser anchors at the line start', () => {
+    const src = '//$: s("hh*4")\n  $: s("bd*2")'
+    expect(stripsOf(src).map((s) => s.name)).toEqual(['d2'])
+  })
+
+  it('agrees with the timeline strip for strip, over mixed shapes', () => {
+    const docs = [
+      '//$: s("hh*4")\n$: s("bd*2")\nd1: s("cp")',
+      'x2: s("bd")\n//x3: s("hh")\nx3: s("cp")',
+      'setcps(1)\nawait initHydra()\n$: s("bd")\n_$: s("hh")\ndrums_: s("cp")\n$: s("oh")',
+      'd2: s("bd*2")\n$: s("hh*4")\n$: s("cp")',
+    ]
+    let compared = 0
+    for (const src of docs) {
+      for (const s of stripsOf(src)) {
+        const id = timelineIdAt(src, s.statementRange[0])
+        if (id === undefined) continue
+        compared++
+        expect(s.name, `${JSON.stringify(src)} @${s.statementRange[0]}`).toBe(id)
+      }
+    }
+    // Not vacuous — worked out by hand: strips that HAVE a timeline track are
+    // 2 (the commented `$:` has no strip) + 2 (nor does `//x3:`) + 4 (`setcps` is
+    // no strip, `initHydra()` has no Track) + 3.
+    expect(compared).toBe(11)
+  })
+
+  it('a BARE document (no labels) agrees too — a guard line no longer counts', () => {
+    // The shape of the last 5 disagreeing archive documents: a bare document
+    // opening with a guard expression. The parser does not make it a track; the
+    // Mixer did, so every track after it read one higher (`d2` for the timeline's
+    // `d1`). Reduced from `500/3OGQAQ5-jyOE`.
+    const src = "typeof setDefaultVoicings !== 'undefined' && setDefaultVoicings('legacy')\nawait samples('github:a/b')\nstack(s(\"bd\"), s(\"hh\"))"
+    let compared = 0
+    for (const s of stripsOf(src)) {
+      const id = timelineIdAt(src, s.statementRange[0])
+      if (id === undefined) continue
+      compared++
+      expect(s.name, `@${s.statementRange[0]}`).toBe(id)
+    }
+    // not vacuous: the timeline has tracks here to be compared against
+    expect(compared).toBe(2)
+    // and a plain bare document keeps the names it always had
+    expect(stripsOf('s("bd")\ns("hh")').map((s) => s.name)).toEqual(stripsOfBefore('s("bd")\ns("hh")'))
+  })
+})
 
 describe('buildStripModels — one strip per top-level statement', () => {
   it('projects each $: / named statement in source order', () => {
@@ -371,8 +456,8 @@ describe('buildStripModels — per-strip read model', () => {
 
   it('is a pure function of the document (re-derive → identical)', () => {
     const src = '$: s("bd sn").gain(0.6)\nd1: note("c e").pan(0.2)'
-    expect(buildStripModels(detectAllChunks(src))).toEqual(
-      buildStripModels(detectAllChunks(src)),
+    expect(buildStripModels(detectAllChunks(src), src)).toEqual(
+      buildStripModels(detectAllChunks(src), src),
     )
   })
 })

@@ -127,7 +127,7 @@ export function useTrackColourBars(
         return
       }
       const segments = trackBarSegments(
-        buildStripModels(detectAllChunks(model.getValue())),
+        buildStripModels(detectAllChunks(model.getValue()), model.getValue()),
         model,
         trackMetaRef.current,
       )

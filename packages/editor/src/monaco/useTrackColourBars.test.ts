@@ -34,7 +34,7 @@ function fakeModel(source: string): PositionModel {
 const EMPTY: ReadonlyMap<string, TrackMeta> = new Map()
 
 function segsFor(source: string, trackMeta: ReadonlyMap<string, TrackMeta> = EMPTY) {
-  const strips = buildStripModels(detectAllChunks(source))
+  const strips = buildStripModels(detectAllChunks(source), source)
   return trackBarSegments(strips, fakeModel(source), trackMeta)
 }
 

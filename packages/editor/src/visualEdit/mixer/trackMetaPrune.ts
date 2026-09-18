@@ -17,7 +17,7 @@ import { pruneTrackMeta } from '../../workspace/WorkspaceFile'
 
 export function pruneTrackMetaForCode(fileId: string, code: string): void {
   const names = new Set<string>()
-  for (const s of buildStripModels(detectAllChunks(code))) {
+  for (const s of buildStripModels(detectAllChunks(code), code)) {
     if (s.name) names.add(s.name)
   }
   if (names.size === 0) return
