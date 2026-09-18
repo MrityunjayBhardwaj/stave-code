@@ -1434,7 +1434,11 @@ function parseDocument(
     // one id is one track to `declaredTracks`, which drops the second and takes
     // the timeline row with it. Same ids as before for every document whose
     // names don't collide.
-    const trackIds = trackIdsFromLabels(tracks.map((t) => t.label))
+    // #1673 — and a `//`-commented copy never takes a LIVE track's name.
+    const trackIds = trackIdsFromLabels(
+      tracks.map((t) => t.label),
+      tracks.map((t) => t.commented),
+    )
     return IR.stack(
       ...tracks.map((t, i) => {
         const body = t.commented ? silent() : top(t.expr, t.offset, trackBindings)

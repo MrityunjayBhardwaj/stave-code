@@ -122,6 +122,69 @@ describe('parseStrudel — no two tracks share an id (#1667 regression)', () => 
   })
 })
 
+describe('a commented-out copy never takes a LIVE track\'s name (#1673)', () => {
+  // `//p1: …` above `p1: …` gave both statements `Track('p1')`. `declaredTracks`
+  // keeps the first, so the row that survived was anchored on the COMMENT and the
+  // live statement had no row of its own. Every duplicate id in the 558-document
+  // archive was this shape.
+  it('the live track keeps its name; the commented copy falls back to its position', () => {
+    expect(trackIdsFromLabels(['p1', 'p1', '$'], [true, false, false])).toEqual(['d1', 'p1', 'd3'])
+    // wherever the copy sits — below the live track as well as above it
+    expect(trackIdsFromLabels(['p1', 'p1'], [false, true])).toEqual(['p1', 'd2'])
+    // and the mute marker does not change whose name it is
+    expect(trackIdsFromLabels(['_p1', 'p1'], [true, false])).toEqual(['d1', 'p1'])
+  })
+
+  it('a commented track with NO live twin keeps its own name', () => {
+    // Commenting a track out must not change its identity — that is why a
+    // commented track has a slot at all. Only a live claim outranks it.
+    expect(trackIdsFromLabels(['p1', '$'], [true, false])).toEqual(['p1', 'd2'])
+  })
+
+  it('two commented copies of one name: the first keeps it, the second falls back', () => {
+    expect(trackIdsFromLabels(['p1', 'p1', '$'], [true, true, false])).toEqual(['p1', 'd2', 'd3'])
+  })
+
+  it('a commented claim is settled before any positional id is handed out', () => {
+    // Position 1 is anonymous and would reach `d2` only by skipping; the
+    // commented `//d2:` at position 2 is the only thing naming `d2`, so it keeps
+    // it and the positional id counts past it.
+    expect(trackIdsFromLabels(['$', 'd2'], [false, true])).toEqual(['d1', 'd2'])
+    // The live `d1:` owns `d1`, so the commented copy counts up from its own
+    // position like any positional id — to `d2` — and the `$:` after it to `d3`.
+    expect(trackIdsFromLabels(['d1', '$', 'd1'], [true, false, false])).toEqual(['d2', 'd3', 'd1'])
+  })
+
+  it('every archive shape comes out with one id per track', () => {
+    const shapes: [string[], boolean[]][] = [
+      [['p1', 'p1', 'p2', 'p2'], [true, false, true, false]],
+      [['x2', 'x3', 'x3'], [false, true, false]],
+      [['$_', '$_', 'd3', '$_'], [true, false, false, true]],
+    ]
+    for (const [labels, commented] of shapes) {
+      const ids = trackIdsFromLabels(labels, commented)
+      expect(new Set(ids).size).toBe(labels.length)
+      // each live label still owns its name
+      labels.forEach((l, i) => {
+        if (!commented[i]) expect(ids[i]).toBe(l)
+      })
+    }
+  })
+
+  it('in the parser: the LIVE statement owns the name and its offset', () => {
+    const code = '//p1: n("1 2 3")\np1:   n("4 5 6")\n$:    s("bd")'
+    const ir = parseStrudel(code)
+    expect(trackIds(ir)).toEqual(['d1', 'p1', 'd3'])
+    const live = ir.tag === 'Stack' ? ir.tracks[1] : ir
+    expect(live.loc?.[0]?.start).toBe(code.indexOf('\np1:') + 1)
+  })
+
+  it('leaves a document with no live twin exactly as it was', () => {
+    expect(trackIds(parseStrudel('//p1: n("1 2 3")\n$: s("bd")'))).toEqual(['p1', 'd2'])
+    expect(trackIds(parseStrudel('//$: s("hh")\n$: s("bd")'))).toEqual(['d1', 'd2'])
+  })
+})
+
 describe('isMutedLabel — the other half of the `_` prefix (#1488)', () => {
   it('reads the mute marker on both label spellings', () => {
     expect(isMutedLabel('_$')).toBe(true)
