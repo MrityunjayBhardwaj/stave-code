@@ -425,6 +425,7 @@ export function buildStripModels(chunks: ChunkInfo[], doc: string): StripModel[]
   const trackChunks = chunks.filter(
     (c) => isTrackChunk(c) && (c.label !== null || !registers),
   )
+  const drawn = new Set(trackChunks)
   // Display keys, decided for the whole document (#1667) — a positional key has
   // to see the labels it must not repeat. Indexed by `ordinal - 1`, which counts
   // exactly `trackChunks` in the same order.
@@ -436,7 +437,16 @@ export function buildStripModels(chunks: ChunkInfo[], doc: string): StripModel[]
     // them BEFORE numbering so the remaining anonymous tracks get `$0…$n` that
     // line up with the engine's anonIndex (#559). `index` stays the true
     // source-order position (preserving its documented meaning).
-    if (!trackChunks.includes(chunk)) return
+    if (!isTrackChunk(chunk)) return
+    // #1688 — a statement that never plays draws no strip (#1682) but KEEPS its
+    // place in the `#k` numbering. Whether it plays depends on whether any label
+    // is live, so muting the last live track brings its strip back; if it did
+    // not hold its place, that mute would renumber every anonymous strip after
+    // it, and the UI state keyed on those ids would jump to another strip.
+    if (!drawn.has(chunk)) {
+      anonAll++
+      return
+    }
     ordinal++ // 1-based, counts every track in source order (config already skipped),
     // matching the engine's `d{N}` hap numbering the Timeline displays.
     const bare = bareLabel(chunk.label)

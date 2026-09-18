@@ -144,6 +144,21 @@ describe('a statement that never plays has no strip (#1682)', () => {
     }
   })
 
+  it('muting the last live track moves no strip id (#1688)', () => {
+    // The bare statement's strip comes back once nothing registers. It must not
+    // renumber the anonymous strips after it: their `#k` is what expand/solo
+    // state hangs on, and a mute toggle must never move it (#555).
+    const idsBySource = (src: string) =>
+      new Map(stripsOf(src).map((s) => [src.slice(s.statementRange[0]).replace(/^_/, '').slice(0, 12), s.id]))
+    const live = 's("cp")\n$: s("bd")\n_$: s("hh")'
+    const muted = 's("cp")\n_$: s("bd")\n_$: s("hh")'
+    const before = idsBySource(live)
+    const after = idsBySource(muted)
+    // not vacuous: both labelled strips exist on both sides
+    expect([...before.keys()].filter((k) => after.has(k))).toHaveLength(2)
+    for (const [k, id] of before) expect(after.get(k), k).toBe(id)
+  })
+
   it('a document with no labels at all keeps every statement (strudel plays the last)', () => {
     expect(names('cpm(120)\ns("bd")\ns("hh")')).toHaveLength(3)
   })
