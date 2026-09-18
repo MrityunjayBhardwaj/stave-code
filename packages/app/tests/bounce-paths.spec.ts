@@ -672,6 +672,28 @@ const MIN_RENDER_MS = 3 * TICK_MS
 const LONG_RENDER_SECS = 180
 
 /**
+ * A leak assertion is an ABSENCE assertion, so it needs its vacuity condition
+ * ruled out in the same arm or it proves nothing (#1670). `maxSampleDiff === 0`
+ * is what a clean render looks like AND what a render too short to span a
+ * scheduler tick looks like — measured: at 4s the render spans 45ms, the live
+ * audio is never suppressed (`live rms during` unchanged), and the difference is
+ * still exactly 0.
+ *
+ * Every arm that concludes "no leak" calls this FIRST. It throws rather than
+ * asserts, because the answer is not "failed" but "this run cannot tell you".
+ */
+function requireRenderSpannedTicks(tag: string, renderMs: number | undefined, diff: number): void {
+  if ((renderMs ?? 0) >= MIN_RENDER_MS) return
+  throw new Error(
+    `[${tag}] precondition, not a leak: the render spanned ${renderMs?.toFixed(0)}ms ` +
+      `(< ${MIN_RENDER_MS}ms = ${MIN_RENDER_MS / TICK_MS} scheduler ticks), so a leak had nowhere to appear ` +
+      `and this arm proves nothing either way. maxSampleDiff was ${diff}. ` +
+      `Raise LONG_RENDER_SECS (currently ${LONG_RENDER_SECS}s, measured ~4.9ms per second rendered); ` +
+      `do not lower this floor.`,
+  )
+}
+
+/**
  * Largest per-sample difference between two renders. An offline render of a
  * noise-free pattern is deterministic, so the same code rendered with the
  * transport stopped is an exact control: any difference came from outside it.
@@ -724,22 +746,10 @@ test.describe('#1627 — an offline render while the transport plays', () => {
     }
     const diff = maxSampleDiff(readWav(playing.renderWav!).mono, readWav(stopped.renderWav!).mono)
     console.log(`[#1627 leak] maxSampleDiff playing vs stopped = ${diff}`)
-    // The render must not span fewer ticks than it takes to leak, or this arm
-    // is green for the reason the first measurement was (see LONG_RENDER).
-    //
     // If this ever fires, the render got FASTER — raise LONG_RENDER_SECS, do not
-    // lower this floor. The message says so, because the last time it fired it
-    // named the render and not the threshold, and cost a full branch-versus-parent
-    // comparison to rule out a change that touches neither audio nor rendering.
-    if ((playing.renderMs ?? 0) < MIN_RENDER_MS) {
-      throw new Error(
-        `precondition, not a leak: the render spanned ${playing.renderMs?.toFixed(0)}ms ` +
-          `(< ${MIN_RENDER_MS}ms = ${MIN_RENDER_MS / TICK_MS} scheduler ticks), so a leak had nowhere to appear ` +
-          `and this arm proves nothing either way. maxSampleDiff was ${diff}. ` +
-          `Raise LONG_RENDER_SECS (currently ${LONG_RENDER_SECS}s, measured ~4.9ms per second rendered); ` +
-          `do not lower this floor.`,
-      )
-    }
+    // lower the floor. The floor is what stops this arm being green for the
+    // reason the first measurement was (see LONG_RENDER).
+    requireRenderSpannedTicks('#1627 leak', playing.renderMs, diff)
     expect(diff).toBeLessThan(1e-4)
     // #1647 — a render over live audio must not leave an uncaught error behind (#1639).
     await expectNoUncaught(page)
@@ -789,6 +799,11 @@ test.describe('#1627 — an offline render while the transport plays', () => {
     if (out.pressedAtMs === undefined) throw new Error('Play was never pressed inside the render')
     const diff = maxSampleDiff(readWav(out.renderWav!).mono, readWav(control.renderWav!).mono)
     console.log(`[#1627 play-mid-render] maxSampleDiff vs stopped = ${diff}`)
+    // Same absence assertion as the leak arm, same way of being vacuous, so the
+    // same precondition (#1670). Pressing Play inside the render is necessary but
+    // not sufficient: if the render then ends before a tick, the deferral it is
+    // testing never got the chance to matter.
+    requireRenderSpannedTicks('#1627 play-mid-render', out.renderMs, diff)
     expect({ clean: diff < 1e-4, playingAfter: out.startedAfter }).toEqual({ clean: true, playingAfter: true })
   })
 
