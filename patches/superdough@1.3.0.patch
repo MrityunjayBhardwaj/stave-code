@@ -1,5 +1,5 @@
 diff --git a/dist/index.mjs b/dist/index.mjs
-index da81977b3a8f9cb8af08440c61990437041f69b7..49f1bdcd262e5512572e1d9f58b97c5894bc40f9 100644
+index da81977b3a8f9cb8af08440c61990437041f69b7..5068ecc04072c84d5f8de348887d8321c88105f7 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -24,32 +24,50 @@ function ct(e, t = "superdough") {
@@ -96,7 +96,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..49f1bdcd262e5512572e1d9f58b97c58
    return c.connect(e.destination), a.connect(c), ue(a, () => {
      Y(c), Y(a), t();
    }), a.start(n), a.stop(o), a;
-@@ -478,11 +506,22 @@ const Bt = (e) => e / (1 + e), Kn = (e, t) => (e % t + t) % t, gn = (e, t) => (1
+@@ -478,15 +506,26 @@ const Bt = (e) => e / (1 + e), Kn = (e, t) => (e % t + t) % t, gn = (e, t) => (1
  }, kn = (e, t) => {
    ue(e, () => t.forEach((n) => Y(n)));
  };
@@ -121,7 +121,27 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..49f1bdcd262e5512572e1d9f58b97c58
      for (var u = 0; u < l; u++)
        h[u] *= u / l;
    }
-@@ -512,8 +551,6 @@ var Pn = function(e, t, n, o, a) {
+-  Pn(p, e.lpFreqStart || 0, e.lpFreqEnd || 0, e.decayTime, t);
++  Pn(p, e.lpFreqStart || 0, e.lpFreqEnd || 0, e.decayTime, t, e.onError);
+ };
+ mt.generateGraph = function(e, t, n, o, a) {
+   var c = document.createElement("canvas");
+@@ -497,7 +536,7 @@ mt.generateGraph = function(e, t, n, o, a) {
+     s.fillRect(i * d, n - (e[i] - o) * l, 1, 1);
+   return c;
+ };
+-var Pn = function(e, t, n, o, a) {
++var Pn = function(e, t, n, o, a, __onError) {
+   if (t == 0) {
+     a(e);
+     return;
+@@ -507,13 +546,11 @@ var Pn = function(e, t, n, o, a) {
+   var l = s.createBiquadFilter();
+   t = Math.min(t, e.sampleRate / 2), n = Math.min(n, e.sampleRate / 2), l.type = "lowpass", l.Q.value = 1e-4, l.frequency.setValueAtTime(t, 0), l.frequency.linearRampToValueAtTime(n, o), d.connect(l), l.connect(s.destination), d.start(), s.oncomplete = function(i) {
+     a(i.renderedBuffer), Y(l), Y(d);
+-  }, s.startRendering(), window.filterNode = l;
++  }, s.startRendering().catch((i) => __onError?.(i)), window.filterNode = l;
+ }, In = function(e) {
    for (var t = [], n = 0; n < e.numberOfChannels; n++)
      t[n] = e.getChannelData(n);
    return t;
@@ -130,32 +150,58 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..49f1bdcd262e5512572e1d9f58b97c58
  };
  typeof AudioContext < "u" && (BaseAudioContext.prototype.adjustLength = function(e, t, n = 1, o = 0) {
    const a = Math.floor(se(o, 0, 1) * t.length), c = t.sampleRate * e, s = this.createBuffer(t.numberOfChannels, t.length, t.sampleRate);
-@@ -528,7 +565,14 @@ typeof AudioContext < "u" && (BaseAudioContext.prototype.adjustLength = function
+@@ -528,19 +565,37 @@ typeof AudioContext < "u" && (BaseAudioContext.prototype.adjustLength = function
  }, BaseAudioContext.prototype.createReverb = function(e, t, n, o, a, c, s) {
    const d = this.createConvolver();
    return d.generate = (l = 2, i = 0.1, p = 15e3, r = 1e3, h, u, m) => {
 -    d.duration = l, d.fade = i, d.lp = p, d.dim = r, d.ir = h, d.irspeed = u, d.irbegin = m, h ? d.buffer = this.adjustLength(l, h, u, m) : mt.generateReverb(
+-      {
+-        audioContext: this,
+-        numChannels: 2,
+-        decayTime: l,
+-        fadeInTime: i,
+-        lpFreqStart: p,
+-        lpFreqEnd: r
+-      },
+-      (G) => {
+-        d.buffer = G;
+-      }
+-    );
 +    if (h) {
 +      d.duration = l, d.fade = i, d.lp = p, d.dim = r, d.ir = h, d.irspeed = u, d.irbegin = m, d.buffer = this.adjustLength(l, h, u, m);
 +      return;
 +    }
 +    d.duration = l, d.fade = i, d.lp = p, d.dim = r, d.ir = h, d.irspeed = u, d.irbegin = m;
++    // Settled on every way out — landed, failed to render, or threw here
++    // (`size(0)` asks for a zero-length buffer) — or a render waiting on
++    // `reverbsReady()` would wait forever.
 +    let __landed;
-+    const __ready = new Promise((G) => __landed = G);
-+    __sdPendingReverbs.add(__ready), mt.generateReverb(
-       {
-         audioContext: this,
-         numChannels: 2,
-@@ -538,7 +582,7 @@ typeof AudioContext < "u" && (BaseAudioContext.prototype.adjustLength = function
-         lpFreqEnd: r
-       },
-       (G) => {
--        d.buffer = G;
-+        d.buffer = G, __sdPendingReverbs.delete(__ready), __landed();
-       }
-     );
++    const __ready = new Promise((G) => __landed = G), __done = () => {
++      __sdPendingReverbs.delete(__ready), __landed();
++    };
++    __sdPendingReverbs.add(__ready);
++    try {
++      mt.generateReverb(
++        {
++          audioContext: this,
++          numChannels: 2,
++          decayTime: l,
++          fadeInTime: i,
++          lpFreqStart: p,
++          lpFreqEnd: r,
++          onError: __done
++        },
++        (G) => {
++          d.buffer = G, __done();
++        }
++      );
++    } catch (G) {
++      throw __done(), G;
++    }
    }, d.generate(e, t, n, o, a, c, s), d;
-@@ -607,7 +651,7 @@ if (typeof GainNode < "u") {
+ });
+ var Yt = {
+@@ -607,7 +662,7 @@ if (typeof GainNode < "u") {
      return new e(this, t);
    };
  }
@@ -164,7 +210,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..49f1bdcd262e5512572e1d9f58b97c58
    stretch: { node: "stretch", param: "pitchFactor" },
    gain: { node: "gain", param: "gain" },
    postgain: { node: "post", param: "gain" },
-@@ -962,7 +1006,7 @@ const ao = async (e, t = e._base || "", n = {}) => {
+@@ -962,7 +1017,7 @@ const ao = async (e, t = e._base || "", n = {}) => {
      },
      t
    );
@@ -173,7 +219,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..49f1bdcd262e5512572e1d9f58b97c58
  async function so(e, t, n, o, a) {
    let {
      s: c,
-@@ -1006,8 +1050,10 @@ async function so(e, t, n, o, a) {
+@@ -1006,8 +1061,10 @@ async function so(e, t, n, o, a) {
      y.stop(k);
    }, I = { node: g, nodes: { source: [y], ...W?.nodes }, stop: K };
    if (d !== void 0) {
@@ -186,7 +232,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..49f1bdcd262e5512572e1d9f58b97c58
    }
    return I;
  }
-@@ -2297,6 +2343,16 @@ function ko(e = 1, t = 0.05, n = 220, o = 0, a = 0, c = 0.1, s = 0, d = 1, l = 0
+@@ -2297,6 +2354,16 @@ function ko(e = 1, t = 0.05, n = 220, o = 0, a = 0, c = 0.1, s = 0, d = 1, l = 0
      Math.cos(m * C++), g += E - E * u * (1 - (Math.sin(K) + 1) * 1e9 % 2), I && ++I > r && (n += p, F += p, I = 0), h && !(++k % h) && (n = F, l = Q, I ||= 1);
    return N;
  }
@@ -203,7 +249,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..49f1bdcd262e5512572e1d9f58b97c58
  const Po = (e, t) => {
    let {
      s: n,
-@@ -2328,7 +2384,7 @@ const Po = (e, t) => {
+@@ -2328,7 +2395,7 @@ const Po = (e, t) => {
    p = n === "square" ? 0 : p;
    const g = (
      /* ZZFX. */
@@ -212,7 +258,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..49f1bdcd262e5512572e1d9f58b97c58
        0.25,
        // volume
        c,
-@@ -2351,7 +2407,7 @@ const Po = (e, t) => {
+@@ -2351,7 +2418,7 @@ const Po = (e, t) => {
        // sustain volume!
        d,
        Z
@@ -221,7 +267,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..49f1bdcd262e5512572e1d9f58b97c58
    ), C = z(), K = C.createBuffer(1, g.length, C.sampleRate);
    K.getChannelData(0).set(g);
    const I = z().createBufferSource();
-@@ -2533,5 +2589,6 @@ export {
+@@ -2533,5 +2600,6 @@ export {
    pc as superdoughTrigger,
    Ao as tables,
    Fo as waveformN,
@@ -352,7 +398,7 @@ index 52d9306a18f68d286cee82df68a5ee3acb40660d..49ce3665b4c4913bd8f8af0eb6542f22
    o.start(t);
    return {
 diff --git a/reverb.mjs b/reverb.mjs
-index c8b6eb3e5b3222b1d28b991582fb881c08cfbd26..06b6817dd9dc2f825c9f7927ab474873fdad3275 100644
+index c8b6eb3e5b3222b1d28b991582fb881c08cfbd26..a2a22acec1712e50328e9c25af330b66c2a46704 100644
 --- a/reverb.mjs
 +++ b/reverb.mjs
 @@ -1,6 +1,19 @@
@@ -375,27 +421,58 @@ index c8b6eb3e5b3222b1d28b991582fb881c08cfbd26..06b6817dd9dc2f825c9f7927ab474873
  if (typeof AudioContext !== 'undefined') {
    BaseAudioContext.prototype.adjustLength = function (duration, buffer, speed = 1, offsetAmount = 0) {
      const sampleOffset = Math.floor(clamp(offsetAmount, 0, 1) * buffer.length);
-@@ -36,6 +49,9 @@ if (typeof AudioContext !== 'undefined') {
+@@ -36,19 +49,36 @@ if (typeof AudioContext !== 'undefined') {
        if (ir) {
          convolver.buffer = this.adjustLength(d, ir, irspeed, irbegin);
        } else {
+-        reverbGen.generateReverb(
+-          {
+-            audioContext: this,
+-            numChannels: 2,
+-            decayTime: d,
+-            fadeInTime: fade,
+-            lpFreqStart: lp,
+-            lpFreqEnd: dim,
+-          },
+-          (buffer) => {
+-            convolver.buffer = buffer;
+-          },
+-        );
++        // Settled on every way out — landed, failed to render, or threw here
++        // (`size(0)` asks for a zero-length buffer) — or a render waiting on
++        // `reverbsReady()` would wait forever.
 +        let landed;
 +        const ready = new Promise((resolve) => (landed = resolve));
++        const done = () => {
++          pendingReverbs.delete(ready);
++          landed();
++        };
 +        pendingReverbs.add(ready);
-         reverbGen.generateReverb(
-           {
-             audioContext: this,
-@@ -47,6 +63,8 @@ if (typeof AudioContext !== 'undefined') {
-           },
-           (buffer) => {
-             convolver.buffer = buffer;
-+            pendingReverbs.delete(ready);
-+            landed();
-           },
-         );
++        try {
++          reverbGen.generateReverb(
++            {
++              audioContext: this,
++              numChannels: 2,
++              decayTime: d,
++              fadeInTime: fade,
++              lpFreqStart: lp,
++              lpFreqEnd: dim,
++              onError: done,
++            },
++            (buffer) => {
++              convolver.buffer = buffer;
++              done();
++            },
++          );
++        } catch (err) {
++          done();
++          throw err;
++        }
        }
+     };
+     convolver.generate(duration, fade, lp, dim, ir, irspeed, irbegin);
 diff --git a/reverbGen.mjs b/reverbGen.mjs
-index 0949a30d597a9775941440dccc54cadc61d0878e..52aaaa467bacda1fb42dc1e1adc97595fd296cab 100644
+index 0949a30d597a9775941440dccc54cadc61d0878e..120f154d04688ff2224b2bd3289b393c40d81dc5 100644
 --- a/reverbGen.mjs
 +++ b/reverbGen.mjs
 @@ -13,6 +13,7 @@
@@ -406,7 +483,7 @@ index 0949a30d597a9775941440dccc54cadc61d0878e..52aaaa467bacda1fb42dc1e1adc97595
  
  var reverbGen = {};
  
-@@ -35,10 +36,12 @@ reverbGen.generateReverb = function (params, callback) {
+@@ -35,17 +36,19 @@ reverbGen.generateReverb = function (params, callback) {
    // 60dB is a factor of 1 million in power, or 1000 in amplitude.
    var decayBase = Math.pow(1 / 1000, 1 / decaySampleFrames);
    var reverbIR = audioContext.createBuffer(numChannels, numSampleFrames, sampleRate);
@@ -420,7 +497,34 @@ index 0949a30d597a9775941440dccc54cadc61d0878e..52aaaa467bacda1fb42dc1e1adc97595
      }
      for (var j = 0; j < fadeInSampleFrames; j++) {
        chan[j] *= j / fadeInSampleFrames;
-@@ -125,10 +128,4 @@ var getAllChannelData = function (buffer) {
+     }
+   }
+ 
+-  applyGradualLowpass(reverbIR, params.lpFreqStart || 0, params.lpFreqEnd || 0, params.decayTime, callback);
++  applyGradualLowpass(reverbIR, params.lpFreqStart || 0, params.lpFreqEnd || 0, params.decayTime, callback, params.onError);
+ };
+ 
+ /** Creates a canvas element showing a graph of the given data.
+@@ -82,7 +85,7 @@ reverbGen.generateGraph = function (data, width, height, min, max) {
+  @param {number} lpFreqEndAt
+  @param {!function(!AudioBuffer)} callback May be called
+   immediately within the current execution context, or later.*/
+-var applyGradualLowpass = function (input, lpFreqStart, lpFreqEnd, lpFreqEndAt, callback) {
++var applyGradualLowpass = function (input, lpFreqStart, lpFreqEnd, lpFreqEndAt, callback, onError) {
+   if (lpFreqStart == 0) {
+     callback(input);
+     return;
+@@ -109,7 +112,8 @@ var applyGradualLowpass = function (input, lpFreqStart, lpFreqEnd, lpFreqEndAt,
+     releaseAudioNode(filter);
+     releaseAudioNode(player);
+   };
+-  context.startRendering();
++  // Stave (#1675): a failed render never fires `oncomplete`; say so instead of going quiet.
++  context.startRendering().catch((err) => onError?.(err));
+ 
+   window.filterNode = filter;
+ };
+@@ -125,10 +129,4 @@ var getAllChannelData = function (buffer) {
    return channels;
  };
  
