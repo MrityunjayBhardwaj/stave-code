@@ -1643,6 +1643,28 @@ export default function StrudelEditorClient({
     };
   }, [handleSaveFile]);
 
+  // #1651 — E2E-only: force the bounce onto the LIVE capture path, by making
+  // the handle above report no offline support.
+  //
+  // Mirrors `__staveForceBrokenVizWorker`, which forces the viz worker to fail
+  // so a test observes the REAL main-thread fallback rather than the trigger
+  // logic that selects it. Nothing below the handle is stubbed here either: the
+  // dialog, `LiveRecorder`, the transport and the save are exactly what a
+  // non-rendering engine gets. One-way on purpose — a take already under way
+  // must not change path halfway. Same dead-code-eliminated gate as the other
+  // `__stave*` hooks.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (process.env.NODE_ENV === "production") return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!(window as any).__STAVE_E2E__) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__staveForceLiveBounce = (): boolean => {
+      forceLiveBounceRef.current = true;
+      return true;
+    };
+  }, []);
+
   // E2E-only handle onto the three audio-bounce paths (#1344/#1345/#1346).
   // Same dead-code-eliminated gate as the other `__stave*` hooks — both checks
   // live inside installBounceProbe, which returns its own teardown.
@@ -1820,6 +1842,17 @@ export default function StrudelEditorClient({
     return subscribeLoopState(push);
   }, [watchedFileId, runtimeStates]);
 
+  // #1651 — E2E-only: the bounce reports no offline support, so a browser test
+  // can drive the LIVE capture path through the real dialog. Since #1631 a
+  // Strudel file always renders offline from the File menu, so the live path —
+  // still what any engine that cannot render its loaded document gets — became
+  // unreachable from the UI and lost its end-to-end coverage.
+  //
+  // A ref rather than state on purpose: the handle below reads it at CALL time
+  // along with everything else, so forcing it never re-publishes the handle.
+  // Always false in a real build (the installer dead-code-eliminates).
+  const forceLiveBounceRef = useRef(false);
+
   // #1346 — publish the bounce handle to StaveApp. Both reads go through refs
   // (`activeFileIdRef`, `runtimesRef`) rather than state, so the handle stays
   // correct across tab switches without re-running this effect and without
@@ -1833,16 +1866,39 @@ export default function StrudelEditorClient({
       if (!fid) return null;
       return runtimesRef.current.get(fid) ?? null;
     };
+    // #1651 — ONE reading of which path a bounce takes, for both the question
+    // the dialog asks (`bouncesOffline`) and the choice `bounce` makes. They
+    // were two independent reads of `canBounceOffline`, which is the shape
+    // StaveApp already guards against on the way back out: it decides what to
+    // save by the path the bounce REPORTS rather than the one predicted at
+    // Start, because a live take discarded on a stale prediction loses exactly
+    // what Stop promises to keep. One predicate here means the two cannot
+    // disagree in the first place.
+    const rendersOffline = (rt: LiveCodingRuntime): boolean =>
+      !forceLiveBounceRef.current && rt.canBounceOffline();
     const handle: BounceHandle = {
       canBounce: () => {
         const rt = activeRuntime();
         return rt ? rt.canBounceOffline() || rt.canRecord() : false;
       },
-      bouncesOffline: () => activeRuntime()?.canBounceOffline() ?? false,
-      bouncesStems: () => activeRuntime()?.canBounceStems() ?? false,
+      bouncesOffline: () => {
+        const rt = activeRuntime();
+        return rt ? rendersOffline(rt) : false;
+      },
+      // Stems are an offline export, so they answer through the same predicate
+      // — otherwise the handle could report "no offline render" and "yes, one
+      // WAV per track" in the same breath. Unchanged in production: the engine
+      // that renders stems is the engine that renders offline.
+      bouncesStems: () => {
+        const rt = activeRuntime();
+        return rt ? rendersOffline(rt) && rt.canBounceStems() : false;
+      },
       bounceStems: async (seconds, signal, onRenderProgress) => {
         const rt = activeRuntime();
-        if (!rt || !rt.canBounceStems()) return null;
+        // Through `rendersOffline` for the same reason the mix path is: the
+        // capability question and the executor are two readings of one fact,
+        // and the point of the predicate is that they cannot differ.
+        if (!rt || !rendersOffline(rt) || !rt.canBounceStems()) return null;
         const out = await rt.bounceStemsOffline(seconds, signal, onRenderProgress);
         return out ? out.stems : null;
       },
@@ -1854,7 +1910,7 @@ export default function StrudelEditorClient({
         // after a render that threw: a document that fails to evaluate or plays
         // nothing fails the same way live, and retrying would spend the song's
         // whole length in real time to report the same error.
-        if (rt.canBounceOffline()) {
+        if (rendersOffline(rt)) {
           const out = await rt.bounceOffline(seconds, signal, onRenderProgress);
           return out ? { blob: out.blob, offline: true, skipped: out.skipped } : null;
         }

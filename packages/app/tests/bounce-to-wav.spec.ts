@@ -432,3 +432,166 @@ test('the Bounce menu item is disabled on a tab with no audio runtime', async ({
   await page.getByRole('button', { name: 'File', exact: true }).click()
   await expect(page.getByText('Bounce to WAV...')).toBeDisabled()
 })
+
+/**
+ * #1651 — the LIVE capture path, driven through the real dialog.
+ *
+ * Since #1631 a Strudel file always renders offline from the File menu, so no
+ * browser arm reached the live capture any more: the arms that pinned "stopping
+ * early keeps what was recorded" were re-pointed at the render above, and the
+ * path kept only unit coverage (`BounceModal`'s readout, `LiveRecorder`'s
+ * keep-what-was-captured). It is still what runs for any engine that cannot
+ * render its loaded document, so it is shipped code with no end-to-end test.
+ *
+ * `__staveForceLiveBounce` makes the bounce handle report no offline support —
+ * the same shape as `__staveForceBrokenVizWorker`, which forces the viz
+ * fallback so a test can observe the real path rather than the trigger logic.
+ * The app below it is untouched: the dialog, the recorder, the transport and
+ * the save are exactly what a non-rendering engine gets.
+ *
+ * ⚠ EVERY ARM HERE PASSES ON THE OFFLINE PATH TOO if the force does not take —
+ * a download still arrives, still full length, still not silent. So each one
+ * asserts something only a live take can produce (the wall clock, the Recording
+ * phase, a short take from Stop), and the first arm pins the force itself.
+ */
+async function forceLiveBounce(page: import('@playwright/test').Page) {
+  // Every `__stave*` hook is gated on `__STAVE_E2E__`, which has to be in the
+  // page before its first line — so this is an init script and a reload, the
+  // same preamble the render-hold arms above use. The file's other arms need
+  // no hook at all, which is why the flag is not set for the whole suite.
+  await page.addInitScript(() => {
+    ;(window as unknown as { __STAVE_E2E__: boolean }).__STAVE_E2E__ = true
+  })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.locator('.monaco-editor').first().waitFor({ timeout: 15000 })
+  const forced = await page.evaluate(
+    () => (window as unknown as { __staveForceLiveBounce?: () => boolean }).__staveForceLiveBounce?.() ?? false,
+  )
+  expect(forced, '__staveForceLiveBounce hook present').toBe(true)
+}
+
+/**
+ * A WAV's own length in seconds, read from its header rather than assumed.
+ *
+ * ⚠ Deliberately NOT frames against a guessed rate (#1401). The same take is
+ * 352,800 frames on a 44.1kHz device and 384,000 on a 48kHz one, so a frame
+ * threshold measures the sound card as much as the bounce. The header carries
+ * the rate at byte 24; dividing by it makes these arms say what they mean.
+ */
+function secondsOf(path: string): number {
+  return framesOf(path) / readFileSync(path).readUInt32LE(24)
+}
+
+test.describe('the live capture path (#1651)', () => {
+  test('the dialog says a live bounce costs what it plays', async ({ page }) => {
+    await forceLiveBounce(page)
+    await openBounceModal(page)
+    const dialog = page.getByRole('dialog', { name: 'Bounce to WAV' })
+
+    // The live sentence, which the offline copy ("faster than real time")
+    // cannot produce — so this is also the proof the force reached the handle.
+    await expect(dialog.getByText(/records the live output/)).toBeVisible()
+    // Stems render offline only, so the choice must be gone with it.
+    await expect(dialog.getByTestId('bounce-export-kind')).toHaveCount(0)
+  })
+
+  test('a live bounce takes as long as it plays and saves the full length', async ({ page }) => {
+    test.setTimeout(120_000)
+    await forceLiveBounce(page)
+    await openBounceModal(page)
+    await page.getByRole('button', { name: `${BOUNCE_SECONDS}s` }).click()
+
+    const downloadPromise = page.waitForEvent('download', { timeout: 90_000 })
+    const startedAt = Date.now()
+    await page.getByRole('button', { name: 'Start Bounce' }).click()
+    const download = await downloadPromise
+    const wallSeconds = (Date.now() - startedAt) / 1000
+    const path = (await download.path())!
+    const seconds = secondsOf(path)
+    const rms = rmsOf(path)
+    console.log(`[#1651 live] ${seconds.toFixed(3)}s of audio in ${wallSeconds.toFixed(1)}s of wall clock, rms=${rms.toFixed(4)}`)
+
+    expect(
+      {
+        // Real time is the path's defining cost: a render of 8s lands in about
+        // a second, so this cannot pass on the offline path.
+        realTime: wallSeconds >= BOUNCE_SECONDS - 1,
+        // The recorder counts FRAMES, not the clock (#1401), so the take is the
+        // length that was asked for — within a single 4096-frame block.
+        fullLength: Math.abs(seconds - BOUNCE_SECONDS) < 0.1,
+        audible: rms > 0.02,
+      },
+      `${seconds.toFixed(3)}s in ${wallSeconds.toFixed(1)}s, rms ${rms.toFixed(4)}`,
+    ).toEqual({ realTime: true, fullLength: true, audible: true })
+    // #1647 — the live path holds the transport for the whole take (#1639).
+    await expectNoUncaught(page)
+  })
+
+  test('the recording readout moves while the take runs', async ({ page }) => {
+    test.setTimeout(120_000)
+    await forceLiveBounce(page)
+    await openBounceModal(page)
+    await page.getByRole('button', { name: '30s' }).click()
+
+    const downloadPromise = page.waitForEvent('download', { timeout: 90_000 })
+    await page.getByRole('button', { name: 'Start Bounce' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Bounce to WAV' })
+
+    // The phase itself: an offline render shows "Rendering…" and never this.
+    await expect(dialog.getByText(/^Recording — /)).toBeVisible({ timeout: 30_000 })
+    const bar = dialog.getByRole('progressbar')
+    await expect(bar).toHaveAttribute('aria-valuemax', '30')
+    // Near zero when the bar appears — so what the poll below sees is the
+    // readout MOVING, not a bar that was already part-filled when it arrived.
+    // (It is too coarse to be the detector for #1356's settle, which is about a
+    // second: `LiveRecorder`'s own unit tests own that.)
+    expect(Number(await bar.getAttribute('aria-valuenow'))).toBeLessThan(3)
+    // ...and then moves, which is the readout this arm exists for.
+    await expect
+      .poll(async () => Number(await bar.getAttribute('aria-valuenow')), { timeout: 20_000 })
+      .toBeGreaterThanOrEqual(4)
+    await expect(dialog.getByText(/of 0:30/)).toBeVisible()
+
+    // Leave nothing running behind the arm: Stop resolves the take at once.
+    await dialog.getByRole('button', { name: 'Stop' }).click()
+    await downloadPromise
+  })
+
+  /**
+   * The behaviour #1631 removed the arm for: Stop is not Cancel on this path.
+   * `LiveRecorder` resolves with what it captured, so the file is shorter —
+   * and it must still be AUDIBLE, because the encoder lets an aborted take be
+   * silent (`allowSilence: aborted`), which is exactly how "kept a shorter
+   * take" could pass while keeping nothing.
+   */
+  test('stopping early keeps a shorter take, and it is not silent', async ({ page }) => {
+    test.setTimeout(120_000)
+    await forceLiveBounce(page)
+    await openBounceModal(page)
+    await page.getByRole('button', { name: '300s' }).click()
+
+    const downloadPromise = page.waitForEvent('download', { timeout: 90_000 })
+    await page.getByRole('button', { name: 'Start Bounce' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Bounce to WAV' })
+    const bar = dialog.getByRole('progressbar')
+    await expect(bar).toBeVisible({ timeout: 30_000 })
+    await expect
+      .poll(async () => Number(await bar.getAttribute('aria-valuenow')), { timeout: 20_000 })
+      .toBeGreaterThanOrEqual(4)
+
+    await dialog.getByRole('button', { name: 'Stop' }).click()
+    const download = await downloadPromise
+    const path = (await download.path())!
+    const seconds = secondsOf(path)
+    const rms = rmsOf(path)
+    console.log(`[#1651 stop] kept ${seconds.toFixed(3)}s of a 300s take, rms=${rms.toFixed(4)}`)
+
+    expect(
+      { shorter: seconds < 60, keptWhatPlayed: seconds > 3, audible: rms > 0.02 },
+      `${seconds.toFixed(3)}s, rms ${rms.toFixed(4)}`,
+    ).toEqual({ shorter: true, keptWhatPlayed: true, audible: true })
+    await expect(
+      page.locator('[data-testid="toast"]').filter({ hasText: 'stopped early' }),
+    ).toBeVisible({ timeout: 10_000 })
+  })
+})
