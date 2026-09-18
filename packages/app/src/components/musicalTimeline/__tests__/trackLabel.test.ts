@@ -30,6 +30,11 @@ describe('labelAtOffset', () => {
     expect(labelAtOffset('_lead: note("c")', 0)).toBe('lead')
   })
 
+  it('strips a TRAILING `_` mute marker too (#1679)', () => {
+    expect(labelAtOffset('bass_: s("bd")', 0)).toBe('bass')
+    expect(labelAtOffset('$_: s("bd")', 0)).toBeNull() // muted anonymous
+  })
+
   it('a muted anonymous `_$:` is still anonymous (null)', () => {
     expect(labelAtOffset('_$: s("bd")', 0)).toBeNull()
   })

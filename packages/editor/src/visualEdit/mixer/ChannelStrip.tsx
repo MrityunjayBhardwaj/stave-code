@@ -219,7 +219,9 @@ export function ChannelStrip({
   // marker stripped); an anonymous `$:` track seeds EMPTY (its `d{N}` display
   // isn't real code) so the field invites a fresh name rather than echoing it.
   const [renaming, setRenaming] = React.useState(false)
-  const bareLabel = strip.label?.replace(/^_/, '') ?? ''
+  // `strip.label` is already the bare label — `stripModel` strips the marker,
+  // on either side (#1679), so there is nothing to strip here.
+  const bareLabel = strip.label ?? ''
   const renameSeed = bareLabel !== '' && bareLabel !== '$' ? bareLabel : ''
   const renameEnabled = onRename !== undefined
   // ONE write per rename gesture (#877). Committing on Enter unmounts the input,

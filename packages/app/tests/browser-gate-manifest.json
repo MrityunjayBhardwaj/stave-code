@@ -373,7 +373,7 @@
   },
   "full-song-name-collision.spec.ts": {
     "runs": "gate",
-    "why": "a `d2:` label collides with the name the unlabelled track below it would be given (#1667). The row SOURCE de-duplicates by that name, so the collision deletes a lane rather than repeating one \u2014 a missing row is invisible in a unit test of the names, and only the running app shows how many lanes the arrangement actually draws. Same for a `//`-commented copy of a named track above the live one (#1673): the row it kept was the comment's."
+    "why": "a `d2:` label collides with the name the unlabelled track below it would be given (#1667). The row SOURCE de-duplicates by that name, so the collision deletes a lane rather than repeating one \u2014 a missing row is invisible in a unit test of the names, and only the running app shows how many lanes the arrangement actually draws. Same for a `//`-commented copy of a named track above the live one (#1673): the row it kept was the comment's. And for a TRAILING `_` mute marker (#1679): `$_:` twice lost a row, and `drums_:` showed as a playing track."
   },
   "full-song-track-labels.spec.ts": {
     "runs": "gate",

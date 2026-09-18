@@ -24,6 +24,7 @@
  *
  *   `$: …`      audible anonymous track
  *   `_$: …`     muted / soloed-out anonymous track (`_`-prefix mute idiom)
+ *   `$_: …`     the same, suffix spelling — Strudel mutes `x_` too (#1679)
  *   `setcps(…)` transport statement — its own top-level block
  *   `all(x=>…)` master-bus statement — stacks every `$:`/named pattern and
  *               applies the transform (master fader / global backdrop, #792).
@@ -39,7 +40,7 @@
  */
 export function startsTopLevelBlock(trimmed: string): boolean {
   return (
-    /^_?\$:/.test(trimmed) ||
+    /^_?\$_?:/.test(trimmed) || // `$:`, `_$:`, and `$_:` — Strudel mutes `x_` too (#1679)
     trimmed.startsWith('setcps') ||
     /^all\s*\(/.test(trimmed) ||
     trimmed.startsWith('/*')

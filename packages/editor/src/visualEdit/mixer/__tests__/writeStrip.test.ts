@@ -82,6 +82,25 @@ describe('muteEdit', () => {
   })
 })
 
+describe('muteEdit / renameEdit on a trailing `_` marker (#1679)', () => {
+  it('unmuting a suffix-muted track removes the marker it HAS', () => {
+    expect(applied('drums_: s("bd")', muteEdit(chunkAt('drums_: s("bd")'), false))).toBe('drums: s("bd")')
+    expect(applied('$_: s("bd")', muteEdit(chunkAt('$_: s("bd")'), false))).toBe('$: s("bd")')
+    // both markers → both go
+    expect(applied('_d1_: s("bd")', muteEdit(chunkAt('_d1_: s("bd")'), false))).toBe('d1: s("bd")')
+  })
+
+  it('a suffix-muted track is already muted', () => {
+    expect(muteEdit(chunkAt('drums_: s("bd")'), true)).toBeNull()
+  })
+
+  it('renaming keeps a suffix marker where it is', () => {
+    expect(applied('drums_: s("bd")', renameEdit(chunkAt('drums_: s("bd")'), 'kick', new Set()))).toBe('kick_: s("bd")')
+    // renaming to the bare name it already has is a no-op
+    expect(renameEdit(chunkAt('drums_: s("bd")'), 'drums', new Set())).toBeNull()
+  })
+})
+
 describe('renameEdit (#580 Phase C)', () => {
   // No sibling tracks → no name can collide. The #585 collision cases below pass
   // a populated set.

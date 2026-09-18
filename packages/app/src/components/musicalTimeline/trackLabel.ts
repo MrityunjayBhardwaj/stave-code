@@ -23,8 +23,10 @@
  * it never creates one.
  *
  * PURE — no React, no IR, no editor barrel — so it stays out of the vitest
- * CJS-`gifenc` trap (P172) and is freely unit-testable.
+ * CJS-`gifenc` trap (P172) and is freely unit-testable. The one editor import is
+ * the dependency-free `@stave/editor/trackId` entry, not the barrel (#1679).
  */
+import { splitMuteMarker } from '@stave/editor/trackId'
 
 /**
  * The label of the labeled statement at `offset` in `code`, or null when the
@@ -32,7 +34,7 @@
  *
  * `dollarPos` points at the statement start (verified live #579), so from there
  * the source reads `<label>: <expr>`. Mirrors the Mixer's `bareLabel`: the
- * leading `_` mute marker is stripped, so a muted `_bass:` still reads `bass`
+ * `_` mute marker (leading or trailing, #1679) is stripped, so a muted `_bass:` still reads `bass`
  * (and a muted anon `_$:` still resolves to anonymous → null).
  */
 export function labelAtOffset(code: string, offset: number): string | null {
@@ -44,7 +46,8 @@ export function labelAtOffset(code: string, offset: number): string | null {
   const m = /^([A-Za-z_$][\w$]*)\s*:/.exec(code.slice(i))
   if (!m) return null
   const raw = m[1]!
-  const bare = raw.startsWith('_') ? raw.slice(1) : raw // strip the `_` mute marker
+  // strip the `_` mute marker — either side (#1679); the editor owns what one is
+  const { bare } = splitMuteMarker(raw)
   if (bare === '' || bare === '$') return null // anonymous `$:` → keep d{N}
   return bare
 }

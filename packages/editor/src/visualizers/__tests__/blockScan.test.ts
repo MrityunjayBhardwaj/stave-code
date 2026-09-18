@@ -12,6 +12,14 @@ describe('startsTopLevelBlock', () => {
     expect(startsTopLevelBlock('_$: note("c e g")')).toBe(true)
   })
 
+  it('recognizes a SUFFIX-muted anonymous track (`$_:`) — Strudel mutes `x_` too (#1679)', () => {
+    // Trimmed, so this is the INDENTED case: at column 0 the named-track rule
+    // already catches `$_:`, but indented it fell through both and the block
+    // above absorbed it — while an indented `_$:` did not.
+    expect(startsTopLevelBlock('$_: note("c e g")')).toBe(true)
+    expect(startsTopLevelBlock('_$_: note("c e g")')).toBe(true)
+  })
+
   it('recognizes the transport statement', () => {
     expect(startsTopLevelBlock('setcps(90/240).gain(0.3)')).toBe(true)
   })
