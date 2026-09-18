@@ -112,6 +112,70 @@ export interface BounceProbe {
    * at an hour it would be larger than the channel back can carry.
    */
   bounceStats(code: string, secs: number, sampleRate: number): Promise<BounceStatsOutcome>;
+  /**
+   * #1666 — what a STEMS export of `code` costs, on the app's own path:
+   * `bounceStemsOffline` then `buildStemsArchive`, the two steps the File menu
+   * runs. Reports each stem's size, the total held at once and the zip built
+   * from them, so the peak the caller samples from outside can be attributed
+   * rather than guessed.
+   *
+   * ⚠ IT HOLDS EVERYTHING ALIVE FOR `holdMs` BEFORE RETURNING, on purpose. The
+   * stems and the zip coexist in the app too — the save reads the zip while the
+   * stems are still referenced — and a peak sampled every 250ms from another
+   * process can miss a moment that exists only between two statements.
+   */
+  stemsStats(
+    code: string,
+    secs: number,
+    holdMs: number,
+    /**
+     * What to do with the rendered stems — the three candidate answers to "is
+     * the failure the PILE or the COPY?", each doing strictly less than the one
+     * before it:
+     *   `zip`    — the shipped path: `buildStemsArchive` (jszip, STORE).
+     *   `concat` — one `new Blob([...stems])`, which in Chromium references the
+     *              parts rather than copying their bytes, then reads a slice of
+     *              it so the reference is exercised.
+     *   `read`   — no new object at all: stream every stem through a checksum.
+     *              If THIS fails, no archive builder can succeed and the length
+     *              itself is the problem.
+     */
+    mode: "zip" | "concat" | "read",
+  ): Promise<StemsStatsOutcome>;
+}
+
+/** #1666 — one stems export, measured. */
+export interface StemsStatsOutcome {
+  ok: boolean;
+  error?: string;
+  /** Where it failed: rendering the stems, or building the zip. */
+  stage?: "render" | "zip";
+  secs?: number;
+  /** Stems that produced a file. */
+  stemCount?: number;
+  /** Bytes per stem, in the zip's order. */
+  stemBytes?: number[];
+  /** Every stem held at once — what the renders leave in memory. */
+  heldBytes?: number;
+  /** The archive built from them, which is a second copy of the same audio. */
+  zipBytes?: number;
+  /** Which of the three things was done with the stems. */
+  mode?: string;
+  /** `read`/`concat`: bytes actually streamed back out of blob storage. */
+  readBytes?: number;
+  /** Tracks with no file, so a shrunken `heldBytes` is not read as a saving. */
+  silent?: string[];
+  failed?: string[];
+  renderMs?: number;
+  zipMs?: number;
+  /**
+   * `performance.memory.usedJSHeapSize` before the render and with everything
+   * held, in MB. A Blob does NOT live in the JS heap — this is here so the
+   * process-level reading can be attributed to blob storage rather than to
+   * script, instead of the two being confused.
+   */
+  jsHeapMbBefore?: number;
+  jsHeapMbHeld?: number;
 }
 
 /** #1652 — one long render, measured. */
@@ -226,6 +290,24 @@ export interface OfflineSpikeOutcome {
   haps?: number;
   /** base64 WAV, present only when `ok` — measured by the spec's own reader. */
   wav?: string;
+}
+
+/**
+ * #1666 — read every byte of `blob` back out of blob storage, a chunk at a
+ * time, and return how many arrived.
+ *
+ * Chunked rather than `arrayBuffer()`: the question is whether the DATA can be
+ * read, and pulling gigabytes into one typed array would fail for a second,
+ * different reason (a single allocation) and make the answer unattributable.
+ * The running total is the only thing kept.
+ */
+async function streamBytes(blob: Blob): Promise<number> {
+  const CHUNK = 8 * 1024 * 1024;
+  let read = 0;
+  for (let at = 0; at < blob.size; at += CHUNK) {
+    read += (await blob.slice(at, at + CHUNK).arrayBuffer()).byteLength;
+  }
+  return read;
 }
 
 async function toBase64(blob: Blob): Promise<string> {
@@ -567,6 +649,89 @@ export function installBounceProbe(): () => void {
         return { ok: false, stage, error: String(err) };
       } finally {
         proto.startRendering = realStartRendering;
+      }
+    },
+
+    stemsStats: async (code, secs, holdMs, mode) => {
+      let stage: "render" | "zip" = "render";
+      try {
+        const e = await booted();
+        const rt = await runtimeOver(e);
+        rt.stop();
+        e.setTransportOffset(0);
+        e.setLoopRange(null);
+        loadedCode = code;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mem = (performance as any).memory as { usedJSHeapSize?: number } | undefined;
+        const heapMb = () => (mem?.usedJSHeapSize ?? 0) / 1048576;
+        const jsHeapMbBefore = heapMb();
+
+        const t0 = performance.now();
+        const out = await rt.bounceStemsOffline(secs);
+        const t1 = performance.now();
+        if (!out) throw new Error("bounceStemsOffline returned null");
+
+        stage = "zip";
+        const stemBytes = out.stems.filter((s) => s.blob).map((s) => s.blob!.size);
+        const held = stemBytes.reduce((a, b) => a + b, 0);
+        let zipBytes: number | undefined;
+        let readBytes: number | undefined;
+        let silent: string[] = [];
+        let failed: string[] = [];
+        // Kept alive across the hold below, whichever branch ran.
+        let product: Blob | null = null;
+
+        if (mode === "zip") {
+          // The app's own two lines, not a re-implementation: the whole
+          // question is what THAT pair costs.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mod: any = await import("@stave/editor");
+          const { buildStemsArchive } = await import("../stemsArchive");
+          const archive = await buildStemsArchive(
+            out.stems,
+            (err: unknown) => err instanceof mod.SilentCaptureError,
+          );
+          zipBytes = archive.zip.size;
+          silent = archive.silent;
+          failed = archive.failed.map((f) => f.fileName);
+          product = archive.zip;
+        } else if (mode === "concat") {
+          product = new Blob(out.stems.filter((s) => s.blob).map((s) => s.blob!));
+          zipBytes = product.size;
+          // A size is only a promise; read through it so the references are
+          // exercised the way saving the file would exercise them.
+          readBytes = await streamBytes(product);
+        } else {
+          // No new object at all. If this cannot be done, nothing downstream can.
+          let total = 0;
+          for (const s of out.stems) if (s.blob) total += await streamBytes(s.blob);
+          readBytes = total;
+        }
+        const t2 = performance.now();
+
+        const result: StemsStatsOutcome = {
+          ok: true,
+          secs,
+          mode,
+          stemCount: stemBytes.length,
+          stemBytes,
+          heldBytes: held,
+          zipBytes,
+          readBytes,
+          silent,
+          failed,
+          renderMs: t1 - t0,
+          zipMs: t2 - t1,
+          jsHeapMbBefore,
+          jsHeapMbHeld: heapMb(),
+        };
+        // Everything above is still referenced here — that is the point.
+        await new Promise((r) => setTimeout(r, holdMs));
+        // Read once more through the values so nothing is collected early.
+        if ((product?.size ?? 0) < 0 || out.stems.length < 0) throw new Error("unreachable");
+        return result;
+      } catch (err) {
+        return { ok: false, stage, error: String(err) };
       }
     },
 

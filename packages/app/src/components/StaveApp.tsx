@@ -502,8 +502,12 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // #1631 — whether the active file's bounce renders offline. Read when the
   // modal opens, so its copy says what Start will cost before it is pressed.
   const [bounceOffline, setBounceOffline] = useState(false);
-  /** #1648 — whether the active file can export stems. Read with `bounceOffline`. */
-  const [bounceStemsAvailable, setBounceStemsAvailable] = useState(false);
+  /**
+   * #1648/#1666 — how many stems the active file would export, 0 when it cannot.
+   * Read with `bounceOffline`; the count is what sets the length stems are
+   * offered, because the export costs its length once per track.
+   */
+  const [bounceStemTracks, setBounceStemTracks] = useState(0);
   /** What the active document says about its length; `null` until measured. */
   const [bounceSizing, setBounceSizing] = useState<BounceSizing | null>(null);
   /** Supersedes an in-flight measurement when the modal is reopened. */
@@ -709,7 +713,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   const openBounceModal = useCallback(() => {
     setBounceState({ phase: "choosing" });
     setBounceOffline(bounceRef.current?.bouncesOffline() ?? false);
-    setBounceStemsAvailable(bounceRef.current?.bouncesStems() ?? false);
+    setBounceStemTracks(bounceRef.current?.stemTracks() ?? 0);
     setBounceOpen(true);
     // Measure asynchronously and let the modal open immediately (#1365). The
     // analysis walks a growing horizon and can take a moment; blocking the modal
@@ -1893,7 +1897,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         state={bounceState}
         sizing={bounceSizing}
         offline={bounceOffline}
-        stemsAvailable={bounceStemsAvailable}
+        stemTracks={bounceStemTracks}
         onClose={() => setBounceOpen(false)}
         onStart={handleBounceStart}
         onStop={handleBounceStop}

@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   bounceOffers,
   formatDuration,
+  maxBounceSeconds,
+  maxStemsSeconds,
   type BounceSizing,
 } from "./songLength";
 
@@ -83,10 +85,15 @@ interface BounceModalProps {
    */
   offline: boolean;
   /**
-   * #1648 — whether the active file can export one WAV per track. Stems render
-   * offline only, so the choice is shown only when both hold.
+   * #1648 — how many stems the active file would export, and 0 when it cannot
+   * export any. Stems render offline only, so the choice is shown only when
+   * both hold.
+   *
+   * #1666 — a COUNT rather than a flag, because the count is what sets the
+   * ceiling: a stems export renders the song once per track and holds every
+   * result at once, so its cost is seconds x tracks. See `maxStemsSeconds`.
    */
-  stemsAvailable?: boolean;
+  stemTracks?: number;
   onClose: () => void;
   /** `stems` is true when the user chose one WAV per track (#1648). */
   onStart: (seconds: number, stems: boolean) => void;
@@ -98,7 +105,7 @@ export function BounceModal({
   state,
   sizing,
   offline,
-  stemsAvailable = false,
+  stemTracks = 0,
   onClose,
   onStart,
   onStop,
@@ -107,7 +114,7 @@ export function BounceModal({
   // #1648 — Mix or Stems. Reset to Mix each time the dialog opens, so a stems
   // export is always a choice made for this bounce.
   const [stemsChosen, setStemsChosen] = useState(false);
-  const canStems = offline && stemsAvailable;
+  const canStems = offline && stemTracks > 0;
   const stems = canStems && stemsChosen;
   useEffect(() => {
     if (!open) setStemsChosen(false);
@@ -115,8 +122,13 @@ export function BounceModal({
   const startBtnRef = useRef<HTMLButtonElement>(null);
 
   // #1652 — the path sets the ceiling, so an offline render is offered repeats a
-  // live take would not be.
-  const { offers, note } = useMemo(() => bounceOffers(sizing, offline), [sizing, offline]);
+  // live take would not be. #1666 — and a stems export, which pays for the
+  // length once per track, is offered less than the mix of the same song.
+  const { offers, note } = useMemo(
+    () => bounceOffers(sizing, offline, stems ? stemTracks : 0),
+    [sizing, offline, stems, stemTracks],
+  );
+  const ceiling = stems ? maxStemsSeconds(stemTracks) : maxBounceSeconds(offline);
 
   // When the measurement lands, move the default onto the document's own answer
   // — the whole point is that the user should not have to translate bars into
@@ -132,6 +144,20 @@ export function BounceModal({
     tookSongDefault.current = true;
     setSelected(offers[0].seconds);
   }, [open, offers]);
+
+  // #1666 — choosing Stems can drop the ceiling below what is already selected:
+  // the grids below re-draw against the new ceiling, but a pick made before the
+  // switch does not, so Start would begin an export the dialog no longer
+  // offers. Land on the longest thing still on offer instead of silently
+  // keeping the old number.
+  useEffect(() => {
+    if (!open || selected <= ceiling) return;
+    const allowed = [
+      ...offers.map((o) => o.seconds),
+      ...DURATIONS.filter((d) => d <= ceiling),
+    ];
+    if (allowed.length > 0) setSelected(Math.max(...allowed));
+  }, [open, selected, ceiling, offers]);
 
   useEffect(() => {
     if (open && state.phase === "choosing") startBtnRef.current?.focus();
@@ -229,7 +255,7 @@ export function BounceModal({
                 {offers.length > 0 ? "Or a fixed length" : "Length"}
               </div>
               <div style={styles.grid}>
-                {DURATIONS.map((d) => (
+                {DURATIONS.filter((d) => d <= ceiling).map((d) => (
                   <button
                     key={d}
                     onClick={() => setSelected(d)}

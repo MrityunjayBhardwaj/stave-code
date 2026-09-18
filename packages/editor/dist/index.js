@@ -41921,6 +41921,14 @@ function safe(name) {
   return cleaned || "track";
 }
 __name(safe, "safe");
+function countStemTracks(code) {
+  try {
+    return new Set(buildStripModels(detectAllChunks(code)).map((s) => s.captureId)).size;
+  } catch {
+    return 0;
+  }
+}
+__name(countStemTracks, "countStemTracks");
 function stemFileNames(code, ids) {
   const byCapture = /* @__PURE__ */ new Map();
   try {
@@ -42376,6 +42384,24 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    * #1648 — whether this runtime can export stems: the engine renders its loaded
    * document one track at a time. Duck-typed like `canBounceOffline`.
    */
+  /**
+   * #1666 — how many stems a stems export of this document would render.
+   *
+   * The LARGER of what the engine has registered and what the document's own
+   * text declares, and never less than one. Each is right where the other is
+   * blind: the engine knows nothing until the document has been evaluated (and
+   * the Bounce dialog is usually opened before that), while the source cannot
+   * see a track that only exists once the code has run. A ceiling computed from
+   * this wants the bigger number — under-counting offers an export that cannot
+   * be held, over-counting only offers a shorter one.
+   *
+   * Never zero: a BARE document has entered no track at all, and its whole
+   * played pattern is the single stem.
+   */
+  stemTrackCount() {
+    if (this.isDisposed) return 1;
+    return Math.max(1, this.getSongTrackIds().length, countStemTracks(this.getFileContent()));
+  }
   canBounceStems() {
     if (this.isDisposed) return false;
     return typeof this.engine.renderLoadedStemsReport === "function";
