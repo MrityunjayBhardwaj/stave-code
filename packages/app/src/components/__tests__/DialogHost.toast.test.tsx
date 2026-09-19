@@ -154,3 +154,49 @@ describe("toast keyboard surface (#1411)", () => {
     expect(getToasts()).toHaveLength(0);
   });
 });
+
+describe("toast announcements (#1419)", () => {
+  // What a screen reader is TOLD is checked in the browser, against Chromium's
+  // own accessibility tree (`bounce-silent-save-anyway.spec.ts`). These arms pin
+  // the structure that makes it so.
+  it("the stack is mounted BEFORE its first toast, and the toast lands in that same element", () => {
+    const { container } = render(<DialogHost />);
+    const stack = container.querySelector('[data-testid="toast-stack"]');
+    expect(stack).not.toBeNull();
+    act(() => {
+      showToast("plain news", "info");
+    });
+    expect(stack!.contains(container.querySelector('[data-testid="toast"]'))).toBe(true);
+  });
+
+  it("the stack is a polite region that reads only what was added", () => {
+    const { container } = render(<DialogHost />);
+    const stack = container.querySelector('[data-testid="toast-stack"]')!;
+    expect(stack.getAttribute("role")).toBe("status");
+    expect(stack.getAttribute("aria-atomic")).toBe("false");
+  });
+
+  it("an error toast interrupts; a routine one waits its turn", () => {
+    const { container } = render(<DialogHost />);
+    act(() => {
+      showToast("plain news", "info");
+      showToast("something broke", "error");
+    });
+    const [info, error] = [...container.querySelectorAll('[data-testid="toast"]')];
+    expect(info.getAttribute("role")).toBeNull();
+    expect(error.getAttribute("role")).toBe("alert");
+  });
+
+  it("a repeat stays quiet — the count badge is not read out", () => {
+    const { container } = render(<DialogHost />);
+    act(() => {
+      showToast("Saved.", "info");
+      showToast("Saved.", "info");
+    });
+    const badge = container.querySelector('[data-testid="toast"] [title="Repeated 2 times"]');
+    expect(badge).not.toBeNull();
+    expect(badge!.getAttribute("aria-hidden")).toBe("true");
+    // one toast, not two: the repeat bumped the count
+    expect(container.querySelectorAll('[data-testid="toast"]')).toHaveLength(1);
+  });
+});

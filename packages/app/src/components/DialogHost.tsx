@@ -21,7 +21,9 @@ export function DialogHost() {
   return (
     <>
       {dialog && <DialogBody dialog={dialog} key={dialog.id} />}
-      {toasts.length > 0 && <ToastStack toasts={toasts} />}
+      {/* Always mounted, empty or not (#1419): a live region is announced only
+          when content arrives in a region that was ALREADY in the document. */}
+      <ToastStack toasts={toasts} />
       {/* tick referenced to keep React subscribed to dialog state */}
       <span data-stave-dialog-tick={tick} hidden />
     </>
@@ -95,12 +97,36 @@ function DialogBody({ dialog }: { dialog: DialogState }) {
   );
 }
 
+/**
+ * The toast stack is a LIVE REGION, so a toast is announced when it appears
+ * (#1419). Before, it was a plain `div`: the text was there to be found, but a
+ * screen reader was told nothing, and since #1410 the offer to keep a refused
+ * bounce exists on a toast and nowhere else.
+ *
+ *  - The stack is `role="status"` (polite): a routine toast ("Saved.") is read
+ *    when the reader is next idle, never over what the user is doing. It is
+ *    `aria-atomic="false"` because `status` implies atomic, and an atomic region
+ *    re-reads ALL of itself on any change — every toast still on screen, again,
+ *    each time a new one arrives (observed in Chromium's accessibility tree).
+ *  - An ERROR toast is `role="alert"` (assertive) on its own element. It may
+ *    carry the only way back to a take, on a timer, so it is worth interrupting
+ *    for. An element with `role="alert"` is announced when it is inserted.
+ *  - A repeat is QUIET. The dedupe bumps a count instead of stacking a second
+ *    toast; the `×N` badge is hidden from assistive tech, because read out it is
+ *    a bare "times two", and a message the user just heard is chatter the
+ *    dedupe exists to prevent.
+ *
+ * ⚠ THE STACK MUST BE MOUNTED BEFORE ITS FIRST TOAST. A region inserted along
+ * with its content is not reliably announced, which is why `DialogHost` renders
+ * it even when there is nothing in it.
+ */
 function ToastStack({ toasts }: { toasts: ToastState[] }) {
   return (
-    <div style={styles.toastStack}>
+    <div style={styles.toastStack} role="status" aria-atomic="false" data-testid="toast-stack">
       {toasts.map((t) => (
         <div
           key={t.id}
+          role={t.level === "error" ? "alert" : undefined}
           // A stable handle for tests. Until #1411 the only way to address a
           // toast was its message text, which couples an arm to prose — reword
           // the message and the arm stops watching anything, silently. `level`
@@ -193,7 +219,7 @@ function ToastStack({ toasts }: { toasts: ToastState[] }) {
                 ...styles.toastCount,
                 ...(t.level === "error" ? styles.toastCountError : {}),
               }}
-              aria-label={`Repeated ${t.count} times`}
+              aria-hidden="true"
               title={`Repeated ${t.count} times`}
             >
               ×{t.count}
