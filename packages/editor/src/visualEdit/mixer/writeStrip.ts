@@ -104,7 +104,8 @@ const RESERVED_LABELS = new Set([
  *  word. Mirrors what a `name:` LabeledStatement accepts. Exported so the rename
  *  UIs can gate/validate keystrokes without re-deriving the rule. */
 export function isValidTrackLabel(name: string): boolean {
-  return /^[A-Za-z_$][\w$]*$/.test(name) && !RESERVED_LABELS.has(name)
+  // Any JS identifier (#1683) — `節奏` is as good a label as `drums`.
+  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u.test(name) && !RESERVED_LABELS.has(name)
 }
 
 /**

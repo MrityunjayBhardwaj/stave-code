@@ -43,7 +43,7 @@ export function labelAtOffset(code: string, offset: number): string | null {
   let i = offset
   while (i < code.length && /\s/.test(code[i]!)) i++
   // A labeled statement head: a JS-identifier-ish label (incl. `$`) then `:`.
-  const m = /^([A-Za-z_$][\w$]*)\s*:/.exec(code.slice(i))
+  const m = /^([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/u.exec(code.slice(i)) // any JS identifier (#1683)
   if (!m) return null
   const raw = m[1]!
   // strip the `_` mute marker — either side (#1679); the editor owns what one is

@@ -83,7 +83,8 @@ structured `Play`. JS identifiers admit the full `ID_Start`/`ID_Continue` Unicod
 `[A-Za-z_$][\w$]*` admits a 63-character subset.
 
 ```regex
-4x  /^[A-Za-z_$][\w$]*$/
+3x  /^[A-Za-z_$][\w$]*$/
+1x  /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u
 ```
 
 ### A2 · "is this a call expression, and what is the callee?" — 2 sites
@@ -295,11 +296,12 @@ Strudel's. **Transcribed.** This site already carries a hand-written guard rejec
 inside brackets, strings and templates — which is the shape of the problem: a regex that needs
 a second regex to undo its false positives is doing a parser's job.
 
-Known-incomplete: **reasoned** — a label whose identifier is non-ASCII (as A1), and any `:`
-adjacency the guard's bracket/string tracking does not model.
+Known-incomplete: **reasoned** — any `:` adjacency the guard's bracket/string tracking does
+not model. (A non-ASCII label such as `節奏:` is recognised since #1683: the label class is
+JavaScript's own `ID_Start`/`ID_Continue`, as acorn reads it.)
 
 ```regex
-1x  /^[ \t]*(\/\/[ \t]*)?([A-Za-z_$][\w$]*)\s*:/gm
+1x  /^[ \t]*(\/\/[ \t]*)?([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/gmu
 ```
 
 ---

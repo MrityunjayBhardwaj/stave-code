@@ -264,12 +264,14 @@ export function classifyLiteralRhs(
  * really the same question, and a shorthand key that the substituter would not
  * recognise as a name would be a silent disagreement between them.
  *
- * Deliberately NOT the full ES identifier grammar (no unicode escapes, no
+ * Deliberately NOT the full ES identifier grammar (no `\u` escapes, no
  * reserved-word check) — it is a conservative admission test, so anything it
- * declines simply keeps the existing opaque fallback (PV37).
+ * declines simply keeps the existing opaque fallback (PV37). It does admit
+ * every Unicode identifier character, as acorn does (#1683): it is also the
+ * name test for a `//`-commented label, which must agree with the live one.
  */
 function isBareIdent(t: string): boolean {
-  return /^[A-Za-z_$][\w$]*$/.test(t)
+  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u.test(t)
 }
 
 /**
@@ -1837,7 +1839,9 @@ export function extractTracks(
   // `\s*:` (not `[ \t]*:`) tolerates the rare `name :` spacing; the γ-1
   // probe proved this does not introduce false-positives (ternary `?`
   // breaks the `\s*:` adjacency before any `:` is reached).
-  const dollarRe = /^[ \t]*(\/\/[ \t]*)?([A-Za-z_$][\w$]*)\s*:/gm
+  // #1683 — a label is any JavaScript identifier, as acorn reads it, not only
+  // ASCII: Strudel turns `節奏: …` into `.p('節奏')` like any other label.
+  const dollarRe = /^[ \t]*(\/\/[ \t]*)?([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/gmu
   const starts: {
     dollarStart: number
     bodyStart: number
