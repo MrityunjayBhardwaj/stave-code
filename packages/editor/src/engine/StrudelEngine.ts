@@ -435,6 +435,8 @@ export class StrudelEngine implements LiveCodingEngine {
     },
   })
   private audioCtx: AudioContext | null = null
+  /** Notes handed to superdough after their start time, which it drops (#1348). */
+  private lateNotes = 0
   private analyserNode: AnalyserNode | null = null
   private hapStream: HapStream = new HapStream()
   // #339 — monotonic evaluate() generation, stamped onto every emitted hap
@@ -1036,6 +1038,11 @@ export class StrudelEngine implements LiveCodingEngine {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         // #1656 — tracked until it settles, so a render can wait for it.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // #1348 — a note handed over after its start time is DROPPED: superdough
+        // warns and returns (`superdough.mjs:462-466`). That check runs before
+        // superdough's first `await`, i.e. synchronously inside this very call,
+        // so the same comparison here counts exactly the notes it drops.
+        if (t < audioCtxRef.currentTime) this.lateNotes++
         const triggered = (webaudioOutput as any)(hap, deadline, duration, cps, t) as Promise<unknown>
         this.liveTriggers.track(Promise.resolve(triggered), t)
         return await triggered
@@ -1074,6 +1081,9 @@ export class StrudelEngine implements LiveCodingEngine {
         this.evalResolve = null
       },
     })
+    // #1348 — count the notes a late scheduler tick drops. See `watchSkippedTicks`.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    watchSkippedTicks((this.repl as any).scheduler, (n) => { this.lateNotes += n })
 
     // Phase 20-14 α-4: vendor upstream `piano.mjs` chain method. Side-effect
     // import — attaches Pattern.prototype.piano once at boot. evalScope
@@ -2223,6 +2233,27 @@ export class StrudelEngine implements LiveCodingEngine {
    * Deliberately NOT folded into `PatternScheduler`: that adapter is consumed by
    * ~10 visualiser modules, and a tempo read does not need their blast radius.
    */
+  /**
+   * Two running counts of trouble a listener can hear (#1348), one per thread:
+   *
+   *  - `lateNotes` — notes the main thread handed over too late, which
+   *    superdough dropped. A busy main thread (a heavy evaluation, a long
+   *    task) shows up here.
+   *  - `underruns` — times the AUDIO thread missed its deadline and the output
+   *    glitched (`AudioContext.playbackStats.underrunEvents`). Null where the
+   *    browser does not report it, never a made-up zero.
+   *
+   * Neither is a CPU percentage: the browser exposes no such number for Web
+   * Audio (`AudioContext.renderCapacity` is not shipped in the Chromium this
+   * app is tested on). These are the events a load percentage would only
+   * predict.
+   */
+  getAudioHealth(): { lateNotes: number; underruns: number | null } {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const under = (this.audioCtx as any)?.playbackStats?.underrunEvents
+    return { lateNotes: this.lateNotes, underruns: typeof under === 'number' ? under : null }
+  }
+
   getCps(): number | null {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cps = (this.repl as any)?.scheduler?.cps
@@ -2493,4 +2524,67 @@ export class StrudelEngine implements LiveCodingEngine {
       this.trackOrbit.delete(captureId)
     }
   }
+}
+
+/**
+ * Count the notes a LATE scheduler tick drops (#1348).
+ *
+ * Strudel's scheduler runs a tick every few tens of milliseconds and queries
+ * the stretch of song since the last one. When a tick itself runs late (the
+ * page was busy), it skips the query outright — "skip query: too late" — and
+ * every note in that stretch is lost without ever reaching superdough
+ * (`@strudel/core` `cyclist.mjs:52-56`). That, not a note arriving late at
+ * superdough, is how a busy page drops notes.
+ *
+ * The stretches are contiguous: each tick queries from where the last one
+ * ended (`begin = this.lastEnd`, `:47-50`), skipped or not. So a gap between
+ * one scheduler query's end and the next one's start is exactly what was
+ * skipped, and its onsets are the dropped notes. Only the scheduler's own
+ * queries are watched — it tags them `{ cyclist: 'cyclist' }` (`:59`); a
+ * visualiser querying any arc it likes passes straight through. A query that
+ * starts EARLIER than the last one ended is a restart (`stop()` resets
+ * `lastEnd` to 0, `:120`), not a gap.
+ *
+ * The pattern is wrapped where the scheduler keeps it, so every way a pattern
+ * reaches it (`setPattern`, or a direct assignment) is covered, and the wrapper
+ * inherits everything else from the real pattern.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function watchSkippedTicks(scheduler: any, onDropped: (notes: number) => void): void {
+  if (!scheduler || typeof scheduler !== 'object') return
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let stored: any = scheduler.pattern ? watched(scheduler.pattern, onDropped) : scheduler.pattern
+  Object.defineProperty(scheduler, 'pattern', {
+    configurable: true,
+    enumerable: true,
+    get: () => stored,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    set: (pat: any) => {
+      stored = pat ? watched(pat, onDropped) : pat
+    },
+  })
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function watched(pat: any, onDropped: (notes: number) => void): any {
+  if (typeof pat.queryArc !== 'function') return pat
+  let expected: number | null = null
+  const w = Object.create(pat)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  w.queryArc = function (begin: number, end: number, state?: any) {
+    if (state?.cyclist === 'cyclist') {
+      if (expected !== null && begin > expected) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const lost = pat.queryArc(expected, begin, state).filter((h: any) => h.hasOnset?.()).length
+          if (lost > 0) onDropped(lost)
+        } catch {
+          /* counting is best-effort; it must never break playback */
+        }
+      }
+      expected = end
+    }
+    return pat.queryArc(begin, end, state)
+  }
+  return w
 }

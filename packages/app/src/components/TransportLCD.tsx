@@ -5,7 +5,7 @@ import { perf } from "@stave/editor";
 import { useRulerUnits, toggleRulerUnits } from "../state/rulerUnits";
 import { useDisplayMeter } from "../state/displayMeter";
 import { barBeatTick, cpsToBpm, type DisplayMeter } from "../lib/meter";
-import { healthClass, healthBars } from "./transportLcdHealth";
+import { healthClass, healthBars, audioHealthReading, type AudioHealthSample } from "./transportLcdHealth";
 
 /**
  * TransportLCD (#857) — a backlit hardware-style readout for the menubar's
@@ -40,6 +40,18 @@ interface TransportLCDProps {
   readonly isPlaying: boolean;
   readonly getCycle: () => number | null;
   readonly getCps: () => number | null;
+  /**
+   * The active runtime's running counts of late notes and audio underruns, or
+   * null (#1348). Read on the health tick, like the FPS meter.
+   */
+  readonly getAudioHealth?: () => { lateNotes: number; underruns: number | null } | null;
+  /**
+   * The active file's last evaluation error, or null (#1348). The transport
+   * dot says whether the scheduler runs; this says whether the code did.
+   */
+  readonly evalError?: string | null;
+  /** The eval lamp was pressed. */
+  readonly onEvalLamp?: () => void;
 }
 
 const STYLE_ID = "stave-transport-lcd-styles";
@@ -86,6 +98,21 @@ function ensureLcdStyles(): void {
     .stave-lcd-fps.warn .stave-lcd-bars i.on { background: #ffcf7a; box-shadow: 0 0 4px rgba(255,207,122,.5); }
     .stave-lcd-fps.crit .stave-lcd-bars i.on { background: #ff8080; box-shadow: 0 0 4px rgba(255,128,128,.5); }
     .stave-lcd-fpsnum { font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 600; color: #9aa0e6; }
+    .stave-lcd-audio { font-variant-numeric: tabular-nums; font-size: 10px; font-weight: 600; letter-spacing: .06em; color: #6f6fa0; white-space: pre; }
+    .stave-lcd-audio[data-stave-audio-health="late"] { color: #ffcf7a; }
+    .stave-lcd-audio[data-stave-audio-health="glitch"] { color: #ff8080; }
+    .stave-lcd-lamp {
+      display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; margin-right: 4px;
+      border-radius: 4px; cursor: pointer; color: inherit;
+      font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+      background: linear-gradient(180deg, #0a0a1a, #05050e);
+      border: 1px solid #01010a;
+      box-shadow: inset 0 1px 0 rgba(160,168,255,0.06), 0 0 0 1px rgba(120,124,255,0.10), 0 1px 2px rgba(0,0,0,0.6);
+    }
+    .stave-lcd-lamp:focus-visible { outline: 2px solid #7c7cff; outline-offset: 2px; }
+    .stave-lcd-lamp .stave-lcd-state { font-size: 8px; }
+    .stave-lcd-lamp.err .stave-lcd-dot { background: #ff8080; box-shadow: 0 0 6px rgba(255,128,128,0.6); }
+    .stave-lcd-lamp.err .stave-lcd-state { color: #ff8080; }
     @media (prefers-reduced-motion: reduce) { .stave-lcd.run .stave-lcd-dot { animation: none; } }
   `;
   document.head.appendChild(style);
@@ -105,7 +132,14 @@ function fmtBar(c: number, meter: DisplayMeter): string {
   return `${String(bar).padStart(3, "0")}.${beat}.${tick}`;
 }
 
-export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps): React.ReactElement {
+export function TransportLCD({
+  isPlaying,
+  getCycle,
+  getCps,
+  getAudioHealth,
+  evalError = null,
+  onEvalLamp,
+}: TransportLCDProps): React.ReactElement {
   const units = useRulerUnits();
   const cycleMode = units === "cycles";
   const meter = useDisplayMeter();
@@ -121,6 +155,9 @@ export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps)
   const meterRef = useRef(meter);
   getCycleRef.current = getCycle;
   getCpsRef.current = getCps;
+  const getAudioHealthRef = useRef(getAudioHealth);
+  getAudioHealthRef.current = getAudioHealth;
+  const audioRef = useRef<HTMLSpanElement>(null);
   cycleModeRef.current = cycleMode;
   meterRef.current = meter;
 
@@ -137,6 +174,7 @@ export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps)
     let fps = 60;
     let posAcc = 0;
     let healthAcc = 0;
+    const audioHistory: AudioHealthSample[] = []; // #1348 — the audio cell's window
     let prevLtCount = 0; // profiler longtask counter, diffed per health tick
     let ownLtAt = -Infinity; // last main-thread stall we saw (profiler-OFF path)
     let ownLtMs = 0;
@@ -214,6 +252,28 @@ export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps)
           if (now - ownLtAt < 1200) stallMs = ownLtMs;
         }
 
+        // #1348 — audio: late notes and underruns in the last few seconds.
+        // Nothing to show until there is trouble; it never claims a load
+        // percentage the browser does not give.
+        const audio = getAudioHealthRef.current?.() ?? null;
+        const el = audioRef.current;
+        if (el) {
+          const r = audio
+            ? audioHealthReading(audioHistory, { at: now, ...audio })
+            : { cls: "ok" as const, late: 0, glitches: 0 };
+          const text = r.cls === "glitch" ? `GLITCH ${r.glitches}` : r.cls === "late" ? `LATE ${r.late}` : "OK";
+          if (el.textContent !== text) el.textContent = text;
+          if (el.dataset.staveAudioHealth !== r.cls) {
+            el.dataset.staveAudioHealth = r.cls;
+            el.title =
+              r.cls === "glitch"
+                ? `The audio output glitched ${r.glitches} time(s) in the last few seconds: the audio thread could not keep up.`
+                : r.cls === "late"
+                  ? `${r.late} note(s) in the last few seconds arrived too late to play: the page was too busy.`
+                  : "No dropped notes or audio glitches in the last few seconds.";
+          }
+        }
+
         const shown = Math.max(1, Math.round(shownFps));
         if (fpsNumRef.current) fpsNumRef.current.textContent = String(Math.min(shown, 120));
         const cls = healthClass(shown, slow, stallMs);
@@ -236,6 +296,29 @@ export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps)
   }, []);
 
   return (
+    <>
+    {/* #1348 — the eval lamp. A SIBLING of the readout, not a segment of it:
+        the readout is itself a button (it switches cycles/bars), and a button
+        inside a button is invalid and read inconsistently.
+        It claims only what it knows. With no error it is a neutral `EVAL`
+        that opens the Console — never a green tick before anything has run.
+        When the last evaluation failed it turns red and names the error, and
+        pressing it jumps to the error as its toast would. */}
+    <button
+      type="button"
+      className={`stave-lcd-lamp${evalError ? " err" : ""}`}
+      data-stave-eval-lamp={evalError ? "error" : "ok"}
+      title={evalError ?? "No evaluation errors"}
+      aria-label={
+        evalError
+          ? `Evaluation failed: ${evalError}. Show the error`
+          : "No evaluation errors. Open the Console"
+      }
+      onClick={onEvalLamp}
+    >
+      <span className="stave-lcd-dot" />
+      <span className="stave-lcd-state">{evalError ? "\u2716 ERR" : "EVAL"}</span>
+    </button>
     <div
       className={`stave-lcd${isPlaying ? " run" : ""}`}
       role="button"
@@ -282,6 +365,18 @@ export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps)
         </div>
         <span className="stave-lcd-label">FPS</span>
       </div>
+      <div className="stave-lcd-seg">
+        <span
+          className="stave-lcd-audio"
+          ref={audioRef}
+          data-stave-audio-health="ok"
+          title="No dropped notes or audio glitches in the last few seconds."
+        >
+          OK
+        </span>
+        <span className="stave-lcd-label">AUDIO</span>
+      </div>
     </div>
+    </>
   );
 }

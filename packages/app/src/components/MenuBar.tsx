@@ -44,6 +44,12 @@ interface MenuBarProps {
   isPlaying: boolean;
   getCycle: () => number | null;
   getCps: () => number | null;
+  /** The active runtime's counts of late notes and audio underruns (#1348). */
+  getAudioHealth: () => { lateNotes: number; underruns: number | null } | null;
+  /** The active file's last evaluation error, or null (#1348). */
+  evalError: string | null;
+  /** The eval lamp was pressed: reveal the latest error, or open the Console. */
+  onEvalLamp: () => void;
 }
 
 type MenuId = "file" | "edit" | "view" | "help" | null;
@@ -72,6 +78,9 @@ export function MenuBar({
   isPlaying,
   getCycle,
   getCps,
+  getAudioHealth,
+  evalError,
+  onEvalLamp,
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuId>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -157,7 +166,14 @@ export function MenuBar({
 
       {lcdEnabled ? (
         <div style={styles.centerSlot}>
-          <TransportLCD isPlaying={isPlaying} getCycle={getCycle} getCps={getCps} />
+          <TransportLCD
+            isPlaying={isPlaying}
+            getCycle={getCycle}
+            getCps={getCps}
+            getAudioHealth={getAudioHealth}
+            evalError={evalError}
+            onEvalLamp={onEvalLamp}
+          />
           <TimeSignatureControl />
         </div>
       ) : (
