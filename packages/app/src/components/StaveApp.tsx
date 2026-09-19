@@ -958,6 +958,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // gates the cost of those reads (DB-08).
   const getCycleRef = useRef<() => number | null>(() => null);
   const getCpsRef = useRef<() => number | null>(() => null);
+  const getAudioHealthRef = useRef<() => { lateNotes: number; underruns: number | null } | null>(() => null);
   // Phase 20-06 (PV38, PK13 step 7+8) — closure-bound accessor onto the
   // active runtime's HapStream for the MusicalTimeline subscriber.
   const getHapStreamRef = useRef<() => HapStream | null>(() => null);
@@ -1013,6 +1014,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             error: string | null;
             getCycle?: () => number | null;
             getCps?: () => number | null;
+            getAudioHealth?: () => { lateNotes: number; underruns: number | null } | null;
             getHapStream?: () => HapStream | null;
             // #861 — evaluated timeline events for the eval-backed DISPLAY marks.
             getTimelineEvents?: (cycles: number) => IREvent[];
@@ -1040,6 +1042,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       // no-op accessors so the rAF loop reads `null` and goes idle.
       getCycleRef.current = s?.getCycle ?? (() => null);
       getCpsRef.current = s?.getCps ?? (() => null);
+      getAudioHealthRef.current = s?.getAudioHealth ?? (() => null);
       getHapStreamRef.current = s?.getHapStream ?? (() => null);
       getTimelineEventsRef.current = s?.getTimelineEvents ?? (() => []);
       getTimelineEventsBandRef.current = s?.getTimelineEventsBand ?? (() => []);
@@ -1718,6 +1721,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         isPlaying={activeRuntime?.isPlaying ?? false}
         getCycle={() => getCycleRef.current()}
         getCps={() => getCpsRef.current()}
+        getAudioHealth={() => getAudioHealthRef.current()}
         // #1348 — the eval lamp: the active file's last evaluation. Pressing it
         // does what pressing that error's toast does, even after the toast is
         // gone; with no error it opens the Console.

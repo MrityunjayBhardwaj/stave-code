@@ -400,6 +400,8 @@ interface StrudelEditorClientProps {
      */
     getCycle: () => number | null;
     getCps: () => number | null;
+    /** #1348 — the engine's running counts of late notes and audio underruns. */
+    getAudioHealth: () => { lateNotes: number; underruns: number | null } | null;
     /**
      * Phase 20-06 (PV38, PK13 step 7+8) — accessor onto the engine's
      * HapStream so the MusicalTimeline subscriber can resolve to a live
@@ -2052,6 +2054,7 @@ export default function StrudelEditorClient({
       // lane's region widths), which is exactly what the runtime's own note on
       // `getCps` says must not be done from the readout.
       getCps: () => runtimesRef.current.get(accessorFid)?.getCps?.() ?? null,
+      getAudioHealth: () => runtimesRef.current.get(accessorFid)?.getAudioHealth?.() ?? null,
       getHapStream: () =>
         runtimesRef.current.get(accessorFid)?.getHapStream?.() ?? null,
       // #861 — evaluated timeline events for the full-song DISPLAY marks.
@@ -2230,6 +2233,7 @@ export default function StrudelEditorClient({
           // The scheduler's tempo, not the source-text readout — see the note on
           // the sibling call above (#1564).
           getCps: () => runtimesRef.current.get(accessorFid)?.getCps?.() ?? null,
+          getAudioHealth: () => runtimesRef.current.get(accessorFid)?.getAudioHealth?.() ?? null,
           getHapStream: () =>
             runtimesRef.current
               .get(accessorFid)

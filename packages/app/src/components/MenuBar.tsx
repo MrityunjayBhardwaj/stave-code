@@ -44,6 +44,8 @@ interface MenuBarProps {
   isPlaying: boolean;
   getCycle: () => number | null;
   getCps: () => number | null;
+  /** The active runtime's counts of late notes and audio underruns (#1348). */
+  getAudioHealth: () => { lateNotes: number; underruns: number | null } | null;
   /** The active file's last evaluation error, or null (#1348). */
   evalError: string | null;
   /** The eval lamp was pressed: reveal the latest error, or open the Console. */
@@ -76,6 +78,7 @@ export function MenuBar({
   isPlaying,
   getCycle,
   getCps,
+  getAudioHealth,
   evalError,
   onEvalLamp,
 }: MenuBarProps) {
@@ -167,6 +170,7 @@ export function MenuBar({
             isPlaying={isPlaying}
             getCycle={getCycle}
             getCps={getCps}
+            getAudioHealth={getAudioHealth}
             evalError={evalError}
             onEvalLamp={onEvalLamp}
           />

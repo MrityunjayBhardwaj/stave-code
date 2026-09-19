@@ -172,3 +172,45 @@ test('pressing an error toast jumps to the error line (#1348)', async ({ page })
     )
     .toBe(2)
 })
+
+// #1348 — the audio cell reports notes that were dropped because the page was
+// too busy to hand them over in time. A deliberate main-thread stall while
+// playing must show up as LATE, and clear again a few seconds later. The cell
+// never shows a load percentage: the browser gives no such number for Web Audio.
+test('the audio cell reports notes dropped while the page was busy (#1348)', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.addInitScript(() => {
+    try { localStorage.setItem('stave:bottomPanel.open', 'false') } catch { /* ignore */ }
+  })
+  await boot(page)
+  const cell = page.locator('[data-stave-audio-health]')
+  await expect(cell).toHaveAttribute('data-stave-audio-health', 'ok')
+  await expect(cell).toHaveText('OK')
+
+  await page.evaluate(() => {
+    const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string; setValue: (s: string) => void } | null; focus: () => void }> } } }).monaco
+    const eds = m?.editor?.getEditors?.() ?? []
+    const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+    t?.getModel()?.setValue('s("hh*16").gain(0.2)')
+    t?.focus()
+  })
+  await page.waitForTimeout(200)
+  await page.locator('[data-testid="strudel-chrome-transport"]').click()
+  await expect(page.locator(LCD)).toContainText('PLAY', { timeout: 8000 })
+  await page.waitForTimeout(1500)
+  // Playing steadily: nothing dropped yet.
+  await expect(cell).toHaveAttribute('data-stave-audio-health', 'ok')
+
+  // Stall the main thread well past the scheduler's lookahead.
+  await page.evaluate(() => {
+    const t0 = performance.now()
+    while (performance.now() - t0 < 1500) { /* busy */ }
+  })
+  await expect(cell).toHaveAttribute('data-stave-audio-health', /late|glitch/, { timeout: 3000 })
+  const text = (await cell.textContent()) ?? ''
+  console.log(`[#1348 audio] after stall: ${text} — ${await cell.getAttribute('title')}`)
+  expect(text).toMatch(/^(LATE|GLITCH) [1-9]\d*$/)
+
+  // And it clears once the window has passed with nothing new.
+  await expect(cell).toHaveAttribute('data-stave-audio-health', 'ok', { timeout: 10_000 })
+})
