@@ -1873,15 +1873,25 @@ export function extractTracks(
    * Computed lazily and once — most documents never admit a commented label at
    * all, and the walk is O(n) over the source.
    */
-  let stmtExtents: { start: number; end: number }[] | null = null
+  //
+  // #1556 — UNLESS THE STATEMENT ITSELF OPENS WITH A COMMENTED LABEL. Then it is
+  // not a live chain with a comment parked in it but a RUN of commented-out
+  // tracks, held together only by their dangling leading-dot lines (the splitter
+  // peeks past `//` lines, so `//$: …` / `  .delay(.2)` / `//$: …` is one
+  // statement). Each label in that run is a track boundary; rejecting all but
+  // the first collapsed five ghost rows into one, which is the renumbering the
+  // ghost rows exist to prevent. A statement that opens with a LIVE label is
+  // unaffected, so #1476's live-chain case still rejects its fragment.
+  let stmtExtents: { start: number; end: number; commentedRun: boolean }[] | null = null
   const isInteriorToStatement = (pos: number): boolean => {
     if (stmtExtents === null) {
       stmtExtents = splitTopLevelStatements(code, 0).map((st) => ({
         start: st.offset,
         end: st.offset + st.text.length,
+        commentedRun: opensCommentedLabel(st.text.split('\n', 1)[0]),
       }))
     }
-    return stmtExtents.some((st) => pos > st.start && pos < st.end)
+    return stmtExtents.some((st) => pos > st.start && pos < st.end && !st.commentedRun)
   }
 
   let m: RegExpExecArray | null
