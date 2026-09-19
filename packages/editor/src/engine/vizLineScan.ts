@@ -39,7 +39,8 @@ export function scanVizRequestLines(
     const raw = lines[i]
     const isAnon = raw.trim().startsWith('$:')
     // Named track: a column-0 labeled statement that isn't the anonymous form.
-    const namedMatch = isAnon ? null : /^([A-Za-z_$][\w$]*)\s*:/.exec(raw)
+    // Any JS identifier (#1683): the key must equal the engine's `.p('節奏')`.
+    const namedMatch = isAnon ? null : /^([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/u.exec(raw)
     if (!isAnon && !namedMatch) continue
 
     const key = isAnon ? `$${anonIndex++}` : namedMatch![1]

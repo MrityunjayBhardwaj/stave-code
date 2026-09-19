@@ -67,3 +67,11 @@ describe('resolveLaneName', () => {
     expect(resolveLaneName('chord-0', undefined, SONG)).toBe('chord-0')
   })
 })
+
+describe('a non-Latin label is read like any other (#1683)', () => {
+  it('reads 節奏 at its statement head, and drums as the control', () => {
+    const doc = '節奏: s("bd*4")\ndrums: s("hh")'
+    expect(labelAtOffset(doc, 0)).toBe('節奏')
+    expect(labelAtOffset(doc, doc.indexOf('drums'))).toBe('drums')
+  })
+})

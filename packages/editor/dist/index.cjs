@@ -2865,7 +2865,7 @@ function classifyLiteralRhs(rhs) {
 }
 __name(classifyLiteralRhs, "classifyLiteralRhs");
 function isBareIdent(t) {
-  return /^[A-Za-z_$][\w$]*$/.test(t);
+  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u.test(t);
 }
 __name(isBareIdent, "isBareIdent");
 function substituteBoundIdentInArg(args, bindings) {
@@ -3510,7 +3510,7 @@ function commentedLabelIsTrack(code, afterColon) {
 __name(commentedLabelIsTrack, "commentedLabelIsTrack");
 function extractTracks(code) {
   const tracks = [];
-  const dollarRe = /^[ \t]*(\/\/[ \t]*)?([A-Za-z_$][\w$]*)\s*:/gm;
+  const dollarRe = /^[ \t]*(\/\/[ \t]*)?([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/gmu;
   const starts = [];
   let stmtExtents = null;
   const isInteriorToStatement = /* @__PURE__ */ __name((pos) => {
@@ -5790,7 +5790,7 @@ function startsTopLevelBlock(trimmed) {
 }
 __name(startsTopLevelBlock, "startsTopLevelBlock");
 function startsNamedTrack(rawLine) {
-  return /^[A-Za-z_$][\w$]*\s*:/.test(rawLine);
+  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*\s*:/u.test(rawLine);
 }
 __name(startsNamedTrack, "startsNamedTrack");
 function startsTopLevelBlockRaw(rawLine) {
@@ -5806,7 +5806,7 @@ function scanVizRequestLines(requests, code, vizOptions) {
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const isAnon = raw.trim().startsWith("$:");
-    const namedMatch = isAnon ? null : /^([A-Za-z_$][\w$]*)\s*:/.exec(raw);
+    const namedMatch = isAnon ? null : /^([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/u.exec(raw);
     if (!isAnon && !namedMatch) continue;
     const key2 = isAnon ? `$${anonIndex++}` : namedMatch[1];
     const vizId = requests.get(key2);
@@ -33751,7 +33751,7 @@ var RESERVED_LABELS = /* @__PURE__ */ new Set([
   "static"
 ]);
 function isValidTrackLabel(name) {
-  return /^[A-Za-z_$][\w$]*$/.test(name) && !RESERVED_LABELS.has(name);
+  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u.test(name) && !RESERVED_LABELS.has(name);
 }
 __name(isValidTrackLabel, "isValidTrackLabel");
 function renameEdit(fresh, newLabel, takenNames) {
