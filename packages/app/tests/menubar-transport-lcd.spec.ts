@@ -62,15 +62,40 @@ test('shows by default and reflects transport + mode + settings toggle', async (
 // The readout must report the tempo the engine is running at, not one recovered
 // by matching `setcps(...)` in the source text.
 test('tempo readout reflects a document that spells no setcps', async ({ page }) => {
+  const NO_SETCPS = 's("bd sd")'
   await boot(page)
-  await page.evaluate(() => {
+  await page.evaluate((code) => {
     const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string; setValue: (s: string) => void } | null; focus: () => void }> } } }).monaco
     const eds = m?.editor?.getEditors?.() ?? []
     const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
-    t?.getModel()?.setValue('s("bd sd")')
+    t?.getModel()?.setValue(code)
     t?.focus()
-  })
-  await page.waitForTimeout(200)
+  }, NO_SETCPS)
+
+  // #1692 — RELOAD, and only go on once the app comes back holding this
+  // document. Two things that a fixed wait cannot give, in one step:
+  //
+  //  - the reloaded text IS the evidence that the app's file store took the
+  //    edit. `play()` evaluates the store, not the editor's buffer, and that
+  //    write lands ~400ms after `setValue` here — twice the 200ms this test
+  //    used to wait, and longer still on a loaded machine.
+  //  - tempo is a property of the SESSION, not of the document: `setCps`
+  //    writes the scheduler's `cps` and nothing resets it per evaluation
+  //    (`@strudel/core` cyclist.mjs:24,129). So a page that has evaluated the
+  //    starter document — which spells `setcps(130/240)` — reports 0.54 for
+  //    any document afterwards, including this one. Reloading starts a
+  //    scheduler that has run no `setcps` at all, which is the only state in
+  //    which "the default tempo" is a claim about this document.
+  await expect
+    .poll(async () => {
+      await boot(page)
+      return await page.evaluate(() => {
+        const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string; getValue: () => string } | null }> } } }).monaco
+        const eds = m?.editor?.getEditors?.() ?? []
+        return (eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0])?.getModel()?.getValue() ?? null
+      })
+    }, { timeout: 30_000, message: 'the app should reopen holding the test document' })
+    .toBe(NO_SETCPS)
 
   await page.locator('[data-testid="strudel-chrome-transport"]').click()
   await expect(page.locator(LCD)).toContainText('PLAY', { timeout: 8000 })
