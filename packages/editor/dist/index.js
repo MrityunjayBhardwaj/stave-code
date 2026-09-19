@@ -8807,6 +8807,8 @@ var _StrudelEngine = class _StrudelEngine {
       }, "drain")
     });
     this.audioCtx = null;
+    /** Notes handed to superdough after their start time, which it drops (#1348). */
+    this.lateNotes = 0;
     this.analyserNode = null;
     this.hapStream = new HapStream();
     // #339 — monotonic evaluate() generation, stamped onto every emitted hap
@@ -9256,6 +9258,7 @@ var _StrudelEngine = class _StrudelEngine {
         return;
       }
       try {
+        if (t < audioCtxRef.currentTime) this.lateNotes++;
         const triggered = webaudioOutput(hap, deadline, duration, cps, t);
         this.liveTriggers.track(Promise.resolve(triggered), t);
         return await triggered;
@@ -9279,6 +9282,9 @@ var _StrudelEngine = class _StrudelEngine {
         this.evalResolve?.({ error: err });
         this.evalResolve = null;
       }, "onEvalError")
+    });
+    watchSkippedTicks(this.repl.scheduler, (n) => {
+      this.lateNotes += n;
     });
     await Promise.resolve().then(() => (init_piano(), piano_exports));
     this.initialized = true;
@@ -9994,6 +10000,25 @@ var _StrudelEngine = class _StrudelEngine {
    * Deliberately NOT folded into `PatternScheduler`: that adapter is consumed by
    * ~10 visualiser modules, and a tempo read does not need their blast radius.
    */
+  /**
+   * Two running counts of trouble a listener can hear (#1348), one per thread:
+   *
+   *  - `lateNotes` — notes the main thread handed over too late, which
+   *    superdough dropped. A busy main thread (a heavy evaluation, a long
+   *    task) shows up here.
+   *  - `underruns` — times the AUDIO thread missed its deadline and the output
+   *    glitched (`AudioContext.playbackStats.underrunEvents`). Null where the
+   *    browser does not report it, never a made-up zero.
+   *
+   * Neither is a CPU percentage: the browser exposes no such number for Web
+   * Audio (`AudioContext.renderCapacity` is not shipped in the Chromium this
+   * app is tested on). These are the events a load percentage would only
+   * predict.
+   */
+  getAudioHealth() {
+    const under = this.audioCtx?.playbackStats?.underrunEvents;
+    return { lateNotes: this.lateNotes, underruns: typeof under === "number" ? under : null };
+  }
   getCps() {
     const cps = this.repl?.scheduler?.cps;
     return typeof cps === "number" && Number.isFinite(cps) && cps > 0 ? cps : null;
@@ -10239,6 +10264,40 @@ var _StrudelEngine = class _StrudelEngine {
 };
 __name(_StrudelEngine, "StrudelEngine");
 var StrudelEngine = _StrudelEngine;
+function watchSkippedTicks(scheduler, onDropped) {
+  if (!scheduler || typeof scheduler !== "object") return;
+  let stored = scheduler.pattern ? watched(scheduler.pattern, onDropped) : scheduler.pattern;
+  Object.defineProperty(scheduler, "pattern", {
+    configurable: true,
+    enumerable: true,
+    get: /* @__PURE__ */ __name(() => stored, "get"),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    set: /* @__PURE__ */ __name((pat) => {
+      stored = pat ? watched(pat, onDropped) : pat;
+    }, "set")
+  });
+}
+__name(watchSkippedTicks, "watchSkippedTicks");
+function watched(pat, onDropped) {
+  if (typeof pat.queryArc !== "function") return pat;
+  let expected = null;
+  const w = Object.create(pat);
+  w.queryArc = function(begin, end, state5) {
+    if (state5?.cyclist === "cyclist") {
+      if (expected !== null && begin > expected) {
+        try {
+          const lost = pat.queryArc(expected, begin, state5).filter((h) => h.hasOnset?.()).length;
+          if (lost > 0) onDropped(lost);
+        } catch {
+        }
+      }
+      expected = end;
+    }
+    return pat.queryArc(begin, end, state5);
+  };
+  return w;
+}
+__name(watched, "watched");
 
 // src/visualizers/p5FesBridge.ts
 var P5_PREFIX_RE = /^\s*🌸\s*p5\.js\s*says:\s*/;
@@ -42763,6 +42822,14 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    * (#1346): the capability is Strudel-specific and the engine interface is
    * shared with runtimes that have no scheduler at all.
    */
+  /**
+   * The engine's running counts of late notes and audio underruns (#1348), or
+   * null when the engine keeps none. Duck-typed like `getCps`.
+   */
+  getAudioHealth() {
+    const fn = this.engine?.getAudioHealth;
+    return typeof fn === "function" ? fn.call(this.engine) : null;
+  }
   getCps() {
     const fn = this.engine?.getCps;
     if (typeof fn !== "function") return null;
