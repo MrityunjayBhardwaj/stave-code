@@ -60,6 +60,12 @@ describe('#1686 — no live label: bare statements are Tracks too', () => {
     expect(tracksOf(doc).map((t) => [t.id, t.start])).toEqual([['d3', 0], ['d1', 19], ['d2', 50]])
   })
 
+  it('a statement that merely STARTS with a block comment is still a statement', () => {
+    expect(tracksOf('/* note */ s("hh")\n// $: s("a")').map((t) => [t.id, t.start])).toEqual([['d2', 0], ['d1', 19]])
+    // …but a block comment over a dangling chain is the same fragment as `//`
+    expect(tracksOf('s("q");\n// $: s("a")\n\n/* x */ .fast(2)').map((t) => [t.id, t.start])).toEqual([['d2', 0], ['d1', 8]])
+  })
+
   it('control: a document with nothing but ghosts is unchanged', () => {
     expect(tracksOf('// $: s("a")\n// $: s("b")').map((t) => t.id)).toEqual(['d1', 'd2'])
   })

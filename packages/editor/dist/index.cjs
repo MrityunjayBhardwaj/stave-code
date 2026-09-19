@@ -3307,10 +3307,28 @@ function bareStatementsBesideLabels(code, tracks) {
     if (s.offset + s.text.length <= t.offset) owned.add(i + 1);
   });
   return stmts.filter(
-    (s, i) => !owned.has(i) && !NON_EXPRESSION_HEAD_RE.test(s.text) && !s.text.startsWith("//") && !s.text.startsWith("/*")
+    (s, i) => !owned.has(i) && !NON_EXPRESSION_HEAD_RE.test(s.text) && !opensWithDanglingChain(s.text)
   );
 }
 __name(bareStatementsBesideLabels, "bareStatementsBesideLabels");
+function opensWithDanglingChain(text) {
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === " " || c === "	" || c === "\n" || c === "\r") i++;
+    else if (text.startsWith("//", i)) {
+      const nl = text.indexOf("\n", i);
+      if (nl < 0) return false;
+      i = nl + 1;
+    } else if (text.startsWith("/*", i)) {
+      const close = text.indexOf("*/", i + 2);
+      if (close < 0) return false;
+      i = close + 2;
+    } else return c === ".";
+  }
+  return false;
+}
+__name(opensWithDanglingChain, "opensWithDanglingChain");
 function lexStateAt(code, idx) {
   let depth = 0;
   let inString = false;

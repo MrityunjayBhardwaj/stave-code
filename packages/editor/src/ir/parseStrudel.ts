@@ -1549,18 +1549,35 @@ function bareStatementsBesideLabels(
     owned.add(i)
     if (s.offset + s.text.length <= t.offset) owned.add(i + 1)
   })
-  // A "statement" whose text opens with a comment is the dangling chain of a
+  // A "statement" whose CODE opens with `.` is the dangling chain of a
   // commented-out head (`//$: note(…)` over `  .delay(.2)` lines): the splitter
-  // joins a leading-dot line to the comment above it. It is not a statement of
-  // its own, and it starts ON the ghost's line, so it would take a second row
-  // there. Measured over the archive: one document, `0/-uq47S3IOvLa`.
+  // joins a leading-dot line to the comment above it, so the text starts with
+  // that comment. It is not a statement of its own, and it starts ON the
+  // ghost's line, so it would take a second row there. Measured over the
+  // archive: one document, `0/-uq47S3IOvLa`. A statement that merely starts
+  // with a comment (`/* note */ s("hh")`) is still one.
   return stmts.filter(
-    (s, i) =>
-      !owned.has(i) &&
-      !NON_EXPRESSION_HEAD_RE.test(s.text) &&
-      !s.text.startsWith('//') &&
-      !s.text.startsWith('/*'),
+    (s, i) => !owned.has(i) && !NON_EXPRESSION_HEAD_RE.test(s.text) && !opensWithDanglingChain(s.text),
   )
+}
+
+/** Past leading whitespace and comments, does `text` start with `.`? */
+function opensWithDanglingChain(text: string): boolean {
+  let i = 0
+  while (i < text.length) {
+    const c = text[i]
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r') i++
+    else if (text.startsWith('//', i)) {
+      const nl = text.indexOf('\n', i)
+      if (nl < 0) return false
+      i = nl + 1
+    } else if (text.startsWith('/*', i)) {
+      const close = text.indexOf('*/', i + 2)
+      if (close < 0) return false
+      i = close + 2
+    } else return c === '.'
+  }
+  return false
 }
 
 // ---------------------------------------------------------------------------
