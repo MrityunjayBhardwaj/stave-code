@@ -67,6 +67,15 @@
  *    pause), so waiting on `settle` there places anything a window requested
  *    at the render time it was requested, on every run.
  *
+ * 8. ⚠ A NOTE THAT RESHAPES ITS ROOM GETS A PAUSE OF ITS OWN (#1676). Each
+ *    orbit has ONE reverb, rebuilt whenever a note asks for a different shape
+ *    (`superdough` `superdoughoutput.mjs:69-92`). Live, a note is handed to
+ *    superdough just before it sounds, so each note gets its own room. A window
+ *    hands over all its notes at one pause, so only the last shape asked for in
+ *    the window survived and every note in it played through that room. So the
+ *    render also pauses just before each note that would rebuild its orbit's
+ *    room (`roomChangeTimes`), and schedules from there.
+ *
  * Deliberately free of imports so every step can be driven by fakes: the
  * accessors arrive as `deps`.
  */
@@ -213,8 +222,11 @@ export async function renderPatternOffline(
     deps.setSuperdoughAudioController(null)
     await deps.initAudio({})
 
-    const windows = ctx.suspend && ctx.resume ? windowsOf(haps, cps) : [haps]
-    await schedule(windows[0] ?? [])
+    const windows =
+      ctx.suspend && ctx.resume
+        ? windowsOf(haps, cps, roomChangeTimes(haps, cps), sampleRate)
+        : [{ start: 0, haps }]
+    await schedule(windows[0]?.haps ?? [])
     await deps.settle?.()
 
     // Every later window is scheduled from a pause the render reaches on its
@@ -222,13 +234,13 @@ export async function renderPatternOffline(
     // still loading cannot fall behind the audio. `resume` runs even when
     // scheduling throws: a render left paused never resolves.
     const failures: unknown[] = []
-    const pauses = windows.slice(1).map((window, i) => {
-      if (window.length === 0) return Promise.resolve()
-      const at = (i + 1) * RENDER_WINDOW_SECONDS - RENDER_WINDOW_LEAD_SECONDS
+    const pauses = windows.slice(1).map((window) => {
+      if (window.haps.length === 0) return Promise.resolve()
+      const at = window.start - RENDER_WINDOW_LEAD_SECONDS
       return ctx.suspend!(at).then(async () => {
         try {
-          onProgress?.(Math.min(duration, (i + 1) * RENDER_WINDOW_SECONDS))
-          if (!signal?.aborted) await schedule(window)
+          onProgress?.(Math.min(duration, window.start))
+          if (!signal?.aborted) await schedule(window.haps)
           await deps.settle?.()
         } catch (err) {
           failures.push(err)
@@ -257,17 +269,101 @@ export async function renderPatternOffline(
 
 /**
  * Haps grouped by the render window their onset falls in, in onset order.
- * Index `k` covers song seconds `[k·W, (k+1)·W)`; an empty window stays in
- * place so an index is always its time.
+ *
+ * A window starts at every multiple of `RENDER_WINDOW_SECONDS` and at every
+ * time in `extraStarts` (#1676). A start closer to the one before it than two
+ * render blocks is dropped, so two pauses never round onto one block, and so is
+ * a start too early to pause ahead of (its notes go in the window before, which
+ * is the upfront schedule for the first window). An empty window stays in the
+ * list and simply gets no pause.
  */
-function windowsOf<H extends RenderableHap>(haps: readonly H[], cps: number): H[][] {
-  const windows: H[][] = []
+function windowsOf<H extends RenderableHap>(
+  haps: readonly H[],
+  cps: number,
+  extraStarts: readonly number[],
+  sampleRate: number,
+): Array<{ start: number; haps: H[] }> {
+  const last = haps.length ? haps[haps.length - 1].whole.begin.valueOf() / cps : 0
+  const gridEnd = Math.floor(last / RENDER_WINDOW_SECONDS)
+  const grid = Array.from({ length: gridEnd }, (_, k) => (k + 1) * RENDER_WINDOW_SECONDS)
+  const minGap = (2 * RENDER_BLOCK_FRAMES) / sampleRate
+  const starts = [0]
+  for (const t of [...grid, ...extraStarts].sort((a, b) => a - b)) {
+    if (t - RENDER_WINDOW_LEAD_SECONDS < minGap) continue
+    if (t - starts[starts.length - 1] < minGap) continue
+    starts.push(t)
+  }
+  const windows = starts.map((start) => ({ start, haps: [] as H[] }))
+  let k = 0
   for (const hap of haps) {
-    const k = Math.max(0, Math.floor(hap.whole.begin.valueOf() / cps / RENDER_WINDOW_SECONDS))
-    while (windows.length <= k) windows.push([])
-    windows[k].push(hap)
+    const at = hap.whole.begin.valueOf() / cps
+    while (k + 1 < windows.length && windows[k + 1].start <= at) k++
+    windows[k].haps.push(hap)
   }
   return windows
+}
+
+/** Frames an audio render advances by at a time; a suspend time rounds to one. */
+const RENDER_BLOCK_FRAMES = 128
+
+/**
+ * What an orbit's reverb was last built with, as `convolver.generate` stores it:
+ * an undefined shape value takes `generate`'s default (`reverb.mjs:41`).
+ * `.size()`, `.sz()` and `.rsize()` all write `roomsize` (one control,
+ * `@strudel/core` `controls.mjs:2287`).
+ */
+function builtRoom(v: Record<string, unknown>, ir: string | undefined): Record<string, unknown> {
+  return {
+    roomsize: v.roomsize ?? 2,
+    roomfade: v.roomfade ?? 0.1,
+    roomlp: v.roomlp ?? 15000,
+    roomdim: v.roomdim ?? 1000,
+    irspeed: v.irspeed,
+    irbegin: v.irbegin,
+    ir,
+  }
+}
+
+/** The shape values `getReverb` compares, in its order (`superdoughoutput.mjs:77-82`). */
+const ROOM_SHAPE_KEYS = ['roomsize', 'roomfade', 'roomlp', 'roomdim', 'irspeed', 'irbegin'] as const
+
+/**
+ * Song seconds of every note that would rebuild its orbit's reverb, in onset
+ * order (#1676).
+ *
+ * This replays `getReverb` (`superdoughoutput.mjs:69-92`) over the notes. An
+ * orbit's reverb is built by its first note with `room > 0`. A later note
+ * rebuilds it when it gives a shape value that is defined and differs from what
+ * the reverb was built with (`hasChanged`, `:14`), or a different impulse
+ * sample. A rebuild takes ALL its values from that note, so a value the note
+ * leaves undefined goes back to its default rather than staying as it was. The
+ * first build is not a change: nothing on that orbit sounds through the room
+ * before it.
+ *
+ * ⚠ IT ERRS TOWARD A CHANGE. A predicted rebuild that does not happen costs one
+ * spare pause; a missed one is the bug this exists to fix. So the impulse
+ * sample is compared by name and index, where superdough compares the loaded
+ * buffer.
+ */
+export function roomChangeTimes(
+  haps: readonly { whole: { begin: { valueOf(): number } }; value: unknown }[],
+  cps: number,
+): number[] {
+  const rooms = new Map<unknown, Record<string, unknown>>()
+  const times: number[] = []
+  for (const hap of haps) {
+    const v = hap.value as Record<string, unknown> | null
+    if (!v || typeof v !== 'object' || !((v.room as number) > 0)) continue
+    const orbit = v.orbit ?? 1
+    const ir = v.ir === undefined ? undefined : `${String(v.ir)}:${String(v.i ?? 0)}`
+    const room = rooms.get(orbit)
+    const changed =
+      room !== undefined &&
+      (room.ir !== ir || ROOM_SHAPE_KEYS.some((key) => v[key] !== undefined && v[key] !== room[key]))
+    if (room === undefined || changed) rooms.set(orbit, builtRoom(v, ir))
+    if (changed) times.push(hap.whole.begin.valueOf() / cps)
+  }
+  return times
 }
 
 /** "4 × sound nosuchsound not found! Is it loaded?" — one clause per reason. */
