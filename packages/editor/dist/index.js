@@ -3419,10 +3419,11 @@ function extractTracks(code) {
     if (stmtExtents === null) {
       stmtExtents = splitTopLevelStatements(code, 0).map((st) => ({
         start: st.offset,
-        end: st.offset + st.text.length
+        end: st.offset + st.text.length,
+        commentedRun: opensCommentedLabel(st.text.split("\n", 1)[0])
       }));
     }
-    return stmtExtents.some((st) => pos > st.start && pos < st.end);
+    return stmtExtents.some((st) => pos > st.start && pos < st.end && !st.commentedRun);
   }, "isInteriorToStatement");
   let m;
   while (m = dollarRe.exec(code)) {

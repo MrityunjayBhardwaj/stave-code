@@ -130,3 +130,54 @@ describe('#1476 — a commented label inside a chain is not a track', () => {
     expect(pipeline(INTERIOR)).toEqual(parseStrudel(INTERIOR))
   })
 })
+
+/**
+ * #1556 — a RUN of commented-out tracks joined by dangling continuation lines.
+ *
+ * The splitter peeks past `//` lines, so the leading-dot lines between the
+ * commented tracks glue the whole run into ONE statement, and the rule above
+ * then rejected every label after the first as interior. The run is not a live
+ * chain with a comment parked in it — the statement OPENS with a commented
+ * label — so each label is a boundary, and each keeps its ghost row. Reduced
+ * from `0/-uq47S3IOvLa`, the only archive document of this shape (1 → 5 rows).
+ */
+const GHOST_RUN = [
+  '//$:note("c [c e!2]").sound("gm_piano")',
+  '  .delay(.2)',
+  '  ._pianoroll()',
+  '//$:note("e [c [a b]]").sound("piano1")',
+  '  .mask("<0 0 1 1>")',
+  '  .pan(0.3)',
+  '//$:s("bd*2")',
+  '  .gain(.5)',
+].join('\n')
+
+describe('#1556 — a run of commented tracks keeps one ghost row each', () => {
+  it('every label in the run is a track, and each ends where the next begins', () => {
+    const tracks = extractTracks(GHOST_RUN)
+    expect(tracks.map((t) => t.commented)).toEqual([true, true, true])
+    expect(tracks.map((t) => t.dollarStart)).toEqual(
+      [0, GHOST_RUN.indexOf('//$:note("e'), GHOST_RUN.indexOf('//$:s(')],
+    )
+    expect(tracks.map((t) => t.end)).toEqual([tracks[1].dollarStart, tracks[2].dollarStart, GHOST_RUN.length])
+  })
+
+  it('the timeline gets three silent rows, numbered as if each line were live', () => {
+    const ir = parseStrudel(GHOST_RUN)
+    const roots = ir.tag === 'Stack' ? ir.tracks : [ir]
+    expect(roots.map((t) => (t.tag === 'Track' ? t.trackId : t.tag))).toEqual(['d1', 'd2', 'd3'])
+  })
+
+  it('a LIVE chain still rejects its parked comment — the run rule needs a commented OPENING', () => {
+    // same bytes as the run, first label uncommented
+    const live = GHOST_RUN.replace(/^\/\/\$:/, '$:')
+    const tracks = extractTracks(live)
+    expect(tracks).toHaveLength(1)
+    expect(tracks[0].commented).toBe(false)
+    expect(tracks[0].expr).toContain('.gain(.5)')
+  })
+
+  it('both parsers agree on the run', () => {
+    expect(pipeline(GHOST_RUN)).toEqual(parseStrudel(GHOST_RUN))
+  })
+})
