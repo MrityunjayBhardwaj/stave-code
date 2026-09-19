@@ -5509,17 +5509,17 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
     deps.setAudioContext(ctx);
     deps.setSuperdoughAudioController(null);
     await deps.initAudio({});
-    const windows = ctx.suspend && ctx.resume ? windowsOf(haps, cps) : [haps];
-    await schedule(windows[0] ?? []);
+    const windows = ctx.suspend && ctx.resume ? windowsOf(haps, cps, roomChangeTimes(haps, cps), sampleRate) : [{ start: 0, haps }];
+    await schedule(windows[0]?.haps ?? []);
     await deps.settle?.();
     const failures = [];
-    const pauses = windows.slice(1).map((window2, i) => {
-      if (window2.length === 0) return Promise.resolve();
-      const at = (i + 1) * RENDER_WINDOW_SECONDS - RENDER_WINDOW_LEAD_SECONDS;
+    const pauses = windows.slice(1).map((window2) => {
+      if (window2.haps.length === 0) return Promise.resolve();
+      const at = window2.start - RENDER_WINDOW_LEAD_SECONDS;
       return ctx.suspend(at).then(async () => {
         try {
-          onProgress?.(Math.min(duration, (i + 1) * RENDER_WINDOW_SECONDS));
-          if (!signal?.aborted) await schedule(window2);
+          onProgress?.(Math.min(duration, window2.start));
+          if (!signal?.aborted) await schedule(window2.haps);
           await deps.settle?.();
         } catch (err) {
           failures.push(err);
@@ -5545,16 +5545,57 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
   }
 }
 __name(renderPatternOffline, "renderPatternOffline");
-function windowsOf(haps, cps) {
-  const windows = [];
+function windowsOf(haps, cps, extraStarts, sampleRate) {
+  const last = haps.length ? haps[haps.length - 1].whole.begin.valueOf() / cps : 0;
+  const gridEnd = Math.floor(last / RENDER_WINDOW_SECONDS);
+  const grid = Array.from({ length: gridEnd }, (_, k2) => (k2 + 1) * RENDER_WINDOW_SECONDS);
+  const minGap = 2 * RENDER_BLOCK_FRAMES / sampleRate;
+  const starts = [0];
+  for (const t of [...grid, ...extraStarts].sort((a, b) => a - b)) {
+    if (t - RENDER_WINDOW_LEAD_SECONDS < minGap) continue;
+    if (t - starts[starts.length - 1] < minGap) continue;
+    starts.push(t);
+  }
+  const windows = starts.map((start) => ({ start, haps: [] }));
+  let k = 0;
   for (const hap of haps) {
-    const k = Math.max(0, Math.floor(hap.whole.begin.valueOf() / cps / RENDER_WINDOW_SECONDS));
-    while (windows.length <= k) windows.push([]);
-    windows[k].push(hap);
+    const at = hap.whole.begin.valueOf() / cps;
+    while (k + 1 < windows.length && windows[k + 1].start <= at) k++;
+    windows[k].haps.push(hap);
   }
   return windows;
 }
 __name(windowsOf, "windowsOf");
+var RENDER_BLOCK_FRAMES = 128;
+function builtRoom(v, ir) {
+  return {
+    roomsize: v.roomsize ?? 2,
+    roomfade: v.roomfade ?? 0.1,
+    roomlp: v.roomlp ?? 15e3,
+    roomdim: v.roomdim ?? 1e3,
+    irspeed: v.irspeed,
+    irbegin: v.irbegin,
+    ir
+  };
+}
+__name(builtRoom, "builtRoom");
+var ROOM_SHAPE_KEYS = ["roomsize", "roomfade", "roomlp", "roomdim", "irspeed", "irbegin"];
+function roomChangeTimes(haps, cps) {
+  const rooms = /* @__PURE__ */ new Map();
+  const times = [];
+  for (const hap of haps) {
+    const v = hap.value;
+    if (!v || typeof v !== "object" || !(v.room > 0)) continue;
+    const orbit = v.orbit ?? 1;
+    const ir = v.ir === void 0 ? void 0 : `${String(v.ir)}:${String(v.i ?? 0)}`;
+    const room = rooms.get(orbit);
+    const changed = room !== void 0 && (room.ir !== ir || ROOM_SHAPE_KEYS.some((key2) => v[key2] !== void 0 && v[key2] !== room[key2]));
+    if (room === void 0 || changed) rooms.set(orbit, builtRoom(v, ir));
+    if (changed) times.push(hap.whole.begin.valueOf() / cps);
+  }
+  return times;
+}
+__name(roomChangeTimes, "roomChangeTimes");
 function describeSkipped(skipped) {
   return skipped.map((s) => `${s.count} \xD7 ${s.reason}`).join("; ");
 }

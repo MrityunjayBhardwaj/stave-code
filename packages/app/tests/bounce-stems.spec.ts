@@ -268,3 +268,30 @@ $: note("c3").s("sawtooth").gain(0.4).decay(0.05).sustain(0).room(0.9).size(4)`)
   expect(early / late).toBeGreaterThan(0.8)
   await expectNoUncaught(page)
 })
+
+/**
+ * #1676 — each note is heard in the room it asked for. A bounce hands a window
+ * of notes to superdough at one pause, and each orbit has one reverb, rebuilt
+ * whenever a note asks for a different shape, so every note in the window played
+ * through the LAST room asked for. One short note every two seconds, alternating
+ * a small room and a large one: the gap after the small-room note must be far
+ * quieter than the gap after the large-room note. Both are in one file, so the
+ * ratio carries no device level with it.
+ */
+test('a bounce plays each note in the room it asked for (#1676)', async ({ page }) => {
+  test.setTimeout(120_000)
+  await setDocument(page, `setcps(0.5)
+$: note("c3").s("sawtooth").gain(0.4).decay(0.05).sustain(0).room(0.9).size("<0.5 4>")`)
+  const { bytes } = await bounce(page, 'Mix')
+  const s = samplesOf(bytes)
+  const sr = bytes.readUInt32LE(24)
+  const tail = (from: number, to: number) => rms(s.subarray(Math.round(from * sr) * 2, Math.round(to * sr) * 2))
+  // After the note at 0 s (a half-second room) and after the note at 2 s (a
+  // four-second room), each read well after its note and before the next.
+  const small = tail(1.2, 1.9)
+  const large = tail(3.2, 3.9)
+  console.log(`[#1676] sr=${sr} small-room tail ${small.toFixed(5)} · large-room tail ${large.toFixed(5)}`)
+  expect(large).toBeGreaterThan(0.0005)
+  expect(small / large).toBeLessThan(0.1)
+  await expectNoUncaught(page)
+})

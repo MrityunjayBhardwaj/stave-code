@@ -6,6 +6,7 @@ import {
   RENDER_WINDOW_SECONDS,
   RENDER_WINDOW_LEAD_SECONDS,
   RenderCancelledError,
+  roomChangeTimes,
   type OfflineGraphDeps,
 } from './renderPatternOffline'
 
@@ -449,5 +450,116 @@ describe('renderPatternOffline — the render waits for what a window asked for 
     ).rejects.toThrow('impulse response failed')
     expect(h.log.filter((l) => l.startsWith('resume'))).toHaveLength(2)
     expect([h.state.ctx, h.state.controller]).toEqual([LIVE_CTX, LIVE_CONTROLLER])
+  })
+})
+
+describe('renderPatternOffline — a note that reshapes its room gets a pause of its own (#1676)', () => {
+  const W = RENDER_WINDOW_SECONDS
+  const L = RENDER_WINDOW_LEAD_SECONDS
+  const room = (begin: number, extra: Record<string, unknown>) => hap(begin, { s: `n${begin}`, room: 0.8, ...extra })
+
+  describe('roomChangeTimes — replays superdough getReverb', () => {
+    it('a new shape on every note is a change on every note but the first', () => {
+      const haps = [room(0, { roomsize: 1 }), room(2, { roomsize: 4 }), room(4, { roomsize: 1 })]
+      expect(roomChangeTimes(haps, 1)).toEqual([2, 4])
+    })
+
+    it('an undefined value keeps the room; the same value again is no change', () => {
+      const haps = [room(0, { roomsize: 4 }), room(1, {}), room(2, { roomsize: 4 })]
+      expect(roomChangeTimes(haps, 1)).toEqual([])
+    })
+
+    it('a rebuild resets what its note leaves undefined, so asking for it again is a change', () => {
+      // lp 100 → a size change rebuilds with lp back at its default → lp 100 again rebuilds
+      const haps = [room(0, { roomsize: 4, roomlp: 100 }), room(1, { roomsize: 1 }), room(2, { roomlp: 100 })]
+      expect(roomChangeTimes(haps, 1)).toEqual([1, 2])
+    })
+
+    it('a value equal to the default is no change after a build that defaulted it', () => {
+      expect(roomChangeTimes([room(0, {}), room(1, { roomsize: 2, roomlp: 15000 })], 1)).toEqual([])
+    })
+
+    it('orbits keep separate rooms, and a note with no room touches none', () => {
+      const haps = [
+        room(0, { roomsize: 1 }),
+        room(1, { roomsize: 4, orbit: 2 }),
+        hap(2, { s: 'dry', roomsize: 9 }),
+        room(3, { roomsize: 1 }),
+      ]
+      expect(roomChangeTimes(haps, 1)).toEqual([])
+    })
+
+    it('a different impulse sample is a change', () => {
+      expect(roomChangeTimes([room(0, { ir: 'hall' }), room(1, { ir: 'hall', i: 1 }), room(2, {})], 1)).toEqual([1, 2])
+    })
+
+    it('reads song seconds at the given tempo', () => {
+      expect(roomChangeTimes([room(0, { roomsize: 1 }), room(1, { roomsize: 4 })], 0.5)).toEqual([2])
+    })
+  })
+
+  it('pauses just before each note that reshapes the room, and hands that note over there', async () => {
+    const h = pausingHarness()
+    // four notes in ONE window, sizes 1 4 1 4
+    await renderPatternOffline(
+      patternOf([room(0, { roomsize: 1 }), room(0.5, { roomsize: 4 }), room(1, { roomsize: 1 }), room(1.5, { roomsize: 4 })]),
+      { cps: 1, duration: W, sampleRate: 48000 },
+      h.deps
+    )
+    expect(h.pauses).toEqual([0.5 - L, 1 - L, 1.5 - L])
+    expect(h.calls.map((c) => [c.s, c.now])).toEqual([
+      ['n0', 0],
+      ['n0.5', 0.5 - L],
+      ['n1', 1 - L],
+      ['n1.5', 1.5 - L],
+    ])
+  })
+
+  it('notes after a room change in the same window are handed over at its pause, not before', async () => {
+    const h = pausingHarness()
+    await renderPatternOffline(
+      patternOf([room(0, { roomsize: 1 }), room(1, { roomsize: 4 }), hap(2, { s: 'dry' }), room(3, {})]),
+      { cps: 1, duration: W, sampleRate: 48000 },
+      h.deps
+    )
+    expect(h.pauses).toEqual([1 - L])
+    expect(h.calls.map((c) => [c.s, c.now])).toEqual([
+      ['n0', 0],
+      ['n1', 1 - L],
+      ['dry', 1 - L],
+      ['n3', 1 - L],
+    ])
+  })
+
+  it('a room change on a window boundary shares its pause; two within a render block share one', async () => {
+    const h = pausingHarness()
+    const block = 128 / 48000
+    await renderPatternOffline(
+      patternOf([room(0, { roomsize: 1 }), room(W, { roomsize: 4 }), room(W + 1, { roomsize: 1 }), room(W + 1 + block / 2, { roomsize: 4 })]),
+      { cps: 1, duration: 2 * W, sampleRate: 48000 },
+      h.deps
+    )
+    expect(h.pauses).toEqual([W - L, W + 1 - L])
+  })
+
+  it('a song that never reshapes a room pauses exactly as before', async () => {
+    const h = pausingHarness()
+    await renderPatternOffline(
+      patternOf([room(0, { roomsize: 3 }), room(W + 1, {}), room(2 * W + 1, { roomsize: 3 })]),
+      { cps: 1, duration: 3 * W, sampleRate: 48000 },
+      h.deps
+    )
+    expect(h.pauses).toEqual([W - L, 2 * W - L])
+  })
+
+  it('a room change too early to pause ahead of is handed over up front', async () => {
+    const h = pausingHarness()
+    await renderPatternOffline(
+      patternOf([room(0, { roomsize: 1 }), room(L / 2, { roomsize: 4 })]),
+      { cps: 1, duration: W, sampleRate: 48000 },
+      h.deps
+    )
+    expect(h.pauses).toEqual([])
+    expect(h.calls.map((c) => c.now)).toEqual([0, 0])
   })
 })
