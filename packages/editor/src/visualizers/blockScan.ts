@@ -65,7 +65,7 @@ export function startsTopLevelBlock(trimmed: string): boolean {
  * reuses the transpiler's AST-based `widgets` offsets (adapter doc §9.1, P5).
  */
 export function startsNamedTrack(rawLine: string): boolean {
-  return /^[A-Za-z_$][\w$]*\s*:/.test(rawLine)
+  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*\s*:/u.test(rawLine) // any JS identifier (#1683)
 }
 
 /**
