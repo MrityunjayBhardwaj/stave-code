@@ -1767,6 +1767,8 @@ declare class StrudelEngine implements LiveCodingEngine {
     private liveTriggers;
     private transportHold;
     private audioCtx;
+    /** Notes handed to superdough after their start time, which it drops (#1348). */
+    private lateNotes;
     private analyserNode;
     private hapStream;
     private evalEpoch;
@@ -2156,6 +2158,25 @@ declare class StrudelEngine implements LiveCodingEngine {
      * Deliberately NOT folded into `PatternScheduler`: that adapter is consumed by
      * ~10 visualiser modules, and a tempo read does not need their blast radius.
      */
+    /**
+     * Two running counts of trouble a listener can hear (#1348), one per thread:
+     *
+     *  - `lateNotes` — notes the main thread handed over too late, which
+     *    superdough dropped. A busy main thread (a heavy evaluation, a long
+     *    task) shows up here.
+     *  - `underruns` — times the AUDIO thread missed its deadline and the output
+     *    glitched (`AudioContext.playbackStats.underrunEvents`). Null where the
+     *    browser does not report it, never a made-up zero.
+     *
+     * Neither is a CPU percentage: the browser exposes no such number for Web
+     * Audio (`AudioContext.renderCapacity` is not shipped in the Chromium this
+     * app is tested on). These are the events a load percentage would only
+     * predict.
+     */
+    getAudioHealth(): {
+        lateNotes: number;
+        underruns: number | null;
+    };
     getCps(): number | null;
     /**
      * Returns a thin PatternScheduler wrapper around the Strudel scheduler.
@@ -9007,6 +9028,14 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
      * (#1346): the capability is Strudel-specific and the engine interface is
      * shared with runtimes that have no scheduler at all.
      */
+    /**
+     * The engine's running counts of late notes and audio underruns (#1348), or
+     * null when the engine keeps none. Duck-typed like `getCps`.
+     */
+    getAudioHealth(): {
+        lateNotes: number;
+        underruns: number | null;
+    } | null;
     getCps(): number | null;
     /**
      * Current cycle position from the engine's pattern scheduler, or `null`

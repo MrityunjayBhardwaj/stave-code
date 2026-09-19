@@ -236,6 +236,36 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     installGlobalErrorCatch();
   }, []);
 
+  // Show a log entry where it came from: open the Console and, when the entry
+  // carries a source location, open that file and jump the editor to the line.
+  // `entry.line` is the single source of truth — the engine attaches it only
+  // when it's RELIABLE (a real source offset, or a parser syntax error's
+  // offset-free "(line:col)"), and deliberately leaves it absent for
+  // transpiler-wrapper stack lines, so those errors just open the Console
+  // without a mis-jump. `source` is a workspace path OR a bare fileId
+  // (StrudelEditorClient uses `path ?? fileId`), so resolve both. The editor may
+  // need a tick to mount if the file wasn't already open — retry a few times.
+  // Shared by an error toast and the control bar's eval lamp (#1348), so the two
+  // cannot come to disagree about where an error is.
+  const revealLogEntry = useCallback((entry: { source?: string; line?: number }) => {
+    setActivePanelId("console");
+    const { source, line } = entry;
+    if (!source || line == null) return;
+    const files = listWorkspaceFiles();
+    const file =
+      files.find((f) => f.path === source) ??
+      files.find((f) => f.id === source);
+    if (!file) return;
+    // Open/focus the tab (no-op focus if already active), then reveal.
+    shellRef.current?.openOrFocusFile(file.id);
+    let tries = 0;
+    const reveal = () => {
+      if (revealLineInFile(file.id, line) || tries++ >= 8) return;
+      setTimeout(reveal, 60);
+    };
+    reveal();
+  }, []);
+
   // Toast bridge — every new error-level engineLog entry also surfaces
   // as a transient toast so the user notices even when the Console panel
   // isn't open. Warnings get no toast (noisier to toast every warn, and
@@ -250,35 +280,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       const text = entry.suggestion
         ? `${entry.message} → try \`${entry.suggestion.name}\``
         : entry.message;
-      // Clicking the toast body opens the Console panel; when the entry
-      // carries a source location it also opens that file and jumps the
-      // editor to the offending line. `entry.line` is the single source of
-      // truth — the engine attaches it only when it's RELIABLE (a real
-      // source offset, or a parser syntax error's offset-free "(line:col)"),
-      // and deliberately leaves it absent for transpiler-wrapper stack
-      // lines, so those errors just open the Console without a mis-jump.
-      // `source` is a workspace path OR a bare fileId (StrudelEditorClient
-      // uses `path ?? fileId`), so resolve both. The editor may need a tick
-      // to mount if the file wasn't already open — retry a few times.
-      const { source, line } = entry;
-      const onActivate = () => {
-        setActivePanelId("console");
-        if (!source || line == null) return;
-        const files = listWorkspaceFiles();
-        const file =
-          files.find((f) => f.path === source) ??
-          files.find((f) => f.id === source);
-        if (!file) return;
-        // Open/focus the tab (no-op focus if already active), then reveal.
-        shellRef.current?.openOrFocusFile(file.id);
-        let tries = 0;
-        const reveal = () => {
-          if (revealLineInFile(file.id, line) || tries++ >= 8) return;
-          setTimeout(reveal, 60);
-        };
-        reveal();
-      };
-      showToast(text, "error", 4000, onActivate);
+      // Clicking the toast body shows the entry where it came from.
+      showToast(text, "error", 4000, () => revealLogEntry(entry));
     });
   }, []);
 
@@ -748,7 +751,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // reads. It used to also carry `bpm` and `error` for the status bar; with the
   // bar gone (#1368) the Transport LCD is the only consumer and it takes tempo
   // from `getCps`, so keeping those fields would be state nobody looks at.
-  const [activeRuntime, setActiveRuntime] = useState<{ isPlaying: boolean } | null>(null);
+  const [activeRuntime, setActiveRuntime] = useState<{ isPlaying: boolean; error: string | null } | null>(null);
 
   // Tell the history service which file is focused so the History panel's
   // File scope targets it (Phase G, #197).
@@ -955,6 +958,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // gates the cost of those reads (DB-08).
   const getCycleRef = useRef<() => number | null>(() => null);
   const getCpsRef = useRef<() => number | null>(() => null);
+  const getAudioHealthRef = useRef<() => { lateNotes: number; underruns: number | null } | null>(() => null);
   // Phase 20-06 (PV38, PK13 step 7+8) — closure-bound accessor onto the
   // active runtime's HapStream for the MusicalTimeline subscriber.
   const getHapStreamRef = useRef<() => HapStream | null>(() => null);
@@ -1010,6 +1014,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             error: string | null;
             getCycle?: () => number | null;
             getCps?: () => number | null;
+            getAudioHealth?: () => { lateNotes: number; underruns: number | null } | null;
             getHapStream?: () => HapStream | null;
             // #861 — evaluated timeline events for the eval-backed DISPLAY marks.
             getTimelineEvents?: (cycles: number) => IREvent[];
@@ -1037,6 +1042,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       // no-op accessors so the rAF loop reads `null` and goes idle.
       getCycleRef.current = s?.getCycle ?? (() => null);
       getCpsRef.current = s?.getCps ?? (() => null);
+      getAudioHealthRef.current = s?.getAudioHealth ?? (() => null);
       getHapStreamRef.current = s?.getHapStream ?? (() => null);
       getTimelineEventsRef.current = s?.getTimelineEvents ?? (() => []);
       getTimelineEventsBandRef.current = s?.getTimelineEventsBand ?? (() => []);
@@ -1054,8 +1060,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       onPauseChangedRef.current = s?.onPauseChanged ?? (() => () => {});
       setActiveRuntime((prev) => {
         if (!s) return prev === null ? prev : null;
-        if (prev && prev.isPlaying === s.isPlaying) return prev; // skip re-render
-        return { isPlaying: s.isPlaying };
+        const error = s.error ?? null;
+        if (prev && prev.isPlaying === s.isPlaying && prev.error === error) return prev; // skip re-render
+        return { isPlaying: s.isPlaying, error };
       });
     },
     [],
@@ -1714,6 +1721,18 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         isPlaying={activeRuntime?.isPlaying ?? false}
         getCycle={() => getCycleRef.current()}
         getCps={() => getCpsRef.current()}
+        getAudioHealth={() => getAudioHealthRef.current()}
+        // #1348 — the eval lamp: the active file's last evaluation. Pressing it
+        // does what pressing that error's toast does, even after the toast is
+        // gone; with no error it opens the Console.
+        evalError={activeRuntime?.error ?? null}
+        onEvalLamp={() => {
+          const latest = activeRuntime?.error
+            ? [...getLogHistory()].reverse().find((e) => e.level === "error")
+            : undefined;
+          if (latest) revealLogEntry(latest);
+          else setActivePanelId("console");
+        }}
       />
 
       <div style={styles.main} data-stave-main-backdrop={backgroundFileId ? "on" : "off"}>

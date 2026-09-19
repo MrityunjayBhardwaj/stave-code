@@ -188,3 +188,60 @@ test('a keyboard-only user can retrieve a refused bounce (#1411)', async ({ page
   expect(buf.subarray(0, 4).toString()).toBe('RIFF')
   expect((buf.length - 44) / 4).toBeGreaterThan(BOUNCE_SECONDS * 40_000)
 })
+
+/**
+ * #1419 — the offer is ANNOUNCED, not merely present. Checked against Chromium's
+ * own accessibility tree rather than the attributes: the live properties there
+ * are what a screen reader is handed. Two things must both hold:
+ *
+ *  - the toast lands in a live region that was ALREADY in the document (a
+ *    region inserted with its content is not reliably announced), and
+ *  - the offer sits inside an assertive alert, inside a polite stack that reads
+ *    only what was added.
+ */
+test('the refusal toast is announced — an alert inside a live region mounted before it (#1419)', async ({ page }) => {
+  test.setTimeout(120_000)
+  // The stack exists before anything has been refused.
+  const stack = await page.locator('[data-testid="toast-stack"]').elementHandle({ timeout: 10_000 })
+  expect(stack).not.toBeNull()
+
+  await page.locator('.monaco-editor').first().click()
+  await page.keyboard.press(`${MOD}+A`)
+  await page.keyboard.press('Backspace')
+  await page.keyboard.type('silence', { delay: 10 })
+  await page.waitForTimeout(300)
+  await page.keyboard.press(`${MOD}+Enter`)
+  await page.waitForTimeout(1500)
+  await openBounceModal(page)
+  await page.getByRole('button', { name: 'Start Bounce' }).click()
+  const offer = page.locator(ERROR_TOAST).locator(TOAST_ACTION)
+  await expect(offer).toBeVisible({ timeout: 60_000 })
+  await expect(offer).toContainText(SAVE_ANYWAY)
+
+  // Same element before and after: the region was there first.
+  expect(await stack!.evaluate((el) => el.isConnected && !!el.querySelector('[data-testid="toast-action"]'))).toBe(true)
+
+  // What the accessibility tree says about the offer's ancestry.
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Accessibility.enable')
+  const { nodes } = (await cdp.send('Accessibility.getFullAXTree')) as {
+    nodes: Array<{
+      nodeId: string
+      parentId?: string
+      role?: { value?: string }
+      name?: { value?: string }
+      properties?: Array<{ name: string; value?: { value?: unknown } }>
+    }>
+  }
+  const byId = new Map(nodes.map((n) => [n.nodeId, n]))
+  const button = nodes.find((n) => n.role?.value === 'button' && String(n.name?.value ?? '').includes(SAVE_ANYWAY))
+  expect(button, 'the offer is in the accessibility tree').toBeDefined()
+  const chain: Array<{ role: string; live?: unknown; atomic?: unknown }> = []
+  for (let n = button; n; n = n.parentId ? byId.get(n.parentId) : undefined) {
+    const prop = (k: string) => n!.properties?.find((p) => p.name === k)?.value?.value
+    chain.push({ role: String(n.role?.value), live: prop('live'), atomic: prop('atomic') })
+  }
+  console.log(`[#1419] ${chain.slice(0, 4).map((c) => `${c.role}${c.live ? `(${c.live}, atomic ${c.atomic})` : ''}`).join(' <- ')}`)
+  expect(chain[1]).toEqual({ role: 'alert', live: 'assertive', atomic: true })
+  expect(chain[2]).toEqual({ role: 'status', live: 'polite', atomic: false })
+})

@@ -1179,6 +1179,16 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
    * (#1346): the capability is Strudel-specific and the engine interface is
    * shared with runtimes that have no scheduler at all.
    */
+  /**
+   * The engine's running counts of late notes and audio underruns (#1348), or
+   * null when the engine keeps none. Duck-typed like `getCps`.
+   */
+  getAudioHealth(): { lateNotes: number; underruns: number | null } | null {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fn = (this.engine as any)?.getAudioHealth
+    return typeof fn === 'function' ? fn.call(this.engine) : null
+  }
+
   getCps(): number | null {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fn = (this.engine as any)?.getCps
