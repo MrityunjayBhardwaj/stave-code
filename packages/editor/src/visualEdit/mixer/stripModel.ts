@@ -178,9 +178,10 @@ function unjoinableId(index: number): string {
  * last expression when nothing registered, so that is the statement the captured
  * pattern belongs to; a single-track document is the same rule at n = 1.
  *
- * Any labelled track → null. A label is what makes a statement reach `.p()`, so
- * the repl plays the registry rather than a bare expression and this decision
- * does not apply.
+ * Any LIVE labelled track → null. A label is what makes a statement reach
+ * `.p()`, so the repl plays the registry rather than a bare expression and this
+ * decision does not apply. A `_`-muted label never registers (#1686), so it
+ * does not count — but it is still a statement, so it holds its place in `n`.
  *
  * ⚠ WHY THIS CAN NAME A SLOT AT ALL, given #1174 made an unlabelled statement
  * take none. That rule exists so this side counts the population the engine's
@@ -202,9 +203,15 @@ function unjoinableId(index: number): string {
  */
 export function bareCaptureIdFor(tracks: readonly ChunkInfo[]): string | null {
   if (tracks.length === 0) return null
-  if (tracks.some((t) => t.label !== null)) return null
+  // #1686 — a LIVE label. A `_`-muted one returns silence without registering
+  // (`@strudel/core` repl.mjs:171-174), so a document whose labels are all muted
+  // still plays its last expression, and that statement's meter must join.
+  if (tracks.some((t) => t.label !== null && !isMutedLabel(t.label))) return null
   // The LAST track, because that is the expression strudel plays. `$0` for a
   // single-track document is this same rule at n = 1, not a separate case.
+  // When that last statement is itself a muted label, what plays is silence
+  // and no strip owns it.
+  if (tracks[tracks.length - 1].label !== null) return null
   return `$${tracks.length - 1}`
 }
 
@@ -296,10 +303,10 @@ function displayKeys(trackChunks: readonly ChunkInfo[], doc: string): string[] {
     if (id !== undefined) return id
     // No Track for this statement. A statement that never plays has no strip
     // to name (#1682), so this is a document with no live label: a single bare
-    // expression, whose Track carries no location; a statement the parser
-    // leaves out of a bare document; or the statement that plays when every
-    // label is commented out, which the parser gives no Track (#1686). It keeps
-    // a positional name no real track has.
+    // expression, whose Track carries no location, or a statement the parser
+    // leaves out of a bare document. (The statement that plays when every label
+    // is commented out or muted has a Track of its own since #1686, named by
+    // this same next-free rule.) It keeps a positional name no real track has.
     let n = i + 1
     while (taken.has(`d${n}`)) n++
     taken.add(`d${n}`)

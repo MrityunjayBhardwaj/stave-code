@@ -1400,6 +1400,72 @@ function parseDocument(
       const inner = top(stripped.body.trim(), innerOffset, undefined)
       return IR.track('d1', inner)
     }
+    // #1686 — A LABEL THAT NEVER RUNS DOES NOT MAKE A LABELLED DOCUMENT.
+    //
+    //   n("<A#2 C3 C4>").s("ptest")      ← what strudel plays
+    //   // $: chord("<Cm Cm^7 Cm7 Cm6>")
+    //   // $: s("bd*4")
+    //
+    // Strudel leaves "play the last expression" only when a pattern REGISTERS
+    // (`@strudel/core` repl.mjs:238). A `//`-commented label never runs and a
+    // `_`-muted one returns silence without registering (repl.mjs:171-174), so
+    // with no live label the document plays like a bare one. The branches below
+    // turn only labelled statements into Tracks, so the statement that sounded
+    // had no row, and its notes fell back to `$0 → d1` — the commented row.
+    //
+    // So here, as in a bare document (#1096), EVERY bare statement gets a Track,
+    // anchored at its own statement: the timeline assigns a note to the row
+    // whose anchor contains it before it reads the note's id, so the anchor is
+    // what puts the notes on the right row, and capture ids stay as they are.
+    // The label and ghost tracks keep exactly the ids they had (numbers hold
+    // still while a line is toggled); a bare statement takes the next `d{n}`
+    // none of them holds, which is also the name the Mixer gave its strip.
+    if (!tracks.some((t) => !t.commented && !isMutedLabel(t.label))) {
+      const bare = bareStatementsBesideLabels(code, tracks)
+      if (bare.length > 0) {
+        const labelIds = trackIdsFromLabels(
+          tracks.map((t) => t.label),
+          tracks.map((t) => t.commented),
+        )
+        const taken = new Set(labelIds)
+        const bareIds = bare.map(() => {
+          let n = 1
+          while (taken.has(`d${n}`)) n++
+          taken.add(`d${n}`)
+          return `d${n}`
+        })
+        // A label's extent used to run to the next label, so the bare
+        // statement below a ghost sat inside the ghost's range and, below a
+        // muted label, was parsed as part of its body. It ends where the next
+        // statement of either kind begins.
+        const endOf = (t: (typeof tracks)[number]): number => {
+          const next = bare.find((s) => s.offset > t.dollarStart)
+          return next === undefined ? t.end : Math.min(t.end, next.offset)
+        }
+        const rows = [
+          ...tracks.map((t, i) => ({ kind: 'label' as const, at: t.dollarStart, t, id: labelIds[i] })),
+          ...bare.map((s, i) => ({ kind: 'bare' as const, at: s.offset, s, id: bareIds[i] })),
+        ].sort((a, b) => a.at - b.at)
+        // In source order, so `record` gets one entry per Track in the order
+        // the Tracks are returned (#1387).
+        return IR.stack(
+          ...rows.map((r) => {
+            if (r.kind === 'bare') {
+              const s = r.s
+              return IR.track(r.id, top(s.text, s.offset, trackBindings), {
+                loc: [{ start: s.offset, end: s.offset + s.text.length }],
+              })
+            }
+            const t = r.t
+            const end = endOf(t)
+            const body = t.commented ? silent() : top(code.slice(t.offset, end), t.offset, trackBindings)
+            return IR.track(r.id, body, {
+              loc: [{ start: t.dollarStart, end }],
+            }, isMutedLabel(t.label))
+          }),
+        )
+      }
+    }
     if (tracks.length === 1) {
       // Single `$:` block — Track('d1', expr) without an enclosing Stack.
       // loc covers the `$:` line range (PV36 / D-02). Synthetic-from-$:
@@ -1459,6 +1525,42 @@ function parseDocument(
     if (record) record.length = 0
     return IR.code(code)
   }
+}
+
+/**
+ * #1686 — the top-level statements of a labelled document that carry NO label:
+ * the ones strudel plays (the last of them) when no label is live.
+ *
+ * The same population a bare document declares Tracks over (#1096): the
+ * statement splitter, minus transport/boot calls and declarations. A labelled
+ * statement (a `_`-muted one — a commented label is not a statement at all) is
+ * the one that starts on its label's line; a label alone on its line takes the
+ * statement below it as its body, as JavaScript does.
+ */
+function bareStatementsBesideLabels(
+  code: string,
+  tracks: readonly { dollarStart: number; offset: number; commented: boolean }[],
+): { text: string; offset: number }[] {
+  const stmts = stripSideEffectStatements(splitTopLevelStatements(code, 0))
+  const owned = new Set<number>()
+  stmts.forEach((s, i) => {
+    const t = tracks.find((t) => !t.commented && s.offset >= t.dollarStart && s.offset <= t.offset)
+    if (!t) return
+    owned.add(i)
+    if (s.offset + s.text.length <= t.offset) owned.add(i + 1)
+  })
+  // A "statement" whose text opens with a comment is the dangling chain of a
+  // commented-out head (`//$: note(…)` over `  .delay(.2)` lines): the splitter
+  // joins a leading-dot line to the comment above it. It is not a statement of
+  // its own, and it starts ON the ghost's line, so it would take a second row
+  // there. Measured over the archive: one document, `0/-uq47S3IOvLa`.
+  return stmts.filter(
+    (s, i) =>
+      !owned.has(i) &&
+      !NON_EXPRESSION_HEAD_RE.test(s.text) &&
+      !s.text.startsWith('//') &&
+      !s.text.startsWith('/*'),
+  )
 }
 
 // ---------------------------------------------------------------------------
