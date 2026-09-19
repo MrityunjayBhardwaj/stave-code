@@ -40,6 +40,13 @@ interface TransportLCDProps {
   readonly isPlaying: boolean;
   readonly getCycle: () => number | null;
   readonly getCps: () => number | null;
+  /**
+   * The active file's last evaluation error, or null (#1348). The transport
+   * dot says whether the scheduler runs; this says whether the code did.
+   */
+  readonly evalError?: string | null;
+  /** The eval lamp was pressed. */
+  readonly onEvalLamp?: () => void;
 }
 
 const STYLE_ID = "stave-transport-lcd-styles";
@@ -86,6 +93,18 @@ function ensureLcdStyles(): void {
     .stave-lcd-fps.warn .stave-lcd-bars i.on { background: #ffcf7a; box-shadow: 0 0 4px rgba(255,207,122,.5); }
     .stave-lcd-fps.crit .stave-lcd-bars i.on { background: #ff8080; box-shadow: 0 0 4px rgba(255,128,128,.5); }
     .stave-lcd-fpsnum { font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 600; color: #9aa0e6; }
+    .stave-lcd-lamp {
+      display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; margin-right: 4px;
+      border-radius: 4px; cursor: pointer; color: inherit;
+      font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+      background: linear-gradient(180deg, #0a0a1a, #05050e);
+      border: 1px solid #01010a;
+      box-shadow: inset 0 1px 0 rgba(160,168,255,0.06), 0 0 0 1px rgba(120,124,255,0.10), 0 1px 2px rgba(0,0,0,0.6);
+    }
+    .stave-lcd-lamp:focus-visible { outline: 2px solid #7c7cff; outline-offset: 2px; }
+    .stave-lcd-lamp .stave-lcd-state { font-size: 8px; }
+    .stave-lcd-lamp.err .stave-lcd-dot { background: #ff8080; box-shadow: 0 0 6px rgba(255,128,128,0.6); }
+    .stave-lcd-lamp.err .stave-lcd-state { color: #ff8080; }
     @media (prefers-reduced-motion: reduce) { .stave-lcd.run .stave-lcd-dot { animation: none; } }
   `;
   document.head.appendChild(style);
@@ -105,7 +124,13 @@ function fmtBar(c: number, meter: DisplayMeter): string {
   return `${String(bar).padStart(3, "0")}.${beat}.${tick}`;
 }
 
-export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps): React.ReactElement {
+export function TransportLCD({
+  isPlaying,
+  getCycle,
+  getCps,
+  evalError = null,
+  onEvalLamp,
+}: TransportLCDProps): React.ReactElement {
   const units = useRulerUnits();
   const cycleMode = units === "cycles";
   const meter = useDisplayMeter();
@@ -236,6 +261,29 @@ export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps)
   }, []);
 
   return (
+    <>
+    {/* #1348 — the eval lamp. A SIBLING of the readout, not a segment of it:
+        the readout is itself a button (it switches cycles/bars), and a button
+        inside a button is invalid and read inconsistently.
+        It claims only what it knows. With no error it is a neutral `EVAL`
+        that opens the Console — never a green tick before anything has run.
+        When the last evaluation failed it turns red and names the error, and
+        pressing it jumps to the error as its toast would. */}
+    <button
+      type="button"
+      className={`stave-lcd-lamp${evalError ? " err" : ""}`}
+      data-stave-eval-lamp={evalError ? "error" : "ok"}
+      title={evalError ?? "No evaluation errors"}
+      aria-label={
+        evalError
+          ? `Evaluation failed: ${evalError}. Show the error`
+          : "No evaluation errors. Open the Console"
+      }
+      onClick={onEvalLamp}
+    >
+      <span className="stave-lcd-dot" />
+      <span className="stave-lcd-state">{evalError ? "\u2716 ERR" : "EVAL"}</span>
+    </button>
     <div
       className={`stave-lcd${isPlaying ? " run" : ""}`}
       role="button"
@@ -283,5 +331,6 @@ export function TransportLCD({ isPlaying, getCycle, getCps }: TransportLCDProps)
         <span className="stave-lcd-label">FPS</span>
       </div>
     </div>
+    </>
   );
 }

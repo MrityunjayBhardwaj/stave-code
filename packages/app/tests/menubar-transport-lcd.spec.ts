@@ -85,3 +85,90 @@ test('tempo readout reflects a document that spells no setcps', async ({ page })
   await expect(tempo).toHaveText('120', { timeout: 8000 })
   await expect(page.locator('[data-stave-lcd-pos]')).toHaveText(/^\d{3}\.[1-4]\.[1-4]$/)
 })
+
+// #1348 — the eval lamp says whether the last evaluation worked, which the
+// transport dot (is the scheduler running?) cannot. A broken document turns it
+// red and names the error; pressing it opens the Console and jumps to the line,
+// as the error's toast does; a fixed document turns it back.
+test('the eval lamp shows a failed evaluation and jumps to it (#1348)', async ({ page }) => {
+  await boot(page)
+  const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
+  const lamp = page.locator('[data-stave-eval-lamp]')
+  await expect(lamp).toHaveAttribute('data-stave-eval-lamp', 'ok')
+  await expect(lamp).toHaveText('EVAL')
+
+  const setCode = (code: string) =>
+    page.evaluate((c) => {
+      const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string; setValue: (s: string) => void } | null; focus: () => void }> } } }).monaco
+      const eds = m?.editor?.getEditors?.() ?? []
+      const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+      t?.getModel()?.setValue(c)
+      t?.focus()
+    }, code)
+  const caretLine = () =>
+    page.evaluate(() => {
+      const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string } | null; getPosition: () => { lineNumber: number } | null }> } } }).monaco
+      const eds = m?.editor?.getEditors?.() ?? []
+      const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+      return t?.getPosition()?.lineNumber ?? null
+    })
+
+  // A syntax error on line 2.
+  await setCode('$: s("bd*2")\n$: s("hh*4"')
+  await page.waitForTimeout(200)
+  await page.keyboard.press(`${MOD}+Enter`)
+  await expect(lamp).toHaveAttribute('data-stave-eval-lamp', 'error', { timeout: 10_000 })
+  await expect(lamp).toContainText('ERR')
+  const title = (await lamp.getAttribute('title')) ?? ''
+  console.log(`[#1348] lamp title: ${title}`)
+  expect(title.length).toBeGreaterThan(0)
+  await expect(lamp).toHaveAttribute('aria-label', /^Evaluation failed: /)
+
+  // Put the caret elsewhere, then press the lamp: Console open, caret on line 2.
+  await page.keyboard.press(`${MOD}+Home`)
+  expect(await caretLine()).toBe(1)
+  await lamp.click()
+  await expect(page.locator('[data-testid="console-panel"]')).toBeVisible({ timeout: 10_000 })
+  await expect.poll(caretLine, { timeout: 5000 }).toBe(2)
+
+  // Fixed and re-evaluated: the lamp says nothing is wrong again.
+  await setCode('$: s("bd*2")\n$: s("hh*4")')
+  await page.waitForTimeout(200)
+  await page.keyboard.press(`${MOD}+Enter`)
+  await expect(lamp).toHaveAttribute('data-stave-eval-lamp', 'ok', { timeout: 10_000 })
+  await expect(lamp).toHaveText('EVAL')
+})
+
+// The error toast and the eval lamp share one "show this error" action
+// (`revealLogEntry` in StaveApp, #1348). Pressing the toast still jumps to the
+// line — this pins the toast side of that shared action.
+test('pressing an error toast jumps to the error line (#1348)', async ({ page }) => {
+  await boot(page)
+  const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
+  await page.evaluate(() => {
+    const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string; setValue: (s: string) => void } | null; focus: () => void; setPosition: (p: { lineNumber: number; column: number }) => void }> } } }).monaco
+    const eds = m?.editor?.getEditors?.() ?? []
+    const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+    t?.getModel()?.setValue('$: s("bd*2")\n$: s("hh*4"')
+    t?.focus()
+    t?.setPosition({ lineNumber: 1, column: 1 })
+  })
+  await page.waitForTimeout(200)
+  await page.keyboard.press(`${MOD}+Enter`)
+  const toast = page.locator('[data-testid="toast"][data-level="error"] [data-testid="toast-action"]').first()
+  await expect(toast).toBeVisible({ timeout: 10_000 })
+  await toast.click()
+  await expect(page.locator('[data-testid="console-panel"]')).toBeVisible({ timeout: 10_000 })
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const m = (window as unknown as { monaco?: { editor?: { getEditors?: () => Array<{ getModel: () => { getLanguageId?: () => string } | null; getPosition: () => { lineNumber: number } | null }> } } }).monaco
+          const eds = m?.editor?.getEditors?.() ?? []
+          const t = eds.find((e) => e.getModel()?.getLanguageId?.() === 'strudel') ?? eds[0]
+          return t?.getPosition()?.lineNumber ?? null
+        }),
+      { timeout: 5000 },
+    )
+    .toBe(2)
+})
