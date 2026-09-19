@@ -80,6 +80,20 @@ describe('resolveBareCaptureId — accepts only the unambiguous single bare trac
     expect(stripCaptureIds(code)).not.toContain(BARE_CAPTURE_ID)
   })
 
+  it('with EVERY label muted, the last bare statement is what plays, and it joins (#1686)', () => {
+    // A `_`-muted label returns silence without registering, so strudel plays
+    // the last expression — the bare statement below it. Its meter was dark.
+    const code = '_$: s("bd*4")\nn("c e g").s("ptest")'
+    const id = resolveBareCaptureId(code)
+    expect(id).not.toBeNull()
+    // the id is the one the mixer gives THAT strip, and no other strip
+    expect(stripCaptureIds(code)).toEqual(['_$0', id])
+  })
+
+  it('…but a muted label that is itself the last statement plays silence, owned by no strip', () => {
+    expect(resolveBareCaptureId('n("c e g")\n_$: s("bd*4")')).toBeNull()
+  })
+
   it('an empty or track-less document resolves to nothing', () => {
     expect(resolveBareCaptureId('')).toBeNull()
     expect(resolveBareCaptureId('setcps(0.5)')).toBeNull()

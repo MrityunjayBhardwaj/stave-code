@@ -106,6 +106,37 @@ describe('a track has the SAME name in the Mixer as on the Song timeline (#1678,
   })
 })
 
+describe('with no live label, every strip has a timeline row of its own (#1686)', () => {
+  // A commented-out label never runs and a muted one never registers, so the
+  // document plays its last bare statement. The Mixer drew a strip for it; the
+  // timeline had no row, so the strip's name pointed at nothing.
+  it('each strip names the Track anchored at its own statement', () => {
+    const docs = [
+      'n("<A#2 C3 C4>").s("ptest")\n// $: chord("<Cm Cm^7>")\n// $: s("bd*4")',
+      '// $: chord("<Cm>")\nn("c e").s("ptest")\ns("hh*8")',
+      '_$: s("bd*4")\nn("c e g").s("ptest")',
+      '// bass: s("bd")\ns("hh*8")',
+    ]
+    let compared = 0
+    for (const src of docs) {
+      for (const s of stripsOf(src)) {
+        const id = timelineIdAt(src, s.statementRange[0])
+        expect(id, `${JSON.stringify(src)} @${s.statementRange[0]} has no row`).toBeDefined()
+        expect(s.name).toBe(id)
+        compared++
+      }
+    }
+    // 1 + 2 + 2 + 1 strips, every one compared — not vacuous
+    expect(compared).toBe(6)
+  })
+
+  it('the ghost rows keep their numbers; the bare statement takes the next free one', () => {
+    expect(stripsOf('n("c")\n// $: s("a")\n// $: s("b")').map((s) => s.name)).toEqual(['d3'])
+    // a named ghost claims no `d{n}`, so the bare statement is d1
+    expect(stripsOf('// bass: s("bd")\ns("hh*8")').map((s) => s.name)).toEqual(['d1'])
+  })
+})
+
 describe('a statement that never plays has no strip (#1682)', () => {
   // Strudel stacks only what reached `.p()` and discards every other statement's
   // value (`repl.mjs:238-257`); a `_`-muted label returns silence WITHOUT

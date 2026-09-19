@@ -3230,6 +3230,46 @@ function parseDocument(code, opts, record) {
       const inner = top(stripped.body.trim(), innerOffset, void 0);
       return IR.track("d1", inner);
     }
+    if (!tracks.some((t) => !t.commented && !isMutedLabel(t.label))) {
+      const bare = bareStatementsBesideLabels(code, tracks);
+      if (bare.length > 0) {
+        const labelIds = trackIdsFromLabels(
+          tracks.map((t) => t.label),
+          tracks.map((t) => t.commented)
+        );
+        const taken = new Set(labelIds);
+        const bareIds = bare.map(() => {
+          let n = 1;
+          while (taken.has(`d${n}`)) n++;
+          taken.add(`d${n}`);
+          return `d${n}`;
+        });
+        const endOf = /* @__PURE__ */ __name((t) => {
+          const next = bare.find((s) => s.offset > t.dollarStart);
+          return next === void 0 ? t.end : Math.min(t.end, next.offset);
+        }, "endOf");
+        const rows = [
+          ...tracks.map((t, i) => ({ kind: "label", at: t.dollarStart, t, id: labelIds[i] })),
+          ...bare.map((s, i) => ({ kind: "bare", at: s.offset, s, id: bareIds[i] }))
+        ].sort((a, b) => a.at - b.at);
+        return IR.stack(
+          ...rows.map((r) => {
+            if (r.kind === "bare") {
+              const s = r.s;
+              return IR.track(r.id, top(s.text, s.offset, trackBindings), {
+                loc: [{ start: s.offset, end: s.offset + s.text.length }]
+              });
+            }
+            const t = r.t;
+            const end = endOf(t);
+            const body = t.commented ? silent() : top(code.slice(t.offset, end), t.offset, trackBindings);
+            return IR.track(r.id, body, {
+              loc: [{ start: t.dollarStart, end }]
+            }, isMutedLabel(t.label));
+          })
+        );
+      }
+    }
     if (tracks.length === 1) {
       const t = tracks[0];
       const body = t.commented ? silent() : top(t.expr, t.offset, trackBindings);
@@ -3257,6 +3297,38 @@ function parseDocument(code, opts, record) {
   }
 }
 __name(parseDocument, "parseDocument");
+function bareStatementsBesideLabels(code, tracks) {
+  const stmts = stripSideEffectStatements(splitTopLevelStatements(code, 0));
+  const owned = /* @__PURE__ */ new Set();
+  stmts.forEach((s, i) => {
+    const t = tracks.find((t2) => !t2.commented && s.offset >= t2.dollarStart && s.offset <= t2.offset);
+    if (!t) return;
+    owned.add(i);
+    if (s.offset + s.text.length <= t.offset) owned.add(i + 1);
+  });
+  return stmts.filter(
+    (s, i) => !owned.has(i) && !NON_EXPRESSION_HEAD_RE.test(s.text) && !opensWithDanglingChain(s.text)
+  );
+}
+__name(bareStatementsBesideLabels, "bareStatementsBesideLabels");
+function opensWithDanglingChain(text) {
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === " " || c === "	" || c === "\n" || c === "\r") i++;
+    else if (text.startsWith("//", i)) {
+      const nl = text.indexOf("\n", i);
+      if (nl < 0) return false;
+      i = nl + 1;
+    } else if (text.startsWith("/*", i)) {
+      const close = text.indexOf("*/", i + 2);
+      if (close < 0) return false;
+      i = close + 2;
+    } else return c === ".";
+  }
+  return false;
+}
+__name(opensWithDanglingChain, "opensWithDanglingChain");
 function lexStateAt(code, idx) {
   let depth = 0;
   let inString = false;
@@ -8534,7 +8606,8 @@ function unjoinableId(index) {
 __name(unjoinableId, "unjoinableId");
 function bareCaptureIdFor(tracks) {
   if (tracks.length === 0) return null;
-  if (tracks.some((t) => t.label !== null)) return null;
+  if (tracks.some((t) => t.label !== null && !isMutedLabel(t.label))) return null;
+  if (tracks[tracks.length - 1].label !== null) return null;
   return `$${tracks.length - 1}`;
 }
 __name(bareCaptureIdFor, "bareCaptureIdFor");
