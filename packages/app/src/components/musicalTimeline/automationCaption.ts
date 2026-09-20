@@ -124,6 +124,13 @@ export function automationBandHeight(rowHeight: number, padY: number = AUTOMATIO
   return rowHeight - padY * 2
 }
 
+/** The inverse: the row height that leaves `bandHeight` after the inset. Used
+ *  where a minimum BAND height has to be stated as a minimum ROW height — the
+ *  same model read backwards, so it cannot drift from it (#1498). */
+export function rowHeightForBandHeight(bandHeight: number, padY: number = AUTOMATION_PAD_Y): number {
+  return bandHeight + padY * 2
+}
+
 export function automationBand(
   top: number,
   rowHeight: number,

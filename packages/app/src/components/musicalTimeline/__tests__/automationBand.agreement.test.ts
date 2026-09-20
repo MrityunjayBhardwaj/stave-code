@@ -19,8 +19,8 @@ import { DEFAULT_METER } from '../../../lib/meter'
 import type { TimelineScene, SceneLane } from '../timelineScene'
 import type { SignalAutomation } from '@stave/editor'
 import { signalTimeAt } from '../../../../../editor/src/ir/signalAutomation'
-import { computeLaneLayout } from '../laneLayout'
-import { automationBand, automationBandHeight, captionRows, AUTOMATION_PAD_Y, AUTOMATION_MIN_BAND_H } from '../automationCaption'
+import { computeLaneLayout, AUTOMATION_MIN_ROW_H, AUTOMATION_MIN_DRAG_BAND_H } from '../laneLayout'
+import { automationBand, automationBandHeight, rowHeightForBandHeight, captionRows, AUTOMATION_PAD_Y, AUTOMATION_MIN_BAND_H } from '../automationCaption'
 
 const THEME: DrawTheme = {
   background: '#bg', rowAlt: '#rowAlt', section: '#sect', sectionAlt: '#sectAlt',
@@ -107,5 +107,14 @@ describe('the automation band is derived once (#1498)', () => {
     // Above the floor the two agree exactly.
     expect(automationBandHeight(40)).toBe(automationBand(0, 40)?.height)
     expect(automationBand(0, AUTOMATION_MIN_BAND_H + AUTOMATION_PAD_Y * 2)?.height).toBe(AUTOMATION_MIN_BAND_H)
+  })
+
+  it('stating a minimum BAND height as a minimum ROW height is the same model backwards', () => {
+    // `laneLayout`'s AUTOMATION_MIN_ROW_H is this inverse; a drag floor stated in
+    // band pixels must survive the round trip or a lane is one pad too short.
+    for (const bandH of [10, 32, 64]) {
+      expect(automationBandHeight(rowHeightForBandHeight(bandH))).toBe(bandH)
+    }
+    expect(AUTOMATION_MIN_ROW_H).toBe(rowHeightForBandHeight(AUTOMATION_MIN_DRAG_BAND_H))
   })
 })
