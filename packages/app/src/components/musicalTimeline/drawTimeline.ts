@@ -34,6 +34,7 @@ import {
   AUTOMATION_LABEL_FONT,
   AUTOMATION_MIN_BAND_H,
   CAPTION_PAD_X,
+  automationBand,
   captionRows,
 } from './automationCaption'
 import { waveformColumn, waveformFit } from './waveformLane'
@@ -745,7 +746,7 @@ function drawSteppedAutomation(
   if (stepped.length === 0) return
   // The floor the curves abstain at — one constant, so a lane never draws a
   // staircase whose levels cannot be told apart.
-  if (rowHeight - AUTOMATION_PAD_Y * 2 < AUTOMATION_MIN_BAND_H) return
+  if (!automationBand(top, rowHeight)) return
   const band: StepBand = { top, rowHeight, padY: AUTOMATION_PAD_Y, minBandH: AUTOMATION_MIN_BAND_H }
 
   ctx.save()
@@ -816,8 +817,9 @@ function drawAutomation(
   expanded: boolean,
 ): void {
   if (automations.length === 0) return
-  const bandH = rowHeight - AUTOMATION_PAD_Y * 2
-  if (bandH < AUTOMATION_MIN_BAND_H) return
+  const band = automationBand(top, rowHeight)
+  if (!band) return
+  const bandH = band.height
 
   const x0 = Math.max(0, toScreenX(firstCycle))
   const x1 = Math.min(viewportWidth, toScreenX(lastCycle))
@@ -882,7 +884,7 @@ function drawAutomation(
       for (const [c0, c1] of playingRuns(a, timeAt, firstCycle, lastCycle)) {
         const rx0 = Math.max(x0, toScreenX(c0))
         const rx1 = Math.min(x1, toScreenX(c1))
-        if (rx1 > rx0) ctx.fillRect(rx0, top + AUTOMATION_PAD_Y + i * sliceH, rx1 - rx0, sliceH)
+        if (rx1 > rx0) ctx.fillRect(rx0, band.top + i * sliceH, rx1 - rx0, sliceH)
       }
     })
     ctx.restore()
@@ -921,7 +923,7 @@ function drawAutomation(
           // (measured). `lo` is where the natural low lands, so `lo > hi` turns it over.
           const unit = a.lo > a.hi ? 1 - natural : natural
           // Top of the band is the HIGH value — screen y grows downward.
-          const y = top + AUTOMATION_PAD_Y + (1 - Math.min(1, Math.max(0, unit))) * bandH
+          const y = band.top + (1 - Math.min(1, Math.max(0, unit))) * bandH
           if (first) { ctx.moveTo(x, y); first = false } else { ctx.lineTo(x, y) }
         }
         if (x >= rx1) break

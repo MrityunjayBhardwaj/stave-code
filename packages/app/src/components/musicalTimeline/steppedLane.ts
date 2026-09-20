@@ -29,6 +29,7 @@
  */
 import type { FixedParameter, OffsetEdit, SteppedAutomation } from '@stave/editor'
 import { positionOfValue, snapToStep, valueAtPosition } from '@stave/editor/knobScale'
+import { automationBand, automationBandHeight } from './automationCaption'
 
 /** `value` on the grid of `step`, spelled without float noise — the mixer knob's
  *  own rule, re-exported so the lane's callers keep one import (#1581). */
@@ -214,7 +215,7 @@ export function withFineDrag(travel: StepTravel, clientY: number, fine: boolean)
  * Clamped to that axis: a typed value can still widen it, a drag cannot.
  */
 export function stepDragValue(startValue: number, dyPx: number, axis: StepAxis, band: StepBand): number {
-  const bandH = band.rowHeight - band.padY * 2
+  const bandH = automationBandHeight(band.rowHeight, band.padY)
   if (!(bandH > 0)) return startValue
   const unit = unitOnAxis(startValue, axis) - dyPx / bandH
   return snapToStep(valueAtUnit(unit, axis), axis.step)
@@ -259,7 +260,9 @@ export interface StepBand {
  *  staircase draw and the hit-test must agree about where a step sits, or a press
  *  lands one step off and edits the wrong number. */
 export function stepY(value: number, axis: StepAxis, band: StepBand): number {
-  const bandH = band.rowHeight - band.padY * 2
+  // No floor here, deliberately: the draw and hit-test paths abstain before
+  // calling this, and a step still needs a y while a drag previews one (#1498).
+  const bandH = automationBandHeight(band.rowHeight, band.padY)
   return band.top + band.padY + (1 - unitOnAxis(value, axis)) * bandH
 }
 
@@ -297,7 +300,7 @@ export function stepHitAt(
   tolerancePx: number = STEP_HIT_TOLERANCE_PX,
 ): StepHit | null {
   if (!expanded || entries.length === 0 || !Number.isFinite(cycle)) return null
-  if (band.rowHeight - band.padY * 2 < band.minBandH) return null
+  if (!automationBand(band.top, band.rowHeight, band.padY, band.minBandH)) return null
   let best: StepHit | null = null
   let bestDist = Infinity
   for (const entry of entries) {

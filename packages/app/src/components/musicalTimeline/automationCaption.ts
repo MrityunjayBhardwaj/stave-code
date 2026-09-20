@@ -94,6 +94,47 @@ export const CAPTION_PAD_X = 4
  *  outside the thing it labels. */
 export const AUTOMATION_PAD_Y = 3
 
+/** Where a lane's automation is painted: the band's own top, and its height. */
+export interface AutomationBand {
+  readonly top: number
+  readonly height: number
+}
+
+/**
+ * The band `rowHeight` leaves for automation, or null when it is under the floor
+ * and nothing may be painted.
+ *
+ * ⚠ ONE DERIVATION, NOT SIX (#1498). The inset model — `padY` off BOTH edges —
+ * used to be spelled out at every site that needed it: the caption rows, the
+ * curve, the staircase, and the three stepped-lane helpers. They agreed only
+ * because the expression happened to be copied correctly. The moment the model
+ * stops being symmetric (a header line, a different top inset, a per-lane pad),
+ * a site that kept the old arithmetic paints a curve where the hit-test believes
+ * there is no band — a click that quietly does nothing, or a caption over empty
+ * space. `AUTOMATION_PAD_Y` was already single-sourced; this is the arithmetic
+ * around it, so the model now has exactly one home.
+ *
+ * `padY` and `minBandH` are arguments rather than constants read here because a
+ * stepped lane's `StepBand` carries its own pair, but every caller in the app
+ * passes the constants above. {@link automationBandHeight} is the same model
+ * WITHOUT the floor, for the two step helpers that never gated on it — sharing
+ * the arithmetic must not hand either of them a floor it did not have.
+ */
+export function automationBandHeight(rowHeight: number, padY: number = AUTOMATION_PAD_Y): number {
+  return rowHeight - padY * 2
+}
+
+export function automationBand(
+  top: number,
+  rowHeight: number,
+  padY: number = AUTOMATION_PAD_Y,
+  minBandH: number = AUTOMATION_MIN_BAND_H,
+): AutomationBand | null {
+  const height = automationBandHeight(rowHeight, padY)
+  if (height < minBandH) return null
+  return { top: top + padY, height }
+}
+
 /**
  * Format a bound for display.
  *
@@ -173,11 +214,11 @@ export function captionRows(
   expanded: boolean,
 ): readonly CaptionRow[] {
   if (!expanded || automations.length === 0) return []
-  const bandH = rowHeight - AUTOMATION_PAD_Y * 2
-  if (bandH < AUTOMATION_MIN_BAND_H) return []
+  const band = automationBand(top, rowHeight)
+  if (!band) return []
 
   const rows: CaptionRow[] = []
-  let y = top + AUTOMATION_PAD_Y
+  let y = band.top
   for (const a of automations) {
     // The draw loop stops when the next line would overflow the row; stopping on
     // the same condition is what keeps the two in step.
