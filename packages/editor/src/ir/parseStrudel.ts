@@ -1463,7 +1463,7 @@ function parseDocument(
             const body = t.commented ? silent() : top(code.slice(t.offset, end), t.offset, trackBindings)
             return IR.track(r.id, body, {
               loc: [{ start: t.dollarStart, end }],
-            }, isMutedLabel(t.label))
+            }, { muted: isMutedLabel(t.label), commented: t.commented })
           }),
         )
       }
@@ -1489,7 +1489,7 @@ function parseDocument(
       const trackId0 = trackIdFromLabel(t.label, 0)
       return IR.track(trackId0, body, {
         loc: [{ start: t.dollarStart, end: t.end }],
-      }, isMutedLabel(t.label))
+      }, { muted: isMutedLabel(t.label), commented: t.commented })
     }
     // Two+ `$:` blocks — Stack(Track('d1', ...), Track('d2', ...), ...).
     // Each Track carries its own `$:` line range as loc. The outer Stack
@@ -1519,7 +1519,7 @@ function parseDocument(
         const trackId = trackIds[i]
         return IR.track(trackId, body, {
           loc: [{ start: t.dollarStart, end: t.end }],
-        }, isMutedLabel(t.label))
+        }, { muted: isMutedLabel(t.label), commented: t.commented })
       }),
     )
   } catch {
