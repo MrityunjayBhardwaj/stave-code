@@ -266,6 +266,68 @@ test.describe('a take is visible on the Song timeline', () => {
     expect(errors).toEqual([])
   })
 
+  test('EXPANDING its lane keeps the shape — it does not flatten to a bar (#1713)', async ({ page }) => {
+    // Expanding a lane is how you ask to see MORE of a track. For a take it used
+    // to show less: the expanded band drew every mark as a 4px pitch sliver, too
+    // short for a waveform, so the shape above became one flat line. Same
+    // reading as the first arm — tallest over quietest inside one mark — taken
+    // with the lane expanded by its real caret.
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+
+    await bootWithTimeline(page)
+    await page.evaluate(() => (window as ProbeWindow).__staveAssetProbe!.reset())
+
+    const wav = loudThenSilentWav()
+    await page.evaluate(async (base64) => {
+      const p = (window as ProbeWindow).__staveAssetProbe!
+      const res = await p.import(base64, 'audio/wav', 'take_1.wav', await p.docList())
+      await p.docAdd(res.record)
+    }, wav)
+
+    await seedCode(page, '$: s("take_1")')
+    await page.evaluate(() => {
+      try {
+        localStorage.setItem('stave:musicalTimeline.subRowHeight', '48')
+      } catch {
+        /* ignore */
+      }
+    })
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.waitForFunction(() => Boolean((window as ProbeWindow).__staveAssetProbe), { timeout: 30_000 })
+    await page.waitForFunction(() => (window as ProbeWindow).__staveAssetProbe!.inSoundMap('take_1'), undefined, {
+      timeout: 30_000,
+    })
+    await page.locator('[data-full-song-canvas]').waitFor({ timeout: 20_000 })
+
+    // PRECONDITION: collapsed, the shape is there. Without it an expanded reading
+    // of 1 could mean "the take never drew", not "expanding flattened it".
+    await expect
+      .poll(async () => {
+        const m = firstMark(await readInk(page))
+        return m.length > 20 ? Math.max(...m) / Math.min(...m.filter((n) => n > 0)) : 0
+      }, { timeout: 30_000 })
+      .toBeGreaterThan(3)
+
+    const caret = page.locator('[data-full-song-lane-expand]').first()
+    const laneKey = await caret.getAttribute('data-full-song-lane-expand')
+    await caret.click({ timeout: 3000 })
+    await expect(page.locator(`[data-full-song-lane="${laneKey}"]`)).toHaveAttribute('data-expanded', 'true')
+
+    await expect
+      .poll(async () => firstMark(await readInk(page)).length, { timeout: 20_000 })
+      .toBeGreaterThan(20)
+    const mark = firstMark(await readInk(page))
+    const tallest = Math.max(...mark)
+    const quietest = Math.min(...mark.filter((n) => n > 0))
+    // eslint-disable-next-line no-console
+    console.log(`[#1713] expanded tallest=${tallest} quietest=${quietest} ratio=${(tallest / quietest).toFixed(2)}`)
+    expect(tallest / quietest).toBeGreaterThan(3)
+    expect(mark.indexOf(quietest)).toBeLessThan(mark.length / 2)
+
+    expect(errors).toEqual([])
+  })
+
   test('while it sounds, the lit mark outlines the shape instead of covering it', async ({ page }) => {
     const errors: string[] = []
     page.on('pageerror', (e) => errors.push(e.message))

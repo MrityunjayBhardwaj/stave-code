@@ -384,4 +384,52 @@ describe('drawTimeline — waveform tier', () => {
     // inequality would also hold if the cap were never reached at all.
     expect(waveformColumns(rects)).toHaveLength(WAVEFORM_COLUMN_BUDGET)
   })
+
+  it('keeps the waveform when a sample lane is EXPANDED (#1713)', () => {
+    // Expanding is how you ask to see more of a track. A sample mark has no pitch
+    // to place, so the thin pitch sliver an expanded melodic lane uses has
+    // nothing to encode here — and at 4px it is under the waveform's height gate,
+    // so expanding used to swap the waveform for a flat bar.
+    const lanes = sceneWith(oneTake).lanes
+    const warm: WaveformSource = { cps: 1, peaksFor: () => fullScalePeaks(0.1) }
+    const collapsed = mockCtx()
+    drawTimeline(collapsed.ctx, sceneWith(oneTake), transform, theme,
+      computeLaneLayout(lanes, new Set(), 60, 88, 60), undefined, warm)
+    const expanded = mockCtx()
+    drawTimeline(expanded.ctx, sceneWith(oneTake), transform, theme,
+      computeLaneLayout(lanes, new Set(['drums']), 60, 88, 60), undefined, warm)
+
+    expect(waveformColumns(collapsed.rects).length).toBeGreaterThan(0) // control: the shape exists
+    expect(waveformColumns(expanded.rects).length).toBe(waveformColumns(collapsed.rects).length)
+    // Not merely "some columns": the mark is as tall as the collapsed one, so
+    // expanding never shows less of the take than collapsing does.
+    const barH = (rects: Rect[]) => rects.find((r) => r.w === 250 && r.style === LANE_COLOR)!.h
+    expect(barH(expanded.rects)).toBe(barH(collapsed.rects))
+  })
+
+  it('still draws an expanded MELODIC lane as a thin pitch contour (#1713)', () => {
+    // The other side of the same rule: where there IS a pitch range, the expanded
+    // band spends its height on pitch-Y, so each note stays a sliver at its pitch.
+    const notes: SceneNote[] = [
+      { cycle: 0, end: 0.25, pitch: 48, gain: 1, voice: 'piano' },
+      { cycle: 0.4, end: 0.65, pitch: 72, gain: 1, voice: 'piano' },
+    ]
+    const base = sceneWith(notes)
+    const melodic: TimelineScene = {
+      ...base,
+      lanes: [{
+        ...base.lanes[0],
+        pitchMin: 48,
+        pitchMax: 72,
+        voices: [{ key: 'piano', label: 'piano', melodic: true, pitchMin: 48, pitchMax: 72 }],
+      }],
+    }
+    const layout = computeLaneLayout(melodic.lanes, new Set(['drums']), 60, 88, 60)
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, melodic, transform, theme, layout)
+    const bars = rects.filter((r) => r.w === 250 && r.style === LANE_COLOR)
+    expect(bars).toHaveLength(2)
+    expect(bars.every((r) => r.h === 4)).toBe(true)
+    expect(bars[0].y).not.toBe(bars[1].y) // two pitches, two heights in the band
+  })
 })

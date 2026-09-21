@@ -290,6 +290,12 @@ function validateNode(raw: unknown, path: string): PatternIR {
       // back to folding silent tracks into the song's length. Written as
       // `=== true` so an absent flag stays absent rather than becoming `false`.
       if (node.muted === true) out.muted = true
+      // #1696 — and the same trap again for `commented`. It is load-bearing on
+      // reload for the same reason: the row it marks is one the ENGINE never
+      // counted, so losing the mark puts a commented row back into the
+      // population an engine producer id indexes, and a bound pattern's notes
+      // go back to landing on a ghost.
+      if (node.commented === true) out.commented = true
       return out
     }
 

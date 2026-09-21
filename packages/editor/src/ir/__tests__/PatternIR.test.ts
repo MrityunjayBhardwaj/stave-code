@@ -739,8 +739,8 @@ describe('Track.muted survives the JSON round-trip (#1488)', () => {
     // save-and-reload, and the period rule would silently go back to folding
     // silent tracks into the song's length.
     const ir = IR.stack(
-      IR.track('d1', IR.pure(), undefined, false),
-      IR.track('d2', IR.pure(), undefined, true),
+      IR.track('d1', IR.pure(), undefined, { muted: false }),
+      IR.track('d2', IR.pure(), undefined, { muted: true }),
     )
     const back = patternFromJSON(patternToJSON(ir)) as Extract<PatternIR, { tag: 'Stack' }>
     const tracks = back.tracks as Extract<PatternIR, { tag: 'Track' }>[]
@@ -748,11 +748,39 @@ describe('Track.muted survives the JSON round-trip (#1488)', () => {
     expect(tracks[1].muted).toBe(true)
   })
 
+  it('carries `commented` through too (#1696)', () => {
+    // Same trap, same case, a second field. Losing it on reload puts the
+    // commented row back into the population an engine producer id counts, and
+    // a bound pattern's notes go back to landing on a ghost.
+    const ir = IR.stack(
+      IR.track('d1', IR.pure(), undefined, { commented: true }),
+      IR.track('d2', IR.pure()),
+    )
+    const back = patternFromJSON(patternToJSON(ir)) as Extract<PatternIR, { tag: 'Stack' }>
+    const tracks = back.tracks as Extract<PatternIR, { tag: 'Track' }>[]
+    expect(tracks[0].commented).toBe(true)
+    expect(tracks[1].commented).toBeUndefined()
+  })
+
+  it('the two flags stay independent across the round-trip', () => {
+    // A muted track must not come back commented, or vice versa — they answer
+    // different questions ("does it sound" vs "did it ever run") and only the
+    // second changes what the engine counts.
+    const ir = IR.stack(
+      IR.track('d1', IR.pure(), undefined, { muted: true }),
+      IR.track('d2', IR.pure(), undefined, { commented: true }),
+    )
+    const back = patternFromJSON(patternToJSON(ir)) as Extract<PatternIR, { tag: 'Stack' }>
+    const tracks = back.tracks as Extract<PatternIR, { tag: 'Track' }>[]
+    expect([tracks[0].muted, tracks[0].commented]).toEqual([true, undefined])
+    expect([tracks[1].muted, tracks[1].commented]).toEqual([undefined, true])
+  })
+
   it('leaves an unmuted track byte-identical to before the field existed', () => {
     // The flag is spread in only when true, so nothing that was not muted
     // gains a key — old snapshots and pinned JSON stay valid.
     expect(JSON.parse(patternToJSON(IR.track('d1', IR.pure())))).toEqual(
-      JSON.parse(patternToJSON(IR.track('d1', IR.pure(), undefined, false))),
+      JSON.parse(patternToJSON(IR.track('d1', IR.pure(), undefined, { muted: false }))),
     )
   })
 })

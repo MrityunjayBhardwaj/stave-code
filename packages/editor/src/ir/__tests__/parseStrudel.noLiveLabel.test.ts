@@ -11,7 +11,7 @@ function tracksOf(doc: string) {
   return roots.map((t) => {
     if (t.tag !== 'Track') throw new Error(`not a Track: ${t.tag}`)
     const loc = t.loc?.[0]
-    return { id: t.trackId, start: loc?.start, end: loc?.end, muted: !!t.muted, text: loc ? doc.slice(loc.start, loc.end) : '' }
+    return { id: t.trackId, start: loc?.start, end: loc?.end, muted: !!t.muted, commented: !!t.commented, text: loc ? doc.slice(loc.start, loc.end) : '' }
   })
 }
 
@@ -39,8 +39,8 @@ describe('#1686 — no live label: bare statements are Tracks too', () => {
 
   it('a muted label keeps its mute and its own body', () => {
     expect(tracksOf('_$: s("bd*4")\nn("c e g")')).toEqual([
-      { id: 'd1', start: 0, end: 14, muted: true, text: '_$: s("bd*4")\n' },
-      { id: 'd2', start: 14, end: 24, muted: false, text: 'n("c e g")' },
+      { id: 'd1', start: 0, end: 14, muted: true, commented: false, text: '_$: s("bd*4")\n' },
+      { id: 'd2', start: 14, end: 24, muted: false, commented: false, text: 'n("c e g")' },
     ])
   })
 
@@ -72,5 +72,60 @@ describe('#1686 — no live label: bare statements are Tracks too', () => {
 
   it('control: one live label and the bare statements stay out', () => {
     expect(tracksOf('// $: s("a")\n$: s("b")\nn("c")').map((t) => t.id)).toEqual(['d1', 'd2'])
+  })
+})
+
+/**
+ * #1696 — a Track says whether its label was COMMENTED OUT.
+ *
+ * The row exists either way, so `d{N}` holds still while a line is toggled
+ * (#1686). What differs is whether strudel ever saw the statement: it did not,
+ * so the engine does not count the row, and a consumer joining an engine
+ * producer id (`$N`) to a row has to know which rows to skip. That fact was
+ * otherwise only in the SOURCE — readable by looking for `//` at `loc[0].start`
+ * — so every such consumer needed the document text as well as its IR.
+ *
+ * ⚠ Not derivable from the body: a ghost's body is `silent()`, and so is a live
+ * `$: "~"`. One cannot sound; the other chose not to.
+ */
+describe('#1696 — the Track records that its label is commented out', () => {
+  const flags = (doc: string) =>
+    tracksOf(doc).map((t) => [t.id, t.commented ? 'commented' : t.muted ? 'muted' : 'live'])
+
+  it('marks the ghosts and not the bare statement (the no-live-label branch)', () => {
+    expect(flags('const p = s("bd*2")\n// $: s("a")\np')).toEqual([
+      ['d1', 'commented'],
+      ['d2', 'live'],
+    ])
+  })
+
+  it('marks a ghost beside LIVE labels (the multi-`$:` branch)', () => {
+    expect(flags('// $: s("a")\n$: s("b")\n$: s("c")')).toEqual([
+      ['d1', 'commented'],
+      ['d2', 'live'],
+      ['d3', 'live'],
+    ])
+  })
+
+  it('marks a lone commented label (the single-`$:` branch)', () => {
+    expect(flags('// $: s("a")')).toEqual([['d1', 'commented']])
+  })
+
+  it('MUTED is not commented — the two facts stay apart', () => {
+    // `_$:` runs and returns silence; `// $:` never runs. Both give a silent
+    // row, which is exactly why the body cannot tell them apart and the
+    // parser has to say. If these ever collapsed into one flag, every id past
+    // a muted track would shift onto its neighbour.
+    expect(flags('const p = s("bd*2")\n_$: s("a")\np')).toEqual([
+      ['d1', 'muted'],
+      ['d2', 'live'],
+    ])
+  })
+
+  it('control: a live label carries neither flag', () => {
+    expect(flags('$: s("a")\n$: s("b")')).toEqual([
+      ['d1', 'live'],
+      ['d2', 'live'],
+    ])
   })
 })

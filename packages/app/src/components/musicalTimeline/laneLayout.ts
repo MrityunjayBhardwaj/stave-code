@@ -15,7 +15,7 @@
  * PURE — no React, no canvas, only the lane keys. Unit-tested directly.
  */
 
-import { AUTOMATION_PAD_Y } from './automationCaption'
+import { rowHeightForBandHeight } from './automationCaption'
 
 /**
  * The shortest BAND an expanded lane may draw a stepped automation in (#1582).
@@ -34,7 +34,7 @@ import { AUTOMATION_PAD_Y } from './automationCaption'
 export const AUTOMATION_MIN_DRAG_BAND_H = 32
 
 /** The row height that leaves `AUTOMATION_MIN_DRAG_BAND_H` after the band's inset. */
-export const AUTOMATION_MIN_ROW_H = AUTOMATION_MIN_DRAG_BAND_H + AUTOMATION_PAD_Y * 2
+export const AUTOMATION_MIN_ROW_H = rowHeightForBandHeight(AUTOMATION_MIN_DRAG_BAND_H)
 
 /** Default per-voice sub-row height (px) when an expanded lane splits into voice
  *  sub-rows (#424). Each voice gets a fixed band (live-monitor parity — the lane
