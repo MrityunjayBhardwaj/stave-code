@@ -9690,7 +9690,7 @@ var _StrudelEngine = class _StrudelEngine {
    * master meter freezes. On a swap, detach from the stale node and re-tap the
    * live one. Read-only side-tap — audio still flows unchanged to the destination
    * (no routing mutation, V-mixer-3). Master gain is NOT applied here anymore:
-   * the master trim is the document's `all(x => x.gain())` (#794 removed the
+   * the master trim is the document's `all(x => x.postgain())` (#794 removed the
    * synthetic per-file output-gain seam).
    */
   followMasterAnalyser() {
@@ -33104,10 +33104,24 @@ function detectMasterAll(doc) {
   return out;
 }
 __name(detectMasterAll, "detectMasterAll");
+var MASTER_GAIN_CONTROL = "postgain";
 function findGainCall(m) {
-  return m.chain.find((c) => c.name === "gain");
+  return m.chain.find((c) => c.name === MASTER_GAIN_CONTROL) ?? m.chain.find((c) => c.name === "gain");
 }
 __name(findGainCall, "findGainCall");
+function findMasterGainCall(doc) {
+  const alls = detectMasterAll(doc);
+  for (const m of alls) {
+    const c = m.chain.find((k) => k.name === MASTER_GAIN_CONTROL);
+    if (c) return c;
+  }
+  for (const m of alls) {
+    const c = m.chain.find((k) => k.name === "gain");
+    if (c) return c;
+  }
+  return void 0;
+}
+__name(findMasterGainCall, "findMasterGainCall");
 function findPanCall(m) {
   return m.chain.find((c) => c.name === "pan" && c.args.length >= 1);
 }
@@ -33131,15 +33145,12 @@ function vizNameArg(c) {
 }
 __name(vizNameArg, "vizNameArg");
 function readMasterGain(doc) {
-  for (const m of detectMasterAll(doc)) {
-    const g = findGainCall(m);
-    if (!g) continue;
-    const arg = g.args[0];
-    if (!arg) return { value: MASTER_UNITY_GAIN, foreign: true };
-    if (arg.numeric === null) return { value: MASTER_UNITY_GAIN, foreign: true };
-    return { value: arg.numeric, foreign: false };
-  }
-  return { value: MASTER_UNITY_GAIN, foreign: false };
+  const g = findMasterGainCall(doc);
+  if (!g) return { value: MASTER_UNITY_GAIN, foreign: false };
+  const arg = g.args[0];
+  if (!arg) return { value: MASTER_UNITY_GAIN, foreign: true };
+  if (arg.numeric === null) return { value: MASTER_UNITY_GAIN, foreign: true };
+  return { value: arg.numeric, foreign: false };
 }
 __name(readMasterGain, "readMasterGain");
 function readMasterPan(doc) {
@@ -33200,14 +33211,12 @@ function readMasterViz(doc) {
 }
 __name(readMasterViz, "readMasterViz");
 function masterGainEdit(doc, value) {
-  for (const m of detectMasterAll(doc)) {
-    const g = findGainCall(m);
-    if (!g) continue;
-    const arg = g.args[0];
-    if (!arg || arg.numeric === null) return null;
-    return { range: arg.range, text: formatNumber(value) };
-  }
-  return insertStatement(doc, `all(x => x.gain(${formatNumber(value)}))`);
+  const g = findMasterGainCall(doc);
+  if (!g) return insertStatement(doc, `all(x => x.${MASTER_GAIN_CONTROL}(${formatNumber(value)}))`);
+  const arg = g.args[0];
+  if (!arg || arg.numeric === null) return null;
+  if (g.name === MASTER_GAIN_CONTROL) return { range: arg.range, text: formatNumber(value) };
+  return { range: g.range, text: `.${MASTER_GAIN_CONTROL}(${formatNumber(value)})` };
 }
 __name(masterGainEdit, "masterGainEdit");
 function masterPanEdit(doc, value) {

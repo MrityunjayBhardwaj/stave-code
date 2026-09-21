@@ -54,8 +54,16 @@ describe('detectMasterAll', () => {
 })
 
 describe('readMasterGain', () => {
-  it('reads the scalar from an all() gain line', () => {
+  it('reads the scalar from an all() postgain line', () => {
+    expect(readMasterGain('all(x => x.postgain(0.6))')).toEqual({ value: 0.6, foreign: false })
+  })
+
+  it('still reads a legacy all() gain line, so the fader shows what the document says', () => {
     expect(readMasterGain('all(x => x.gain(0.6))')).toEqual({ value: 0.6, foreign: false })
+  })
+
+  it('prefers postgain when both are written', () => {
+    expect(readMasterGain('all(x => x.gain(0.3))\nall(x => x.postgain(0.7))')).toEqual({ value: 0.7, foreign: false })
   })
 
   it('is unity when absent (the untouched master projects the default)', () => {
@@ -64,38 +72,53 @@ describe('readMasterGain', () => {
 
   it('flags a signal gain as foreign (fader disables, shows unity)', () => {
     expect(readMasterGain('all(x => x.gain(sine))')).toEqual({ value: 1, foreign: true })
+    expect(readMasterGain('all(x => x.postgain(sine))')).toEqual({ value: 1, foreign: true })
   })
 })
 
-describe('masterGainEdit', () => {
-  it('patches the scalar in an existing all() gain line', () => {
-    const src = 'all(x => x.gain(0.6))'
-    expect(applied(src, masterGainEdit(src, 0.85))).toBe('all(x => x.gain(0.85))')
+describe('masterGainEdit (#1711 — the master SCALES the mix: postgain, never gain)', () => {
+  // A Strudel control method SETS its value, so `all(x => x.gain(N))` replaced
+  // every track's own gain with N. `postgain` is a separate gain stage at the end
+  // of every sound's chain, so a master written there multiplies what each track
+  // plays instead of replacing it.
+  it('patches the scalar in an existing all() postgain line', () => {
+    const src = 'all(x => x.postgain(0.6))'
+    expect(applied(src, masterGainEdit(src, 0.85))).toBe('all(x => x.postgain(0.85))')
   })
 
-  it('inserts a fresh all() gain line when absent (appended as a new line)', () => {
+  it('inserts a fresh all() postgain line when absent (appended as a new line)', () => {
     const src = '$: s("bd*4")'
-    expect(applied(src, masterGainEdit(src, 0.85))).toBe('$: s("bd*4")\nall(x => x.gain(0.85))')
+    expect(applied(src, masterGainEdit(src, 0.85))).toBe('$: s("bd*4")\nall(x => x.postgain(0.85))')
   })
 
   it('materializes into an empty document with no leading newline', () => {
-    expect(applied('', masterGainEdit('', 0.7))).toBe('all(x => x.gain(0.7))')
+    expect(applied('', masterGainEdit('', 0.7))).toBe('all(x => x.postgain(0.7))')
   })
 
-  it('writes the literal .gain(1) at unity (decision 4 — matches channel gainEdit)', () => {
+  it('writes the literal .postgain(1) at unity (decision 4 — matches channel gainEdit)', () => {
     const src = '$: s("bd")'
-    expect(applied(src, masterGainEdit(src, 1))).toBe('$: s("bd")\nall(x => x.gain(1))')
+    expect(applied(src, masterGainEdit(src, 1))).toBe('$: s("bd")\nall(x => x.postgain(1))')
   })
 
-  it('binds to a hand-combined chain, patching only the gain literal', () => {
-    const src = 'all(x => x.gain(0.8).viz("Prism", { backdrop: true }))'
+  it('moving the fader on a legacy gain line turns THAT call into postgain', () => {
+    // The line is the one being edited, so it is the one rewritten; nothing else
+    // in the document is touched.
+    const src = '$: s("bd").gain(0.3)\nall(x => x.gain(0.6))'
+    expect(applied(src, masterGainEdit(src, 0.5))).toBe('$: s("bd").gain(0.3)\nall(x => x.postgain(0.5))')
+  })
+
+  it('binds to a hand-combined chain, patching only the gain call', () => {
+    const src = 'all(x => x.postgain(0.8).viz("Prism", { backdrop: true }))'
     expect(applied(src, masterGainEdit(src, 0.5))).toBe(
-      'all(x => x.gain(0.5).viz("Prism", { backdrop: true }))',
+      'all(x => x.postgain(0.5).viz("Prism", { backdrop: true }))',
     )
+    const legacy = 'all(x => x.gain(0.8).room(0.3))'
+    expect(applied(legacy, masterGainEdit(legacy, 0.5))).toBe('all(x => x.postgain(0.5).room(0.3))')
   })
 
   it('disables (null) on a foreign signal gain', () => {
     expect(masterGainEdit('all(x => x.gain(sine))', 0.5)).toBeNull()
+    expect(masterGainEdit('all(x => x.postgain(sine))', 0.5)).toBeNull()
   })
 
   it('round-trips: edit then re-read yields the written value', () => {

@@ -6,7 +6,7 @@
  * the master strip's two round-tripped controls project to `all()` chains,
  * structurally identical to a channel line but scoped to the whole mix:
  *
- *   master fader   → all(x => x.gain(0.85))
+ *   master fader   → all(x => x.postgain(0.85))
  *   master pan     → all(x => x.pan(0.3))   (rides the gain line when present)
  *   master mute    → all(x => silence)      (a dedicated sentinel line)
  *   global backdrop→ all(x => x.viz("name", { backdrop: true }))
@@ -21,8 +21,18 @@
  *
  * Robust to a hand-COMBINED chain: `masterGainEdit`/`masterVizEdit` bind to
  * whichever `all()` line already carries the relevant call, so a user who wrote
- * `all(x => x.gain(0.8).viz("a",{backdrop:true}))` still gets surgical edits;
+ * `all(x => x.postgain(0.8).viz("a",{backdrop:true}))` still gets surgical edits;
  * only a fresh materialization uses the split convention.
+ *
+ * WHY `postgain` AND NOT `gain` (#1711). A Strudel control method SETS its value
+ * on the hap — `.gain(a).gain(b)` plays at `b` — so a master written as
+ * `all(x => x.gain(N))` replaced every track's own gain with N: lowering the
+ * master made the quiet tracks LOUDER. `postgain` is a separate gain stage at the
+ * end of every sound's chain (superdough `new GainNode(ac, { gain: postgain })`,
+ * after the `gain` stage), so a master written there multiplies what each track
+ * plays and keeps the balance. A legacy `all(x => x.gain(N))` is still READ, so
+ * the fader shows what the document says, and moving the fader rewrites that one
+ * call to `.postgain(…)`; a document nobody touches is never rewritten.
  */
 import { parseTopLevel, collectChain, type ChainArg, type ChainCall, type ChunkInfo } from '../chunkDetect'
 import { formatNumber } from '../writeback'
@@ -93,8 +103,26 @@ export function detectMasterAll(doc: string): MasterAll[] {
   return out
 }
 
+/** The control the master fader writes — see the header for why it is not `gain`. */
+const MASTER_GAIN_CONTROL = 'postgain'
+
 function findGainCall(m: MasterAll): ChainCall | undefined {
-  return m.chain.find((c) => c.name === 'gain')
+  return m.chain.find((c) => c.name === MASTER_GAIN_CONTROL) ?? m.chain.find((c) => c.name === 'gain')
+}
+
+/** The call that carries the master gain: a `postgain` on any `all()` line
+ *  first, else a legacy `gain` (what documents written before #1711 hold). */
+function findMasterGainCall(doc: string): ChainCall | undefined {
+  const alls = detectMasterAll(doc)
+  for (const m of alls) {
+    const c = m.chain.find((k) => k.name === MASTER_GAIN_CONTROL)
+    if (c) return c
+  }
+  for (const m of alls) {
+    const c = m.chain.find((k) => k.name === 'gain')
+    if (c) return c
+  }
+  return undefined
 }
 
 function findPanCall(m: MasterAll): ChainCall | undefined {
@@ -142,15 +170,12 @@ export interface MasterGainState {
 }
 
 export function readMasterGain(doc: string): MasterGainState {
-  for (const m of detectMasterAll(doc)) {
-    const g = findGainCall(m)
-    if (!g) continue
-    const arg = g.args[0]
-    if (!arg) return { value: MASTER_UNITY_GAIN, foreign: true } // `.gain()` empty — can't drive
-    if (arg.numeric === null) return { value: MASTER_UNITY_GAIN, foreign: true } // signal gain
-    return { value: arg.numeric, foreign: false }
-  }
-  return { value: MASTER_UNITY_GAIN, foreign: false }
+  const g = findMasterGainCall(doc)
+  if (!g) return { value: MASTER_UNITY_GAIN, foreign: false }
+  const arg = g.args[0]
+  if (!arg) return { value: MASTER_UNITY_GAIN, foreign: true } // `.postgain()` empty — can't drive
+  if (arg.numeric === null) return { value: MASTER_UNITY_GAIN, foreign: true } // signal gain
+  return { value: arg.numeric, foreign: false }
 }
 
 /** the master pan the pan control shows: the `all()` pan scalar, or centre (0.5)
@@ -244,23 +269,25 @@ export function readMasterViz(doc: string): { name: string } | null {
 }
 
 /**
- * The edit the master fader makes for `value` (a linear gain, decision 1 =
- * REPLACE):
- *  - present scalar → replace the literal in the existing `all()` gain call;
- *  - absent         → insert a fresh `all(x => x.gain(value))` line (decision 4 =
- *                     write the literal, incl. `.gain(1)` at unity, matching the
- *                     channel `gainEdit`);
- *  - foreign        → null (a signal/empty gain — the fader is disabled).
+ * The edit the master fader makes for `value` (a linear gain that SCALES the
+ * mix — #1711; "REPLACE" in #792 meant replacing the old synthetic output gain):
+ *  - present `postgain` scalar → replace its literal;
+ *  - legacy `gain` scalar      → rewrite that one call to `.postgain(value)`, so
+ *                                the line being edited stops overwriting track
+ *                                gains (nothing else in the document changes);
+ *  - absent                    → insert a fresh `all(x => x.postgain(value))`
+ *                                line (decision 4 = write the literal, incl.
+ *                                `.postgain(1)` at unity, matching `gainEdit`);
+ *  - foreign                   → null (a signal/empty gain — the fader disables).
  */
 export function masterGainEdit(doc: string, value: number): StripEdit | null {
-  for (const m of detectMasterAll(doc)) {
-    const g = findGainCall(m)
-    if (!g) continue
-    const arg = g.args[0]
-    if (!arg || arg.numeric === null) return null // foreign/empty — disabled
-    return { range: arg.range, text: formatNumber(value) }
-  }
-  return insertStatement(doc, `all(x => x.gain(${formatNumber(value)}))`)
+  const g = findMasterGainCall(doc)
+  if (!g) return insertStatement(doc, `all(x => x.${MASTER_GAIN_CONTROL}(${formatNumber(value)}))`)
+  const arg = g.args[0]
+  if (!arg || arg.numeric === null) return null // foreign/empty — disabled
+  if (g.name === MASTER_GAIN_CONTROL) return { range: arg.range, text: formatNumber(value) }
+  // A member call's range is [dot, callEnd], so this swaps the whole `.gain(N)`.
+  return { range: g.range, text: `.${MASTER_GAIN_CONTROL}(${formatNumber(value)})` }
 }
 
 /**
@@ -269,7 +296,7 @@ export function masterGainEdit(doc: string, value: number): StripEdit | null {
  *  - present scalar → replace the literal in the existing `all()` pan call;
  *  - foreign        → null (a signal/pattern pan — the control is disabled);
  *  - absent         → append `.pan(value)` to the gain-bearing `all()` line if one
- *                     exists (channel-parity output `all(x => x.gain(1).pan(v))`),
+ *                     exists (channel-parity output `all(x => x.postgain(1).pan(v))`),
  *                     else materialize its own `all(x => x.pan(value))` line.
  *
  * Appending to the gain line keeps the common case (fader dragged, then pan) on

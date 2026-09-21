@@ -5,10 +5,12 @@
  * channel strip it shows a mute button, a pan readout, a fader, and a live meter:
  *  - a live METER off the engine's post-mix `AnalyserNode` (read-only side-tap),
  *  - a FADER that round-trips to code: it PROJECTS the document's
- *    `all(x => x.gain())` scalar (unity when the line is absent) and, on drag,
- *    WRITES that line through the Mixer's `Writeback` — exactly like a channel
- *    fader writes `.gain()` on its `$:` line (#792, REPLACE decision). No
- *    synthetic per-file output gain: the master trim lives in the document.
+ *    `all(x => x.postgain())` scalar (unity when the line is absent; a legacy
+ *    `all(x => x.gain())` is still read) and, on drag, WRITES that line through
+ *    the Mixer's `Writeback`, as a channel fader writes `.gain()` on its `$:`
+ *    line (#792). It writes `postgain`, not `gain`, so it SCALES the mix instead
+ *    of overwriting every track's gain (#1711). No synthetic per-file output
+ *    gain: the master trim lives in the document.
  *  - a PAN control (horizontal drag) that projects/writes `all(x => x.pan())`,
  *    centre (0.5) when absent — the master analog of a channel `.pan()` (#800),
  *  - a MUTE button that adds/removes an `all(x => silence)` line — the master
