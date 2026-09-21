@@ -1048,7 +1048,10 @@ export interface MarkBand {
  * bd/sd/hh sit on separate lines (#424); sub-row geometry comes straight from the
  * shared `LaneLayout` (PV120). Otherwise a single band: the bar scales with the
  * row height so the row-height setting grows it like the live monitor (#459); an
- * expanded single band keeps a thin mark so its pitch spread reads as a contour.
+ * expanded single band WITH a pitch range keeps a thin mark so its pitch spread
+ * reads as a contour. Without one (a sample track, a one-pitch voice) there is no
+ * contour to leave room for, so it keeps the full bar — and with it the waveform,
+ * which a sliver is too short to hold (#1713).
  * PURE — the geometry the base `drawTimeline` and the live overlay both consume,
  * so a lit mark lands exactly over its base mark (no drift).
  */
@@ -1068,17 +1071,32 @@ export function laneMarkBands(lane: SceneLane, box: LaneBox): MarkBand[] {
       }
     })
   }
-  const markH = box.expanded ? 4 : barHeightForBand(box.height - 2 * SINGLE_BAND_PAD_Y)
+  const pMin = lane.pitchMin
+  const pMax = lane.pitchMax
+  const markH = box.expanded && hasPitchSpread(pMin, pMax)
+    ? PITCH_CONTOUR_MARK_H
+    : barHeightForBand(box.height - 2 * SINGLE_BAND_PAD_Y)
   return [
     {
       notes: lane.notes,
       bandTop: box.top + SINGLE_BAND_PAD_Y,
       bandH: Math.max(1, box.height - 2 * SINGLE_BAND_PAD_Y - markH),
       markH,
-      pMin: lane.pitchMin,
-      pMax: lane.pitchMax,
+      pMin,
+      pMax,
     },
   ]
+}
+
+/** Mark height in an expanded single band that has a pitch range: a sliver, so
+ *  the band's height goes to pitch-Y and the notes read as a contour. */
+const PITCH_CONTOUR_MARK_H = 4
+
+/** Whether a band has a pitch range to spread marks over. The one predicate
+ *  behind both "is this mark placed by pitch" (`markRect`) and "does this band
+ *  give its height to pitch" (`laneMarkBands`), so the two cannot disagree. */
+function hasPitchSpread(pMin: number | null, pMax: number | null): boolean {
+  return pMin != null && pMax != null && pMax > pMin
 }
 
 /**
@@ -1105,10 +1123,9 @@ export function markRect(
   const w = Math.max(MIN_MARK_W, (note.end - note.cycle) * pxPerCycle)
   if (x < -w || x > viewportWidth) return null
   const { bandTop, bandH, markH, pMin, pMax } = band
-  const hasPitch = pMin != null && pMax != null && pMax > pMin
   let y: number
-  if (note.pitch != null && hasPitch) {
-    const t = (note.pitch - pMin) / (pMax - pMin)
+  if (note.pitch != null && hasPitchSpread(pMin, pMax)) {
+    const t = (note.pitch - pMin!) / (pMax! - pMin!)
     y = bandTop + (1 - t) * bandH // high pitch near the band top (DAW convention)
   } else {
     y = bandTop + bandH / 2
