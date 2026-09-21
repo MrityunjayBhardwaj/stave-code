@@ -1467,10 +1467,15 @@ export async function analyzeSong(
   while (true) {
     const ok = await collectUpTo(horizon)
     if (!ok) break // aborted — return whatever we have at the current horizon
-    // Nothing playing at all (null IR / fully silent pattern) → nothing to
-    // analyze. Short-circuit to an empty analysis rather than growing the
-    // horizon to the cap over empty cycles.
-    if (events.length === 0) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys)
+    // Nothing heard YET is not nothing to hear: a song can open with a rest
+    // longer than the first look (a vocal entering after a 12-bar intro), so an
+    // empty window keeps growing like any unresolved one (#1712). Only a song
+    // that stays silent all the way to the cap is the empty analysis.
+    if (events.length === 0) {
+      if (horizon >= cap) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys)
+      horizon = Math.min(horizon * 2, cap)
+      continue
+    }
     // The DISPLAY period = the longest single lane's loop (#488). Differing-
     // length tracks phase; the view spans the longest one. `null` until EVERY
     // active lane has looped at least twice within the horizon, so we keep

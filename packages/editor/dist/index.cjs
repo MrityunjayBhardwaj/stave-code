@@ -2167,7 +2167,11 @@ async function analyzeSong(ir, opts = {}) {
   while (true) {
     const ok = await collectUpTo(horizon);
     if (!ok) break;
-    if (events.length === 0) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys);
+    if (events.length === 0) {
+      if (horizon >= cap) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys);
+      horizon = Math.min(horizon * 2, cap);
+      continue;
+    }
     const period = periodRule(events, horizon);
     if (period !== null) {
       const lanes = accumulateLanes(events, period);

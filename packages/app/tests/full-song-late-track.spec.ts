@@ -161,3 +161,40 @@ test('CONTROL — a muted track is not a track waiting to be heard', async ({ pa
   expect(a.periodCycles).not.toBeNull()
   expect(a.lanes.length).toBe(1)
 })
+
+/**
+ * #1712 — a song whose music starts after a long rest. The analysis looks at 8
+ * cycles first; when nothing had sounded by then it returned the EMPTY analysis
+ * instead of looking further, so the timeline dropped every mark for any song
+ * whose intro rest was 8 bars or more. The cliff sat exactly at the first look:
+ * a 7-bar rest drew, an 8-bar rest drew nothing. The table spans both sides of it.
+ *
+ * `arrange([lead, silence], [16, …])` repeats every `lead + 16` cycles, and
+ * `setcps(0.5)` keeps one cycle one bar, so the expected loop is exact.
+ */
+for (const lead of [0, 4, 7, 8, 12]) {
+  test(`a song whose first note is at bar ${lead} still draws its notes (#1712)`, async ({ page }) => {
+    test.setTimeout(240_000)
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await boot(page)
+    await editCode(page, `setcps(0.5)\nv: arrange([${lead}, silence], [16, note("c3*4").s("sawtooth")])`)
+
+    const a = await settledAnalysis(page)
+    expect(a.lanes.length).toBe(1)
+    expect(a.periodCycles).toBe(lead === 0 ? 1 : lead + 16)
+
+    // The marks the view actually drew, from the same eval-backed read — and the
+    // first of them lands where the music starts, not at 0.
+    await expect
+      .poll(async () => page.evaluate(() => {
+        const m = (window as unknown as {
+          __staveTimelineMarks?: { evalBacked: boolean; byLane: Record<string, { onsets: number[] }> }
+        }).__staveTimelineMarks
+        const onsets = Object.values(m?.byLane ?? {}).flatMap((l) => l.onsets)
+        return m?.evalBacked && onsets.length > 0 ? Math.min(...onsets) : null
+      }), { timeout: 30_000 })
+      .toBe(lead)
+    expect(errors).toEqual([])
+  })
+}
