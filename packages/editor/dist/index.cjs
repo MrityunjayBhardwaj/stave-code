@@ -140,7 +140,16 @@ var IR = {
   cycle: /* @__PURE__ */ __name((...items) => ({ tag: "Cycle", items }), "cycle"),
   when: /* @__PURE__ */ __name((gate, body, meta) => attachMeta({ tag: "When", gate, body }, meta), "when"),
   param: /* @__PURE__ */ __name((key2, value, rawArgs, body, meta) => attachMeta({ tag: "Param", key: key2, value, rawArgs, body }, meta), "param"),
-  track: /* @__PURE__ */ __name((trackId, body, meta, muted3) => attachMeta({ tag: "Track", trackId, body, ...muted3 === true ? { muted: true } : {} }, meta), "track"),
+  track: /* @__PURE__ */ __name((trackId, body, meta, flags) => attachMeta(
+    {
+      tag: "Track",
+      trackId,
+      body,
+      ...flags?.muted === true ? { muted: true } : {},
+      ...flags?.commented === true ? { commented: true } : {}
+    },
+    meta
+  ), "track"),
   ramp: /* @__PURE__ */ __name((param, from, to, cycles, body, meta) => attachMeta({ tag: "Ramp", param, from, to, cycles, body }, meta), "ramp"),
   fast: /* @__PURE__ */ __name((factor, body, meta) => attachMeta({ tag: "Fast", factor, body }, meta), "fast"),
   slow: /* @__PURE__ */ __name((factor, body, meta) => attachMeta({ tag: "Slow", factor, body }, meta), "slow"),
@@ -2630,6 +2639,7 @@ function validateNode(raw, path) {
       if (Array.isArray(node.loc)) out.loc = node.loc;
       if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
       if (node.muted === true) out.muted = true;
+      if (node.commented === true) out.commented = true;
       return out;
     }
     case "Code": {
@@ -3265,7 +3275,7 @@ function parseDocument(code, opts, record) {
             const body = t.commented ? silent() : top(code.slice(t.offset, end), t.offset, trackBindings);
             return IR.track(r.id, body, {
               loc: [{ start: t.dollarStart, end }]
-            }, isMutedLabel(t.label));
+            }, { muted: isMutedLabel(t.label), commented: t.commented });
           })
         );
       }
@@ -3276,7 +3286,7 @@ function parseDocument(code, opts, record) {
       const trackId0 = trackIdFromLabel(t.label, 0);
       return IR.track(trackId0, body, {
         loc: [{ start: t.dollarStart, end: t.end }]
-      }, isMutedLabel(t.label));
+      }, { muted: isMutedLabel(t.label), commented: t.commented });
     }
     const trackIds = trackIdsFromLabels(
       tracks.map((t) => t.label),
@@ -3288,7 +3298,7 @@ function parseDocument(code, opts, record) {
         const trackId = trackIds[i];
         return IR.track(trackId, body, {
           loc: [{ start: t.dollarStart, end: t.end }]
-        }, isMutedLabel(t.label));
+        }, { muted: isMutedLabel(t.label), commented: t.commented });
       })
     );
   } catch {

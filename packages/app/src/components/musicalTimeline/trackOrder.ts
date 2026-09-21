@@ -35,6 +35,13 @@ import type { PatternIR } from '@stave/editor'
 export interface DeclaredTrack {
   readonly id: string
   readonly offset?: number
+  /**
+   * The statement's label is COMMENTED OUT (`// $:`) — the row exists so the
+   * numbering holds still while a line is toggled, but nothing can ever play
+   * it (#1696). Absent rather than `false` when the label is live, mirroring
+   * the IR field it reads.
+   */
+  readonly commented?: true
 }
 
 /**
@@ -57,9 +64,43 @@ export function declaredTracks(ir: PatternIR | null | undefined): readonly Decla
     if (typeof id !== 'string' || id.length === 0 || seen.has(id)) continue
     seen.add(id)
     const start = node.loc?.[0]?.start
+    const ghost = node.commented === true ? ({ commented: true } as const) : undefined
     out.push(
-      typeof start === 'number' && Number.isFinite(start) ? { id, offset: start } : { id },
+      typeof start === 'number' && Number.isFinite(start)
+        ? { id, offset: start, ...ghost }
+        : { id, ...ghost },
     )
   }
+  return out
+}
+
+/**
+ * The declared lanes an ENGINE producer id (`$N`) indexes, in source order —
+ * every declared track except the commented-out ones (#1696).
+ *
+ * ── WHY THIS IS NOT JUST `declaredTracks` ───────────────────────────────────
+ * `$N` and `d{M}` count different populations. `$N` is the engine's: the
+ * statements strudel actually ran. `d{M}` is the document's: one row per
+ * statement the parser found, INCLUDING a `// $:` whose row exists only to
+ * hold its number still while the line is toggled (#1686). Strudel never sees
+ * a comment, so with a ghost among the rows the two populations differ, and
+ * the arithmetic `$N -> d{N+1}` that assumed they were the same is off by the
+ * ghosts before it.
+ *
+ * This is the same off-by-a-population bug as #1174, where a strip joined on a
+ * key the engine never wrote. The rule there is the rule here: count the SAME
+ * statements the engine counts.
+ *
+ * A MUTED track stays in — `_$:` is a statement strudel runs (it returns
+ * silence without registering), and both sides number it. Only a comment is
+ * invisible to the engine.
+ *
+ * Positional, so it is meaningful only while both sides agree on what a
+ * statement is. That is the standing condition on every `$N` join here
+ * (PV175), not something this function adds.
+ */
+export function captureLaneOrder(ir: PatternIR | null | undefined): readonly string[] {
+  const out: string[] = []
+  for (const t of declaredTracks(ir)) if (t.commented !== true) out.push(t.id)
   return out
 }

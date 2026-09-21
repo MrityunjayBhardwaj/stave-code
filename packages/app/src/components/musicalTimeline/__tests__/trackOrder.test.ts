@@ -16,7 +16,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { PatternIR } from '@stave/editor'
-import { declaredTracks } from '../trackOrder'
+import { captureLaneOrder, declaredTracks } from '../trackOrder'
 
 const track = (trackId: string, start?: number): PatternIR =>
   ({
@@ -25,6 +25,10 @@ const track = (trackId: string, start?: number): PatternIR =>
     body: { tag: 'Code', code: '', lang: 'strudel' },
     ...(start != null ? { loc: [{ start, end: start + 1 }] } : {}),
   }) as unknown as PatternIR
+
+/** A `// $:` row — declared so its number holds still, but never run (#1696). */
+const ghost = (trackId: string, start?: number): PatternIR =>
+  ({ ...(track(trackId, start) as object), commented: true }) as unknown as PatternIR
 
 const stack = (...tracks: PatternIR[]): PatternIR => ({ tag: 'Stack', tracks }) as unknown as PatternIR
 
@@ -90,5 +94,49 @@ describe('declaredTracks', () => {
       loc: [{ start: NaN, end: 1 }],
     } as unknown as PatternIR
     expect(declaredTracks(weird)).toEqual([{ id: 'd1' }])
+  })
+})
+
+/**
+ * #1696 — the lanes an ENGINE producer id (`$N`) indexes.
+ *
+ * `declaredTracks` answers "what rows does this document have"; this answers
+ * "which of them did strudel actually run". They differ by exactly the
+ * commented-out labels, and that difference is what the `$N` join needs: a
+ * `// $:` is a row to the document and nothing at all to the engine, so
+ * counting it shifts every id past it onto the wrong row.
+ */
+describe('captureLaneOrder', () => {
+  it('drops a commented row and keeps the rest in source order', () => {
+    //     const p = s("bd*2")
+    //     // $: s("a")        ← d1, declared, never run
+    //     p                   ← d2, what plays
+    expect(captureLaneOrder(stack(ghost('d1', 20), track('d2', 33)))).toEqual(['d2'])
+  })
+
+  it('drops every commented row, not just the first', () => {
+    expect(
+      captureLaneOrder(stack(ghost('d1', 20), ghost('d2', 33), track('d3', 46))),
+    ).toEqual(['d3'])
+  })
+
+  it('a MUTED row stays — `_$:` is a statement strudel runs', () => {
+    // The distinction the whole fix rests on. A muted label returns silence
+    // without registering, but it IS a statement, and both sides number it.
+    // Were mute ever folded in with comment here, every id after a muted
+    // track would shift by one.
+    const muted = { ...(track('d1', 20) as object), muted: true } as unknown as PatternIR
+    expect(captureLaneOrder(stack(muted, track('d2', 31)))).toEqual(['d1', 'd2'])
+  })
+
+  it('without ghosts it is exactly `declaredTracks` — the old assumption, intact', () => {
+    // The control arm: where the arithmetic `$N → d{N+1}` was right, this
+    // returns the list that makes it right, so nothing moves.
+    const ir = stack(track('d1', 0), track('d2', 30), track('d3', 60))
+    expect(captureLaneOrder(ir)).toEqual(declaredTracks(ir).map((t) => t.id))
+  })
+
+  it('no IR is an empty list, which the join reads as "no answer"', () => {
+    expect(captureLaneOrder(null)).toEqual([])
   })
 })
