@@ -157,3 +157,43 @@ test('CONTROL — a document Strudel does not play is captured by nothing (#1094
   // failure this pair of assertions separates from a missing row.
   await expect(page.locator('[data-full-song-lane]')).toHaveCount(1)
 })
+
+test('a bound pattern lands on the row that plays, not on a commented-out one (#1696)', async ({
+  page,
+}) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console.error: ${m.text()}`)
+  })
+
+  await bootShell(page)
+  // The rows here are `d1` (the commented label, a ghost since #1686) and `d2`
+  // (the bare `p`, which is what strudel plays). The notes carry the `const`
+  // line's offset, which precedes BOTH anchors — so containment has no answer
+  // and the producer id `$0` decides. Counting the ghost made that `d1`.
+  await typeSongAndEval(page, 'const p = s("bd*4")\n// $: s("a")\np')
+
+  await page.locator('[data-full-song="root"]').waitFor({ timeout: 10_000 })
+  await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
+
+  const marks = await marksProbe(page)
+  expect(marks, 'the marks probe should be published under the debug flag').not.toBeNull()
+  expect(marks!.evalBacked, 'the row is drawn from evaluated haps, not the IR').toBe(true)
+
+  // THE CLAIM: every note is on `d2`, and `d1` — the commented row — has none.
+  expect(Object.keys(marks!.byLane)).toEqual(['d2'])
+  expect(marks!.byLane.d1, 'the commented-out row must hold no notes').toBeUndefined()
+
+  // …and they are the notes `s("bd*4")` actually produces, so this cannot pass
+  // by drawing an empty lane under the right name.
+  const onsets = marks!.byLane.d2.onsets
+  expect(onsets.slice(0, 4)).toEqual([0, 0.25, 0.5, 0.75])
+
+  // Both rows are still drawn — the ghost keeps its place in the numbering,
+  // which is the whole reason it has a row (#1686). The fix moves the NOTES,
+  // not the rows.
+  await expect(page.locator('[data-full-song-lane]')).toHaveCount(2)
+
+  expect(errors, `unexpected console/page errors:\n${errors.join('\n')}`).toEqual([])
+})
