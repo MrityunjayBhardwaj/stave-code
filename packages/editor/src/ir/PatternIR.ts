@@ -142,6 +142,28 @@ export type PatternIR =
        * existed. Read it as `=== true`, never as a required boolean.
        */
       muted?: boolean
+      /**
+       * The statement's label is COMMENTED OUT (`// $:`, `// drums:`), #1696.
+       *
+       * A commented label still gets a Track so `d{N}` numbering holds still
+       * while a line is toggled — the ghost row the timeline draws in its
+       * place. But strudel never sees the statement, so the ENGINE does not
+       * count it, and that asymmetry is the whole reason this field exists:
+       * a hap's producer id (`$N`) indexes the statements strudel ran, while
+       * `d{M}` indexes the rows the document declares. With a ghost among
+       * them the two populations differ, and the timeline's `$N -> d{N+1}`
+       * fallback lands a note on the commented row (`captureLaneOrder`).
+       *
+       * ⚠ NOT derivable from the body. A ghost's body is `silent()`, but so is
+       * a live `$: "~"` — one is a row that CANNOT sound, the other a row that
+       * chose to. Sniffing the body conflates them; the parser knows which is
+       * which and says so here.
+       *
+       * ⚠ ABSENT rather than `false` when the label is live, for the same
+       * reason `muted` is: an uncommented `Track` serialises byte-identically
+       * to before this field existed. Read it as `=== true`.
+       */
+      commented?: boolean
     }   // Phase 20-11 — Track tag (musician-track-identity wrapper; PV35 + PV37 model extension)
   | { tag: 'Loop';   body: PatternIR; loc?: SourceLocation[]; userMethod?: string }
   | {
@@ -313,12 +335,30 @@ export const IR = {
     trackId: string,
     body: PatternIR,
     meta?: TagMeta,
-    /** `_$:` / `_name:` — see the `muted` field on the Track node (#1488).
-     *  Spread in only when true, so an unmuted track is byte-identical to
-     *  what this builder produced before the field existed. */
-    muted?: boolean,
+    /** The statement-level facts a Track records beside its identity: `muted`
+     *  (`_$:` / `_name:`, #1488) and `commented` (`// $:`, #1696).
+     *
+     *  ⚠ NAMED rather than two positional booleans, deliberately: they are
+     *  adjacent, same-typed and easy to transpose, and a transposed pair is
+     *  silent — a ghost row would simply read as muted. This used to be the
+     *  bare `muted?: boolean` and gained a sibling; the shape changed with it
+     *  rather than growing a second flag behind the first.
+     *
+     *  Each is spread in only when true, so a track that is neither is
+     *  byte-identical to what this builder produced before the fields
+     *  existed. */
+    flags?: { muted?: boolean; commented?: boolean },
   ): PatternIR =>
-    attachMeta({ tag: 'Track', trackId, body, ...(muted === true ? { muted: true } : {}) }, meta),
+    attachMeta(
+      {
+        tag: 'Track',
+        trackId,
+        body,
+        ...(flags?.muted === true ? { muted: true } : {}),
+        ...(flags?.commented === true ? { commented: true } : {}),
+      },
+      meta,
+    ),
   ramp: (param: string, from: number, to: number, cycles: number, body: PatternIR, meta?: TagMeta): PatternIR =>
     attachMeta({ tag: 'Ramp', param, from, to, cycles, body }, meta),
   fast: (factor: number, body: PatternIR, meta?: TagMeta): PatternIR =>
