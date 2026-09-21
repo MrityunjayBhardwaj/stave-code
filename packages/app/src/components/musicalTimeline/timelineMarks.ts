@@ -16,6 +16,7 @@ import { positionalSectionName } from './sectionLabel'
 import { structuralWalk, wholeWalkWindow, rootStackArms, armSourceSpan } from '@stave/editor'
 import { extractPitch } from './pitch'
 import { containingAnchor } from './laneIdentity'
+import { captureLaneOrder } from './trackOrder'
 import type { SongWindow } from './songAxis'
 import {
   downsampleMarksToCap,
@@ -277,7 +278,7 @@ export function collectNoteMarks(
   // (NOT trackId equality, which diverges for anon `$:` — PV175). Structure
   // (source/arrange/label offsets, clips) stays IR-owned above.
   const activeMarksByLane = useEval
-    ? collectHapMarks(events as IREvent[], { originCycle, spanCycles: displayCycles }, labelOffsetByLane)
+    ? collectHapMarks(events as IREvent[], { originCycle, spanCycles: displayCycles }, labelOffsetByLane, captureLaneOrder(ir))
     : marksByLane
   // Bound each lane to `capPerLane` marks by downsampling ACROSS its span (keep
   // every Nth), not by dropping the tail. A dense lane (e.g. a drum stack at
@@ -351,15 +352,45 @@ export function collectNoteMarks(
  * Lane key for an eval hap that has no IR lane — a signal (`.segment`) or
  * bare-ref track the static IR never emitted events for (#864 / P1b). Mirrors
  * `trackIdFromLabel`: an anonymous `$:` producer id (`$N`, source-ordered) → the
- * positional `d{N+1}`; a named track keeps its name. This aligns eval-only lane
- * identity with the IR convention (a signal at source position 1 reads `d2`, not
- * `$1`) and keeps eval lanes disjoint from IR lanes (which exist only for
+ * lane at source position N; a named track keeps its name. This aligns eval-only
+ * lane identity with the IR convention (a signal at source position 1 reads `d2`,
+ * not `$1`) and keeps eval lanes disjoint from IR lanes (which exist only for
  * event-producing tracks). Absent trackId (hand-built haps) → a single `d1`.
+ *
+ * ── WHY `captureLanes` AND NOT `d{N+1}` (#1696) ─────────────────────────────
+ * `d{N+1}` is that same positional rule with the lane list ASSUMED to be
+ * `d1…dN`. It is, right up until the document declares a row the engine does
+ * not count — a `// $:` ghost, which exists to hold its number still while the
+ * line is toggled (#1686) but which strudel never sees. Past a ghost the two
+ * numberings diverge, and the arithmetic names the commented row: in
+ *
+ *     const p = s("bd*2")     ← a declaration, no row
+ *     // $: s("a")            ← ghost row d1
+ *     p                       ← bare row d2, and what plays
+ *
+ * every note strudel emits carries the `const` line's offset, which precedes
+ * every row anchor — so containment has no answer and this fallback decides.
+ * `$0` then read `d1`, drawing the notes on the commented-out row.
+ *
+ * So the list is passed in rather than assumed: `captureLaneOrder` (trackOrder)
+ * enumerates the lanes the engine counts, and `$N` indexes THAT. Where there
+ * are no ghosts it is `d1…dN` and nothing changes, which is every document the
+ * older behaviour was pinned on.
+ *
+ * ⚠ An EMPTY list still means `d{N+1}`, and that is not a fallback of
+ * convenience: a bare document has no anchors and no declared rows to offer,
+ * and `$0 → d1` there is the #1094 rule this has always implemented. Same for
+ * an `$N` past the list's end — better the old answer than none.
  */
-function evalTrackIdToLaneKey(trackId: string | undefined): string {
+function evalTrackIdToLaneKey(
+  trackId: string | undefined,
+  captureLanes: readonly string[],
+): string {
   if (!trackId) return 'd1'
   const m = /^\$(\d+)$/.exec(trackId)
-  return m ? `d${Number(m[1]) + 1}` : trackId
+  if (!m) return trackId
+  const n = Number(m[1])
+  return captureLanes[n] ?? `d${n + 1}`
 }
 
 /**
@@ -406,11 +437,21 @@ export function buildLaneAnchors(
 export function laneKeyForHap(
   ev: IREvent,
   anchors: ReadonlyArray<readonly [string, number]>,
+  /** The lanes an engine producer id indexes — `captureLaneOrder(ir)`, #1696.
+   *  REQUIRED, with no default, on purpose: the fallback reads it only when
+   *  containment has already failed, so a caller that omitted it would look
+   *  right on every document whose haps are located and be wrong exactly where
+   *  this join is load-bearing. A missing argument should be a compile error,
+   *  not a silent reversion. `[]` is the honest value when there is no IR. */
+  captureLanes: readonly string[],
 ): string {
   // The containment scan itself lives in `laneIdentity` — one definition, shared
   // with the scene builder's declared-row reconciliation (#1101), so the two
   // cannot answer "which statement owns this offset" differently.
-  return containingAnchor(anchors, ev.loc?.[0]?.start) ?? evalTrackIdToLaneKey(ev.trackId)
+  return (
+    containingAnchor(anchors, ev.loc?.[0]?.start) ??
+    evalTrackIdToLaneKey(ev.trackId, captureLanes)
+  )
 }
 
 /**
@@ -474,6 +515,7 @@ function collectHapMarks(
   events: readonly IREvent[],
   window: SongWindow,
   labelOffsetByLane: ReadonlyMap<string, number>,
+  captureLanes: readonly string[],
 ): Map<string, SceneNote[]> {
   const out = new Map<string, SceneNote[]>()
   // (laneKey, dollarPos) pairs ascending by dollarPos — the containment index.
@@ -489,7 +531,7 @@ function collectHapMarks(
     // The ONE join (`laneKeyForHap`): containment first (keeps a hap on its
     // named/positional IR lane), else an eval-backed lane keyed by the hap's own
     // producer id (#864 / P1b). Shared with the song-analysis remap (#980).
-    const key = laneKeyForHap(ev, anchors)
+    const key = laneKeyForHap(ev, anchors, captureLanes)
     let arr = out.get(key)
     if (!arr) {
       arr = []

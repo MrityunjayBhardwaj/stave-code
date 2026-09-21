@@ -55,10 +55,10 @@ const hap = (trackId: string, start?: number) =>
 
 describe('#1094 — the bare capture lands on the IR lane, not beside it', () => {
   it('with no anchors (a bare document has no `dollarPos`) the capture id maps to d1', () => {
-    expect(laneKeyForHap(hap(BARE_CAPTURE_ID), [])).toBe('d1')
+    expect(laneKeyForHap(hap(BARE_CAPTURE_ID), [], [])).toBe('d1')
     // …and with a `loc`, which a located hap always carries: still d1, because
     // there is no anchor for containment to hit.
-    expect(laneKeyForHap(hap(BARE_CAPTURE_ID, 3), [])).toBe('d1')
+    expect(laneKeyForHap(hap(BARE_CAPTURE_ID, 3), [], [])).toBe('d1')
   })
 
   it('a labelled document is unaffected — containment still wins over the id', () => {
@@ -68,15 +68,19 @@ describe('#1094 — the bare capture lands on the IR lane, not beside it', () =>
       ['d1', 0],
       ['d2', 30],
     ]
-    expect(laneKeyForHap(hap('$0', 40), anchors)).toBe('d2')
-    expect(laneKeyForHap(hap('$0', 10), anchors)).toBe('d1')
+    // No ghosts, so the lanes the engine counts ARE `d1…dN` — the list the
+    // arithmetic used to assume. Passing it explicitly is what makes the
+    // assumption checkable (#1696).
+    const lanes = ['d1', 'd2']
+    expect(laneKeyForHap(hap('$0', 40), anchors, lanes)).toBe('d2')
+    expect(laneKeyForHap(hap('$0', 10), anchors, lanes)).toBe('d1')
   })
 
   it('the positional mapping is what does the work — the id is read, not assumed', () => {
     // The control arm. A NON-positional id has no lane to map to and falls
     // through as itself: if the engine ever keyed the bare capture like this,
     // that is the row the timeline would grow beside the IR lane.
-    expect(laneKeyForHap(hap('bare'), [])).toBe('bare')
+    expect(laneKeyForHap(hap('bare'), [], [])).toBe('bare')
   })
 
   it('a multi-statement bare document maps its LAST slot to the LAST lane', () => {
@@ -86,7 +90,89 @@ describe('#1094 — the bare capture lands on the IR lane, not beside it', () =>
     // declares d1 and d2, resolves to `$1`, and `$1` must reach d2 or the
     // meter lands on the neighbour. Left in the negative framing it would tell
     // the next reader that a `$1` sighting is a bug, which is now backwards.
-    expect(laneKeyForHap(hap('$1'), [])).toBe('d2')
-    expect(laneKeyForHap(hap('$2'), [])).toBe('d3')
+    expect(laneKeyForHap(hap('$1'), [], [])).toBe('d2')
+    expect(laneKeyForHap(hap('$2'), [], [])).toBe('d3')
+  })
+})
+
+/**
+ * #1696 — the same join, on a document that declares a row the engine does not
+ * count.
+ *
+ * The document these cases describe:
+ *
+ *     const p = s("bd*2")     ← offset 0;  a declaration, so no row
+ *     // $: s("a")            ← offset 20; ghost row d1
+ *     p                       ← offset 33; bare row d2, and what plays
+ *
+ * Every note strudel emits carries the `const` line's offset (10, inside
+ * `s("bd*2")`), which precedes BOTH anchors — so containment has no answer and
+ * the producer id decides. Offsets and lane names are the measured ones, from
+ * `parseStrudel` + `buildLaneAnchors` on exactly this text.
+ */
+describe('#1696 — a ghost row is a row the engine never counted', () => {
+  /** ghost d1 at the comment, bare d2 at `p` — what `buildLaneAnchors` returns. */
+  const anchors: Array<[string, number]> = [
+    ['d1', 20],
+    ['d2', 33],
+  ]
+  /** what `captureLaneOrder` returns for it: the ghost is not a statement. */
+  const lanes = ['d2']
+  /** a note's offset inside `s("bd*2")` — before every anchor, in no row. */
+  const IN_THE_DECLARATION = 10
+
+  it('the bare capture lands on the row that plays, not on the commented one', () => {
+    expect(laneKeyForHap(hap('$0', IN_THE_DECLARATION), anchors, lanes)).toBe('d2')
+  })
+
+  it('counting the ghost is what put it on the wrong row', () => {
+    // The control arm, and the one that states the bug: with the ghost counted
+    // — which is what `d{N+1}` does — `$0` reads the commented row. This is
+    // the arithmetic, spelled as a lane list, so the two answers can be
+    // compared rather than described.
+    expect(laneKeyForHap(hap('$0', IN_THE_DECLARATION), anchors, ['d1', 'd2'])).toBe('d1')
+  })
+
+  it('two ghosts shift it by two', () => {
+    //     const p = s("bd*2")
+    //     // $: s("a")        ← ghost d1 @20
+    //     // $: s("b")        ← ghost d2 @33
+    //     p                   ← bare d3 @46, and what plays
+    expect(laneKeyForHap(hap('$0', IN_THE_DECLARATION), [
+      ['d1', 20],
+      ['d2', 33],
+      ['d3', 46],
+    ], ['d3'])).toBe('d3')
+  })
+
+  it('a MUTED label stays in the count — only a comment is invisible', () => {
+    //     const p = s("bd*2")
+    //     _$: s("a")          ← muted d1 @20 — a statement strudel RUNS
+    //     p                   ← bare  d2 @31
+    //
+    // `_$:` returns silence without registering, but it is still a statement,
+    // so both sides number it and the bare row is `$1`, not `$0`. If muting
+    // ever started behaving like commenting here, this goes red — and `$0`
+    // below is the other half: the muted row is still reachable.
+    const anchorsWithMute: Array<[string, number]> = [
+      ['d1', 20],
+      ['d2', 31],
+    ]
+    expect(laneKeyForHap(hap('$1', IN_THE_DECLARATION), anchorsWithMute, ['d1', 'd2'])).toBe('d2')
+    expect(laneKeyForHap(hap('$0', IN_THE_DECLARATION), anchorsWithMute, ['d1', 'd2'])).toBe('d1')
+  })
+
+  it('containment still wins — a located note is placed by its offset', () => {
+    // The fallback decides only where containment cannot. A note inside the
+    // ghost's own span still reads d1, which is what keeps a commented row
+    // drawable at all.
+    expect(laneKeyForHap(hap('$0', 25), anchors, lanes)).toBe('d1')
+  })
+
+  it('an id past the end of the list keeps the old answer', () => {
+    // Not a case anyone should reach — it means the two sides disagree about
+    // how many statements the document has. The arithmetic is the better of
+    // two bad answers, and silence is the worse one.
+    expect(laneKeyForHap(hap('$5'), anchors, lanes)).toBe('d6')
   })
 })

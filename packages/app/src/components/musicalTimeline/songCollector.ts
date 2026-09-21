@@ -20,6 +20,7 @@
  */
 import type { IREvent, PatternIR } from '@stave/editor'
 import { buildLaneAnchors, laneKeyForHap, readEventsInBand } from './timelineMarks'
+import { captureLaneOrder } from './trackOrder'
 
 /** The runtime accessors a collector reads through. All optional: with none
  *  threaded (tests / non-Strudel runtimes) there is no collector and analysis
@@ -73,6 +74,10 @@ export function createSongCollector(
   const heard = new Set<string>()
   if (getEvents || getEventsBand) {
     const anchors = buildLaneAnchors(ir, 1)
+    // #1696 — the lanes an engine `$N` indexes, for the ids containment cannot
+    // place. Derived from the SAME `ir` as the anchors, one line apart, so the
+    // two halves of the join describe one document.
+    const captureLanes = captureLaneOrder(ir)
     collectFn = (startCycle, endCycle) => {
       // #1197 — ask for the BAND when that accessor is threaded, else the
       // prefix form. `analyzeSong` walks adjacent bands as its horizon grows,
@@ -97,7 +102,7 @@ export function createSongCollector(
         })
         .map((ev) => {
           if (ev.trackId !== undefined) heard.add(ev.trackId)
-          return { ...ev, trackId: laneKeyForHap(ev, anchors) }
+          return { ...ev, trackId: laneKeyForHap(ev, anchors, captureLanes) }
         })
     }
   }
