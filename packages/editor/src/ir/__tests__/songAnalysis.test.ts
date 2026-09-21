@@ -348,6 +348,38 @@ describe('analyzeSong (budgeted progressive horizon)', () => {
     expect(a.horizonCycles).toBeLessThanOrEqual(collected)
   })
 
+  // #1712 — a song whose music starts after the first look. The origin of this
+  // loop (#385) already said "a silent intro must not stop growth"; the empty
+  // short-circuit ended it anyway whenever the intro was at least the hint long.
+  // `arrange([lead, silence], [16, x])` repeats every lead+16 cycles, so the
+  // collector below is that song: silent for `lead`, then one onset per cycle.
+  const lateEntry = (lead: number) => (s: number, e: number): IREvent[] => {
+    const out: IREvent[] = []
+    for (let c = s; c < e; c++) if (c % (lead + 16) >= lead) out.push(ev(c, 'lead', 'c3'))
+    return out
+  }
+  for (const lead of [0, 7, 8, 12]) {
+    it(`finds a song whose first note is at cycle ${lead} (#1712)`, async () => {
+      const a = await analyzeSong(null, { collectFn: lateEntry(lead), yieldFn: async () => {} })
+      expect(a.lanes.map((l) => l.laneKey)).toEqual(['lead'])
+      expect(a.horizonCycles).toBeGreaterThan(0)
+      expect(a.periodCycles).toBe(lead === 0 ? 1 : lead + 16)
+    })
+  }
+
+  it('still ends empty for a song that never sounds, having looked to the cap (#1712)', async () => {
+    const asked: number[] = []
+    const a = await analyzeSong(null, {
+      capCycles: 64,
+      collectFn: (_s, e) => { asked.push(e); return [] },
+      yieldFn: async () => {},
+    })
+    expect(a.lanes).toEqual([])
+    expect(a.horizonCycles).toBe(0)
+    // It gave up only after the whole capped window was empty, not after the first look.
+    expect(Math.max(...asked)).toBe(64)
+  })
+
   it('yields an empty analysis for a null IR and no collector', async () => {
     const a = await analyzeSong(null, { yieldFn: async () => {} })
     expect(a.lanes).toEqual([])
