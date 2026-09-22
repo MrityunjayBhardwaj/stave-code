@@ -1103,11 +1103,17 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   }, []);
 
   // #391 — expose the live transport cycle to the editor-seeded visual panels
-  // (Sequencer / Piano Roll) so they can highlight the playing step. Reuses the
-  // same getCycleRef the MusicalTimeline reads (active runtime, gated on
-  // isPlaying); the panels run their own rAF against this accessor.
+  // (Sequencer / Piano Roll) so they can highlight the playing step. The panels
+  // run their own rAF against this accessor.
+  //
+  // #1725 — it is the SONG position, the clock the Song timeline's playhead
+  // reads (gated on isPlaying like `getCycle`), not `getCycle`. The scheduler's
+  // raw clock counts since Play and ignores a seek, so after a click on the
+  // ruler the grid lit the step the song WOULD be on had nobody scrubbed.
+  // Unwrapped on purpose: the step is `cycle mod bars` of the pattern, and the
+  // pattern is queried at exactly this cycle.
   useEffect(() => {
-    setCurrentCycleAccessor(() => getCycleRef.current());
+    setCurrentCycleAccessor(() => getSongPositionRef.current());
     return () => setCurrentCycleAccessor(null);
   }, []);
 
@@ -1717,9 +1723,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onRedo={() => { redo(); }}
         canUndo={undoState.canUndo}
         canRedo={undoState.canRedo}
-        // Transport LCD (#857) — same accessors the MusicalTimeline reads.
+        // Transport LCD (#857) — same accessors the MusicalTimeline reads. The
+        // position is the SONG position the playhead reads (#1725): the raw
+        // `getCycle` counts since Play and ignores a seek.
         isPlaying={activeRuntime?.isPlaying ?? false}
-        getCycle={() => getCycleRef.current()}
+        getSongPosition={() => getSongPositionRef.current()}
         getCps={() => getCpsRef.current()}
         getAudioHealth={() => getAudioHealthRef.current()}
         // #1348 — the eval lamp: the active file's last evaluation. Pressing it

@@ -216,6 +216,54 @@ export function wrapSongPosition(
   return originCycle + (wrapped < 0 ? wrapped + spanCycles : wrapped)
 }
 
+/**
+ * The frame the Song timeline draws its playhead in: the window it wraps over,
+ * and whether that window is a loop at all. Published by the timeline, read by
+ * any readout that must say the SAME position the playhead shows (#1725).
+ */
+export interface DrawnSongFrame {
+  readonly window: SongWindow
+  readonly looping: boolean
+}
+
+/**
+ * Where the transport is, as the timeline DRAWS it, plus which time through the
+ * song this is (#1725).
+ *
+ * `cycle` is `wrapSongPosition` over the drawn window, the very call the
+ * playhead makes, so the transport display and the playhead cannot disagree:
+ * they would have to be reading different frames. `pass` counts the times
+ * round, from 1, so wrapping the number does not lose how long the song has
+ * been playing.
+ *
+ * With no frame to agree with (no timeline open), or one that is not a loop
+ * (the analysis gave up at its cap, #1105), the honest reading is the song
+ * position itself, unwrapped. `pass` is then `null`: nothing says where one
+ * time through ends. A reading below zero (a transport that has not started)
+ * lands where the playhead puts it: wrapped to the tail in a loop, with the
+ * pass held at 1, and clamped to 0 otherwise, as #1105 chose.
+ *
+ * Under a loop range (#1570) the song position arrives already folded into the
+ * range, so the number jumps back with the playhead. The pass counts times
+ * through the SONG, not round the range, so it holds still while a range
+ * repeats.
+ */
+export function positionAsDrawn(
+  songPosition: number | null | undefined,
+  frame: DrawnSongFrame | null,
+): { cycle: number; pass: number | null } | null {
+  if (songPosition == null || !Number.isFinite(songPosition)) return null
+  if (frame && frame.looping) {
+    const cycle = wrapSongPosition(songPosition, frame.window, true)
+    if (cycle != null) {
+      const { originCycle, spanCycles } = frame.window
+      const pass = Math.max(1, Math.floor((songPosition - originCycle) / spanCycles) + 1)
+      return { cycle, pass }
+    }
+  }
+  return { cycle: Math.max(0, songPosition), pass: null }
+}
+
 // ── Zoom (#412) ────────────────────────────────────────────────────────────
 //
 // zoom = 1 fits the whole loop to the viewport (the existing fit-to-width
