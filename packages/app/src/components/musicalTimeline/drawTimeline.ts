@@ -117,6 +117,8 @@ const CLIP_CAPTION_PAD_X = 4
  *  Kept in sync with the app's `--font-mono` by eye; a drift shows as a font
  *  change in the timeline only, never as a wrong name. */
 const CLIP_CAPTION_FONT = '10px ui-monospace, SFMono-Regular, Menlo, monospace'
+/** Gap above a caption pinned to the top of its clip (#1730). */
+const CLIP_CAPTION_TOP_PAD_Y = 1
 
 /** Minimum mark width (px) so a zero/near-zero-duration trigger still shows and
  *  stays clickable — mirrors the live view's `MIN_BLOCK_PX` (timeAxis.ts). */
@@ -499,6 +501,10 @@ function drawClipCaption(
   top: number,
   rowHeight: number,
   theme: DrawTheme,
+  /** #1730 — `top` pins the caption to the clip's top-left corner, where a DAW
+   *  writes a region's name, instead of across the middle of the row, which on
+   *  an audio lane is where a quiet waveform's only line runs. */
+  anchor: 'middle' | 'top' = 'middle',
 ): void {
   // A bare track is not an arrangement and has no section to name.
   if (clip.sectionName === '') return
@@ -508,7 +514,7 @@ function drawClipCaption(
   ctx.save()
   ctx.font = CLIP_CAPTION_FONT
   ctx.fillStyle = theme.clipCaption
-  ctx.textBaseline = 'middle'
+  ctx.textBaseline = anchor
 
   let text = clip.sectionName
   if (ctx.measureText(text).width > box) {
@@ -520,7 +526,7 @@ function drawClipCaption(
     text = text.length > 0 ? `${text}…` : ''
   }
   if (text !== '') {
-    ctx.fillText(text, left + CLIP_CAPTION_PAD_X, top + rowHeight / 2)
+    ctx.fillText(text, left + CLIP_CAPTION_PAD_X, anchor === 'top' ? top + CLIP_CAPTION_TOP_PAD_Y : top + rowHeight / 2)
   }
   ctx.restore()
 }
@@ -613,7 +619,7 @@ function drawClipCaptionsOnTop(
     const left = Math.max(0, x0)
     const right = Math.min(viewportWidth, x1)
     if (right - left <= 0) continue
-    drawClipCaption(ctx, clip, left, right, top, rowHeight, theme)
+    drawClipCaption(ctx, clip, left, right, top, rowHeight, theme, 'top')
   }
 }
 

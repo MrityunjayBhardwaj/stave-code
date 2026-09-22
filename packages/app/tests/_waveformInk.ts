@@ -24,6 +24,7 @@ export interface InkProfile {
  * bar beneath it, which the bed has washed toward the background. Both
  * thresholds are relative to the brightest lane pixel found in this same
  * snapshot, so nothing here depends on knowing the track's colour in advance.
+ * "Brightest" is the 99th percentile, so text drawn over the ink cannot set it.
  */
 export async function readInk(page: Page): Promise<InkProfile> {
   return page.evaluate(() => {
@@ -42,11 +43,19 @@ export async function readInk(page: Page): Promise<InkProfile> {
     }
     const brightness = (i: number) => data[i] + data[i + 1] + data[i + 2]
 
-    let peak = 0
+    // The reference is a HIGH PERCENTILE of the saturated pixels, not their
+    // single maximum (#1730). A section caption is drawn over an audio lane's
+    // waveform, and a white glyph's antialiased edge over lane ink is both
+    // saturated and brighter than the ink itself — a few dozen such pixels set
+    // the maximum, and every true lane pixel then fell under the cut. Lane ink
+    // is thousands of pixels; a caption's edges are a sliver of that.
+    const bright: number[] = []
     for (let i = 0; i < data.length; i += 4) {
-      if (saturation(i) > 40 && brightness(i) > peak) peak = brightness(i)
+      if (saturation(i) > 40) bright.push(brightness(i))
     }
-    if (peak === 0) return { columns: new Array(width).fill(0), width }
+    if (bright.length === 0) return { columns: new Array(width).fill(0), width }
+    bright.sort((a, b) => a - b)
+    const peak = bright[Math.floor((bright.length - 1) * 0.99)]
 
     const columns: number[] = new Array(width).fill(0)
     for (let x = 0; x < width; x++) {
