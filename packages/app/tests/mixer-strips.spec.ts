@@ -901,71 +901,44 @@ async function dragMasterFader(page: Page, drawer: ReturnType<Page['locator']>, 
   await page.waitForTimeout(80)
 }
 
-/** horizontal drag on the MASTER pan control by `dxRight` pixels (right = more R). */
-async function dragMasterPan(page: Page, drawer: ReturnType<Page['locator']>, dxRight: number): Promise<void> {
-  const ctl = drawer.locator('[data-mixer-master-pan-control]')
-  const box = await ctl.boundingBox()
-  if (!box) throw new Error('no master pan-control box')
-  const cx = box.x + box.width / 2
-  const cy = box.y + box.height / 2
-  await page.mouse.move(cx, cy)
-  await page.mouse.down()
-  await page.mouse.move(cx + dxRight, cy, { steps: 8 })
-  await page.mouse.up()
-  await page.waitForTimeout(80)
-}
-
-test.describe('Mixer master strip — mute + pan (#800)', () => {
-  test('projects the master pan label from the doc all(x=>x.pan()) line (code→UI)', async ({ page }) => {
+test.describe('Mixer master strip — mute (#800), and no master pan (#1719)', () => {
+  // #1719 — the master strip has NO pan control. `all(x => x.pan(v))` SETS pan
+  // on every hap, so the control threw away each track's own pan (127 of 620
+  // corpus documents set `.pan`), and nothing a document can write acts on the
+  // finished mix: superdough pans per voice, before each orbit's reverb and
+  // delay. A control that cannot mean what a master pan means in a DAW is worse
+  // than none, so it was removed rather than redefined.
+  //
+  // A document's own master pan line still PLAYS — removing a control is not
+  // removing the code it wrote — and the Mixer leaves it alone.
+  test('the master strip has no pan control, and a channel strip still has one', async ({ page }) => {
     await boot(page)
-    await setStrudelCode(page, '$: s("bd")\nall(x => x.pan(0.65))')
-    const drawer = await openMixer(page)
-    await expect(drawer.locator('[data-mixer-master-pan]')).toHaveText('R30')
-  })
-
-  test('an untouched master pan projects centre (C) from the ABSENCE of a call', async ({ page }) => {
-    await boot(page)
-    await setStrudelCode(page, '$: s("bd")')
-    const drawer = await openMixer(page)
-    await expect(drawer.locator('[data-mixer-master-pan]')).toHaveText('C')
-  })
-
-  test('dragging the master pan rides the gain line (one chain: gain().pan())', async ({ page }) => {
-    await boot(page)
-    await setStrudelCode(page, '$: s("bd*4")\nall(x => x.gain(0.9))')
+    await setStrudelCode(page, 'd1: s("bd").pan(0.2)\nall(x => x.pan(0.65))')
     const drawer = await openMixer(page)
     await enlargeDrawer(page)
-    await dragMasterPan(page, drawer, 40) // right → toward R
-    const after = await strudelValue(page)
-    // exactly one all() line, now carrying both gain and pan
-    expect((after.match(/all\(x => x\./g) ?? []).length).toBe(1)
-    expect(after).toMatch(/all\(x => x\.gain\(0\.9\)\.pan\((\d*\.?\d+)\)\)/)
+
+    // The control arm: a CHANNEL pan is still projected and still says where the
+    // track sits. Without it, an empty master pan would also pass on a Mixer
+    // that failed to render at all.
+    await expect(drawer.locator('[data-mixer-strip-pan]').first()).toHaveText('L60')
+
+    await expect(drawer.locator('[data-mixer-master-pan]')).toHaveCount(0)
+    await expect(drawer.locator('[data-mixer-master-pan-control]')).toHaveCount(0)
   })
 
-  test('dragging the master pan with no gain line writes its own all(x=>x.pan()) line', async ({ page }) => {
+  test("a document's own master pan line survives a master fader drag", async ({ page }) => {
     await boot(page)
-    const original = '$: s("bd*4")'
+    const original = 'd1: s("bd*4").pan(0.2)\nall(x => x.pan(0.65))'
     await setStrudelCode(page, original)
     const drawer = await openMixer(page)
     await enlargeDrawer(page)
-    await dragMasterPan(page, drawer, -30) // left → toward L
-    const after = await strudelValue(page)
-    expect(after.split('\n')[0]).toBe(original)
-    expect(after).toMatch(/all\(x => x\.pan\((\d*\.?\d+)\)\)/)
-    // one undo reverts the whole gesture
-    await undo(page)
-    expect(await strudelValue(page)).toBe(original)
-  })
 
-  test('a signal master pan disables the control (reads "sig", no write)', async ({ page }) => {
-    await boot(page)
-    const original = '$: s("bd")\nall(x => x.pan(sine))'
-    await setStrudelCode(page, original)
-    const drawer = await openMixer(page)
-    await enlargeDrawer(page)
-    await expect(drawer.locator('[data-mixer-master-pan]')).toHaveText('sig')
-    await dragMasterPan(page, drawer, 40)
-    expect(await strudelValue(page)).toBe(original)
+    await dragMasterFader(page, drawer, -20) // quieter
+    const after = await strudelValue(page)
+    // The fader wrote its own line; the pan line and the track's pan are as written.
+    expect(after).toContain('all(x => x.pan(0.65))')
+    expect(after).toContain('d1: s("bd*4").pan(0.2)')
+    expect(after).toMatch(/all\(x => x\.mul\(postgain\(/)
   })
 
   test('mute adds all(x => silence); unmute removes it; the fader value survives (orthogonal)', async ({ page }) => {

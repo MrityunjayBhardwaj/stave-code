@@ -33168,7 +33168,6 @@ __name(ResolutionControl, "ResolutionControl");
 
 // src/visualEdit/mixer/masterEdit.ts
 var MASTER_UNITY_GAIN = 1;
-var MASTER_CENTRE_PAN = 0.5;
 function matchAllArrow(node) {
   if (!node || node.type !== "ExpressionStatement") return null;
   const expr = node.expression;
@@ -33247,14 +33246,6 @@ function findMasterGainSite(doc) {
   return void 0;
 }
 __name(findMasterGainSite, "findMasterGainSite");
-function hasGainSite(doc, m, body) {
-  return gainSiteOf(doc, m, body) !== void 0;
-}
-__name(hasGainSite, "hasGainSite");
-function findPanCall(m) {
-  return m.chain.find((c) => c.name === "pan" && c.args.length >= 1);
-}
-__name(findPanCall, "findPanCall");
 function arrowBodyText(doc, m) {
   return doc.slice(m.arrowBodyRange[0], m.arrowBodyRange[1]).trim();
 }
@@ -33282,17 +33273,6 @@ function readMasterGain(doc) {
   return { value: arg.numeric, foreign: false };
 }
 __name(readMasterGain, "readMasterGain");
-function readMasterPan(doc) {
-  for (const m of detectMasterAll(doc)) {
-    const p = findPanCall(m);
-    if (!p) continue;
-    const arg = p.args[0];
-    if (arg.numeric === null) return { value: MASTER_CENTRE_PAN, foreign: true };
-    return { value: arg.numeric, foreign: false };
-  }
-  return { value: MASTER_CENTRE_PAN, foreign: false };
-}
-__name(readMasterPan, "readMasterPan");
 function readMasterMute(doc) {
   return findMuteLine(doc) !== void 0;
 }
@@ -33352,22 +33332,6 @@ function masterGainEdit(doc, value) {
   return { range: site.call.range, text: scaleCall(value) };
 }
 __name(masterGainEdit, "masterGainEdit");
-function masterPanEdit(doc, value) {
-  for (const m of detectMasterAll(doc)) {
-    const p = findPanCall(m);
-    if (!p) continue;
-    const arg = p.args[0];
-    if (arg.numeric === null) return null;
-    return { range: arg.range, text: formatNumber(value) };
-  }
-  for (const { m, body } of detectMasterAllWithBodies(doc)) {
-    if (hasGainSite(doc, m, body)) {
-      return { range: [m.arrowBodyRange[1], m.arrowBodyRange[1]], text: `.pan(${formatNumber(value)})` };
-    }
-  }
-  return insertStatement(doc, `all(x => x.pan(${formatNumber(value)}))`);
-}
-__name(masterPanEdit, "masterPanEdit");
 function masterMuteEdit(doc, muted3) {
   const line = findMuteLine(doc);
   if (muted3) return line ? null : insertStatement(doc, "all(x => silence)");
@@ -33437,7 +33401,6 @@ var EMPTY_DERIVED = {
   strips: [],
   chunks: [],
   masterGain: { value: 1, foreign: false },
-  masterPan: { value: 0.5, foreign: false },
   masterMuted: false,
   masterChunk: emptyMasterChunk("")
 };
@@ -33490,7 +33453,6 @@ function useMixerModel() {
         strips,
         chunks: strips.map((s) => allChunks[s.index]),
         masterGain: readMasterGain(value),
-        masterPan: readMasterPan(value),
         masterMuted: readMasterMute(value),
         masterChunk: deriveMasterChunk(value)
       });
@@ -33616,7 +33578,6 @@ function useMixerModel() {
     applyToStrip,
     applyToStripAt,
     masterGain: derived.masterGain,
-    masterPan: derived.masterPan,
     masterMuted: derived.masterMuted,
     masterChunk: derived.masterChunk,
     applyToMaster,
@@ -39003,23 +38964,14 @@ __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
 var DRAG_SPAN_PX3 = 160;
 var clamp017 = /* @__PURE__ */ __name((v) => v < 0 ? 0 : v > 1 ? 1 : v, "clamp01");
-function panLabel2(pan) {
-  if (pan === 0.5) return "C";
-  if (pan < 0.5) return `L${Math.round((0.5 - pan) * 200)}`;
-  return `R${Math.round((pan - 0.5) * 200)}`;
-}
-__name(panLabel2, "panLabel");
 function MasterStrip({
   zoom = 1,
   gain,
   foreign = false,
-  pan = 0.5,
-  panForeign = false,
   muted: muted3 = false,
   expanded = false,
   onToggleExpand,
   onGainChange,
-  onPanChange,
   onMuteToggle,
   onGestureStart,
   onGestureEnd
@@ -39059,30 +39011,6 @@ function MasterStrip({
     if (foreign) return;
     onGainChange(1);
   }, "reset");
-  const panEnabled = !panForeign && onPanChange !== void 0;
-  const panDrag = React36__namespace.useRef(null);
-  const onPanDown = /* @__PURE__ */ __name((e) => {
-    if (!panEnabled) return;
-    e.preventDefault();
-    e.target.setPointerCapture?.(e.pointerId);
-    panDrag.current = { startX: e.clientX, startPan: pan };
-    onGestureStart?.();
-  }, "onPanDown");
-  const onPanMove = /* @__PURE__ */ __name((e) => {
-    const d = panDrag.current;
-    if (!d) return;
-    const next = clamp017(d.startPan + (e.clientX - d.startX) / DRAG_SPAN_PX3);
-    onPanChange?.(Math.round(next * 100) / 100);
-  }, "onPanMove");
-  const endPan = /* @__PURE__ */ __name((e) => {
-    if (!panDrag.current) return;
-    panDrag.current = null;
-    e.target.releasePointerCapture?.(e.pointerId);
-    onGestureEnd?.();
-  }, "endPan");
-  const resetPan = /* @__PURE__ */ __name(() => {
-    if (panEnabled) onPanChange?.(0.5);
-  }, "resetPan");
   const muteEnabled = onMuteToggle !== void 0;
   return /* @__PURE__ */ jsxRuntime.jsxs(
     "div",
@@ -39183,31 +39111,6 @@ function MasterStrip({
             )
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntime.jsxs(
-          "div",
-          {
-            "data-mixer-master-pan-control": true,
-            onPointerDown: onPanDown,
-            onPointerMove: onPanMove,
-            onPointerUp: endPan,
-            onPointerCancel: endPan,
-            onDoubleClick: resetPan,
-            title: panForeign ? "master pan is a signal \u2014 edit it in code" : void 0,
-            style: {
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 10,
-              cursor: panEnabled ? "ew-resize" : "default",
-              opacity: panForeign ? 0.4 : 1,
-              touchAction: "none",
-              userSelect: "none"
-            },
-            children: [
-              /* @__PURE__ */ jsxRuntime.jsx("span", { style: { color: "var(--foreground-muted, #a0a0aa)" }, children: "pan" }),
-              /* @__PURE__ */ jsxRuntime.jsx("span", { "data-mixer-master-pan": true, children: panForeign ? "sig" : panLabel2(pan) })
-            ]
-          }
-        ),
         /* @__PURE__ */ jsxRuntime.jsxs(
           "div",
           {
@@ -39346,7 +39249,6 @@ function MixerStrips({
     applyToStrip,
     applyToStripAt,
     masterGain,
-    masterPan,
     masterMuted,
     masterChunk,
     applyToMaster,
@@ -39504,17 +39406,11 @@ function MixerStrips({
                   zoom: faceZoom,
                   gain: masterGain.value,
                   foreign: masterGain.foreign,
-                  pan: masterPan.value,
-                  panForeign: masterPan.foreign,
                   muted: masterMuted,
                   expanded: masterExpanded,
                   onToggleExpand: () => toggle(MASTER_EXPAND_ID),
                   onGainChange: (value) => applyToMaster((doc, wb) => {
                     const e = masterGainEdit(doc, value);
-                    if (e) wb.replaceRange(e.range, e.text, "mixer");
-                  }),
-                  onPanChange: (value) => applyToMaster((doc, wb) => {
-                    const e = masterPanEdit(doc, value);
                     if (e) wb.replaceRange(e.range, e.text, "mixer");
                   }),
                   onMuteToggle: () => applyToMaster((doc, wb) => {
@@ -48636,7 +48532,6 @@ exports.LIGHT_THEME_TOKENS = LIGHT_THEME_TOKENS;
 exports.LiveCodingEditor = LiveCodingEditor;
 exports.LiveCodingRuntime = LiveCodingRuntime;
 exports.LiveRecorder = LiveRecorder;
-exports.MASTER_CENTRE_PAN = MASTER_CENTRE_PAN;
 exports.MASTER_KEY = MASTER_KEY;
 exports.MASTER_UNITY_GAIN = MASTER_UNITY_GAIN;
 exports.MIN_REGION_SPAN = MIN_REGION_SPAN;
@@ -48908,7 +48803,6 @@ exports.loadShellState = loadShellState;
 exports.makeFixedKey = makeFixedKey;
 exports.masterGainEdit = masterGainEdit;
 exports.masterMuteEdit = masterMuteEdit;
-exports.masterPanEdit = masterPanEdit;
 exports.masterVizEdit = masterVizEdit;
 exports.materializeBareDelete = materializeBareDelete;
 exports.materializeBareSplit = materializeBareSplit;
@@ -48982,7 +48876,6 @@ exports.putAsset = putAsset;
 exports.readCurrentCycle = readCurrentCycle;
 exports.readMasterGain = readMasterGain;
 exports.readMasterMute = readMasterMute;
-exports.readMasterPan = readMasterPan;
 exports.readMasterViz = readMasterViz;
 exports.readPersistedActiveTabId = readPersistedActiveTabId;
 exports.readPersistedOpen = readPersistedOpen;
