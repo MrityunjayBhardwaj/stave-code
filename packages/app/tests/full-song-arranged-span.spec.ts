@@ -1,8 +1,8 @@
 /**
  * full-song-arranged-span — #1721.
  *
- * An arrangement declares its end (`Σ weight`), and playback's stop-at-end, its
- * Loop/Once control and the bounce all read it. The Song timeline did not: its
+ * An arrangement declares its length (`Σ weight`, folded with any parameter
+ * that outlasts it), and the bounce renders it. The Song timeline did not: its
  * span was a period DETECTED from what played, which cannot see past half the
  * 256-cycle cap and takes the first period that fits. So a 150-bar arrangement
  * that opens on one repeated bar drew ONE bar, and a 187-bar one drew 256.

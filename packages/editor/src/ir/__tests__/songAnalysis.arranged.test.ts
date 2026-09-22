@@ -10,9 +10,9 @@ import { analyzeSong } from '../songAnalysis'
  * Before this, the span was a period DETECTED from what played, which is bounded
  * by `cap / 2` (no period over 128 bars is ever confirmable, so a 187-bar song drew
  * 256 bars — itself plus 69 of its next pass) and takes the FIRST period that fits
- * (so a 150-bar song whose first section is one repeated bar drew ONE bar). Playback's
- * Loop/Once, its stop-at-end and the bounce all read `songExtent` already; these
- * tests hold the timeline to the same number.
+ * (so a 150-bar song whose first section is one repeated bar drew ONE bar). The
+ * bounce already renders the declared length (`arrangedRepeatCycles`); these tests
+ * hold the timeline to the same number.
  *
  * Only the VIEW moves. The measurements (`periodCycles`, `repeatCycles`,
  * `lanePeriods`) answer "when does the song come back round", which the shape and

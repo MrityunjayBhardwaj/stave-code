@@ -104,14 +104,18 @@ export interface SongSection {
  *
  * The first three kinds are the three the view already distinguished by hand;
  * the fourth is the one answer that is READ rather than measured:
- *   `arranged` — the document DECLARES its end (`songExtent` → `arranged`, #1721)
- *               and it fits under the cap. `cycles` is that end — where playback's
- *               stop-at-end and the Loop/Once control put it — and the lanes span
- *               exactly it. Detection could not give it: it is bounded by `cap / 2`
- *               and takes the first period that fits, so it drew a 187-bar song at
- *               256 bars and a 150-bar one opening on one repeated bar at ONE.
- *               Cyclic the way playback is: an arranged song loops back to bar 0
- *               at its end by default (#1396). The measurements beside it
+  *   `arranged` — the document DECLARES its length (`songExtent` → `arranged`,
+ *               #1721) and it fits under the cap. `cycles` is the length the
+ *               bounce renders — `arrangedRepeatCycles`, the arrangement's
+ *               `Σ weight` folded with any parameter that outlasts it (#1580), or
+ *               the bare `Σ weight` where no fold can be vouched for — and the
+ *               lanes span exactly it. It is NOT always where playback's `once`
+ *               stops: that is the bare `Σ weight`, and the two differ exactly
+ *               when a parameter outlasts the structure. Detection could not give
+ *               it: it is bounded by `cap / 2` and takes the first period that
+ *               fits, so it drew a 187-bar song at 256 bars and a 150-bar one
+ *               opening on one repeated bar at ONE. Cyclic: the song genuinely
+ *               comes back round at it. The measurements beside it
  *               (`periodCycles`, `repeatCycles`, `lanePeriods`) are untouched —
  *               "when does the song come back round" is a different question
  *               from "where does it end", and for an arrangement under a curve

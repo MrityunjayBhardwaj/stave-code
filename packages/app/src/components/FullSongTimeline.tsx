@@ -641,9 +641,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // corrected in passing — it is a separate question from where the window sits.
   //
   // An `arranged` span (#1721) loops, and that is not a default but the fact:
-  // playback wraps an arranged song back to bar 0 at its declared end (#1396),
-  // and with nothing past the end there is nothing to page to.
-  const looping =analysis == null || analysis.displaySpan.kind !== 'capped'
+  // it is the length after which the song comes back round (the arrangement,
+  // folded with any parameter that outlasts it), and an arranged song loops by
+  // default (#1396). With nothing past it there is nothing to page to.
+  const looping = analysis == null || analysis.displaySpan.kind !== 'capped'
   const loopingRef = useRef(looping)
   loopingRef.current = looping
 
