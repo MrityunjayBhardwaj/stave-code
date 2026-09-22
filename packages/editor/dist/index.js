@@ -1706,6 +1706,83 @@ function stepValueEdit(a, index, value) {
 }
 __name(stepValueEdit, "stepValueEdit");
 
+// src/ir/songExtent.ts
+function scaled(cycles, factor) {
+  return factor > 0 && Number.isFinite(factor) ? cycles * factor : cycles;
+}
+__name(scaled, "scaled");
+function songExtent(ir) {
+  if (ir == null) return { kind: "loop" };
+  let best = 0;
+  let found = false;
+  let tainted = false;
+  const walk5 = /* @__PURE__ */ __name((node, factor, opaque) => {
+    if (!node || typeof node !== "object") return;
+    switch (node.tag) {
+      case "Arrange": {
+        found = true;
+        if (opaque) {
+          tainted = true;
+          return;
+        }
+        const sum = node.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
+        if (sum > 0) best = Math.max(best, scaled(sum, factor));
+        return;
+      }
+      case "NamedPick": {
+        const sel = node.selector;
+        if (!sel || sel.tag !== "Cycle") return;
+        if (!sel.items.some((i) => i != null && i.tag === "Elongate")) return;
+        found = true;
+        if (opaque) {
+          tainted = true;
+          return;
+        }
+        const sum = sel.items.reduce(
+          (acc, i) => acc + (i != null && i.tag === "Elongate" && i.factor > 0 && Number.isFinite(i.factor) ? i.factor : 1),
+          0
+        );
+        if (sum > 0) best = Math.max(best, scaled(sum, factor));
+        return;
+      }
+      case "Stack":
+        for (const t of node.tracks) walk5(t, factor, opaque);
+        return;
+      case "Track":
+      case "Loop":
+        walk5(node.body, factor, opaque);
+        return;
+      case "Slow":
+        walk5(node.body, scaled(factor, node.factor), opaque);
+        return;
+      case "Fast":
+        walk5(node.body, node.factor > 0 && Number.isFinite(node.factor) ? factor / node.factor : factor, opaque);
+        return;
+      case "Param":
+        walk5(node.body, factor, opaque);
+        return;
+      case "Range":
+        walk5(node.body, factor, opaque);
+        return;
+      case "Code": {
+        const via = node.via;
+        if (via && "inner" in via) walk5(via.inner, factor, true);
+        return;
+      }
+      default: {
+        const body = node.body;
+        if (body && typeof body === "object") walk5(body, factor, true);
+        return;
+      }
+    }
+  }, "walk");
+  walk5(ir, 1, false);
+  if (!found) return { kind: "loop" };
+  if (tainted || best <= 0) return { kind: "opaque" };
+  return { kind: "arranged", cycles: best };
+}
+__name(songExtent, "songExtent");
+
 // src/ir/songAnalysis.ts
 function laneKeyOf(ev) {
   return ev.trackId ?? ev.s ?? "$default";
@@ -1937,7 +2014,7 @@ function signalDimensionsOf(ir, swap) {
   return { keys, periods };
 }
 __name(signalDimensionsOf, "signalDimensionsOf");
-function arrangedRepeatCycles(ir, arrangedCycles, cap = DEFAULT_CAP) {
+function arrangedRepeatCycles(ir, arrangedCycles, cap = DEFAULT_CAP, signalPeriods = signalDimensionsOf(ir).periods) {
   if (!(arrangedCycles > 0) || !Number.isFinite(arrangedCycles)) return arrangedCycles;
   const tracks = audibleTracks(ir);
   const named = tracks.filter((t) => t.tag === "Track" && typeof t.trackId === "string");
@@ -1948,7 +2025,7 @@ function arrangedRepeatCycles(ir, arrangedCycles, cap = DEFAULT_CAP) {
     const p = songPeriodOf(a);
     if (p !== null && p > 0) periods.push(p);
   }
-  for (const p of signalDimensionsOf(ir).periods) if (p > 0) periods.push(p);
+  for (const p of signalPeriods) if (p > 0) periods.push(p);
   const repeat = repeatOf(periods, cap);
   return repeat ?? arrangedCycles;
 }
@@ -2107,6 +2184,18 @@ function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn, capC
   return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan, repeatCycles, lanePeriods };
 }
 __name(analyzeEvents, "analyzeEvents");
+function spanToDeclaredEnd(measured, events, endCycles) {
+  const horizon = Math.ceil(endCycles);
+  const lanes = accumulateLanes(events, horizon);
+  return {
+    ...measured,
+    horizonCycles: horizon,
+    lanes,
+    sections: computeSections(lanes, horizon),
+    displaySpan: { kind: "arranged", cycles: endCycles }
+  };
+}
+__name(spanToDeclaredEnd, "spanToDeclaredEnd");
 var DEFAULT_HINT = 8;
 var DEFAULT_CAP = 256;
 var DEFAULT_SLICE = 4;
@@ -2147,37 +2236,46 @@ async function analyzeSong(ir, opts = {}) {
     }
     return true;
   }, "collectUpTo");
-  while (true) {
-    const ok = await collectUpTo(horizon);
-    if (!ok) break;
-    if (events.length === 0) {
-      if (horizon >= cap) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys);
+  const measure = /* @__PURE__ */ __name(async () => {
+    while (true) {
+      const ok = await collectUpTo(horizon);
+      if (!ok) break;
+      if (events.length === 0) {
+        if (horizon >= cap) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys);
+        horizon = Math.min(horizon * 2, cap);
+        continue;
+      }
+      const period = periodRule(events, horizon);
+      if (period !== null) {
+        const lanes = accumulateLanes(events, period);
+        const sections = computeSections(lanes, period);
+        const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys);
+        return {
+          periodCycles: period,
+          horizonCycles: period,
+          lanes,
+          sections,
+          displaySpan: { kind: "loop", cycles: period },
+          // #1599 — over the full collection horizon, where every lane's period was
+          // detected, NOT the trimmed one-loop span (one loop has no repetition).
+          repeatCycles: repeatBeside(lanePeriods, cap, period),
+          lanePeriods
+        };
+      }
+      if (horizon >= cap) {
+        return analyzeEvents(events, cap, true, periodRule, cap, steppedKeys);
+      }
       horizon = Math.min(horizon * 2, cap);
-      continue;
     }
-    const period = periodRule(events, horizon);
-    if (period !== null) {
-      const lanes = accumulateLanes(events, period);
-      const sections = computeSections(lanes, period);
-      const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys);
-      return {
-        periodCycles: period,
-        horizonCycles: period,
-        lanes,
-        sections,
-        displaySpan: { kind: "loop", cycles: period },
-        // #1599 — over the full collection horizon, where every lane's period was
-        // detected, NOT the trimmed one-loop span (one loop has no repetition).
-        repeatCycles: repeatBeside(lanePeriods, cap, period),
-        lanePeriods
-      };
-    }
-    if (horizon >= cap) {
-      return analyzeEvents(events, cap, true, periodRule, cap, steppedKeys);
-    }
-    horizon = Math.min(horizon * 2, cap);
-  }
-  return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap, steppedKeys);
+    return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap, steppedKeys);
+  }, "measure");
+  const extent = songExtent(ir);
+  const declaredLength = extent.kind === "arranged" && extent.cycles > 0 ? arrangedRepeatCycles(ir, extent.cycles, cap, (opts.signals ?? signalDimensionsOf(ir)).periods) : null;
+  const declaredEnd = declaredLength !== null && declaredLength > 0 && Math.ceil(declaredLength) <= cap ? declaredLength : null;
+  const measured = await measure();
+  if (declaredEnd === null || signal?.aborted) return measured;
+  if (!await collectUpTo(Math.ceil(declaredEnd))) return measured;
+  return spanToDeclaredEnd(measured, events, declaredEnd);
 }
 __name(analyzeSong, "analyzeSong");
 async function analyzeWindow(originCycle, spanCycles, opts = {}) {
@@ -2211,83 +2309,6 @@ async function analyzeWindow(originCycle, spanCycles, opts = {}) {
   return { originCycle: origin, spanCycles: span, lanes, sections, complete };
 }
 __name(analyzeWindow, "analyzeWindow");
-
-// src/ir/songExtent.ts
-function scaled(cycles, factor) {
-  return factor > 0 && Number.isFinite(factor) ? cycles * factor : cycles;
-}
-__name(scaled, "scaled");
-function songExtent(ir) {
-  if (ir == null) return { kind: "loop" };
-  let best = 0;
-  let found = false;
-  let tainted = false;
-  const walk5 = /* @__PURE__ */ __name((node, factor, opaque) => {
-    if (!node || typeof node !== "object") return;
-    switch (node.tag) {
-      case "Arrange": {
-        found = true;
-        if (opaque) {
-          tainted = true;
-          return;
-        }
-        const sum = node.arms.reduce((s, a) => s + (a.weight > 0 ? a.weight : 0), 0);
-        if (sum > 0) best = Math.max(best, scaled(sum, factor));
-        return;
-      }
-      case "NamedPick": {
-        const sel = node.selector;
-        if (!sel || sel.tag !== "Cycle") return;
-        if (!sel.items.some((i) => i != null && i.tag === "Elongate")) return;
-        found = true;
-        if (opaque) {
-          tainted = true;
-          return;
-        }
-        const sum = sel.items.reduce(
-          (acc, i) => acc + (i != null && i.tag === "Elongate" && i.factor > 0 && Number.isFinite(i.factor) ? i.factor : 1),
-          0
-        );
-        if (sum > 0) best = Math.max(best, scaled(sum, factor));
-        return;
-      }
-      case "Stack":
-        for (const t of node.tracks) walk5(t, factor, opaque);
-        return;
-      case "Track":
-      case "Loop":
-        walk5(node.body, factor, opaque);
-        return;
-      case "Slow":
-        walk5(node.body, scaled(factor, node.factor), opaque);
-        return;
-      case "Fast":
-        walk5(node.body, node.factor > 0 && Number.isFinite(node.factor) ? factor / node.factor : factor, opaque);
-        return;
-      case "Param":
-        walk5(node.body, factor, opaque);
-        return;
-      case "Range":
-        walk5(node.body, factor, opaque);
-        return;
-      case "Code": {
-        const via = node.via;
-        if (via && "inner" in via) walk5(via.inner, factor, true);
-        return;
-      }
-      default: {
-        const body = node.body;
-        if (body && typeof body === "object") walk5(body, factor, true);
-        return;
-      }
-    }
-  }, "walk");
-  walk5(ir, 1, false);
-  if (!found) return { kind: "loop" };
-  if (tainted || best <= 0) return { kind: "opaque" };
-  return { kind: "arranged", cycles: best };
-}
-__name(songExtent, "songExtent");
 
 // src/ir/fixedParameters.ts
 var NUMBER2 = /^-?(?:\d+\.?\d*|\.\d+)$/;

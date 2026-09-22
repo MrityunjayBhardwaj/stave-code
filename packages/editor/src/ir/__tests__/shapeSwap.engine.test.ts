@@ -59,8 +59,13 @@ async function analyseSource(tracks: readonly string[]): Promise<SongAnalysis> {
 }
 
 /** The length a song reports — `songLength.ts`' `songLoopCycles`, which the app owns. */
-const lengthOf = (a: SongAnalysis | null) =>
-  a === null ? 'no preview' : a.displaySpan.kind === 'loop' && a.displaySpan.cycles > 0 ? (a.repeatCycles ?? a.displaySpan.cycles) : 'unknown'
+const lengthOf = (a: SongAnalysis | null) => {
+  if (a === null) return 'no preview'
+  // #1721 — an arranged song's span is its declared end; its repeat is still the
+  // measured period, which is where the loop kind used to carry it.
+  const period = a.displaySpan.kind === 'loop' ? a.displaySpan.cycles : a.displaySpan.kind === 'arranged' ? a.periodCycles : null
+  return period !== null && period > 0 ? (a.repeatCycles ?? period) : 'unknown'
+}
 
 /** Swap the first curve on `d1` to `next`: the preview from the current song, and the
  *  analysis of the swapped source. */

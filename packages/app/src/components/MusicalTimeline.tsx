@@ -448,6 +448,9 @@ export function MusicalTimeline(
     ).__staveTimelineAnalysis = {
       periodCycles: analysis?.periodCycles ?? null,
       horizonCycles: analysis?.horizonCycles ?? 0,
+      // #1721 — the span the view draws, and what it means (a declared end is
+      // not a detected loop). The two above are measurements.
+      displaySpan: analysis?.displaySpan ?? null,
       lanes: (analysis?.lanes ?? []).map((l) => ({
         laneKey: l.laneKey,
         onsets: l.onsetsByCycle.reduce((a, b) => a + b, 0),

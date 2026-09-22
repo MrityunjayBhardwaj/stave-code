@@ -622,7 +622,20 @@ interface SongSection {
  * distinction impossible to drop by accident: you cannot read `cycles` without
  * having `kind` in your hand.
  *
- * The three kinds are the three the view already distinguished by hand:
+ * The first three kinds are the three the view already distinguished by hand;
+ * the fourth is the one answer that is READ rather than measured:
+ *   `arranged` — the document DECLARES its end (`songExtent` → `arranged`, #1721)
+ *               and it fits under the cap. `cycles` is that end — where playback's
+ *               stop-at-end and the Loop/Once control put it — and the lanes span
+ *               exactly it. Detection could not give it: it is bounded by `cap / 2`
+ *               and takes the first period that fits, so it drew a 187-bar song at
+ *               256 bars and a 150-bar one opening on one repeated bar at ONE.
+ *               Cyclic the way playback is: an arranged song loops back to bar 0
+ *               at its end by default (#1396). The measurements beside it
+ *               (`periodCycles`, `repeatCycles`, `lanePeriods`) are untouched —
+ *               "when does the song come back round" is a different question
+ *               from "where does it end", and for an arrangement under a curve
+ *               whose period does not divide it the two differ (#1580).
  *   `loop`    — a period was DETECTED. `cycles` is that period and the lanes
  *               span exactly one of them. This is the only cyclic kind: it is
  *               the only one where cycle `n + cycles` genuinely sounds like `n`.
@@ -638,8 +651,9 @@ interface SongSection {
  * would reintroduce exactly the erasure this type exists to prevent.
  */
 interface DisplaySpan {
-    readonly kind: 'loop' | 'capped' | 'horizon';
-    /** The span in cycles the view spans. For `loop`, the detected period. */
+    readonly kind: 'arranged' | 'loop' | 'capped' | 'horizon';
+    /** The span in cycles the view spans. For `loop`, the detected period; for
+     *  `arranged`, the declared end (may be fractional — `.slow(1.5)`). */
     readonly cycles: number;
 }
 interface SongAnalysis {
@@ -933,7 +947,7 @@ declare function signalDimensionsOf(ir: PatternIR | null | undefined, swap?: Sha
  * past the cap) the answer stays the arrangement's own length — the bias
  * `repeatBeside` already takes, and the answer this branch gave before.
  */
-declare function arrangedRepeatCycles(ir: PatternIR | null | undefined, arrangedCycles: number, cap?: number): number;
+declare function arrangedRepeatCycles(ir: PatternIR | null | undefined, arrangedCycles: number, cap?: number, signalPeriods?: readonly number[]): number;
 /**
  * How many SONG cycles a curve's value takes to come back round (#1590), or null
  * when that cannot be said.

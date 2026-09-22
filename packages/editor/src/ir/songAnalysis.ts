@@ -63,6 +63,7 @@ import { eventValueKey } from './eventValueKey'
 import { signalAutomations, signalCarryingParamKeys, signalWriters, hasTruePeriod, isNoiseKind, type SignalAutomation, type SignalKind } from './signalAutomation'
 import { isSectionWindow, type TimeStep } from './parameterRoutes'
 import { steppedAutomations } from './steppedAutomation'
+import { songExtent } from './songExtent'
 
 /**
  * Lane (row) key for an event. Mirrors `groupEventsByTrack`'s key so analysis
@@ -101,7 +102,20 @@ export interface SongSection {
  * distinction impossible to drop by accident: you cannot read `cycles` without
  * having `kind` in your hand.
  *
- * The three kinds are the three the view already distinguished by hand:
+ * The first three kinds are the three the view already distinguished by hand;
+ * the fourth is the one answer that is READ rather than measured:
+ *   `arranged` — the document DECLARES its end (`songExtent` → `arranged`, #1721)
+ *               and it fits under the cap. `cycles` is that end — where playback's
+ *               stop-at-end and the Loop/Once control put it — and the lanes span
+ *               exactly it. Detection could not give it: it is bounded by `cap / 2`
+ *               and takes the first period that fits, so it drew a 187-bar song at
+ *               256 bars and a 150-bar one opening on one repeated bar at ONE.
+ *               Cyclic the way playback is: an arranged song loops back to bar 0
+ *               at its end by default (#1396). The measurements beside it
+ *               (`periodCycles`, `repeatCycles`, `lanePeriods`) are untouched —
+ *               "when does the song come back round" is a different question
+ *               from "where does it end", and for an arrangement under a curve
+ *               whose period does not divide it the two differ (#1580).
  *   `loop`    — a period was DETECTED. `cycles` is that period and the lanes
  *               span exactly one of them. This is the only cyclic kind: it is
  *               the only one where cycle `n + cycles` genuinely sounds like `n`.
@@ -117,8 +131,9 @@ export interface SongSection {
  * would reintroduce exactly the erasure this type exists to prevent.
  */
 export interface DisplaySpan {
-  readonly kind: 'loop' | 'capped' | 'horizon'
-  /** The span in cycles the view spans. For `loop`, the detected period. */
+  readonly kind: 'arranged' | 'loop' | 'capped' | 'horizon'
+  /** The span in cycles the view spans. For `loop`, the detected period; for
+   *  `arranged`, the declared end (may be fractional — `.slow(1.5)`). */
   readonly cycles: number
 }
 
@@ -892,6 +907,10 @@ export function arrangedRepeatCycles(
   ir: PatternIR | null | undefined,
   arrangedCycles: number,
   cap: number = DEFAULT_CAP,
+  // #1721 — the curves' song periods, when the caller holds a reading other than the
+  // IR's own: a shape-swap preview analyses the UNCHANGED IR with the swapped signals
+  // (`previewShapeSwap`), so reading them off the IR here would preview the old song.
+  signalPeriods: readonly number[] = signalDimensionsOf(ir).periods,
 ): number {
   if (!(arrangedCycles > 0) || !Number.isFinite(arrangedCycles)) return arrangedCycles
   const tracks = audibleTracks(ir)
@@ -907,7 +926,7 @@ export function arrangedRepeatCycles(
     const p = songPeriodOf(a)
     if (p !== null && p > 0) periods.push(p)
   }
-  for (const p of signalDimensionsOf(ir).periods) if (p > 0) periods.push(p)
+  for (const p of signalPeriods) if (p > 0) periods.push(p)
   const repeat = repeatOf(periods, cap)
   return repeat ?? arrangedCycles
 }
@@ -1274,9 +1293,10 @@ export function analyzeEvents(
   // phase and the view spans the longest single loop (#488, see detectDisplayPeriod).
   const periodCycles = periodOf(events, horizon)
   const sections = computeSections(lanes, horizon)
-  // THE ONE PLACE the span and its meaning are decided. `periodCycles ??
+  // THE ONE PLACE the MEASURED span and its meaning are decided. `periodCycles ??
   // horizonCycles` used to live at every consumer; it lives here now, paired
-  // with the kind that says which of the two answered.
+  // with the kind that says which of the two answered. The one span that is not
+  // measured — a declared end — is laid over this by `spanToDeclaredEnd`.
   const displaySpan: DisplaySpan =
     periodCycles != null
       ? { kind: 'loop', cycles: periodCycles }
@@ -1284,6 +1304,32 @@ export function analyzeEvents(
   const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys)
   const repeatCycles = repeatBeside(lanePeriods, capCycles, periodCycles)
   return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan, repeatCycles, lanePeriods }
+}
+
+/**
+ * #1721 — a measured analysis re-spanned to the end the document DECLARES.
+ *
+ * Only the VIEW moves: the lanes and sections are re-cut over `[0, ceil(E))` and
+ * the span becomes `{ arranged, E }`. `periodCycles`, `repeatCycles` and
+ * `lanePeriods` are kept exactly as measured — they answer what repeats, over the
+ * horizon they were detected on, and re-measuring them over one pass of the song
+ * would find no repetition at all (the reason the loop-trim above keeps them too).
+ * `events` must cover `[0, ceil(E))`; `analyzeSong` collects up to it first.
+ */
+function spanToDeclaredEnd(
+  measured: SongAnalysis,
+  events: readonly IREvent[],
+  endCycles: number,
+): SongAnalysis {
+  const horizon = Math.ceil(endCycles)
+  const lanes = accumulateLanes(events, horizon)
+  return {
+    ...measured,
+    horizonCycles: horizon,
+    lanes,
+    sections: computeSections(lanes, horizon),
+    displaySpan: { kind: 'arranged', cycles: endCycles },
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1464,61 +1510,90 @@ export async function analyzeSong(
     return true
   }
 
-  while (true) {
-    const ok = await collectUpTo(horizon)
-    if (!ok) break // aborted — return whatever we have at the current horizon
-    // Nothing heard YET is not nothing to hear: a song can open with a rest
-    // longer than the first look (a vocal entering after a 12-bar intro), so an
-    // empty window keeps growing like any unresolved one (#1712). Only a song
-    // that stays silent all the way to the cap is the empty analysis.
-    if (events.length === 0) {
-      if (horizon >= cap) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys)
-      horizon = Math.min(horizon * 2, cap)
-      continue
-    }
-    // The DISPLAY period = the longest single lane's loop (#488). Differing-
-    // length tracks phase; the view spans the longest one. `null` until EVERY
-    // active lane has looped at least twice within the horizon, so we keep
-    // growing until the slowest lane resolves (or the cap forces aperiodic).
-    // `periodRule` picks the veto below the cap and abstention at it (#1104);
-    // its own doc carries why. Stated once, there.
-    const period = periodRule(events, horizon)
-    if (period !== null) {
-      // Trim the analysis to exactly ONE display loop. The full-song view spans
-      // `displayCycles` and wraps the playhead there; if lanes/sections kept
-      // the wider collection horizon (e.g. 8 with period 4), the cells beyond
-      // the period would pile up off the view edge and the playhead — which
-      // wraps at the period — would no longer line up with them. Keeping the
-      // view exactly one display period wide makes displayCycles === periodCycles
-      // === the longest lane's loop. For equal-length lanes this is the audible
-      // loop; for differing lengths a shorter lane shows its loop + a phasing
-      // remainder (DAW-idiomatic — exact on pass 1, phases after). periodCycles
-      // is the period DETECTED over the full horizon (re-detecting over just
-      // [0, period) would find null, since one loop has no internal repetition).
-      const lanes = accumulateLanes(events, period)
-      const sections = computeSections(lanes, period)
-      // Over the FULL horizon, like the repeat: one trimmed loop has no repetition.
-      const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys)
-      return {
-        periodCycles: period,
-        horizonCycles: period,
-        lanes,
-        sections,
-        displaySpan: { kind: 'loop', cycles: period },
-        // #1599 — over the full collection horizon, where every lane's period was
-        // detected, NOT the trimmed one-loop span (one loop has no repetition).
-        repeatCycles: repeatBeside(lanePeriods, cap, period),
-        lanePeriods,
+  // The measurement, unchanged by #1721: hint → doubling → cap until a period is
+  // confirmed. What it returns is what every document without a declared end shows.
+  const measure = async (): Promise<SongAnalysis> => {
+    while (true) {
+      const ok = await collectUpTo(horizon)
+      if (!ok) break // aborted — return whatever we have at the current horizon
+      // Nothing heard YET is not nothing to hear: a song can open with a rest
+      // longer than the first look (a vocal entering after a 12-bar intro), so an
+      // empty window keeps growing like any unresolved one (#1712). Only a song
+      // that stays silent all the way to the cap is the empty analysis.
+      if (events.length === 0) {
+        if (horizon >= cap) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys)
+        horizon = Math.min(horizon * 2, cap)
+        continue
       }
+      // The DISPLAY period = the longest single lane's loop (#488). Differing-
+      // length tracks phase; the view spans the longest one. `null` until EVERY
+      // active lane has looped at least twice within the horizon, so we keep
+      // growing until the slowest lane resolves (or the cap forces aperiodic).
+      // `periodRule` picks the veto below the cap and abstention at it (#1104);
+      // its own doc carries why. Stated once, there.
+      const period = periodRule(events, horizon)
+      if (period !== null) {
+        // Trim the analysis to exactly ONE display loop. The full-song view spans
+        // `displayCycles` and wraps the playhead there; if lanes/sections kept
+        // the wider collection horizon (e.g. 8 with period 4), the cells beyond
+        // the period would pile up off the view edge and the playhead — which
+        // wraps at the period — would no longer line up with them. Keeping the
+        // view exactly one display period wide makes displayCycles === periodCycles
+        // === the longest lane's loop. For equal-length lanes this is the audible
+        // loop; for differing lengths a shorter lane shows its loop + a phasing
+        // remainder (DAW-idiomatic — exact on pass 1, phases after). periodCycles
+        // is the period DETECTED over the full horizon (re-detecting over just
+        // [0, period) would find null, since one loop has no internal repetition).
+        const lanes = accumulateLanes(events, period)
+        const sections = computeSections(lanes, period)
+        // Over the FULL horizon, like the repeat: one trimmed loop has no repetition.
+        const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys)
+        return {
+          periodCycles: period,
+          horizonCycles: period,
+          lanes,
+          sections,
+          displaySpan: { kind: 'loop', cycles: period },
+          // #1599 — over the full collection horizon, where every lane's period was
+          // detected, NOT the trimmed one-loop span (one loop has no repetition).
+          repeatCycles: repeatBeside(lanePeriods, cap, period),
+          lanePeriods,
+        }
+      }
+      if (horizon >= cap) {
+        return analyzeEvents(events, cap, true, periodRule, cap, steppedKeys)
+      }
+      horizon = Math.min(horizon * 2, cap)
     }
-    if (horizon >= cap) {
-      return analyzeEvents(events, cap, true, periodRule, cap, steppedKeys)
-    }
-    horizon = Math.min(horizon * 2, cap)
+
+    // Aborted path — analyze what was collected.
+    return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap, steppedKeys)
   }
 
-  // Aborted path — analyze what was collected.
-  return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap, steppedKeys)
+  // #1721 — the length the document declares, when there is one the view can span.
+  // An arrangement (`songExtent`) is a definite end of the STRUCTURE; a parameter
+  // whose period does not divide it keeps moving after the last bar, so the song
+  // first comes back round at the fold of the two (#1580) — `arrangedRepeatCycles`,
+  // the same reading the bounce renders. Spanning the bare `Σ weight` there would
+  // hide every pass after the first: a section stepping `<.2 .9>` per appearance
+  // plays .9 on bar 7 of an 8-bar song whose structure is 4 bars (#1585). Where no
+  // fold can be vouched for it IS the arrangement's own length. Past the cap one
+  // collection cannot reach it, and the song keeps the measured span (capped, then
+  // paged).
+  const extent = songExtent(ir)
+  const declaredLength =
+    extent.kind === 'arranged' && extent.cycles > 0
+      ? arrangedRepeatCycles(ir, extent.cycles, cap, (opts.signals ?? signalDimensionsOf(ir)).periods)
+      : null
+  const declaredEnd =
+    declaredLength !== null && declaredLength > 0 && Math.ceil(declaredLength) <= cap ? declaredLength : null
+
+  const measured = await measure()
+  if (declaredEnd === null || signal?.aborted) return measured
+  // The measurement may have stopped short of the end (a period confirmed at bar 8
+  // of a 150-bar song) or run past it (to the cap); the view needs exactly `[0, E)`.
+  if (!(await collectUpTo(Math.ceil(declaredEnd)))) return measured
+  return spanToDeclaredEnd(measured, events, declaredEnd)
 }
 
 // ---------------------------------------------------------------------------

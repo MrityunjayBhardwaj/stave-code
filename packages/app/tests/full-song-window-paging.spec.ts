@@ -21,6 +21,14 @@
  * document ever resolves to a period, the trigger never fires and every
  * assertion below would be vacuous rather than failing — so the precondition
  * is checked, not assumed.
+ *
+ * ⚠ AND IT MUST DECLARE NO END THE VIEW CAN SPAN (#1721). An arrangement that
+ * fits under the cap is shown as long as it says it is — its `Σ weight`, folded
+ * with any parameter that outlasts it — so there is nothing to page to. These
+ * fixtures used to be 4- and 128-cycle arrangements made aperiodic by an LFO;
+ * they page only because the timeline measured them instead of reading them.
+ * Each is now an arrangement LONGER than the cap, which is the arranged song
+ * that genuinely pages.
  */
 import { test, expect, type Page } from '@playwright/test'
 
@@ -28,10 +36,11 @@ import { test, expect, type Page } from '@playwright/test'
  * Aperiodic by construction (an irrational-ratio slow LFO on a continuous
  * control makes every cycle differ), and ARRANGED so the window has clips as
  * well as marks. The two halves are both needed: the density heatmap followed
- * the window before #1209, the marks and clips did not.
+ * the window before #1209, the marks and clips did not. 320 cycles long, past
+ * the cap, so its end is not one the first window can show (#1721).
  */
 const APERIODIC_ARRANGE =
-  '$: arrange([2, s("bd*4")], [2, s("hh*8")]).cutoff(sine.range(200,2000).slow(97.3))'
+  '$: arrange([160, s("bd*4")], [160, s("hh*8")]).cutoff(sine.range(200,2000).slow(97.3))'
 
 /** The analysis cap, and therefore the first window's width. */
 const SPAN = 256
@@ -201,12 +210,17 @@ test('the Song view pages past the first window, and the paged window keeps its 
 /**
  * Wide arms (64 cycles each) so a clip in the SECOND window is a quarter of the
  * grid rather than a few pixels, and still aperiodic for the same reason — the
- * LFO, not the arrangement, is what defeats period detection. At origin 256 the
- * window shows two full periods: arm 0 over [256, 320), arm 1 over [320, 384),
- * and so on.
+ * LFO, not the arrangement, is what defeats period detection. Six arms, 384
+ * cycles, so the song runs past the cap (#1721). At origin 256 the window shows
+ * arm 4 over [256, 320) and arm 5 over [320, 384) — a `bd` then an `hh`, where the
+ * old two-arm fixture's third pass put the same sounds. An origin-blind edit
+ * would land in arm 0 or 1 and write a different array, so every write-back
+ * below names the arm the user grabbed.
  */
+const WIDE_ARMS = (tail: string): string =>
+  `arrange([64, s("bd*4")], [64, s("hh*8")], [64, s("bd*4")], [64, s("hh*8")], ${tail})`
 const WIDE_APERIODIC_ARRANGE =
-  '$: arrange([64, s("bd*4")], [64, s("hh*8")]).cutoff(sine.range(200,2000).slow(97.3))'
+  `$: ${WIDE_ARMS('[64, s("bd*4")], [64, s("hh*8")]')}.cutoff(sine.range(200,2000).slow(97.3))`
 
 /**
  * Drive the view to the SECOND window by the only route the app offers: play,
@@ -273,7 +287,7 @@ test('a clip edited from the SECOND window writes back to the bar the user is lo
 
   // ── THE GESTURE, entirely inside the second window ───────────────────────
   // An eighth of the way across is song cycle 256 + 32 = 288, which lies in
-  // arm 0's clip [256, 320). Select it and split it there.
+  // arm 4's clip [256, 320). Select it and split it there.
   const grid = page.locator('[data-full-song="grid"]')
   const gbox = await grid.boundingBox()
   expect(gbox).not.toBeNull()
@@ -289,7 +303,7 @@ test('a clip edited from the SECOND window writes back to the bar the user is lo
   // read 288, and the split would be written 288 cycles into a 64-cycle arm.
   await expect
     .poll(() => strudelSource(page), { timeout: 15_000 })
-    .toContain('arrange([32, s("bd*4")], [32, s("bd*4")], [64, s("hh*8")])')
+    .toContain(WIDE_ARMS('[32, s("bd*4")], [32, s("bd*4")], [64, s("hh*8")]'))
 
   await page.screenshot({ path: 'test-results/window-paging-split-origin-256.png' })
   expect(errors, `unexpected page errors:\n${errors.join('\n')}`).toEqual([])
@@ -321,7 +335,7 @@ test('a clip edited from the SECOND window writes back to the bar the user is lo
  * The window's geometry at origin 256, which every coordinate below rests on.
  * The grid fits the window to the viewport at rest, so scrollLeft is 0 and a
  * client x of `gridLeft + f·gridWidth` is song cycle `256 + f·256`. In this
- * fixture that puts arm 0's clip at [256, 320) — the first quarter — and arm 1's
+ * fixture that puts arm 4's clip at [256, 320) — the first quarter — and arm 5's
  * at [320, 384), the second.
  */
 const cycleToFrac = (cycle: number): number => (cycle - SPAN) / SPAN
@@ -342,10 +356,10 @@ test('a clip TRIMMED from the SECOND window resizes the arm the user grabbed', a
   const grid = page.locator('[data-full-song="grid"]')
   const gbox = await grid.boundingBox()
   expect(gbox, 'no grid box').not.toBeNull()
-  const y = gbox!.y + 8 // the bd lane row, which holds arm 0
+  const y = gbox!.y + 8 // the lane row, which holds arm 4
 
-  // Grab arm 0's RIGHT EDGE — cycle 320, a quarter across the window. 4px inside
-  // it: the grip is 6px wide and the boundary pixel itself belongs to arm 1
+  // Grab arm 4's RIGHT EDGE — cycle 320, a quarter across the window. 4px inside
+  // it: the grip is 6px wide and the boundary pixel itself belongs to arm 5
   // (the same offset the origin-0 trim spec uses).
   const grabX = gbox!.x + gbox!.width * cycleToFrac(320) - 4
   await page.mouse.move(grabX, y)
@@ -383,12 +397,12 @@ test('a clip TRIMMED from the SECOND window resizes the arm the user grabbed', a
   await page.mouse.up()
 
   // ── OBSERVATION 3: the write-back resizes the arm the user grabbed ────────
-  // 352 − 256 = 96, so arm 0's weight goes 64 → 96 and arm 1 is untouched. The
+  // 352 − 256 = 96, so arm 4's weight goes 64 → 96 and arm 5 is untouched. The
   // drop sits dead centre of its rounding bucket, so this digit needs ~2px of
   // pointer drift to move.
   await expect
     .poll(() => strudelSource(page), { timeout: 15_000 })
-    .toContain('arrange([96, s("bd*4")], [64, s("hh*8")])')
+    .toContain(WIDE_ARMS('[96, s("bd*4")], [64, s("hh*8")]'))
 
   await page.screenshot({ path: 'test-results/window-paging-trim-origin-256.png' })
   expect(errors, `unexpected page errors:\n${errors.join('\n')}`).toEqual([])
@@ -410,21 +424,21 @@ test('a clip MOVED from the SECOND window reorders the arm the user grabbed', as
   const grid = page.locator('[data-full-song="grid"]')
   const gbox = await grid.boundingBox()
   expect(gbox, 'no grid box').not.toBeNull()
-  const y = gbox!.y + 8 // the bd lane row, which holds arm 0
+  const y = gbox!.y + 8 // the lane row, which holds arm 4
 
-  // Press arm 0's BODY at cycle 288 — well clear of both its edges, so this is a
-  // move and not a trim — and drag right into arm 1's span at cycle 352.
+  // Press arm 4's BODY at cycle 288 — well clear of both its edges, so this is a
+  // move and not a trim — and drag right into arm 5's span at cycle 352.
   await page.mouse.move(gbox!.x + gbox!.width * cycleToFrac(288), y)
   await page.mouse.down()
   await page.mouse.move(gbox!.x + gbox!.width * cycleToFrac(320), y, { steps: 4 })
   await page.mouse.move(gbox!.x + gbox!.width * cycleToFrac(352), y, { steps: 4 })
 
-  // ── OBSERVATION 1: the move-target highlight appears, over arm 1's clip ───
+  // ── OBSERVATION 1: the move-target highlight appears, over arm 5's clip ───
   // This is the pointer-move handler's dependency. With the span-keyed list the
   // press at cycle 288 reads as cycle 32, no clip contains it, no move drag ever
   // starts and no ghost is rendered. That it appears proves the press hit; WHERE
   // it appears proves the highlight itself is mapped through the live window —
-  // arm 1's clip is [320, 384), the window's second quarter.
+  // arm 5's clip is [320, 384), the window's second quarter.
   const ghost = page.locator('[data-full-song="clip-move-ghost"]')
   await expect(
     ghost,
@@ -436,11 +450,11 @@ test('a clip MOVED from the SECOND window reorders the arm the user grabbed', as
   const expectedGhostW = (gbox!.width * (384 - 320)) / SPAN
   expect(
     Math.abs(gh!.x - expectedGhostX),
-    `move ghost at x=${gh!.x}, the window puts arm 1's clip at x=${expectedGhostX}`,
+    `move ghost at x=${gh!.x}, the window puts arm 5's clip at x=${expectedGhostX}`,
   ).toBeLessThanOrEqual(6)
   expect(
     Math.abs(gh!.width - expectedGhostW),
-    `move ghost is ${gh!.width}px wide, arm 1's 64 cycles are ${expectedGhostW}px`,
+    `move ghost is ${gh!.width}px wide, arm 5's 64 cycles are ${expectedGhostW}px`,
   ).toBeLessThanOrEqual(6)
 
   await page.mouse.up()
@@ -448,7 +462,7 @@ test('a clip MOVED from the SECOND window reorders the arm the user grabbed', as
   // ── OBSERVATION 2: the release reorders the arms in the source ────────────
   await expect
     .poll(() => strudelSource(page), { timeout: 15_000 })
-    .toContain('arrange([64, s("hh*8")], [64, s("bd*4")])')
+    .toContain(WIDE_ARMS('[64, s("hh*8")], [64, s("bd*4")]'))
 
   await page.screenshot({ path: 'test-results/window-paging-move-origin-256.png' })
   expect(errors, `unexpected page errors:\n${errors.join('\n')}`).toEqual([])

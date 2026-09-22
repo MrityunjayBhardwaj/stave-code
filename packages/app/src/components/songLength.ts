@@ -233,8 +233,14 @@ export async function measureSongLength(
  * rather than inventing a number.
  */
 export function songLoopCycles(analysis: SongAnalysis): number | null {
-  if (analysis.displaySpan.kind !== 'loop' || !(analysis.displaySpan.cycles > 0)) return null
-  return analysis.repeatCycles !== null ? analysis.repeatCycles : analysis.displaySpan.cycles
+  const span = analysis.displaySpan
+  // #1721 — an arranged song's span is the end it DECLARES, not a period, so the
+  // period is read where it was measured. `periodCycles` is exactly what the `loop`
+  // span carried before the arranged span replaced it — the measurement is unchanged
+  // — so every document reads the same number it did.
+  const period = span.kind === 'loop' ? span.cycles : span.kind === 'arranged' ? analysis.periodCycles : null
+  if (period === null || !(period > 0)) return null
+  return analysis.repeatCycles !== null ? analysis.repeatCycles : period
 }
 
 /** Seconds a span of `cycles` occupies at `cps`, or `null` if tempo is unknown. */
