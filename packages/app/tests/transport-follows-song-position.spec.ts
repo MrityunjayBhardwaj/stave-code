@@ -126,6 +126,17 @@ async function clickRuler(page: Page, frac: number): Promise<void> {
 // most ~0.13 cycles behind the playhead. Before the fix the gap was whole bars.
 const TOL = 0.2
 
+/**
+ * How far apart two positions are on a loop of `period` cycles. A reading taken
+ * just after the playhead wraps can hold the display's previous refresh from
+ * just before it (observed: display 006.0, playhead 4.05, in a loop over 4-6),
+ * which is 0.05 apart on the loop and 1.95 apart on a straight line.
+ */
+const gap = (a: number, b: number, period: number): number => {
+  const d = Math.abs(a - b) % period
+  return Math.min(d, period - d)
+}
+
 // 8 bars at 1 cps: one pass is 8 s, short enough to watch it wrap.
 const ARRANGED = 'setcps(1)\ndrums: arrange([4, s("bd*4")], [4, s("hh*8")])'
 
@@ -137,14 +148,14 @@ test('the display reads the playhead through scrubs and past the end', async ({ 
   expect(Math.round(r0.drawnBars!), 'the timeline draws the 8-bar song').toBe(8)
   // Control: before any scrub the two clocks agree, fix or no fix. If this arm
   // fails, the instrument is wrong, not the display.
-  expect(Math.abs(lcdCycle(r0) - r0.playhead!)).toBeLessThan(TOL)
+  expect(gap(lcdCycle(r0), r0.playhead!, 8)).toBeLessThan(TOL)
 
   await clickRuler(page, 0.8)
   await page.waitForTimeout(700)
   const r1 = await read(page)
   console.log(`[#1725] scrub 0.8: ${JSON.stringify(r1)}`)
   expect(r1.playhead!).toBeGreaterThan(6)
-  expect(Math.abs(lcdCycle(r1) - r1.playhead!), 'the display follows a scrub').toBeLessThan(TOL)
+  expect(gap(lcdCycle(r1), r1.playhead!, 8), 'the display follows a scrub').toBeLessThan(TOL)
   expect(r1.pass.trim(), 'still the first time through').toBe('1')
 
   // Past bar 8 the playhead wraps to the start; the display wraps with it, and
@@ -153,7 +164,7 @@ test('the display reads the playhead through scrubs and past the end', async ({ 
   const r2 = await read(page)
   console.log(`[#1725] past the end: ${JSON.stringify(r2)}`)
   expect(r2.playhead!).toBeLessThan(4)
-  expect(Math.abs(lcdCycle(r2) - r2.playhead!), 'the display wraps with the playhead').toBeLessThan(TOL)
+  expect(gap(lcdCycle(r2), r2.playhead!, 8), 'the display wraps with the playhead').toBeLessThan(TOL)
   expect(r2.pass.trim()).toBe('2')
 
   // A scrub BACK, from the second pass into the song's opening bars.
@@ -161,7 +172,7 @@ test('the display reads the playhead through scrubs and past the end', async ({ 
   await page.waitForTimeout(700)
   const r3 = await read(page)
   console.log(`[#1725] scrub 0.2: ${JSON.stringify(r3)}`)
-  expect(Math.abs(lcdCycle(r3) - r3.playhead!), 'the display follows a scrub back').toBeLessThan(TOL)
+  expect(gap(lcdCycle(r3), r3.playhead!, 8), 'the display follows a scrub back').toBeLessThan(TOL)
 
   // BAR mode counts the same position in bars: bar = floor(cycle) + 1.
   await page.locator('[data-stave-transport-lcd]').click()
@@ -259,7 +270,13 @@ test('the display stays with the playhead inside a loop range', async ({ page })
     seen.push(r.playhead!)
     expect(r.playhead!, 'the playhead stays inside the loop').toBeGreaterThan(3.9)
     expect(r.playhead!).toBeLessThan(6.1)
-    expect(Math.abs(lcdCycle(r) - r.playhead!), `display ${r.lcd} vs playhead ${r.playhead}`).toBeLessThan(TOL)
+    expect(gap(lcdCycle(r), r.playhead!, 2), `display ${r.lcd} vs playhead ${r.playhead}`).toBeLessThan(TOL)
+    // And the display itself stays in the loop (6.0 is 5.95+ rounded). The
+    // closeness check above alone could pass by chance: a display that does
+    // not fold drifts from the playhead by exactly one loop per wrap, which
+    // the circular gap cannot see. Across 5 cycles it cannot stay in 4-6.
+    expect(lcdCycle(r), `display ${r.lcd} stays inside the loop`).toBeGreaterThanOrEqual(3.9)
+    expect(lcdCycle(r)).toBeLessThanOrEqual(6.0)
     await page.waitForTimeout(420)
   }
   console.log(`[#1725] inside the loop, playhead read ${seen.map((c) => c.toFixed(2)).join(' ')}`)

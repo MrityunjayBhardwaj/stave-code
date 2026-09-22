@@ -242,6 +242,11 @@ export interface DrawnSongFrame {
  * time through ends. A reading below zero (a transport that has not started)
  * lands where the playhead puts it: wrapped to the tail in a loop, with the
  * pass held at 1, and clamped to 0 otherwise, as #1105 chose.
+ *
+ * Under a loop range (#1570) the song position arrives already folded into the
+ * range, so the number jumps back with the playhead. The pass counts times
+ * through the SONG, not round the range, so it holds still while a range
+ * repeats.
  */
 export function positionAsDrawn(
   songPosition: number | null | undefined,
