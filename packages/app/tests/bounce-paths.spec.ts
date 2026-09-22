@@ -1006,46 +1006,48 @@ test.describe('#1344 — bouncing the loaded document', () => {
     })
   })
 
-  test('a master written as postgain scales the mix; one written as gain flattens it (#1711)', async ({ page }) => {
-    // The master fader's control. Two tracks take turns — `a` in the first half
-    // of each cycle, `b` in the second — so each one's level is read from its own
-    // window of ONE mixed file. `a` is set four times quieter than `b`.
-    //  - `gain` SETS the control, so `all(x => x.gain(.5))` puts both tracks at .5:
-    //    the balance collapses. That arm is the CONTROL — it proves this reading
-    //    can see an overwrite, so the postgain arm staying balanced means something.
-    //  - `postgain` is a later gain stage, so `all(x => x.postgain(.5))` scales both
-    //    tracks by the same factor and keeps their ratio.
+  test('the master fader line scales the mix; the plain gain and postgain lines change its balance (#1711)', async ({ page }) => {
+    // Two tracks take turns — `a` in the first half of each cycle, `b` in the
+    // second — so each one's level is read from its own window of ONE mixed file.
+    // `a` is quiet through BOTH controls a master could clobber: its own `.gain`
+    // and its own `.postgain` (55 of 620 real documents set `.postgain` on tracks).
+    //  - `mul(postgain(.5))` — what the fader writes — multiplies each track's
+    //    postgain (or supplies .5 where it has none): the balance must not move.
+    //  - `gain(.5)` and `postgain(.5)` each SET a control, overwriting `a`'s own
+    //    value. They are the CONTROLS: they prove this reading can see an
+    //    overwrite of either control, so the fader's line keeping the balance
+    //    means something.
     test.setTimeout(120000)
     await openApp(page)
-    const tune = 'a: note("c3 ~").s("sine").gain(0.2)\nb: note("~ c3").s("sine").gain(0.8)'
-    const plain = await callBounceLoaded(page, tune, 4)
-    const post = await callBounceLoaded(page, `${tune}\nall(x => x.postgain(0.5))`, 4)
-    const set = await callBounceLoaded(page, `${tune}\nall(x => x.gain(0.5))`, 4)
-    if (!plain.ok || !post.ok || !set.ok) {
-      throw new Error(`probe failed: ${plain.error ?? ''} ${post.error ?? ''} ${set.error ?? ''}`)
-    }
-    // Default tempo is 0.5 cycles/s: `a` sounds in 0–1 s, `b` in 1–2 s. Read the
-    // middle of each half, clear of attack and release.
-    const levels = (b64: string) => {
-      const w = readWav(b64)
+    const tune = 'a: note("c3 ~").s("sine").gain(0.4).postgain(0.5)\nb: note("~ c3").s("sine").gain(0.8)'
+    const render = async (master: string) => {
+      const out = await callBounceLoaded(page, master ? `${tune}\n${master}` : tune, 4)
+      if (!out.ok) throw new Error(`probe failed (${master || 'no master'}): ${out.error ?? ''}`)
+      const w = readWav(out.wav!)
+      // Default tempo is 0.5 cycles/s: `a` sounds in 0–1 s, `b` in 1–2 s. Read the
+      // middle of each half, clear of attack and release.
       return { a: rmsBetween(w.mono, w.sampleRate, 200, 800), b: rmsBetween(w.mono, w.sampleRate, 1200, 1800) }
     }
-    const P = levels(plain.wav!)
-    const Q = levels(post.wav!)
-    const S = levels(set.wav!)
+    const P = await render('')
+    const M = await render('all(x => x.mul(postgain(0.5)))')
+    const G = await render('all(x => x.gain(0.5))')
+    const S = await render('all(x => x.postgain(0.5))')
     const balance = (l: { a: number; b: number }) => l.b / l.a
+    const moved = (l: { a: number; b: number }) => Math.abs(balance(l) / balance(P) - 1)
     console.log(
-      `[#1711 master] balance b/a plain=${balance(P).toFixed(3)} postgain=${balance(Q).toFixed(3)} gain=${balance(S).toFixed(3)} ` +
-        `scale a=${(Q.a / P.a).toFixed(3)} b=${(Q.b / P.b).toFixed(3)}`,
+      `[#1711 master] balance b/a plain=${balance(P).toFixed(3)} mul(postgain)=${balance(M).toFixed(3)} ` +
+        `gain=${balance(G).toFixed(3)} postgain=${balance(S).toFixed(3)} ` +
+        `scale a=${(M.a / P.a).toFixed(3)} b=${(M.b / P.b).toFixed(3)}`,
     )
     expect({
-      // postgain: the same balance as no master at all, and a real cut on both tracks
-      balanceKept: Math.abs(balance(Q) / balance(P) - 1) < 0.05,
-      sameScaleOnBoth: Math.abs(Q.a / P.a - Q.b / P.b) < 0.05,
-      quieter: Q.b < P.b * 0.9,
-      // gain (control): the quiet track came UP to the loud one — the #1711 defect
-      gainFlattens: Math.abs(balance(S) - 1) < 0.1 && S.a > P.a,
-    }).toEqual({ balanceKept: true, sameScaleOnBoth: true, quieter: true, gainFlattens: true })
+      // the fader's line: the same balance as no master, the same cut on both tracks
+      balanceKept: moved(M) < 0.05,
+      sameScaleOnBoth: Math.abs(M.a / P.a - M.b / P.b) < 0.05,
+      quieter: M.b < P.b * 0.9,
+      // controls: each set-form master visibly re-balances the mix
+      gainMovesBalance: moved(G) > 0.2,
+      postgainMovesBalance: moved(S) > 0.2,
+    }).toEqual({ balanceKept: true, sameScaleOnBoth: true, quieter: true, gainMovesBalance: true, postgainMovesBalance: true })
   })
 
   test('a seek and an armed loop stay out of the file, and the loop is given back', async ({ page }) => {

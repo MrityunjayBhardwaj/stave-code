@@ -1907,7 +1907,7 @@ declare class StrudelEngine implements LiveCodingEngine {
      * master meter freezes. On a swap, detach from the stale node and re-tap the
      * live one. Read-only side-tap — audio still flows unchanged to the destination
      * (no routing mutation, V-mixer-3). Master gain is NOT applied here anymore:
-     * the master trim is the document's `all(x => x.postgain())` (#794 removed the
+     * the master trim is the document's `all(x => x.mul(postgain()))` (#794 removed the
      * synthetic per-file output-gain seam).
      */
     private followMasterAnalyser;
@@ -7329,7 +7329,7 @@ declare function subscribeToUndoState(cb: Listener$5): () => void;
  *
  * Before #794, the master fader wrote a synthetic per-file OUTPUT gain persisted
  * under `stave:mixer.master:<fileId>` (the old `masterStore`). #792/#793 moved
- * the master trim into the document (`all(x => x.postgain())` since #1711), so that per-file
+ * the master trim into the document (`all(x => x.mul(postgain()))` since #1711), so that per-file
  * value is now dead — but an OLD project that once set a non-unity master still
  * has the key in localStorage. It's never read anymore, yet leaving it is a
  * latent second gain source if the seam ever came back. Purge it on boot.
@@ -12301,7 +12301,7 @@ declare function regionTrimEdit(chunk: ChunkInfo, control: RegionControl, value:
  * the master strip's two round-tripped controls project to `all()` chains,
  * structurally identical to a channel line but scoped to the whole mix:
  *
- *   master fader   → all(x => x.postgain(0.85))
+ *   master fader   → all(x => x.mul(postgain(0.85)))
  *   master pan     → all(x => x.pan(0.3))   (rides the gain line when present)
  *   master mute    → all(x => silence)      (a dedicated sentinel line)
  *   global backdrop→ all(x => x.viz("name", { backdrop: true }))
@@ -12316,18 +12316,24 @@ declare function regionTrimEdit(chunk: ChunkInfo, control: RegionControl, value:
  *
  * Robust to a hand-COMBINED chain: `masterGainEdit`/`masterVizEdit` bind to
  * whichever `all()` line already carries the relevant call, so a user who wrote
- * `all(x => x.postgain(0.8).viz("a",{backdrop:true}))` still gets surgical edits;
+ * `all(x => x.mul(postgain(0.8)).viz("a",{backdrop:true}))` still gets surgical edits;
  * only a fresh materialization uses the split convention.
  *
- * WHY `postgain` AND NOT `gain` (#1711). A Strudel control method SETS its value
- * on the hap — `.gain(a).gain(b)` plays at `b` — so a master written as
- * `all(x => x.gain(N))` replaced every track's own gain with N: lowering the
- * master made the quiet tracks LOUDER. `postgain` is a separate gain stage at the
- * end of every sound's chain (superdough `new GainNode(ac, { gain: postgain })`,
- * after the `gain` stage), so a master written there multiplies what each track
- * plays and keeps the balance. A legacy `all(x => x.gain(N))` is still READ, so
- * the fader shows what the document says, and moving the fader rewrites that one
- * call to `.postgain(…)`; a document nobody touches is never rewritten.
+ * WHY `mul(postgain(N))` AND NOT A PLAIN CONTROL (#1711). A Strudel control
+ * method SETS its value on the hap — `.gain(a).gain(b)` plays at `b` — so a
+ * master written as `all(x => x.gain(N))` replaced every track's own gain with N:
+ * lowering the master made the quiet tracks LOUDER. Moving it to `postgain` (the
+ * last gain stage, superdough `new GainNode(ac, { gain: postgain })`) is not
+ * enough on its own: 55 of 620 real documents set `.postgain` on their tracks,
+ * and a master `.postgain(N)` would overwrite those the same way. `mul` does
+ * arithmetic KEY-WISE on control values (`@strudel/core` `_composeOp` →
+ * `unionWithObj`): a key both sides have is multiplied, a key only the master
+ * has is copied in. So a track's own postgain p plays at p·N, and a track with
+ * none plays at N — which is 1·N, its default — every track scaled by the same
+ * factor. Legacy `all(x => x.gain(N))` / `all(x => x.postgain(N))` lines are
+ * still READ, so the fader shows what the document says, and moving the fader
+ * rewrites that one call to `.mul(postgain(…))`; a document nobody touches is
+ * never rewritten.
  */
 
 /** unity gain — an untouched master reads unity from the ABSENCE of a line. */
@@ -12401,16 +12407,15 @@ declare function readMasterViz(doc: string): {
     name: string;
 } | null;
 /**
- * The edit the master fader makes for `value` (a linear gain that SCALES the
+ * The edit the master fader makes for `value` (a linear factor that SCALES the
  * mix — #1711; "REPLACE" in #792 meant replacing the old synthetic output gain):
- *  - present `postgain` scalar → replace its literal;
- *  - legacy `gain` scalar      → rewrite that one call to `.postgain(value)`, so
- *                                the line being edited stops overwriting track
- *                                gains (nothing else in the document changes);
- *  - absent                    → insert a fresh `all(x => x.postgain(value))`
- *                                line (decision 4 = write the literal, incl.
- *                                `.postgain(1)` at unity, matching `gainEdit`);
- *  - foreign                   → null (a signal/empty gain — the fader disables).
+ *  - present `.mul(postgain(N))` → replace N;
+ *  - legacy `.gain(N)` / `.postgain(N)` → rewrite that one call to the scaling
+ *    form, so the line being edited stops overwriting track values (nothing
+ *    else in the document changes);
+ *  - absent → insert a fresh `all(x => x.mul(postgain(value)))` line (decision 4
+ *    = write the literal, incl. a factor of 1 at unity, matching `gainEdit`);
+ *  - foreign → null (a signal/empty gain — the fader disables).
  */
 declare function masterGainEdit(doc: string, value: number): StripEdit | null;
 /**
@@ -12419,7 +12424,7 @@ declare function masterGainEdit(doc: string, value: number): StripEdit | null;
  *  - present scalar → replace the literal in the existing `all()` pan call;
  *  - foreign        → null (a signal/pattern pan — the control is disabled);
  *  - absent         → append `.pan(value)` to the gain-bearing `all()` line if one
- *                     exists (channel-parity output `all(x => x.postgain(1).pan(v))`),
+ *                     exists (channel-parity output `all(x => x.mul(postgain(1)).pan(v))`),
  *                     else materialize its own `all(x => x.pan(value))` line.
  *
  * Appending to the gain line keeps the common case (fader dragged, then pan) on

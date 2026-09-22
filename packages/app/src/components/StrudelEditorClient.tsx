@@ -802,7 +802,7 @@ export default function StrudelEditorClient({
   useEffect(() => { seedMissingPresetFiles(); }, []);
 
   // #794 — one-time purge of the retired per-file master-gain store. The master
-  // trim now lives in the document (`all(x => x.postgain())`); any old
+  // trim now lives in the document (`all(x => x.mul(postgain()))`); any old
   // `stave:mixer.master:*` value is dead and must not linger as a second source.
   useEffect(() => { purgeLegacyMasterGain(); }, []);
 

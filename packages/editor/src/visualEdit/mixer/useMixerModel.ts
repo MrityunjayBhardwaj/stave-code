@@ -67,8 +67,9 @@ export interface MixerModel {
     mutate: (fresh: ChunkInfo, wb: Writeback, doc: string) => void,
   ) => void
   /**
-   * The master strip's gain, projected from the document's `all(x => x.postgain())`
-   * line, or a legacy `all(x => x.gain())` one (#1711); unity when absent — the
+   * The master strip's gain, projected from the document's
+   * `all(x => x.mul(postgain()))` line, or a legacy `all(x => x.gain())` /
+   * `.postgain()` one (#1711); unity when absent — the
    * untouched master reads the default from the ABSENCE of a line, #792.
    * Re-derived on every content change, so the fader reads back exactly what it
    * wrote — the master analog of a strip's gain.

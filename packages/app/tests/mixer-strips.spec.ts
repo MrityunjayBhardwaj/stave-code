@@ -1114,6 +1114,24 @@ test.describe('Mixer master strip — expand drawer (#800)', () => {
     expect(await strudelValue(page)).toBe('d1: s("bd*4")\nall(x => x.gain(0.8))')
   })
 
+  test('the fader\'s mul(postgain()) stays off the insert drawer — only real effects show (#1711)', async ({ page }) => {
+    // The fader owns its own call; the drawer lists inserts. `mul(postgain(N))` is
+    // the fader's line, not an effect, so it must not appear as a knob or row.
+    await boot(page)
+    await setStrudelCode(page, 'd1: s("bd*4")\nall(x => x.mul(postgain(0.8)).room(0.3))')
+    const drawer = await openMixer(page)
+    await drawer.locator('[data-mixer-master-expand]').click()
+    await enlargeDrawer(page)
+    const d = masterDrawer(drawer)
+    await expect(d.locator('[data-knob="room"]')).toHaveCount(1)
+    const knobs = await d.locator('[data-knob]').evaluateAll((els) => els.map((e) => e.getAttribute('data-knob')))
+    const text = (await d.innerText()).replace(/\s+/g, ' ')
+    console.log(`[#1711 drawer] knobs=${JSON.stringify(knobs)} text="${text.slice(0, 200)}"`)
+    expect(knobs).toEqual(['room'])
+    expect(text).not.toMatch(/\bmul\b|postgain/)
+    await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('0.8')
+  })
+
   test('collapse hides the master drawer', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, 'd1: s("bd*4")\nall(x => x.gain(0.8).room(0.3))')
@@ -1140,7 +1158,7 @@ test.describe('Mixer master strip code counterpart (#792)', () => {
     await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('1')
   })
 
-  test('dragging the master fader writes all(x=>x.postgain(N)); one undo reverts (UI→code)', async ({ page }) => {
+  test('dragging the master fader writes all(x=>x.mul(postgain(N))); one undo reverts (UI→code)', async ({ page }) => {
     await boot(page)
     const original = '$: s("bd*4")'
     await setStrudelCode(page, original)
@@ -1151,9 +1169,9 @@ test.describe('Mixer master strip code counterpart (#792)', () => {
     const after = await strudelValue(page)
     // the track line is byte-identical; a new all() master line is appended
     expect(after.split('\n')[0]).toBe(original)
-    // postgain, never gain: a master `.gain()` would overwrite every track's own
-    // gain instead of scaling the mix (#1711)
-    const m = after.match(/all\(x => x\.postgain\((\d*\.?\d+)\)\)/)
+    // mul(postgain()), never a plain control: a master `.gain()` or `.postgain()`
+    // would overwrite every track's own value instead of scaling the mix (#1711)
+    const m = after.match(/all\(x => x\.mul\(postgain\((\d*\.?\d+)\)\)\)/)
     expect(m, `unexpected doc: ${after}`).not.toBeNull()
     expect(Number(m![1])).toBeGreaterThan(0)
 
@@ -1162,9 +1180,9 @@ test.describe('Mixer master strip code counterpart (#792)', () => {
     expect(await strudelValue(page)).toBe(original)
   })
 
-  test('dragging the master fader patches an existing all() postgain literal in place', async ({ page }) => {
+  test('dragging the master fader patches an existing all() mul(postgain()) literal in place', async ({ page }) => {
     await boot(page)
-    await setStrudelCode(page, '$: s("bd*4")\nall(x => x.postgain(0.9))')
+    await setStrudelCode(page, '$: s("bd*4")\nall(x => x.mul(postgain(0.9)))')
     const drawer = await openMixer(page)
     await enlargeDrawer(page)
     await expect(drawer.locator('[data-mixer-master-gain]')).toHaveText('0.9')
@@ -1172,15 +1190,15 @@ test.describe('Mixer master strip code counterpart (#792)', () => {
     const after = await strudelValue(page)
     // still exactly one all() line; the literal moved below 0.9
     expect((after.match(/all\(x => x\./g) ?? []).length).toBe(1)
-    const m = after.match(/all\(x => x\.postgain\((\d*\.?\d+)\)\)/)
+    const m = after.match(/all\(x => x\.mul\(postgain\((\d*\.?\d+)\)\)\)/)
     expect(m, `unexpected doc: ${after}`).not.toBeNull()
     expect(Number(m![1])).toBeLessThan(0.9)
   })
 
-  test('on a legacy all() gain line the fader rewrites that call to postgain (#1711)', async ({ page }) => {
+  test('on a legacy all() gain line the fader rewrites that call to mul(postgain()) (#1711)', async ({ page }) => {
     // Documents written before #1711 hold `all(x => x.gain(N))`, which overwrites
     // every track's gain. The fader still READS it; moving the fader turns that
-    // one call into postgain and leaves the track lines alone.
+    // one call into the scaling form and leaves the track lines alone.
     await boot(page)
     await setStrudelCode(page, '$: s("bd*4").gain(0.3)\nall(x => x.gain(0.9))')
     const drawer = await openMixer(page)
@@ -1190,7 +1208,7 @@ test.describe('Mixer master strip code counterpart (#792)', () => {
     const after = await strudelValue(page)
     expect(after.split('\n')[0]).toBe('$: s("bd*4").gain(0.3)')
     expect(after).not.toMatch(/all\(x => x\.gain\(/)
-    const m = after.match(/all\(x => x\.postgain\((\d*\.?\d+)\)\)/)
+    const m = after.match(/all\(x => x\.mul\(postgain\((\d*\.?\d+)\)\)\)/)
     expect(m, `unexpected doc: ${after}`).not.toBeNull()
     expect(Number(m![1])).toBeLessThan(0.9)
   })

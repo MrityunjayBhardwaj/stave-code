@@ -6,7 +6,7 @@
  * the master strip's two round-tripped controls project to `all()` chains,
  * structurally identical to a channel line but scoped to the whole mix:
  *
- *   master fader   → all(x => x.postgain(0.85))
+ *   master fader   → all(x => x.mul(postgain(0.85)))
  *   master pan     → all(x => x.pan(0.3))   (rides the gain line when present)
  *   master mute    → all(x => silence)      (a dedicated sentinel line)
  *   global backdrop→ all(x => x.viz("name", { backdrop: true }))
@@ -21,20 +21,26 @@
  *
  * Robust to a hand-COMBINED chain: `masterGainEdit`/`masterVizEdit` bind to
  * whichever `all()` line already carries the relevant call, so a user who wrote
- * `all(x => x.postgain(0.8).viz("a",{backdrop:true}))` still gets surgical edits;
+ * `all(x => x.mul(postgain(0.8)).viz("a",{backdrop:true}))` still gets surgical edits;
  * only a fresh materialization uses the split convention.
  *
- * WHY `postgain` AND NOT `gain` (#1711). A Strudel control method SETS its value
- * on the hap — `.gain(a).gain(b)` plays at `b` — so a master written as
- * `all(x => x.gain(N))` replaced every track's own gain with N: lowering the
- * master made the quiet tracks LOUDER. `postgain` is a separate gain stage at the
- * end of every sound's chain (superdough `new GainNode(ac, { gain: postgain })`,
- * after the `gain` stage), so a master written there multiplies what each track
- * plays and keeps the balance. A legacy `all(x => x.gain(N))` is still READ, so
- * the fader shows what the document says, and moving the fader rewrites that one
- * call to `.postgain(…)`; a document nobody touches is never rewritten.
+ * WHY `mul(postgain(N))` AND NOT A PLAIN CONTROL (#1711). A Strudel control
+ * method SETS its value on the hap — `.gain(a).gain(b)` plays at `b` — so a
+ * master written as `all(x => x.gain(N))` replaced every track's own gain with N:
+ * lowering the master made the quiet tracks LOUDER. Moving it to `postgain` (the
+ * last gain stage, superdough `new GainNode(ac, { gain: postgain })`) is not
+ * enough on its own: 55 of 620 real documents set `.postgain` on their tracks,
+ * and a master `.postgain(N)` would overwrite those the same way. `mul` does
+ * arithmetic KEY-WISE on control values (`@strudel/core` `_composeOp` →
+ * `unionWithObj`): a key both sides have is multiplied, a key only the master
+ * has is copied in. So a track's own postgain p plays at p·N, and a track with
+ * none plays at N — which is 1·N, its default — every track scaled by the same
+ * factor. Legacy `all(x => x.gain(N))` / `all(x => x.postgain(N))` lines are
+ * still READ, so the fader shows what the document says, and moving the fader
+ * rewrites that one call to `.mul(postgain(…))`; a document nobody touches is
+ * never rewritten.
  */
-import { parseTopLevel, collectChain, type ChainArg, type ChainCall, type ChunkInfo } from '../chunkDetect'
+import { parseTopLevel, collectChain, toArg, type ChainArg, type ChainCall, type ChunkInfo } from '../chunkDetect'
 import { formatNumber } from '../writeback'
 import type { StripEdit } from './writeStrip'
 
@@ -85,44 +91,109 @@ function matchAllArrow(node: any): { body: any } | null {
 
 /** Every editable master `all(x => …)` statement, in source order. Pure. */
 export function detectMasterAll(doc: string): MasterAll[] {
+  return detectMasterAllWithBodies(doc).map((l) => l.m)
+}
+
+/** `detectMasterAll`, keeping each arrow body's AST node for reads that need
+ *  more than the flat chain (the literal nested in `.mul(postgain(N))`). */
+function detectMasterAllWithBodies(doc: string): { m: MasterAll; body: any }[] {
   const statements = parseTopLevel(doc)
   if (!statements) return []
-  const out: MasterAll[] = []
+  const out: { m: MasterAll; body: any }[] = []
   for (const node of statements) {
     const arrow = matchAllArrow(node)
     if (!arrow) continue
     const headOut = { ref: null as any }
     const chain = collectChain(doc, arrow.body, headOut)
     out.push({
-      statementRange: [node.start, node.end],
-      statementText: doc.slice(node.start, node.end),
-      arrowBodyRange: [arrow.body.start, arrow.body.end],
-      chain,
+      m: {
+        statementRange: [node.start, node.end],
+        statementText: doc.slice(node.start, node.end),
+        arrowBodyRange: [arrow.body.start, arrow.body.end],
+        chain,
+      },
+      body: arrow.body,
     })
   }
   return out
 }
 
-/** The control the master fader writes — see the header for why it is not `gain`. */
+/** The control the master fader scales — see the header for why, and why by `mul`. */
 const MASTER_GAIN_CONTROL = 'postgain'
 
-function findGainCall(m: MasterAll): ChainCall | undefined {
-  return m.chain.find((c) => c.name === MASTER_GAIN_CONTROL) ?? m.chain.find((c) => c.name === 'gain')
+/** Controls a pre-#1711 master line SET directly. Still read, and rewritten to
+ *  the scaling form when the fader moves. */
+const LEGACY_MASTER_CONTROLS = ['gain', MASTER_GAIN_CONTROL] as const
+
+/**
+ * Where the master gain lives in one `all()` line.
+ *  - `scale`: `.mul(postgain(N))` — `call` is the `.mul(...)` call, `arg` the N
+ *    inside it (its own range, so the fader patches just the literal);
+ *  - `legacy`: `.gain(N)` / `.postgain(N)` — `arg` is N, and a fader move
+ *    replaces the whole `call` with the scaling form.
+ */
+interface MasterGainSite {
+  kind: 'scale' | 'legacy'
+  call: ChainCall
+  arg: ChainArg | undefined
 }
 
-/** The call that carries the master gain: a `postgain` on any `all()` line
- *  first, else a legacy `gain` (what documents written before #1711 hold). */
-function findMasterGainCall(doc: string): ChainCall | undefined {
-  const alls = detectMasterAll(doc)
-  for (const m of alls) {
-    const c = m.chain.find((k) => k.name === MASTER_GAIN_CONTROL)
-    if (c) return c
-  }
-  for (const m of alls) {
-    const c = m.chain.find((k) => k.name === 'gain')
-    if (c) return c
+/** `.mul(postgain(N))` in an arrow body, read off the AST so the nested literal
+ *  gets a real range. Only a `mul` whose ONE argument is a `postgain(…)` call with
+ *  one argument counts — any other `mul` is the user's own arithmetic. */
+function findScaleSite(doc: string, body: any, chain: ChainCall[]): MasterGainSite | undefined {
+  let node = body
+  while (node && node.type === 'CallExpression' && node.callee.type === 'MemberExpression') {
+    const callee = node.callee
+    const inner = node.arguments[0]
+    if (
+      !callee.computed &&
+      callee.property.type === 'Identifier' &&
+      callee.property.name === 'mul' &&
+      node.arguments.length === 1 &&
+      inner.type === 'CallExpression' &&
+      inner.callee.type === 'Identifier' &&
+      inner.callee.name === MASTER_GAIN_CONTROL &&
+      inner.arguments.length === 1
+    ) {
+      const dot = doc.lastIndexOf('.', callee.property.start)
+      const call = chain.find((c) => c.name === 'mul' && c.range[0] === dot)
+      if (call) return { kind: 'scale', call, arg: toArg(doc, inner.arguments[0]) }
+    }
+    node = callee.object
   }
   return undefined
+}
+
+/** The master gain site on ONE line: the scaling form first, else a legacy set. */
+function gainSiteOf(doc: string, m: MasterAll, body: any): MasterGainSite | undefined {
+  const scale = findScaleSite(doc, body, m.chain)
+  if (scale) return scale
+  for (const name of LEGACY_MASTER_CONTROLS) {
+    const call = m.chain.find((c) => c.name === name)
+    if (call) return { kind: 'legacy', call, arg: call.args[0] }
+  }
+  return undefined
+}
+
+/** The master gain site for the document: a scaling line anywhere wins over a
+ *  legacy one, so a half-migrated document reads the line the fader now owns. */
+function findMasterGainSite(doc: string): MasterGainSite | undefined {
+  const lines = detectMasterAllWithBodies(doc)
+  for (const { m, body } of lines) {
+    const scale = findScaleSite(doc, body, m.chain)
+    if (scale) return scale
+  }
+  for (const { m, body } of lines) {
+    const site = gainSiteOf(doc, m, body)
+    if (site) return site
+  }
+  return undefined
+}
+
+/** Whether a line carries the master gain in any form — the line pan rides. */
+function hasGainSite(doc: string, m: MasterAll, body: any): boolean {
+  return gainSiteOf(doc, m, body) !== undefined
 }
 
 function findPanCall(m: MasterAll): ChainCall | undefined {
@@ -170,10 +241,10 @@ export interface MasterGainState {
 }
 
 export function readMasterGain(doc: string): MasterGainState {
-  const g = findMasterGainCall(doc)
-  if (!g) return { value: MASTER_UNITY_GAIN, foreign: false }
-  const arg = g.args[0]
-  if (!arg) return { value: MASTER_UNITY_GAIN, foreign: true } // `.postgain()` empty — can't drive
+  const site = findMasterGainSite(doc)
+  if (!site) return { value: MASTER_UNITY_GAIN, foreign: false }
+  const arg = site.arg
+  if (!arg) return { value: MASTER_UNITY_GAIN, foreign: true } // empty call — can't drive
   if (arg.numeric === null) return { value: MASTER_UNITY_GAIN, foreign: true } // signal gain
   return { value: arg.numeric, foreign: false }
 }
@@ -268,26 +339,30 @@ export function readMasterViz(doc: string): { name: string } | null {
   return null
 }
 
+/** The scaling call the fader writes, e.g. `.mul(postgain(0.8))`. */
+function scaleCall(value: number): string {
+  return `.mul(${MASTER_GAIN_CONTROL}(${formatNumber(value)}))`
+}
+
 /**
- * The edit the master fader makes for `value` (a linear gain that SCALES the
+ * The edit the master fader makes for `value` (a linear factor that SCALES the
  * mix — #1711; "REPLACE" in #792 meant replacing the old synthetic output gain):
- *  - present `postgain` scalar → replace its literal;
- *  - legacy `gain` scalar      → rewrite that one call to `.postgain(value)`, so
- *                                the line being edited stops overwriting track
- *                                gains (nothing else in the document changes);
- *  - absent                    → insert a fresh `all(x => x.postgain(value))`
- *                                line (decision 4 = write the literal, incl.
- *                                `.postgain(1)` at unity, matching `gainEdit`);
- *  - foreign                   → null (a signal/empty gain — the fader disables).
+ *  - present `.mul(postgain(N))` → replace N;
+ *  - legacy `.gain(N)` / `.postgain(N)` → rewrite that one call to the scaling
+ *    form, so the line being edited stops overwriting track values (nothing
+ *    else in the document changes);
+ *  - absent → insert a fresh `all(x => x.mul(postgain(value)))` line (decision 4
+ *    = write the literal, incl. a factor of 1 at unity, matching `gainEdit`);
+ *  - foreign → null (a signal/empty gain — the fader disables).
  */
 export function masterGainEdit(doc: string, value: number): StripEdit | null {
-  const g = findMasterGainCall(doc)
-  if (!g) return insertStatement(doc, `all(x => x.${MASTER_GAIN_CONTROL}(${formatNumber(value)}))`)
-  const arg = g.args[0]
+  const site = findMasterGainSite(doc)
+  if (!site) return insertStatement(doc, `all(x => x${scaleCall(value)})`)
+  const arg = site.arg
   if (!arg || arg.numeric === null) return null // foreign/empty — disabled
-  if (g.name === MASTER_GAIN_CONTROL) return { range: arg.range, text: formatNumber(value) }
+  if (site.kind === 'scale') return { range: arg.range, text: formatNumber(value) }
   // A member call's range is [dot, callEnd], so this swaps the whole `.gain(N)`.
-  return { range: g.range, text: `.${MASTER_GAIN_CONTROL}(${formatNumber(value)})` }
+  return { range: site.call.range, text: scaleCall(value) }
 }
 
 /**
@@ -296,7 +371,7 @@ export function masterGainEdit(doc: string, value: number): StripEdit | null {
  *  - present scalar → replace the literal in the existing `all()` pan call;
  *  - foreign        → null (a signal/pattern pan — the control is disabled);
  *  - absent         → append `.pan(value)` to the gain-bearing `all()` line if one
- *                     exists (channel-parity output `all(x => x.postgain(1).pan(v))`),
+ *                     exists (channel-parity output `all(x => x.mul(postgain(1)).pan(v))`),
  *                     else materialize its own `all(x => x.pan(value))` line.
  *
  * Appending to the gain line keeps the common case (fader dragged, then pan) on
@@ -313,8 +388,8 @@ export function masterPanEdit(doc: string, value: number): StripEdit | null {
     return { range: arg.range, text: formatNumber(value) }
   }
   // No pan call yet: ride the audio (gain) line so gain+pan share one chain.
-  for (const m of detectMasterAll(doc)) {
-    if (findGainCall(m)) {
+  for (const { m, body } of detectMasterAllWithBodies(doc)) {
+    if (hasGainSite(doc, m, body)) {
       return { range: [m.arrowBodyRange[1], m.arrowBodyRange[1]], text: `.pan(${formatNumber(value)})` }
     }
   }
