@@ -105,6 +105,7 @@ import type { FixedParameter } from '@stave/editor'
 import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepTravel, stepY, travelledPx, withFineDrag, withStepValue, type StepBand, type StepHit, type StepTravel } from './musicalTimeline/steppedLane'
 import { stepCountOptions, type StepCountGroup } from './musicalTimeline/stepCountMenu'
 import { songLoopCycles } from './songLength'
+import { publishDrawnSongFrame } from '../state/drawnSongFrame'
 import type { SceneSignal, SceneStepped } from './musicalTimeline/timelineScene'
 import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
 import {
@@ -642,6 +643,14 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const looping = analysis == null || analysis.displaySpan.kind !== 'capped'
   const loopingRef = useRef(looping)
   loopingRef.current = looping
+  // #1725 — hand the frame the playhead wraps in to the transport display, so
+  // it shows the cycle the playhead is on rather than cycles since Play. The
+  // SAME `loopWindow` and `looping` the playhead's `wrapSongPosition` reads
+  // below; withdrawn on unmount, when nothing is drawn to agree with.
+  useEffect(() => {
+    publishDrawnSongFrame({ window: loopWindow, looping })
+    return () => publishDrawnSongFrame(null)
+  }, [loopWindow, looping])
 
   // ── Grid width via ResizeObserver (mirrors MusicalTimeline DB-04) ────────
   const areaRef = useRef<HTMLDivElement>(null)

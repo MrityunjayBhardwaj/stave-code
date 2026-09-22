@@ -6,12 +6,14 @@ import { useRulerUnits, toggleRulerUnits } from "../state/rulerUnits";
 import { useDisplayMeter } from "../state/displayMeter";
 import { barBeatTick, cpsToBpm, type DisplayMeter } from "../lib/meter";
 import { healthClass, healthBars, audioHealthReading, type AudioHealthSample } from "./transportLcdHealth";
+import { positionAsDrawn } from "./musicalTimeline/songAxis";
+import { readDrawnSongFrame } from "../state/drawnSongFrame";
 
 /**
  * TransportLCD (#857) — a backlit hardware-style readout for the menubar's
  * centered slot: transport state, cycle position, tempo, and frame health.
  *
- * Data comes from the accessors the timeline already reads (`getCycle`/
+ * Data comes from the accessors the timeline already reads (`getSongPosition`/
  * `getCps` on the active runtime) plus `isPlaying`. The fast-changing numbers
  * (position, tempo, FPS) are written straight to DOM refs on a rAF loop so the
  * menubar never re-renders per frame; only the slow state (isPlaying, mode)
@@ -28,6 +30,12 @@ import { healthClass, healthBars, audioHealthReading, type AudioHealthSample } f
  *  - GPU/compositor strain while the profiler is OFF isn't main-thread-measurable
  *    here (see the perf catalogue) and stays out of scope — not silently green.
  *
+ * The position is the SONG position, the clock the timeline's playhead reads,
+ * wrapped over the span the timeline draws, with a pass number beside it
+ * (#1725). It used to read the scheduler's clock, which counts cycles since
+ * Play and does not move on a seek: a click on the ruler moved the playhead
+ * and the audio, and this number carried on from where it was.
+ *
  * Display mode reuses the app-wide Ruler-units preference — CYCLES shows
  * `CYC 042.3 · 0.50 CPS`, BARS shows `BAR 011.3.1 · 120 BPM` — and clicking
  * the screen flips it, keeping the LCD and the timeline ruler in agreement.
@@ -38,7 +46,11 @@ import { healthClass, healthBars, audioHealthReading, type AudioHealthSample } f
 
 interface TransportLCDProps {
   readonly isPlaying: boolean;
-  readonly getCycle: () => number | null;
+  /**
+   * The song position (#1725): the scheduler's clock less the seek offset,
+   * folded into a loop range. `null` when stopped, so the readout dashes.
+   */
+  readonly getSongPosition: () => number | null;
   readonly getCps: () => number | null;
   /**
    * The active runtime's running counts of late notes and audio underruns, or
@@ -134,7 +146,7 @@ function fmtBar(c: number, meter: DisplayMeter): string {
 
 export function TransportLCD({
   isPlaying,
-  getCycle,
+  getSongPosition,
   getCps,
   getAudioHealth,
   evalError = null,
@@ -146,14 +158,14 @@ export function TransportLCD({
 
   // Keep the fast-path accessors and the current mode in refs so the rAF loop
   // (mounted once) always reads the latest without restarting per render.
-  const getCycleRef = useRef(getCycle);
+  const getSongPositionRef = useRef(getSongPosition);
   const getCpsRef = useRef(getCps);
   const cycleModeRef = useRef(cycleMode);
   // The meter rides a ref for the same reason the mode does: the rAF loop is
   // mounted once and must read the CURRENT value, not the one captured when it
   // started, or the readout keeps counting in whatever meter was set at mount.
   const meterRef = useRef(meter);
-  getCycleRef.current = getCycle;
+  getSongPositionRef.current = getSongPosition;
   getCpsRef.current = getCps;
   const getAudioHealthRef = useRef(getAudioHealth);
   getAudioHealthRef.current = getAudioHealth;
@@ -162,6 +174,7 @@ export function TransportLCD({
   meterRef.current = meter;
 
   const posRef = useRef<HTMLSpanElement>(null);
+  const passRef = useRef<HTMLSpanElement>(null);
   const tempoRef = useRef<HTMLSpanElement>(null);
   const fpsWrapRef = useRef<HTMLDivElement>(null);
   const fpsNumRef = useRef<HTMLSpanElement>(null);
@@ -208,12 +221,20 @@ export function TransportLCD({
       if (posAcc >= 0.08) {
         posAcc = 0;
         const cps = getCpsRef.current();
-        const cyc = getCycleRef.current();
+        // #1725 — the same frame and the same wrap the playhead is drawn with.
+        const pos = positionAsDrawn(getSongPositionRef.current(), readDrawnSongFrame());
         const inCycle = cycleModeRef.current;
 
         if (posRef.current) {
           posRef.current.textContent =
-            cyc === null ? `${DASH} ${DASH}` : inCycle ? fmtCycle(cyc) : fmtBar(cyc, meterRef.current);
+            pos === null
+              ? `${DASH} ${DASH}`
+              : inCycle
+                ? fmtCycle(pos.cycle)
+                : fmtBar(pos.cycle, meterRef.current);
+        }
+        if (passRef.current) {
+          passRef.current.textContent = pos?.pass == null ? DASH : String(pos.pass);
         }
         if (tempoRef.current) {
           tempoRef.current.textContent =
@@ -345,6 +366,17 @@ export function TransportLCD({
             {cycleMode ? "000.0" : "000.0.0"}
           </span>
         </span>
+      </div>
+      {/* #1725 — which time through the song. A dash when there is no drawn
+          loop to count (stopped, no timeline open, or a song with no end). */}
+      <div
+        className="stave-lcd-seg"
+        title="Which time through the song this is: the position beside it wraps to the start with the playhead"
+      >
+        <span className="stave-lcd-tempo" ref={passRef} data-stave-lcd-pass>
+          {DASH}
+        </span>
+        <span className="stave-lcd-label">PASS</span>
       </div>
       <div className="stave-lcd-seg">
         <span className="stave-lcd-tempo" ref={tempoRef} data-stave-lcd-tempo>

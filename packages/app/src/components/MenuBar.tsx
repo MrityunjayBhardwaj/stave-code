@@ -42,7 +42,8 @@ interface MenuBarProps {
   canRedo: boolean;
   /** Transport LCD data (#857). Fed from the active runtime in StaveApp. */
   isPlaying: boolean;
-  getCycle: () => number | null;
+  /** The song position the playhead reads (#1725), not cycles since Play. */
+  getSongPosition: () => number | null;
   getCps: () => number | null;
   /** The active runtime's counts of late notes and audio underruns (#1348). */
   getAudioHealth: () => { lateNotes: number; underruns: number | null } | null;
@@ -76,7 +77,7 @@ export function MenuBar({
   canUndo,
   canRedo,
   isPlaying,
-  getCycle,
+  getSongPosition,
   getCps,
   getAudioHealth,
   evalError,
@@ -168,7 +169,7 @@ export function MenuBar({
         <div style={styles.centerSlot}>
           <TransportLCD
             isPlaying={isPlaying}
-            getCycle={getCycle}
+            getSongPosition={getSongPosition}
             getCps={getCps}
             getAudioHealth={getAudioHealth}
             evalError={evalError}

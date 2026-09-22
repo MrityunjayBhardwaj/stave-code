@@ -4,6 +4,7 @@ import {
   xToSongCycle,
   trimExtent,
   wrapSongPosition,
+  positionAsDrawn,
   clampZoom,
   clampRestoreZoom,
   contentWidthFor,
@@ -438,5 +439,47 @@ describe('trimExtent', () => {
     const { endCycle, spanCycles } = trimExtent({ ...base, originCycle: 0, contentX: 500, minSpanCycles: 1 })
     expect(endCycle).toBe(50)
     expect(spanCycles).toBe(52)
+  })
+})
+
+// #1725 — the transport display's number. It must be the cycle the playhead is
+// drawn at, so it is checked AGAINST `wrapSongPosition` rather than against
+// hand-written expectations alone: the two may only differ by the pass count.
+describe('positionAsDrawn', () => {
+  const loop8 = { window: { originCycle: 0, spanCycles: 8 }, looping: true }
+
+  it('is the playhead\'s own wrap, at every position through three passes', () => {
+    for (let p = 0; p < 24; p += 0.37) {
+      expect(positionAsDrawn(p, loop8)!.cycle).toBe(wrapSongPosition(p, loop8.window, true))
+    }
+  })
+
+  it('counts the times through the song from 1', () => {
+    expect(positionAsDrawn(0, loop8)).toEqual({ cycle: 0, pass: 1 })
+    expect(positionAsDrawn(7.99, loop8)!.pass).toBe(1)
+    expect(positionAsDrawn(8, loop8)).toEqual({ cycle: 0, pass: 2 })
+    expect(positionAsDrawn(19.5, loop8)).toEqual({ cycle: 3.5, pass: 3 })
+  })
+
+  it('does not wrap, and claims no pass, when nothing drawn is a loop', () => {
+    // No timeline open: the song position itself.
+    expect(positionAsDrawn(19.5, null)).toEqual({ cycle: 19.5, pass: null })
+    // A capped analysis (#1105): the span is where detection stopped, not a
+    // repeat, so bar 300 is bar 300.
+    const capped = { window: { originCycle: 256, spanCycles: 256 }, looping: false }
+    expect(positionAsDrawn(300, capped)).toEqual({ cycle: 300, pass: null })
+  })
+
+  it('puts a transport that has not started where the playhead does, and nothing as nothing', () => {
+    // Looping, the playhead wraps a pre-start reading to the tail; the display
+    // says the same, and the pass count does not go below 1.
+    const r = positionAsDrawn(-0.3, loop8)!
+    expect(r.cycle).toBeCloseTo(7.7)
+    expect(r.cycle).toBe(wrapSongPosition(-0.3, loop8.window, true))
+    expect(r.pass).toBe(1)
+    // Unwrapped, it clamps to 0 (#1105's choice).
+    expect(positionAsDrawn(-0.3, null)).toEqual({ cycle: 0, pass: null })
+    expect(positionAsDrawn(null, loop8)).toBeNull()
+    expect(positionAsDrawn(NaN, loop8)).toBeNull()
   })
 })
