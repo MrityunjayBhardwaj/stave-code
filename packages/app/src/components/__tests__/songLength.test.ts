@@ -22,6 +22,7 @@ import { parseStrudel } from '../../../../editor/src/ir/parseStrudel'
 import type { IREvent } from '../../../../editor/src/ir/IREvent'
 import {
   measureSongLength,
+  songEnd,
   songLoopCycles,
   cyclesToSeconds,
   bounceOffers,
@@ -248,6 +249,34 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
       kind: 'unknown',
       why: 'no-period',
     })
+  })
+})
+
+describe('songEnd — where a document ends, for every consumer of "the end" (#1723)', () => {
+  const deps = { songExtent, arrangedRepeatCycles }
+
+  it('an arrangement under a stepped gain that outlasts it ends where the song comes back round', () => {
+    const ir = parseStrudel('const a = s("bd*2").gain("<.2 .9>")\narrange([2, a], [1, s("hh*2")], [1, a])')
+    // The structure alone is four bars — the length play-once used to stop at.
+    expect(songExtent(ir)).toEqual({ kind: 'arranged', cycles: 4 })
+    expect(songEnd(ir, deps)).toEqual({ kind: 'arranged', cycles: 8 })
+  })
+
+  it('an arrangement with nothing outlasting it keeps its own length — the control', () => {
+    const ir = parseStrudel('const a = s("bd*2").gain(.5)\narrange([2, a], [1, s("hh*2")], [1, a])')
+    expect(songEnd(ir, deps)).toEqual({ kind: 'arranged', cycles: 4 })
+  })
+
+  it('a document with no arrangement passes through untouched', () => {
+    const ir = parseStrudel('s("bd*2").gain("<.2 .9>")')
+    expect(songEnd(ir, deps)).toEqual(songExtent(ir))
+    expect(songEnd(ir, deps).kind).not.toBe('arranged')
+  })
+
+  it('the bounce offers exactly what songEnd says', async () => {
+    const ir = parseStrudel('const a = s("bd*2").gain("<.2 .9>")\narrange([2, a], [1, s("hh*2")], [1, a])')
+    const length = await measureSongLength({ structural: ir, analysis: null }, depsWith([]))
+    expect(length).toEqual(songEnd(ir, deps))
   })
 })
 

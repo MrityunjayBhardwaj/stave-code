@@ -147,6 +147,32 @@ export interface SongLengthDeps {
 }
 
 /**
+ * Where a document ENDS, when it has an end: its `songExtent`, with an
+ * arrangement's length folded with every parameter playing over it (#1580).
+ *
+ * ⚠ ONE READING FOR EVERY CONSUMER OF "THE END" (#1723). An arrangement is a
+ * definite end of the STRUCTURE, but a stepped gain that doesn't divide it keeps
+ * moving after the last bar: `arrange([2, a], [1, hh], [1, a])` under
+ * `a.gain("<.2 .9>")` is four bars of structure and first comes back round at
+ * eight, and bar 7 plays `.9`. The bounce rendered eight and the timeline drew
+ * eight while play-once, reading the bare `songExtent`, stopped at four, so the
+ * user never heard half of what they could see and edit. The bounce and the
+ * transport now both read this; the timeline reaches the same number through
+ * `analyzeSong`'s `declaredLength`, which has to stay under its collection cap.
+ *
+ * Every other kind passes through unchanged, and where no fold can be vouched
+ * for, `arrangedRepeatCycles` answers with the arrangement's own length.
+ */
+export function songEnd(
+  ir: PatternIR | null,
+  deps: Pick<SongLengthDeps, 'songExtent' | 'arrangedRepeatCycles'>,
+): SongExtent {
+  const extent = deps.songExtent(ir)
+  if (extent.kind !== 'arranged' || !(extent.cycles > 0)) return extent
+  return { ...extent, cycles: deps.arrangedRepeatCycles(ir, extent.cycles) }
+}
+
+/**
  * Measure `ir`'s length.
  *
  * ⚠ THE COLLECTOR IS NOT OPTIONAL IN SPIRIT. `analyzeSong` with no `collectFn`
@@ -170,15 +196,16 @@ export async function measureSongLength(
   // and it does not depend on anything having been evaluated or heard — so this
   // branch can answer before a note has sounded, and it is asked of the one IR
   // that can actually contain an `Arrange` (see `SongIRs`).
-  const extent = deps.songExtent(irs.structural)
+  const extent = songEnd(irs.structural, deps)
   if (extent.kind === 'arranged' && extent.cycles > 0) {
     // #1580 — the arrangement is a definite end of the STRUCTURE. A parameter
     // whose period does not divide it keeps moving after the last bar, so the
     // song first repeats at the fold of the two: four bars under a three-step
     // gain repeat at twelve, and a bounce of four would loop `.2 .5 .9 .2`,
-    // which is not what the song does. Structural, like everything else in this
+    // which is not what the song does. `songEnd` folds it — the same reading
+    // play-once stops at (#1723). Structural, like everything else in this
     // branch — no evaluation, so it still answers before a note has sounded.
-    return { kind: 'arranged', cycles: deps.arrangedRepeatCycles(irs.structural, extent.cycles) }
+    return { kind: 'arranged', cycles: extent.cycles }
   }
 
   // `opaque` means an arrangement IS present but something unparsed sits above

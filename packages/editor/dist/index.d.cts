@@ -648,10 +648,11 @@ interface SongSection {
  *               bounce renders — `arrangedRepeatCycles`, the arrangement's
  *               `Σ weight` folded with any parameter that outlasts it (#1580), or
  *               the bare `Σ weight` where no fold can be vouched for — and the
- *               lanes span exactly it. It is NOT always where playback's `once`
- *               stops: that is the bare `Σ weight`, and the two differ exactly
- *               when a parameter outlasts the structure. Detection could not give
- *               it: it is bounded by `cap / 2` and takes the first period that
+ *               lanes span exactly it. It is also where playback's `once` stops
+ *               (#1723 — the app's `songEnd` reads the same fold), so what the
+ *               lanes show, the bounce renders and `once` plays are one length.
+ *               Detection could not give it: it is bounded by `cap / 2` and
+ *               takes the first period that
  *               fits, so it drew a 187-bar song at 256 bars and a 150-bar one
  *               opening on one repeated bar at ONE. Cyclic: the song genuinely
  *               comes back round at it. The measurements beside it

@@ -102,7 +102,7 @@ import {
 import { reportWriteRefusal } from "../lib/writeRefusal";
 import { effectiveLoopRange, subscribeLoopState } from "../state/loopRange";
 import { createSongCollector } from "./musicalTimeline/songCollector";
-import { measureSongLength, type BounceSizing } from "./songLength";
+import { measureSongLength, songEnd, type BounceSizing } from "./songLength";
 import {
   createEndOfSongWatcher,
   hasDefiniteEnd,
@@ -1260,8 +1260,13 @@ export default function StrudelEditorClient({
       // Cheap enough to do per eval (pure, on a source string) and NOT done in
       // the watcher's poll loop, which runs ~20x a second.
       const evalLanguage = getFile(fileId)?.language;
+      // #1723 — `songEnd`, not the bare `songExtent`: an arrangement under a
+      // parameter that outlasts it ends where the song comes back round, the
+      // length the bounce renders and the timeline draws.
       const nextExtent: SongExtent | null =
-        evalLanguage !== "sonicpi" ? songExtent(parseStrudel(evaluatedCode)) : null;
+        evalLanguage !== "sonicpi"
+          ? songEnd(parseStrudel(evaluatedCode), { songExtent, arrangedRepeatCycles })
+          : null;
 
       setRuntimeStates(prev => {
         const next = new Map(prev);

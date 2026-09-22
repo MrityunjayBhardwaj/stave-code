@@ -51,6 +51,22 @@ const outro = s("bd ~ ~ ~").bank("RolandTR909").gain(0.25)
 arrange([4, intro], [8, verse], [4, outro])
 `
 
+/**
+ * #1723 — an arrangement whose stepped gain does not divide it. The structure is
+ * `2 + 1 + 1 = 4` cycles, but `a` steps `<.2 .9>` by the absolute cycle, so bars
+ * 5-8 are not a copy of bars 1-4 (bar 7 plays `.9`) and the song first comes back
+ * round at 8 — the length the bounce renders and the timeline draws. Once must
+ * stop there too, or the user never hears half of what they can see and edit.
+ */
+const FOLD_SONG = `setcps(120/240)
+
+const a = s("bd*2").bank("RolandTR909").gain("<.2 .9>")
+
+arrange([2, a], [1, s("hh*2").bank("RolandTR909")], [1, a])
+`
+const FOLD_BARE_SECONDS = 4 * CYCLE_SECONDS // 8 — where once used to stop
+const FOLD_SECONDS = 8 * CYCLE_SECONDS // 16
+
 /** No arrangement anywhere — the control. Must never stop on its own. */
 const LOOP_DOC = `setcps(120/240)
 
@@ -206,6 +222,33 @@ test.describe('#1388/#1396 — playback that can end', () => {
       stoppedAtS!,
       `stopped at ${stoppedAtS}s, expected near ${SONG_SECONDS}s — profile: ${profile}`,
     ).toBeLessThan(SONG_SECONDS + 2 * CYCLE_SECONDS)
+  })
+
+  test('an arranged song whose automation outlasts it stops where the song comes back round, not at its bare length (#1723)', async ({ page }) => {
+    test.setTimeout(180_000)
+
+    await boot(page)
+    await setStrudelCode(page, FOLD_SONG)
+    await pressPlay(page)
+
+    const toggle = page.getByTestId('strudel-chrome-loop-toggle')
+    await expect(toggle, 'no end-behaviour toggle — the document was not recognised as arranged').toBeVisible()
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('data-loop', 'off')
+
+    const watchS = FOLD_SECONDS + 3 * CYCLE_SECONDS
+    const { stoppedAtS, profile } = await watchTransport(page, watchS, 'arranged+fold')
+
+    expect(stoppedAtS, `still playing after ${watchS}s — profile: ${profile}`).not.toBeNull()
+    // Past the bare length by more than a bar: stopping at 4 bars is the defect.
+    expect(
+      stoppedAtS!,
+      `stopped at ${stoppedAtS}s — the bare arrangement ends at ${FOLD_BARE_SECONDS}s, the song at ${FOLD_SECONDS}s — profile: ${profile}`,
+    ).toBeGreaterThan(FOLD_SECONDS - CYCLE_SECONDS)
+    expect(
+      stoppedAtS!,
+      `stopped at ${stoppedAtS}s, expected near ${FOLD_SECONDS}s — profile: ${profile}`,
+    ).toBeLessThan(FOLD_SECONDS + 2 * CYCLE_SECONDS)
   })
 
   test('a looping document is left alone — the control', async ({ page }) => {
