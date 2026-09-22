@@ -639,6 +639,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // ⚠ A `horizon` span (analysis ended early with no period) counts as looping
   // here. That is the pre-existing behaviour, preserved deliberately rather than
   // corrected in passing — it is a separate question from where the window sits.
+  //
+  // An `arranged` span (#1721) loops, and that is not a default but the fact:
+  // it is the length after which the song comes back round (the arrangement,
+  // folded with any parameter that outlasts it), and an arranged song loops by
+  // default (#1396). With nothing past it there is nothing to page to.
   const looping = analysis == null || analysis.displaySpan.kind !== 'capped'
   const loopingRef = useRef(looping)
   loopingRef.current = looping
@@ -2921,16 +2926,28 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     return { left, width: Math.max(1, right - left), top: box.top, height: box.height }
   }, [selected, scene, layout, displayCycles, contentWidth])
 
-  // The three readouts are the three span kinds — one branch each, so a new
-  // kind is a compile error here rather than a silently reused label.
-  const periodLabel =
-    analysis == null
-      ? '—'
-      : analysis.displaySpan.kind === 'loop'
-        ? `loop ${analysis.displaySpan.cycles}`
-        : analysis.displaySpan.kind === 'capped'
-          ? `${analysis.displaySpan.cycles}+ cycles`
-          : `${analysis.displaySpan.cycles} cycles`
+  // The readouts are the span kinds — one branch each, and the `never` below makes
+  // a new kind a compile error here rather than a silently reused label (the
+  // ternary this replaced claimed that and did not deliver it: #1721's kind fell
+  // through to `N cycles`, the label of a horizon).
+  const periodLabel = ((): string => {
+    if (analysis == null) return '—'
+    const span = analysis.displaySpan
+    switch (span.kind) {
+      case 'arranged':
+        return `arranged ${span.cycles} cycles`
+      case 'loop':
+        return `loop ${span.cycles}`
+      case 'capped':
+        return `${span.cycles}+ cycles`
+      case 'horizon':
+        return `${span.cycles} cycles`
+      default: {
+        const unreachable: never = span.kind
+        return unreachable
+      }
+    }
+  })()
 
   // The span is where the analysis STOPPED LOOKING, not the song's length, and
   // until now nothing said so: `periodLabel` above is written to a `display:none`

@@ -22,6 +22,7 @@ import { parseStrudel } from '../../../../editor/src/ir/parseStrudel'
 import type { IREvent } from '../../../../editor/src/ir/IREvent'
 import {
   measureSongLength,
+  songLoopCycles,
   cyclesToSeconds,
   bounceOffers,
   formatDuration,
@@ -247,6 +248,26 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
       kind: 'unknown',
       why: 'no-period',
     })
+  })
+})
+
+describe('songLoopCycles — one pass of the song, read the same for every span kind', () => {
+  const base = { horizonCycles: 8, lanes: [], sections: [], lanePeriods: [] } as const
+  it('a measured loop reads its repeat, else its period', () => {
+    expect(songLoopCycles({ ...base, periodCycles: 4, repeatCycles: 12, displaySpan: { kind: 'loop', cycles: 4 } })).toBe(12)
+    expect(songLoopCycles({ ...base, periodCycles: 4, repeatCycles: null, displaySpan: { kind: 'loop', cycles: 4 } })).toBe(4)
+  })
+  it('#1721 — an arranged span reads the MEASURED period, not its declared end', () => {
+    // A 4-bar arrangement under a curve that comes back round every 16 (#1611's case):
+    // the span is 4, the song repeats at 16, and the menus ask the second question.
+    expect(songLoopCycles({ ...base, periodCycles: 16, repeatCycles: null, displaySpan: { kind: 'arranged', cycles: 4 } })).toBe(16)
+    expect(songLoopCycles({ ...base, periodCycles: 4, repeatCycles: 12, displaySpan: { kind: 'arranged', cycles: 4 } })).toBe(12)
+    // Measured nothing (a 187-bar song): unknown, as it was when the span was capped.
+    expect(songLoopCycles({ ...base, periodCycles: null, repeatCycles: null, displaySpan: { kind: 'arranged', cycles: 187 } })).toBeNull()
+  })
+  it('a span where the analysis stopped is no length', () => {
+    expect(songLoopCycles({ ...base, periodCycles: null, repeatCycles: null, displaySpan: { kind: 'capped', cycles: 256 } })).toBeNull()
+    expect(songLoopCycles({ ...base, periodCycles: null, repeatCycles: null, displaySpan: { kind: 'horizon', cycles: 8 } })).toBeNull()
   })
 })
 

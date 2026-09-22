@@ -343,6 +343,25 @@ describe('FullSongTimeline', () => {
     expect(meta?.getAttribute('data-full-song-period')).toBe('loop 4')
   })
 
+  it('#1721 — an arranged song reads as its declared end, not a loop or a horizon', async () => {
+    // Measured period 1 beside a declared end of 6: the label is the end.
+    const arranged: SongAnalysis = {
+      ...analysisFixture,
+      periodCycles: 1,
+      repeatCycles: 1,
+      horizonCycles: 6,
+      displaySpan: { kind: 'arranged', cycles: 6 },
+      lanes: [{ laneKey: 'bd', onsetsByCycle: [1, 1, 1, 1, 1, 1] }],
+      sections: [{ startCycle: 0, endCycle: 6, laneKeys: ['bd'] }],
+    }
+    const { container } = renderFull({ analysis: arranged })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const meta = container.querySelector('[data-full-song-period]')
+    expect(meta?.getAttribute('data-full-song-period')).toBe('arranged 6 cycles')
+  })
+
   // ── Zoom + ruler controls (#412) ───────────────────────────────────────────
 
   it('renders zoom controls at 100% with Fit/zoom-out disabled', async () => {
