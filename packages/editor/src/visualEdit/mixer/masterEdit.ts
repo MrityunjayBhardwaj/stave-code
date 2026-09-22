@@ -7,7 +7,6 @@
  * structurally identical to a channel line but scoped to the whole mix:
  *
  *   master fader   → all(x => x.mul(postgain(0.85)))
- *   master pan     → all(x => x.pan(0.3))   (rides the gain line when present)
  *   master mute    → all(x => silence)      (a dedicated sentinel line)
  *   global backdrop→ all(x => x.viz("name", { backdrop: true }))
  *
@@ -18,6 +17,17 @@
  * tagged `Writeback` seam every channel control uses (`MixerStrips.tsx`), so the
  * write-back is unit-testable without Monaco. The read path (code → live
  * backdrop / master gain) already ships in the engine — this is the write path.
+ *
+ * ⚠ THERE IS NO MASTER PAN CONTROL (#1719). `all(x => x.pan(v))` SETS pan on
+ * every hap, so the control that wrote it threw away each track's own pan — 127
+ * of 620 real documents set `.pan` on their tracks. The master fader's `mul`
+ * trick does not carry over: pan is a position, not a level, and a key only the
+ * master has is copied in as-is, so a track with no pan would take the master's
+ * value rather than 0.5 plus it. Nor can a document reach the finished mix:
+ * superdough pans each voice on its own (`superdough.mjs`), before the orbit's
+ * reverb and delay, and the orbit's own output panner is fixed at centre. A
+ * document's `all(x => x.pan(…))` line still PLAYS — it is simply no longer
+ * written or read here.
  *
  * Robust to a hand-COMBINED chain: `masterGainEdit`/`masterVizEdit` bind to
  * whichever `all()` line already carries the relevant call, so a user who wrote
@@ -46,10 +56,6 @@ import type { StripEdit } from './writeStrip'
 
 /** unity gain — an untouched master reads unity from the ABSENCE of a line. */
 export const MASTER_UNITY_GAIN = 1
-
-/** centre pan — an untouched master reads centre (0.5) from the ABSENCE of a pan
- *  call, exactly as a channel strip does (grounded GR2). */
-export const MASTER_CENTRE_PAN = 0.5
 
 /**
  * A top-level `all(<arrow>)` statement we can read/edit — an expression-body
@@ -191,14 +197,6 @@ function findMasterGainSite(doc: string): MasterGainSite | undefined {
   return undefined
 }
 
-/** Whether a line carries the master gain in any form — the line pan rides. */
-function hasGainSite(doc: string, m: MasterAll, body: any): boolean {
-  return gainSiteOf(doc, m, body) !== undefined
-}
-
-function findPanCall(m: MasterAll): ChainCall | undefined {
-  return m.chain.find((c) => c.name === 'pan' && c.args.length >= 1)
-}
 
 /** The arrow body's source text, trimmed — used to spot the mute sentinel line
  *  `all(x => silence)`, whose body is the bare identifier `silence` (empty chain). */
@@ -211,7 +209,7 @@ function arrowBodyText(doc: string, m: MasterAll): string {
  *  stacked mix to `silence` (`@strudel/core/repl.mjs:262` applies the transform
  *  to the stacked pattern; `silence` is `gap(1)`, the empty pattern). Detected by
  *  the arrow BODY being exactly `silence` (an empty chain), so it never collides
- *  with a gain/pan line — `readMasterGain`/`readMasterPan` skip it (no such call). */
+ *  with a gain line — `readMasterGain` skips it (no such call). */
 function findMuteLine(doc: string): MasterAll | undefined {
   return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === 'silence')
 }
@@ -249,25 +247,6 @@ export function readMasterGain(doc: string): MasterGainState {
   return { value: arg.numeric, foreign: false }
 }
 
-/** the master pan the pan control shows: the `all()` pan scalar, or centre (0.5)
- *  when absent. `foreign` = a pan call whose arg is a signal/pattern (not a
- *  number), so the control can't rewrite it and disables (mirrors the channel). */
-export interface MasterPanState {
-  value: number
-  foreign: boolean
-}
-
-export function readMasterPan(doc: string): MasterPanState {
-  for (const m of detectMasterAll(doc)) {
-    const p = findPanCall(m)
-    if (!p) continue
-    const arg = p.args[0]
-    if (arg.numeric === null) return { value: MASTER_CENTRE_PAN, foreign: true } // signal pan
-    return { value: arg.numeric, foreign: false }
-  }
-  return { value: MASTER_CENTRE_PAN, foreign: false }
-}
-
 /** whether the master is muted — a top-level `all(x => silence)` line is present.
  *  Orthogonal to gain (V-mixer-2): mute never touches `.gain`, only this sentinel
  *  line, so unmute is the exact inverse and the fader value survives untouched. */
@@ -279,8 +258,8 @@ export function readMasterMute(doc: string): boolean {
  * The master "audio" `all()` line — the one the EXPAND DRAWER binds its insert
  * chain to. It is the first expression-body `all(x => …)` that is NOT the mute
  * sentinel (`x => silence`) and NOT a pure backdrop-viz line (presentation, not
- * audio). Gain/pan/effect inserts all live here (pan rides the gain line), so the
- * drawer's effects chain and the fader/pan controls act on ONE statement.
+ * audio). Gain and effect inserts all live here, so the drawer's effects chain
+ * and the fader act on ONE statement.
  */
 export function detectMasterAudioAll(doc: string): MasterAll | undefined {
   return detectMasterAll(doc).find((m) => {
@@ -301,8 +280,8 @@ export function detectMasterAudioAll(doc: string): MasterAll | undefined {
  * matches a channel: `MixerBody` skips index 0 for effect add/remove (`i > 0`, so
  * it never deletes the base), and `knobsFromChunk` ignores it (no numeric args).
  * `exprRange` is the arrow body, so a new `.fx()` appends at the chain's end
- * (`x.gain(1)` → `x.gain(1).room(0.4)`). Gain/pan carry knobs only when surfaced
- * (they're strip-owned — the fader/pan row), so the drawer shows the INSERTS.
+ * (`x.gain(1)` → `x.gain(1).room(0.4)`). Gain carries a knob only where it is
+ * surfaced (it is strip-owned — the fader), so the drawer shows the INSERTS.
  */
 export function adaptMasterChunk(doc: string, m: MasterAll): ChunkInfo {
   const head: ChainCall = {
@@ -363,37 +342,6 @@ export function masterGainEdit(doc: string, value: number): StripEdit | null {
   if (site.kind === 'scale') return { range: arg.range, text: formatNumber(value) }
   // A member call's range is [dot, callEnd], so this swaps the whole `.gain(N)`.
   return { range: site.call.range, text: scaleCall(value) }
-}
-
-/**
- * The edit the master pan control makes for `value` (0..1, 0.5 = centre), mirror
- * of the channel `panEdit` but scoped to the master bus:
- *  - present scalar → replace the literal in the existing `all()` pan call;
- *  - foreign        → null (a signal/pattern pan — the control is disabled);
- *  - absent         → append `.pan(value)` to the gain-bearing `all()` line if one
- *                     exists (channel-parity output `all(x => x.mul(postgain(1)).pan(v))`),
- *                     else materialize its own `all(x => x.pan(value))` line.
- *
- * Appending to the gain line keeps the common case (fader dragged, then pan) on
- * ONE audio `all()` chain, exactly like a channel. The rarer pan-first order
- * yields its own line and a later gain drag adds a second — both compose (`all()`
- * transforms stack); the split is harmless, only slightly less tidy.
- */
-export function masterPanEdit(doc: string, value: number): StripEdit | null {
-  for (const m of detectMasterAll(doc)) {
-    const p = findPanCall(m)
-    if (!p) continue
-    const arg = p.args[0]
-    if (arg.numeric === null) return null // signal pan — disabled
-    return { range: arg.range, text: formatNumber(value) }
-  }
-  // No pan call yet: ride the audio (gain) line so gain+pan share one chain.
-  for (const { m, body } of detectMasterAllWithBodies(doc)) {
-    if (hasGainSite(doc, m, body)) {
-      return { range: [m.arrowBodyRange[1], m.arrowBodyRange[1]], text: `.pan(${formatNumber(value)})` }
-    }
-  }
-  return insertStatement(doc, `all(x => x.pan(${formatNumber(value)}))`)
 }
 
 /**

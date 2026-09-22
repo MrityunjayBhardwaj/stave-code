@@ -22,12 +22,10 @@ import { Writeback } from '../writeback'
 import { buildStripModels, type StripModel } from './stripModel'
 import {
   readMasterGain,
-  readMasterPan,
   readMasterMute,
   detectMasterAudioAll,
   adaptMasterChunk,
   type MasterGainState,
-  type MasterPanState,
 } from './masterEdit'
 
 export interface MixerModel {
@@ -81,7 +79,6 @@ export interface MixerModel {
    * the ABSENCE of a call). `foreign` disables the control on a signal/pattern
    * pan. The master analog of a strip's pan.
    */
-  masterPan: MasterPanState
   /**
    * Whether the master is muted — an `all(x => silence)` line is present in the
    * document. Orthogonal to the fader (the gain line is untouched while muted),
@@ -136,7 +133,6 @@ interface Derived {
   strips: StripModel[]
   chunks: ChunkInfo[]
   masterGain: MasterGainState
-  masterPan: MasterPanState
   masterMuted: boolean
   masterChunk: ChunkInfo
 }
@@ -173,7 +169,6 @@ const EMPTY_DERIVED: Derived = {
   strips: [],
   chunks: [],
   masterGain: { value: 1, foreign: false },
-  masterPan: { value: 0.5, foreign: false },
   masterMuted: false,
   masterChunk: emptyMasterChunk(''),
 }
@@ -268,7 +263,6 @@ export function useMixerModel(): MixerModel {
         strips,
         chunks: strips.map((s) => allChunks[s.index]),
         masterGain: readMasterGain(value),
-        masterPan: readMasterPan(value),
         masterMuted: readMasterMute(value),
         masterChunk: deriveMasterChunk(value),
       })
@@ -438,7 +432,6 @@ export function useMixerModel(): MixerModel {
     applyToStrip,
     applyToStripAt,
     masterGain: derived.masterGain,
-    masterPan: derived.masterPan,
     masterMuted: derived.masterMuted,
     masterChunk: derived.masterChunk,
     applyToMaster,
