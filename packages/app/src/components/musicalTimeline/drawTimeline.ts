@@ -140,6 +140,13 @@ export interface WaveformSource {
     voice: string,
     pitch: number | null,
   ) => { readonly data: Float32Array; readonly columns: number; readonly duration: number } | null
+  /**
+   * Does this voice play an audio FILE at all (#1730)? Asked of the sample
+   * registry, not of the decode cache: a file that has not loaded yet is still
+   * a file, and a row whose geometry changed the moment a decode landed would
+   * jump under the reader. Absent means no lane is treated as an audio lane.
+   */
+  readonly isFileBacked?: (voice: string, pitch: number | null) => boolean
 }
 
 /**
@@ -332,6 +339,12 @@ export function drawTimeline(
       // against, so a lit mark sits exactly over its base mark — one source, no
       // drift (PV120). All marks share the lane color; gain drives intensity.
       ctx.fillStyle = lane.color
+      // #1730 — a collapsed audio lane draws each mark as a CLIP BODY: the whole
+      // mark recedes to the waveform's bed and only the audio is bright. A bar at
+      // full weight past a short drum hit's end is a thin line in an ordinary row
+      // but a solid slab at full row height, and it reads as sound where there is
+      // none. Before a sample has decoded, the body is all there is.
+      const clipBody = lane.audio === true && !expanded
       for (const band of laneMarkBands(lane, box)) {
         for (const n of band.notes) {
           const r = markRect(n, band, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
@@ -339,13 +352,19 @@ export function drawTimeline(
           const alpha = 0.4 + 0.6 * Math.min(1, Math.max(0, n.gain))
           ctx.globalAlpha = alpha
           ctx.fillRect(r.x, r.y, r.w, r.h)
+          if (clipBody) {
+            ctx.globalAlpha = WAVEFORM_BED_SCRIM
+            ctx.fillStyle = theme.background
+            ctx.fillRect(r.x, r.y, r.w, r.h)
+            ctx.fillStyle = lane.color
+          }
           // The mark's own audio shape, drawn INSIDE the bar just placed (#1506).
           // Additive by construction: the bar is already down, so a sample with
           // no decoded audio, a row too short, or a mark too narrow simply leaves
           // what was always there.
           waveformColumnsLeft = drawMarkWaveform(
             ctx, n, r, peaksFor, waveformCps, pxPerCycle, waveformColumnsLeft,
-            lane.color, theme.background,
+            lane.color, theme.background, clipBody,
           )
           ctx.globalAlpha = alpha
         }
@@ -1073,6 +1092,24 @@ export function laneMarkBands(lane: SceneLane, box: LaneBox): MarkBand[] {
       }
     })
   }
+  // #1730 — a COLLAPSED lane whose every sound is a file is an audio track in
+  // overview: each mark takes the whole row, and nothing is placed by pitch,
+  // because the waveform is the content. That is how a DAW draws a clip on an
+  // audio track. Expanding is still the editing view (voice rows, pitch), so
+  // this applies to the collapsed band only. `bandH` 0 puts every mark at the
+  // band's top, since `markRect` centres a mark with no pitch spread.
+  if (lane.audio === true && !box.expanded) {
+    return [
+      {
+        notes: lane.notes,
+        bandTop: box.top + SINGLE_BAND_PAD_Y,
+        bandH: 0,
+        markH: Math.max(BAR_HEIGHT_MIN, box.height - 2 * SINGLE_BAND_PAD_Y),
+        pMin: null,
+        pMax: null,
+      },
+    ]
+  }
   const pMin = lane.pitchMin
   const pMax = lane.pitchMax
   const markH = box.expanded && hasPitchSpread(pMin, pMax)
@@ -1163,6 +1200,9 @@ function drawMarkWaveform(
   budget: number,
   inkStyle: string,
   bedStyle: string,
+  /** #1730 — the whole mark is already a recessed clip body; a second bed would
+   *  darken the audio's extent against the rest of the clip. */
+  bedLaid = false,
 ): number {
   if (budget <= 0) return budget
   const voice = note.voice
@@ -1181,9 +1221,11 @@ function drawMarkWaveform(
 
   // Clear a bed first. The bar underneath is the same colour and, at full gain,
   // the same opacity — painting the shape straight onto it draws it invisibly.
-  ctx.globalAlpha = WAVEFORM_BED_SCRIM
-  ctx.fillStyle = bedStyle
-  ctx.fillRect(r.x, r.y, columns, r.h)
+  if (!bedLaid) {
+    ctx.globalAlpha = WAVEFORM_BED_SCRIM
+    ctx.fillStyle = bedStyle
+    ctx.fillRect(r.x, r.y, columns, r.h)
+  }
 
   // Then the shape, at full opacity against that recessed bed. This assignment
   // is also what hands the lane colour back to the band loop for the next mark —

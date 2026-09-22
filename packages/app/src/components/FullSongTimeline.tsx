@@ -77,7 +77,7 @@ import {
 } from '@stave/editor'
 import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
-import { buildTimelineScene, clipAtCycle, type SceneActivity } from './musicalTimeline/timelineScene'
+import { buildTimelineScene, clipAtCycle, markAudioLanes, type SceneActivity } from './musicalTimeline/timelineScene'
 import {
   nextWindowOriginFor,
   clampSeekToWindow,
@@ -1253,7 +1253,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // set/cleared — so adding it to the scene deps recolours lanes (dot + canvas)
   // exactly when the user picks, not on every render.
   const { customColorByName } = props
-  const scene = useMemo(() => {
+  const baseScene = useMemo(() => {
     const raw = buildTimelineScene(
       // `SongAnalysis` satisfies the narrower `SceneActivity` structurally — the
       // scene only ever wanted lanes and sections. The period travels separately
@@ -1283,6 +1283,48 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     voiceOrderRef.current = order
     return ordered
   }, [analysis, windowActivity, songWindow, marks, source, customColorByName, trackOrder, automationsByTrack, steppedByTrack])
+  // #1730 — which lanes are audio tracks, asked of the sample registry. Its own
+  // memo, re-asked when the waveform epoch moves: a take registers its name
+  // when the project's assets load, which can land after the scene was built.
+  const { waveforms, waveformsEpoch } = props
+  const scene = useMemo(
+    () => markAudioLanes(baseScene, waveforms?.isFileBacked),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the epoch is the re-ask signal
+    [baseScene, waveforms, waveformsEpoch],
+  )
+  // #1730 — repaint when an audio lane's sample finishes decoding. A local take
+  // announces itself (`notifyWaveformsReady`), but a sample bank loads when a
+  // note first plays it, and nothing tells the canvas, which is dirty-flagged:
+  // the shape would sit decoded in memory and absent on screen. So while some
+  // sound on an audio lane has no peaks yet, re-ask once a second — a cache
+  // read, never a load — and bump the draw's epoch whenever the count falls.
+  // Stops by itself once every sound has a shape.
+  const [decodeTick, setDecodeTick] = useState(0)
+  useEffect(() => {
+    if (waveforms == null) return
+    const keys = new Map<string, { voice: string; pitch: number | null }>()
+    for (const lane of scene.lanes) {
+      if (lane.audio !== true) continue
+      for (const n of lane.notes) {
+        if (n.voice == null) continue
+        keys.set(`${n.voice}\u0000${n.pitch ?? ''}`, { voice: n.voice, pitch: n.pitch ?? null })
+      }
+    }
+    const missing = () => {
+      let count = 0
+      for (const { voice, pitch } of keys.values()) if (waveforms.peaksFor(voice, pitch) == null) count++
+      return count
+    }
+    let last = missing()
+    if (last === 0) return
+    const id = setInterval(() => {
+      const now = missing()
+      if (now < last) setDecodeTick((t) => t + 1)
+      last = now
+      if (now === 0) clearInterval(id)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [scene, waveforms])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind
@@ -3512,7 +3554,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 layout={layout}
                 silencedNames={props.silencedNames}
                 waveforms={props.waveforms}
-                waveformsEpoch={props.waveformsEpoch}
+                waveformsEpoch={(props.waveformsEpoch ?? 0) + decodeTick}
               />
             )}
             {/* Live overlay (#500/U3): lights the scene marks that are sounding
