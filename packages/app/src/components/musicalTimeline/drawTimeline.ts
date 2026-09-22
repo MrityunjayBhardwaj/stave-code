@@ -313,7 +313,10 @@ export function drawTimeline(
     // Read-only clip segments (#386) — behind the note marks. A bare track has
     // one implicit clip (no visible seams); an arrangement track shows a rect
     // per arm with bordered edges.
-    drawClips(ctx, lane, top, rowHeight, viewportWidth, theme, scene.windowOriginCycles, toScreenX)
+    // #1730 — a collapsed audio lane's clip bodies fill the row, so its section
+    // captions go on top of them (below) rather than underneath.
+    const captionsOnTop = lane.audio === true && !expanded
+    drawClips(ctx, lane, top, rowHeight, viewportWidth, theme, scene.windowOriginCycles, toScreenX, captionsOnTop)
     const mode = laneRenderMode(pxPerCycle, lane.notes.length > 0, expanded)
     if (expanded) {
       drawBeatGrid(ctx, top, rowHeight, pxPerCycle, firstCycle, lastCycle, viewportWidth, theme, toScreenX, transform.meter)
@@ -370,6 +373,9 @@ export function drawTimeline(
         }
       }
       ctx.globalAlpha = 1
+    }
+    if (captionsOnTop) {
+      drawClipCaptionsOnTop(ctx, lane, top, rowHeight, viewportWidth, theme, toScreenX)
     }
     // Continuous automation (#1464 Stage 1) — over the marks, under the silence
     // wash, so a muted track's curve dims with the rest of its lane.
@@ -528,6 +534,8 @@ function drawClips(
   theme: DrawTheme,
   windowOriginCycles: number,
   toScreenX: (cycle: number) => number,
+  /** #1730 — the caller draws the captions itself, over the marks. */
+  captionsOnTop = false,
 ): void {
   for (const clip of lane.clips) {
     const x0 = toScreenX(clip.startCycle)
@@ -550,7 +558,7 @@ function drawClips(
     // empty clip raises. Anchored to the clip's real left edge when it is on
     // screen, else to the viewport, so a section scrolled half off still says
     // what it is instead of losing its name off the left.
-    drawClipCaption(ctx, clip, left, right, top, rowHeight, theme)
+    if (!captionsOnTop) drawClipCaption(ctx, clip, left, right, top, rowHeight, theme)
     if (clipHasContent(lane, clip, windowOriginCycles)) continue
     // Empty clip: outline it in the lane's own colour. Top/bottom run the
     // CLAMPED width (they follow what's on screen); the verticals stay at the
@@ -580,6 +588,32 @@ function drawClips(
     ctx.globalAlpha = EMPTY_CLIP_OUTLINE_ALPHA
     edges()
     ctx.globalAlpha = 1
+  }
+}
+
+/**
+ * Section captions drawn OVER a lane's marks (#1730). A collapsed audio lane's
+ * clip bodies fill the row, so a caption laid down beneath them, where every
+ * other lane has it, would be painted out. A DAW writes a clip's name on top of
+ * its waveform; this does the same, with the clip geometry `drawClips` uses.
+ */
+function drawClipCaptionsOnTop(
+  ctx: CanvasRenderingContext2D,
+  lane: SceneLane,
+  top: number,
+  rowHeight: number,
+  viewportWidth: number,
+  theme: DrawTheme,
+  toScreenX: (cycle: number) => number,
+): void {
+  for (const clip of lane.clips) {
+    const x0 = toScreenX(clip.startCycle)
+    const x1 = toScreenX(clip.endCycle)
+    if (x1 <= 0 || x0 >= viewportWidth) continue
+    const left = Math.max(0, x0)
+    const right = Math.min(viewportWidth, x1)
+    if (right - left <= 0) continue
+    drawClipCaption(ctx, clip, left, right, top, rowHeight, theme)
   }
 }
 
