@@ -9730,7 +9730,7 @@ var _StrudelEngine = class _StrudelEngine {
    * master meter freezes. On a swap, detach from the stale node and re-tap the
    * live one. Read-only side-tap — audio still flows unchanged to the destination
    * (no routing mutation, V-mixer-3). Master gain is NOT applied here anymore:
-   * the master trim is the document's `all(x => x.gain())` (#794 removed the
+   * the master trim is the document's `all(x => x.mul(postgain()))` (#794 removed the
    * synthetic per-file output-gain seam).
    */
   followMasterAnalyser() {
@@ -33126,6 +33126,10 @@ function matchAllArrow(node) {
 }
 __name(matchAllArrow, "matchAllArrow");
 function detectMasterAll(doc) {
+  return detectMasterAllWithBodies(doc).map((l) => l.m);
+}
+__name(detectMasterAll, "detectMasterAll");
+function detectMasterAllWithBodies(doc) {
   const statements = parseTopLevel(doc);
   if (!statements) return [];
   const out = [];
@@ -33135,19 +33139,62 @@ function detectMasterAll(doc) {
     const headOut = { ref: null };
     const chain = collectChain(doc, arrow.body, headOut);
     out.push({
-      statementRange: [node.start, node.end],
-      statementText: doc.slice(node.start, node.end),
-      arrowBodyRange: [arrow.body.start, arrow.body.end],
-      chain
+      m: {
+        statementRange: [node.start, node.end],
+        statementText: doc.slice(node.start, node.end),
+        arrowBodyRange: [arrow.body.start, arrow.body.end],
+        chain
+      },
+      body: arrow.body
     });
   }
   return out;
 }
-__name(detectMasterAll, "detectMasterAll");
-function findGainCall(m) {
-  return m.chain.find((c) => c.name === "gain");
+__name(detectMasterAllWithBodies, "detectMasterAllWithBodies");
+var MASTER_GAIN_CONTROL = "postgain";
+var LEGACY_MASTER_CONTROLS = ["gain", MASTER_GAIN_CONTROL];
+function findScaleSite(doc, body, chain) {
+  let node = body;
+  while (node && node.type === "CallExpression" && node.callee.type === "MemberExpression") {
+    const callee = node.callee;
+    const inner = node.arguments[0];
+    if (!callee.computed && callee.property.type === "Identifier" && callee.property.name === "mul" && node.arguments.length === 1 && inner.type === "CallExpression" && inner.callee.type === "Identifier" && inner.callee.name === MASTER_GAIN_CONTROL && inner.arguments.length === 1) {
+      const dot = doc.lastIndexOf(".", callee.property.start);
+      const call = chain.find((c) => c.name === "mul" && c.range[0] === dot);
+      if (call) return { kind: "scale", call, arg: toArg(doc, inner.arguments[0]) };
+    }
+    node = callee.object;
+  }
+  return void 0;
 }
-__name(findGainCall, "findGainCall");
+__name(findScaleSite, "findScaleSite");
+function gainSiteOf(doc, m, body) {
+  const scale = findScaleSite(doc, body, m.chain);
+  if (scale) return scale;
+  for (const name of LEGACY_MASTER_CONTROLS) {
+    const call = m.chain.find((c) => c.name === name);
+    if (call) return { kind: "legacy", call, arg: call.args[0] };
+  }
+  return void 0;
+}
+__name(gainSiteOf, "gainSiteOf");
+function findMasterGainSite(doc) {
+  const lines = detectMasterAllWithBodies(doc);
+  for (const { m, body } of lines) {
+    const scale = findScaleSite(doc, body, m.chain);
+    if (scale) return scale;
+  }
+  for (const { m, body } of lines) {
+    const site = gainSiteOf(doc, m, body);
+    if (site) return site;
+  }
+  return void 0;
+}
+__name(findMasterGainSite, "findMasterGainSite");
+function hasGainSite(doc, m, body) {
+  return gainSiteOf(doc, m, body) !== void 0;
+}
+__name(hasGainSite, "hasGainSite");
 function findPanCall(m) {
   return m.chain.find((c) => c.name === "pan" && c.args.length >= 1);
 }
@@ -33171,15 +33218,12 @@ function vizNameArg(c) {
 }
 __name(vizNameArg, "vizNameArg");
 function readMasterGain(doc) {
-  for (const m of detectMasterAll(doc)) {
-    const g = findGainCall(m);
-    if (!g) continue;
-    const arg = g.args[0];
-    if (!arg) return { value: MASTER_UNITY_GAIN, foreign: true };
-    if (arg.numeric === null) return { value: MASTER_UNITY_GAIN, foreign: true };
-    return { value: arg.numeric, foreign: false };
-  }
-  return { value: MASTER_UNITY_GAIN, foreign: false };
+  const site = findMasterGainSite(doc);
+  if (!site) return { value: MASTER_UNITY_GAIN, foreign: false };
+  const arg = site.arg;
+  if (!arg) return { value: MASTER_UNITY_GAIN, foreign: true };
+  if (arg.numeric === null) return { value: MASTER_UNITY_GAIN, foreign: true };
+  return { value: arg.numeric, foreign: false };
 }
 __name(readMasterGain, "readMasterGain");
 function readMasterPan(doc) {
@@ -33239,15 +33283,17 @@ function readMasterViz(doc) {
   return null;
 }
 __name(readMasterViz, "readMasterViz");
+function scaleCall(value) {
+  return `.mul(${MASTER_GAIN_CONTROL}(${formatNumber(value)}))`;
+}
+__name(scaleCall, "scaleCall");
 function masterGainEdit(doc, value) {
-  for (const m of detectMasterAll(doc)) {
-    const g = findGainCall(m);
-    if (!g) continue;
-    const arg = g.args[0];
-    if (!arg || arg.numeric === null) return null;
-    return { range: arg.range, text: formatNumber(value) };
-  }
-  return insertStatement(doc, `all(x => x.gain(${formatNumber(value)}))`);
+  const site = findMasterGainSite(doc);
+  if (!site) return insertStatement(doc, `all(x => x${scaleCall(value)})`);
+  const arg = site.arg;
+  if (!arg || arg.numeric === null) return null;
+  if (site.kind === "scale") return { range: arg.range, text: formatNumber(value) };
+  return { range: site.call.range, text: scaleCall(value) };
 }
 __name(masterGainEdit, "masterGainEdit");
 function masterPanEdit(doc, value) {
@@ -33258,8 +33304,8 @@ function masterPanEdit(doc, value) {
     if (arg.numeric === null) return null;
     return { range: arg.range, text: formatNumber(value) };
   }
-  for (const m of detectMasterAll(doc)) {
-    if (findGainCall(m)) {
+  for (const { m, body } of detectMasterAllWithBodies(doc)) {
+    if (hasGainSite(doc, m, body)) {
       return { range: [m.arrowBodyRange[1], m.arrowBodyRange[1]], text: `.pan(${formatNumber(value)})` };
     }
   }

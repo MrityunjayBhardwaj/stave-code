@@ -578,7 +578,9 @@ export function collectChain(doc: string, expr: any, headOut: { ref: any }): Cha
   return calls.reverse()
 }
 
-function toArg(doc: string, node: any): ChainArg {
+/** A call argument as a `ChainArg` — exported so the master-strip detector can
+ *  read the literal NESTED inside `.mul(postgain(N))` with the same numeric rule. */
+export function toArg(doc: string, node: any): ChainArg {
   let numeric: number | null = null
   if (node.type === 'Literal' && typeof node.value === 'number') {
     numeric = node.value

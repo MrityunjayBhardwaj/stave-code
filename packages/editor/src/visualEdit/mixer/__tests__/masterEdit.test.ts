@@ -54,8 +54,17 @@ describe('detectMasterAll', () => {
 })
 
 describe('readMasterGain', () => {
-  it('reads the scalar from an all() gain line', () => {
+  it('reads the factor from an all() mul(postgain()) line', () => {
+    expect(readMasterGain('all(x => x.mul(postgain(0.6)))')).toEqual({ value: 0.6, foreign: false })
+  })
+
+  it('still reads a legacy all() gain or postgain line, so the fader shows what the document says', () => {
     expect(readMasterGain('all(x => x.gain(0.6))')).toEqual({ value: 0.6, foreign: false })
+    expect(readMasterGain('all(x => x.postgain(0.4))')).toEqual({ value: 0.4, foreign: false })
+  })
+
+  it('prefers the scaling form when a legacy line is also written', () => {
+    expect(readMasterGain('all(x => x.gain(0.3))\nall(x => x.mul(postgain(0.7)))')).toEqual({ value: 0.7, foreign: false })
   })
 
   it('is unity when absent (the untouched master projects the default)', () => {
@@ -64,38 +73,65 @@ describe('readMasterGain', () => {
 
   it('flags a signal gain as foreign (fader disables, shows unity)', () => {
     expect(readMasterGain('all(x => x.gain(sine))')).toEqual({ value: 1, foreign: true })
+    expect(readMasterGain('all(x => x.mul(postgain(sine)))')).toEqual({ value: 1, foreign: true })
   })
 })
 
-describe('masterGainEdit', () => {
-  it('patches the scalar in an existing all() gain line', () => {
-    const src = 'all(x => x.gain(0.6))'
-    expect(applied(src, masterGainEdit(src, 0.85))).toBe('all(x => x.gain(0.85))')
+describe('masterGainEdit (#1711 — the master SCALES the mix: mul(postgain()), never a set)', () => {
+  // A Strudel control method SETS its value, so `all(x => x.gain(N))` replaced
+  // every track's own gain with N — and `all(x => x.postgain(N))` would do the
+  // same to the 1 in 11 real songs whose tracks set their own postgain.
+  // `mul(postgain(N))` multiplies a postgain a track already has and supplies N
+  // where it has none (Strudel's key-wise arithmetic on controls), so every
+  // track is scaled by the same factor.
+  it('patches the factor in an existing all() mul(postgain()) line', () => {
+    const src = 'all(x => x.mul(postgain(0.6)))'
+    expect(applied(src, masterGainEdit(src, 0.85))).toBe('all(x => x.mul(postgain(0.85)))')
   })
 
-  it('inserts a fresh all() gain line when absent (appended as a new line)', () => {
+  it('inserts a fresh all() mul(postgain()) line when absent (appended as a new line)', () => {
     const src = '$: s("bd*4")'
-    expect(applied(src, masterGainEdit(src, 0.85))).toBe('$: s("bd*4")\nall(x => x.gain(0.85))')
+    expect(applied(src, masterGainEdit(src, 0.85))).toBe('$: s("bd*4")\nall(x => x.mul(postgain(0.85)))')
   })
 
   it('materializes into an empty document with no leading newline', () => {
-    expect(applied('', masterGainEdit('', 0.7))).toBe('all(x => x.gain(0.7))')
+    expect(applied('', masterGainEdit('', 0.7))).toBe('all(x => x.mul(postgain(0.7)))')
   })
 
-  it('writes the literal .gain(1) at unity (decision 4 — matches channel gainEdit)', () => {
+  it('writes the literal factor 1 at unity (decision 4 — matches channel gainEdit)', () => {
     const src = '$: s("bd")'
-    expect(applied(src, masterGainEdit(src, 1))).toBe('$: s("bd")\nall(x => x.gain(1))')
+    expect(applied(src, masterGainEdit(src, 1))).toBe('$: s("bd")\nall(x => x.mul(postgain(1)))')
   })
 
-  it('binds to a hand-combined chain, patching only the gain literal', () => {
-    const src = 'all(x => x.gain(0.8).viz("Prism", { backdrop: true }))'
+  it('moving the fader on a legacy gain or postgain line turns THAT call into the scaling form', () => {
+    // The line is the one being edited, so it is the one rewritten; the track
+    // lines — including one that sets its own postgain — are not touched.
+    const src = '$: s("bd").gain(0.3).postgain(0.5)\nall(x => x.gain(0.6))'
+    expect(applied(src, masterGainEdit(src, 0.5))).toBe('$: s("bd").gain(0.3).postgain(0.5)\nall(x => x.mul(postgain(0.5)))')
+    const set = 'all(x => x.postgain(0.6))'
+    expect(applied(set, masterGainEdit(set, 0.5))).toBe('all(x => x.mul(postgain(0.5)))')
+  })
+
+  it('binds to a hand-combined chain, patching only the master call', () => {
+    const src = 'all(x => x.mul(postgain(0.8)).viz("Prism", { backdrop: true }))'
     expect(applied(src, masterGainEdit(src, 0.5))).toBe(
-      'all(x => x.gain(0.5).viz("Prism", { backdrop: true }))',
+      'all(x => x.mul(postgain(0.5)).viz("Prism", { backdrop: true }))',
     )
+    const legacy = 'all(x => x.gain(0.8).room(0.3))'
+    expect(applied(legacy, masterGainEdit(legacy, 0.5))).toBe('all(x => x.mul(postgain(0.5)).room(0.3))')
+  })
+
+  it('leaves an unrelated mul() alone', () => {
+    // `mul` of something other than a single postgain is the user's arithmetic,
+    // not the master fader's line: a fresh master line is added beside it.
+    const src = 'all(x => x.mul(speed(2)))'
+    expect(readMasterGain(src)).toEqual({ value: 1, foreign: false })
+    expect(applied(src, masterGainEdit(src, 0.5))).toBe('all(x => x.mul(speed(2)))\nall(x => x.mul(postgain(0.5)))')
   })
 
   it('disables (null) on a foreign signal gain', () => {
     expect(masterGainEdit('all(x => x.gain(sine))', 0.5)).toBeNull()
+    expect(masterGainEdit('all(x => x.mul(postgain(sine)))', 0.5)).toBeNull()
   })
 
   it('round-trips: edit then re-read yields the written value', () => {

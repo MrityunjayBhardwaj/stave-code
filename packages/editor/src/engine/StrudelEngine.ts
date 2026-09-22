@@ -1698,7 +1698,7 @@ export class StrudelEngine implements LiveCodingEngine {
     // its shared `destinationGain` on every evaluate/reset, so the analyser —
     // connected once at init — must follow the swap or the master meter freezes.
     // play() is where a just-started file (re)asserts the tap. The master TRIM
-    // itself lives in the document as `all(x => x.gain())` (#792/#794), not here.
+    // itself lives in the document as `all(x => x.mul(postgain()))` (#792/#794/#1711), not here.
     this.followMasterAnalyser()
   }
 
@@ -1717,7 +1717,7 @@ export class StrudelEngine implements LiveCodingEngine {
    * master meter freezes. On a swap, detach from the stale node and re-tap the
    * live one. Read-only side-tap — audio still flows unchanged to the destination
    * (no routing mutation, V-mixer-3). Master gain is NOT applied here anymore:
-   * the master trim is the document's `all(x => x.gain())` (#794 removed the
+   * the master trim is the document's `all(x => x.mul(postgain()))` (#794 removed the
    * synthetic per-file output-gain seam).
    */
   private followMasterAnalyser(): void {

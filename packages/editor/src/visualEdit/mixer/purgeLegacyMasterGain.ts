@@ -3,7 +3,7 @@
  *
  * Before #794, the master fader wrote a synthetic per-file OUTPUT gain persisted
  * under `stave:mixer.master:<fileId>` (the old `masterStore`). #792/#793 moved
- * the master trim into the document as `all(x => x.gain())`, so that per-file
+ * the master trim into the document (`all(x => x.mul(postgain()))` since #1711), so that per-file
  * value is now dead — but an OLD project that once set a non-unity master still
  * has the key in localStorage. It's never read anymore, yet leaving it is a
  * latent second gain source if the seam ever came back. Purge it on boot.
