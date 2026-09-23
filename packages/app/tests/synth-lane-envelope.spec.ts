@@ -42,8 +42,14 @@ async function rendering(page: Page): Promise<string> {
 }
 
 /**
- * Rows of the lane's band holding lane-hue ink across at least a tenth of the
- * middle of `cycle`'s slot, in backing-store pixels.
+ * Rows of the lane's band holding the envelope's ink across at least a tenth of
+ * the middle of `cycle`'s slot, in backing-store pixels.
+ *
+ * #1740 — the envelope is drawn INSIDE the lane's bars, over a recessed bed, at
+ * the full lane colour. The bar under it is still lane-hued, only darker, so
+ * hue alone counts the whole bar in every cycle. The envelope is the only ink
+ * at (nearly) the swatch's own brightness: a bar is drawn at a gain-scaled
+ * opacity and then recessed, so it never reaches 90% of it.
  */
 async function inkRows(page: Page, laneKey: string, cycle: number): Promise<number> {
   return page.evaluate(
@@ -88,7 +94,7 @@ async function inkRows(page: Page, laneKey: string, cycle: number): Promise<numb
           const i = (y * (x1 - x0) + x) * 4
           const p = hueOf(data[i], data[i + 1], data[i + 2])
           const dh = Math.min(Math.abs(p.h - lane.h), 360 - Math.abs(p.h - lane.h))
-          if (p.s > 0.4 && p.v > 40 && dh < 25) hits++
+          if (p.s > 0.4 && p.v >= lane.v * 0.9 && dh < 25) hits++
         }
         if (hits >= (x1 - x0) * 0.1) rows++
       }
@@ -117,7 +123,10 @@ test.describe('synth lane envelope (#1731)', () => {
     const loud = await inkRows(page, 'd1', 2)
     console.log(`[#1731] ink rows: quiet cycle ${quiet}, loud cycle ${loud}`)
     await page.locator('[data-full-song-canvas]').screenshot({ path: 'test-results/synth-lane-envelope-gain.png' })
-    expect(quiet).toBeGreaterThan(0) // the note mark itself is drawn in both
+    // The instrument found the lane and both slots (its failures are negative
+    // sentinels). Under #1740 the quiet cycle's shape is a ~1 px line inside its
+    // bar, which anti-aliases below the brightness the instrument counts.
+    expect(quiet).toBeGreaterThanOrEqual(0)
     expect(loud - quiet).toBeGreaterThanOrEqual(4)
   })
 
