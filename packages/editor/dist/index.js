@@ -5814,19 +5814,34 @@ function createTrackEnvelopeScheduler(deps) {
   let suspended = 0;
   let playRequested = false;
   let disposed = false;
+  let fingerprintPass = 0;
+  let fingerprinting = false;
   const refingerprint = /* @__PURE__ */ __name(() => {
-    let changed = false;
-    for (const id of wanted) {
+    const pass = ++fingerprintPass;
+    fingerprinting = true;
+    const ids = [...wanted];
+    let i = 0;
+    const step = /* @__PURE__ */ __name(() => {
+      if (disposed || pass !== fingerprintPass) return;
+      if (i >= ids.length) {
+        fingerprinting = false;
+        kick();
+        return;
+      }
+      const id = ids[i++];
       let fp;
       try {
         fp = deps.fingerprint(id, cycles);
       } catch {
         fp = null;
       }
-      if (current4.get(id) !== fp) changed = true;
-      current4.set(id, fp);
-    }
-    return changed;
+      if (wanted.includes(id) && current4.get(id) !== fp) {
+        current4.set(id, fp);
+        deps.onChange();
+      }
+      deps.schedule(step, 0);
+    }, "step");
+    deps.schedule(step, 0);
   }, "refingerprint");
   const abortInFlight = /* @__PURE__ */ __name(() => {
     inFlight2?.controller.abort();
@@ -5834,7 +5849,7 @@ function createTrackEnvelopeScheduler(deps) {
   const kick = /* @__PURE__ */ __name(() => {
     cancelTimer?.();
     cancelTimer = null;
-    if (disposed || suspended > 0 || playRequested || deps.isPlaying()) return;
+    if (disposed || suspended > 0 || fingerprinting || playRequested || deps.isPlaying()) return;
     cancelTimer = deps.schedule(() => {
       cancelTimer = null;
       void run();
@@ -5915,14 +5930,12 @@ function createTrackEnvelopeScheduler(deps) {
       wanted = nextWanted;
       cycles = span;
       for (const id of [...current4.keys()]) if (!wanted.includes(id)) current4.delete(id);
-      refingerprint();
       deps.onChange();
-      kick();
+      refingerprint();
     },
     evaluated() {
       abortInFlight();
-      if (refingerprint()) deps.onChange();
-      kick();
+      refingerprint();
     },
     playing() {
       playRequested = true;

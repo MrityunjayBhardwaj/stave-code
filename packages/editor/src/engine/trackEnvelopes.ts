@@ -136,19 +136,45 @@ export function createTrackEnvelopeScheduler(deps: TrackEnvelopeDeps): TrackEnve
   let playRequested = false
   let disposed = false
 
-  const refingerprint = (): boolean => {
-    let changed = false
-    for (const id of wanted) {
+  /** Bumped by every new fingerprint pass; an older pass stops at its next step. */
+  let fingerprintPass = 0
+  let fingerprinting = false
+
+  /**
+   * Take every wanted track's fingerprint again, ONE TRACK PER TASK. A
+   * fingerprint queries the track over the whole song — measured at ~30 ms for
+   * a dense 256-cycle track — and an evaluate made while playing must not
+   * block the main thread for tracks × that, or the live scheduler's notes
+   * arrive late. Each track keeps its previous answer until its new one lands,
+   * so an unchanged track never flickers stale; no render starts until the
+   * pass ends (`kick` refuses while it runs, and the pass kicks when done).
+   */
+  const refingerprint = (): void => {
+    const pass = ++fingerprintPass
+    fingerprinting = true
+    const ids = [...wanted]
+    let i = 0
+    const step = (): void => {
+      if (disposed || pass !== fingerprintPass) return
+      if (i >= ids.length) {
+        fingerprinting = false
+        kick()
+        return
+      }
+      const id = ids[i++]
       let fp: string | null
       try {
         fp = deps.fingerprint(id, cycles)
       } catch {
         fp = null
       }
-      if (current.get(id) !== fp) changed = true
-      current.set(id, fp)
+      if (wanted.includes(id) && current.get(id) !== fp) {
+        current.set(id, fp)
+        deps.onChange()
+      }
+      deps.schedule(step, 0)
     }
-    return changed
+    deps.schedule(step, 0)
   }
 
   const abortInFlight = (): void => {
@@ -158,7 +184,7 @@ export function createTrackEnvelopeScheduler(deps: TrackEnvelopeDeps): TrackEnve
   const kick = (): void => {
     cancelTimer?.()
     cancelTimer = null
-    if (disposed || suspended > 0 || playRequested || deps.isPlaying()) return
+    if (disposed || suspended > 0 || fingerprinting || playRequested || deps.isPlaying()) return
     cancelTimer = deps.schedule(() => {
       cancelTimer = null
       void run()
@@ -258,14 +284,12 @@ export function createTrackEnvelopeScheduler(deps: TrackEnvelopeDeps): TrackEnve
       wanted = nextWanted
       cycles = span
       for (const id of [...current.keys()]) if (!wanted.includes(id)) current.delete(id)
-      refingerprint()
       deps.onChange()
-      kick()
+      refingerprint()
     },
     evaluated() {
       abortInFlight()
-      if (refingerprint()) deps.onChange()
-      kick()
+      refingerprint()
     },
     playing() {
       playRequested = true

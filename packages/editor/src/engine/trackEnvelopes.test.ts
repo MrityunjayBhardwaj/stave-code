@@ -33,10 +33,12 @@ function fakeEngine() {
   /** Renders wait here until `release` is called, so a test can act mid-render. */
   let gate: { release: () => void } | null = null
   let holdRenders = false
+  let fingerprints = 0
   const deps = {
     isPlaying: () => state.playing,
     cps: () => state.cps,
     fingerprint: (id: string, cycles: number) => {
+      fingerprints++
       const p = state.plays.get(id)
       return p == null ? null : `${p}@${cycles}`
     },
@@ -66,7 +68,7 @@ function fakeEngine() {
   }
   /** Fire every pending timer, then let the render chain settle. */
   const flush = async () => {
-    for (let round = 0; round < 5; round++) {
+    for (let round = 0; round < 30; round++) {
       const due = timers.splice(0).filter((t) => t.live)
       for (const t of due) t.fn()
       for (let i = 0; i < 10; i++) await Promise.resolve()
@@ -78,6 +80,11 @@ function fakeEngine() {
     deps,
     flush,
     changes: () => changes,
+    fingerprints: () => fingerprints,
+    /** Fire only the timers pending right now, once. */
+    step: () => {
+      for (const t of timers.splice(0).filter((t) => t.live)) t.fn()
+    },
     pendingTimers: () => timers.filter((t) => t.live).length,
     holdRenders: (on: boolean) => {
       holdRenders = on
@@ -159,6 +166,54 @@ describe('createTrackEnvelopeScheduler (#1731)', () => {
     s.stopped()
     await f.flush()
     expect(f.log).toEqual(['render a', 'cancelled a', 'render a', 'render b'])
+  })
+
+  it('an evaluate fingerprints one track per task, never all at once inside the evaluate', async () => {
+    const f = fakeEngine()
+    f.state.playing = true
+    const s = createTrackEnvelopeScheduler(f.deps)
+    s.request(['a', 'b'], 4)
+    await f.flush()
+    const before = f.fingerprints()
+    s.evaluated()
+    expect(f.fingerprints()).toBe(before) // nothing on the evaluate's own stack
+    f.step()
+    expect(f.fingerprints()).toBe(before + 1)
+    f.step()
+    expect(f.fingerprints()).toBe(before + 2)
+  })
+
+  it('an unchanged track stays fresh while the pass is still working through the others', async () => {
+    const f = fakeEngine()
+    const s = createTrackEnvelopeScheduler(f.deps)
+    s.request(['a', 'b'], 4)
+    await f.flush()
+    f.state.playing = true
+    s.evaluated()
+    f.step() // only 'a' re-fingerprinted so far
+    expect(s.get('a')?.stale).toBe(false)
+    expect(s.get('b')?.stale).toBe(false)
+  })
+
+  it('a stop during a fingerprint pass waits for the pass, so an edit renders once', async () => {
+    const f = fakeEngine()
+    const s = createTrackEnvelopeScheduler(f.deps)
+    s.request(['b', 'a'], 4) // 'a' is fingerprinted second
+    await f.flush()
+    f.state.playing = true
+    f.state.plays.set('a', 'a2')
+    s.evaluated()
+    await f.flush()
+    f.state.plays.set('a', 'a3')
+    s.evaluated()
+    f.state.playing = false
+    s.stopped()
+    f.log.length = 0
+    await f.flush()
+    // Rendering before the pass reached 'a' would stamp the render with 'a2'
+    // while the pattern plays 'a3', and render it all over again after.
+    expect(f.log).toEqual(['render a'])
+    expect(s.get('a')?.stale).toBe(false)
   })
 
   it('an edit marks only the edited track stale, and re-renders only it', async () => {
@@ -247,6 +302,7 @@ describe('createTrackEnvelopeScheduler (#1731)', () => {
     s.request(['a'], 4)
     await f.flush()
     s.request(['a'], 8)
+    f.step() // the new span's fingerprint lands in its own task
     expect(s.get('a')?.stale).toBe(true)
     await f.flush()
     expect(f.log).toEqual(['render a', 'render a'])
