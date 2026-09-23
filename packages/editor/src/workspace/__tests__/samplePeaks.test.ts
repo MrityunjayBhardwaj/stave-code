@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
+  MAX_PEAK_COLUMNS,
   PEAK_COLUMNS,
+  PEAK_COLUMNS_PER_SECOND,
   clearSamplePeaksCache,
   computePeaks,
   peaksForSample,
@@ -197,6 +199,39 @@ describe('peaksForSample', () => {
     const all = Array.from(peaks!.data)
     expect(Math.min(...all)).toBe(-1)
     expect(Math.max(...all)).toBe(1)
+  })
+
+  /**
+   * #1736 — a long file played in SLICES. The Whiskey demo's vocal is 374 s and
+   * each mark plays a ~2 s slice of it. At 1024 columns per file one column is
+   * 0.37 s, so a whole mark had ~5 columns and drew as flat plateaus.
+   *
+   * Asserted by what the reader can SEE: two short bursts 0.2 s apart must keep
+   * silence between them. A column wider than the gap swallows it, and the pair
+   * draws as one block.
+   */
+  it('keeps a long file’s detail: two bursts 0.2 s apart at 200 s stay apart', () => {
+    const rate = 2000
+    const seconds = 374
+    const channel = new Float32Array(seconds * rate)
+    const burst = (at: number) => channel.fill(1, Math.round(at * rate), Math.round((at + 0.05) * rate))
+    burst(200.0)
+    burst(200.25)
+    const long = deps({ getCachedBuffer: () => fakeBuffer([channel], seconds) })
+    const peaks = peaksForSample({ s: 'take_1' }, long)!
+    const colAt = (t: number) => Math.floor((t / seconds) * peaks.columns)
+    const between: number[] = []
+    for (let c = colAt(200.05) + 1; c < colAt(200.25); c++) between.push(pair(peaks.data, c)[1])
+    expect(between.length).toBeGreaterThan(0)
+    expect(Math.min(...between)).toBe(0)
+    expect(peaks.columns / peaks.duration).toBeGreaterThanOrEqual(PEAK_COLUMNS_PER_SECOND)
+  })
+
+  it('bounds the columns of a very long file', () => {
+    const hour = deps({ getCachedBuffer: () => fakeBuffer([new Float32Array(1000)], 3600) })
+    const peaks = peaksForSample({ s: 'take_1' }, hour)!
+    expect(peaks.columns).toBe(MAX_PEAK_COLUMNS)
+    expect(peaks.data).toHaveLength(MAX_PEAK_COLUMNS * 2)
   })
 
   /**
