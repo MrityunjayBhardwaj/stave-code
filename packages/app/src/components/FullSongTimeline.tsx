@@ -26,7 +26,7 @@ import * as React from 'react'
 
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { SongAnalysis, PatternIR, HapStream, IREvent, OffsetEdit, SignalAutomation, SignalKind } from '@stave/editor'
+import type { SongAnalysis, PatternIR, HapStream, IREvent, OffsetEdit, SignalAutomation, SignalKind, TrackEnvelopeAccess } from '@stave/editor'
 import {
   captionRows,
   captionHit,
@@ -77,7 +77,7 @@ import {
 } from '@stave/editor'
 import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
-import { buildTimelineScene, clipAtCycle, markAudioLanes, type SceneActivity } from './musicalTimeline/timelineScene'
+import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeTrackIds, markAudioLanes, type SceneActivity } from './musicalTimeline/timelineScene'
 import {
   nextWindowOriginFor,
   clampSeekToWindow,
@@ -230,6 +230,9 @@ export interface FullSongTimelineProps {
   /** Bumped when new audio becomes drawable, so the dirty-flagged canvas redraws
    *  for a reason it could not otherwise see (#1506). */
   readonly waveformsEpoch?: number
+  /** #1731 — the synth-track renders: this view asks for the tracks behind its
+   *  non-audio lanes and draws the envelopes that come back. */
+  readonly trackEnvelopes?: TrackEnvelopeAccess
   readonly getSongPosition: () => number | null
   /** Seek the transport to an absolute song cycle. */
   readonly onSeek: (cycle: number) => void
@@ -1286,12 +1289,30 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // #1730 — which lanes are audio tracks, asked of the sample registry. Its own
   // memo, re-asked when the waveform epoch moves: a take registers its name
   // when the project's assets load, which can land after the scene was built.
-  const { waveforms, waveformsEpoch } = props
-  const scene = useMemo(
+  const { waveforms, waveformsEpoch, trackEnvelopes } = props
+  const audioScene = useMemo(
     () => markAudioLanes(baseScene, waveforms?.isFileBacked),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the epoch is the re-ask signal
     [baseScene, waveforms, waveformsEpoch],
   )
+  // #1731 — every non-audio lane's track, rendered by the engine while the
+  // transport is stopped. Asked for over the song's own length (`loopCycles`),
+  // not the view's, so paging and an extend drag do not re-render. The engine
+  // de-duplicates: a request that names the same tracks and span is a no-op.
+  const trackIdByLane = marks.trackIdByLane
+  useEffect(() => {
+    trackEnvelopes?.request(envelopeTrackIds(audioScene, trackIdByLane), loopCycles)
+  }, [trackEnvelopes, audioScene, trackIdByLane, loopCycles])
+  const [envelopeTick, setEnvelopeTick] = useState(0)
+  useEffect(() => trackEnvelopes?.subscribe(() => setEnvelopeTick((t) => t + 1)), [trackEnvelopes])
+  const scene = useMemo(
+    () => attachEnvelopes(audioScene, trackIdByLane, trackEnvelopes?.get),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the tick is the re-read signal
+    [audioScene, trackIdByLane, trackEnvelopes, envelopeTick],
+  )
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the tick is the re-read signal
+  const envelopeStatus = useMemo(() => trackEnvelopes?.status() ?? null, [trackEnvelopes, envelopeTick])
+  const envelopesOverCap = envelopeStatus?.overCap.length ?? 0
   // #1730 — repaint when an audio lane's sample finishes decoding. A local take
   // announces itself (`notifyWaveformsReady`), but a sample bank loads when a
   // note first plays it, and nothing tells the canvas, which is dirty-flagged:
@@ -1299,11 +1320,18 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // sound on an audio lane has no peaks yet, re-ask once a second — a cache
   // read, never a load — and bump the draw's epoch whenever the count falls.
   // Stops by itself once every sound has a shape.
+  //
+  // #1731 — and only while something can decode one. A sample bank's file loads
+  // when a note plays it: live playback, or an offline render. With neither
+  // running, nothing will land, so a sample that is never played no longer
+  // keeps a timer alive for the life of the view. One re-ask still runs when
+  // either stops, catching a decode that finished at the very end.
+  const decodeCanLand = songPos != null || envelopeStatus?.rendering != null
   const [decodeTick, setDecodeTick] = useState(0)
   useEffect(() => {
     if (waveforms == null) return
     const keys = new Map<string, { voice: string; pitch: number | null }>()
-    for (const lane of scene.lanes) {
+    for (const lane of audioScene.lanes) {
       if (lane.audio !== true) continue
       for (const n of lane.notes) {
         if (n.voice == null) continue
@@ -1317,6 +1345,12 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     }
     let last = missing()
     if (last === 0) return
+    if (!decodeCanLand) {
+      // Nothing can land from here on; a decode that finished before this
+      // check is picked up by the epoch the mount/scene draw already uses.
+      setDecodeTick((t) => t + 1)
+      return
+    }
     const id = setInterval(() => {
       const now = missing()
       if (now < last) setDecodeTick((t) => t + 1)
@@ -1324,7 +1358,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       if (now === 0) clearInterval(id)
     }, 1000)
     return () => clearInterval(id)
-  }, [scene, waveforms])
+    // `audioScene`, not `scene`: an envelope landing changes the scene but not
+    // which audio lanes wait for a decode.
+  }, [audioScene, waveforms, decodeCanLand])
 
   // ── Expand + bind (#422) ─────────────────────────────────────────────────
   // Click/expand a lane → accordion it taller (read-only note detail) AND bind
@@ -3023,6 +3059,16 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           view renders the controls + ruler + heatmap only. `periodLabel` is
           surfaced via the data attribute below for Playwright observation. */}
       <div data-full-song-period={periodLabel} style={{ display: 'none' }} />
+      {/* #1731 — which lanes carry a rendered envelope, and whether it is
+          current, for Playwright observation: `laneKey:fresh|stale`, space-separated. */}
+      <div
+        data-full-song-envelopes={scene.lanes
+          .filter((l) => l.envelope != null)
+          .map((l) => `${l.laneKey}:${l.envelope!.stale ? 'stale' : 'fresh'}`)
+          .join(' ')}
+        data-full-song-envelope-rendering={envelopeStatus?.rendering ?? ''}
+        style={{ display: 'none' }}
+      />
 
       {/* Controls: zoom cluster (left). The CYCLES/BARS units toggle moved to
           the editor pattern bar (#750). ⌘/Ctrl+wheel also zooms. */}
@@ -3084,6 +3130,18 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             title="This song never repeats, so the timeline shows the opening stretch rather than a loop. Zoom in to read it."
           >
             {fallbackNotice}
+          </span>
+        )}
+        {/* #1731 — a synth lane past the render budget draws no waveform; say
+            so rather than leave it looking like a track with no sound. */}
+        {envelopesOverCap > 0 && (
+          <span
+            data-full-song-envelope-over-cap={envelopesOverCap}
+            role="status"
+            style={styles.fallbackNotice}
+            title="Drawing a synth track's waveform means rendering it, and this song is too long to render every track. The first tracks are drawn; these are not."
+          >
+            {envelopesOverCap === 1 ? '1 track too long to draw' : `${envelopesOverCap} tracks too long to draw`}
           </span>
         )}
       </div>

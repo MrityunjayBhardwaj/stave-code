@@ -8,6 +8,14 @@ import { renderPatternOffline, describeSkipped, RenderCancelledError, type Skipp
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { planStems, tagTrack } from './stemSplit'
 import { createTransportHold } from './transportHold'
+import { registerBackgroundRender, withOfflineGraph } from './offlineGraph'
+import {
+  createTrackEnvelopeScheduler,
+  digest,
+  envelopeFromChannels,
+  type TrackEnvelope,
+  type TrackEnvelopeAccess,
+} from './trackEnvelopes'
 import { createLiveTriggerDrain } from './liveTriggerDrain'
 import { normalizeStrudelHap, declaredLocationKeys } from './NormalizedHap'
 import type { HapEvent } from './HapStream'
@@ -385,6 +393,13 @@ function createOptionalStep(
   }
 }
 
+/** #1731 — settle time after the last evaluate, stop or request before a display render starts. */
+const TRACK_ENVELOPE_DEBOUNCE_MS = 700
+/** #1731 — seconds of audio one display pass may render, summed over tracks. */
+const TRACK_ENVELOPE_CAP_SECONDS = 1200
+/** #1731 — envelope resolution: 10 ms columns. */
+const TRACK_ENVELOPE_COLUMNS_PER_SECOND = 100
+
 /**
  * Single source of truth for audio in Stave.
  * Wraps @strudel/webaudio (which wraps superdough) via webaudioRepl().
@@ -434,6 +449,29 @@ export class StrudelEngine implements LiveCodingEngine {
       }
     },
   })
+  /**
+   * #1731 — each wanted synth track rendered offline for the Song timeline to
+   * draw, only while the transport is stopped. See `trackEnvelopes.ts`.
+   */
+  private trackEnvelopeListeners = new Set<() => void>()
+  private trackEnvelopes = createTrackEnvelopeScheduler({
+    isPlaying: () => Boolean(this.repl?.scheduler?.started),
+    cps: () => this.getCps() ?? 0.5,
+    exists: (trackId) => this.songPatterns.has(trackId),
+    fingerprint: (trackId, cycles) => this.trackFingerprint(trackId, cycles),
+    render: (trackId, cycles, signal) => this.renderTrackEnvelope(trackId, cycles, signal),
+    schedule: (fn, ms) => {
+      const id = setTimeout(fn, ms)
+      return () => clearTimeout(id)
+    },
+    onChange: () => {
+      for (const listener of this.trackEnvelopeListeners) listener()
+    },
+    debounceMs: TRACK_ENVELOPE_DEBOUNCE_MS,
+    capSeconds: TRACK_ENVELOPE_CAP_SECONDS,
+  })
+  /** #1733 — an audition anywhere on the page interrupts this engine's display render. */
+  private unregisterBackgroundRender = registerBackgroundRender(() => this.trackEnvelopes.interrupt())
   private audioCtx: AudioContext | null = null
   /** Notes handed to superdough after their start time, which it drops (#1348). */
   private lateNotes = 0
@@ -1097,6 +1135,18 @@ export class StrudelEngine implements LiveCodingEngine {
 
   async evaluate(code: string): Promise<{ error?: Error }> {
     if (!this.initialized) await this.init()
+    // #1731 — an evaluate rebuilds the per-track analysers against superdough's
+    // CURRENT controller, which during a display render is the offline one. So
+    // it waits for any display render to let go (at most one render window), and
+    // a successful one re-fingerprints the tracks that render draws.
+    return this.trackEnvelopes.exclusive(async () => {
+      const result = await this.evaluateCode(code)
+      if (!result.error) this.trackEnvelopes.evaluated()
+      return result
+    })
+  }
+
+  private async evaluateCode(code: string): Promise<{ error?: Error }> {
     this.lastEvaluatedCode = code
     // Phase 20-14 β-2 — reset alias-resolution accumulator at the entry
     // of every evaluate(). β-5's friendly-error builder reads this; a
@@ -1690,6 +1740,10 @@ export class StrudelEngine implements LiveCodingEngine {
   }
 
   play(): void {
+    // #1731 — a display render never makes Play wait for the whole track: it is
+    // aborted here, stops being fed at its next pause, and the Play deferred
+    // below starts then.
+    this.trackEnvelopes.playing()
     // #1627 — a Play pressed while an offline render holds the transport starts
     // when the render finishes, not into it.
     if (this.transportHold.requestPlay()) return
@@ -1748,6 +1802,7 @@ export class StrudelEngine implements LiveCodingEngine {
     // the render resumes the transport it paused.
     this.transportHold.cancelResume()
     this.repl?.scheduler?.stop()
+    this.trackEnvelopes.stopped() // #1731 — stopped: render what is missing or stale
   }
 
   /**
@@ -1772,6 +1827,7 @@ export class StrudelEngine implements LiveCodingEngine {
    * cyclist.mjs:101-111). Idempotent.
    */
   resume(): void {
+    this.trackEnvelopes.playing() // #1731 — same as play()
     // #1627 — deferred to the end of an offline render, like play().
     if (!this.transportHold.requestPlay()) this.repl?.scheduler?.start?.()
     this.setPaused(false)
@@ -2043,7 +2099,7 @@ export class StrudelEngine implements LiveCodingEngine {
     const byId: Record<string, unknown> = {}
     for (const p of planned) byId[p.id] = p.pattern
     const total = duration * planned.length
-    const stems = await this.transportHold.hold(() =>
+    const stems = await this.trackEnvelopes.exclusive(() => this.transportHold.hold(() =>
       renderStemsInOrder(
         byId,
         (pattern, _id, i) =>
@@ -2051,7 +2107,7 @@ export class StrudelEngine implements LiveCodingEngine {
         undefined,
         signal ? { signal, error: () => new RenderCancelledError() } : undefined
       )
-    )
+    ))
     return { order: planned.map((p) => p.id), stems }
   }
 
@@ -2086,38 +2142,11 @@ export class StrudelEngine implements LiveCodingEngine {
     signal?: AbortSignal,
     onProgress?: (renderedSeconds: number) => void
   ): Promise<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }> {
-    if (!this.audioCtx) {
-      throw new Error('StrudelEngine not initialized — call init() first')
-    }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const wa: any = await import('@strudel/webaudio')
-    const options = {
-      signal,
-      onProgress,
-      cps: this.getCps() ?? 0.5,
-      duration,
-      sampleRate: sampleRate ?? this.audioCtx.sampleRate,
-    }
-    const result = await this.transportHold.hold(() => renderPatternOffline(
-      pattern,
-      options,
-      {
-        getAudioContext: wa.getAudioContext,
-        setAudioContext: wa.setAudioContext,
-        getSuperdoughAudioController: wa.getSuperdoughAudioController,
-        setSuperdoughAudioController: wa.setSuperdoughAudioController,
-        initAudio: wa.initAudio,
-        // #1635 — the alias step live playback applies in `wrappedOutput`. The
-        // render calls superdough directly, so without this `kick` was "not
-        // found" in a bounce while it played live.
-        superdough: (value, t, hapDuration, cps, cycle) =>
-          wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? undefined).value, t, hapDuration, cps, cycle),
-        // #1675 — a reverb's impulse response lands asynchronously; the render
-        // waits for it at each window instead of rendering the room silent.
-        settle: wa.reverbsReady,
-        createContext: (frames, rate) => new OfflineAudioContext(2, frames, rate),
-      }
-    ))
+    // #1731 — a user's render goes first: any display render is aborted and
+    // waited for, and none starts until this one ends.
+    const result = await this.trackEnvelopes.exclusive(() =>
+      this.renderPatternRaw(pattern, duration, sampleRate, signal, onProgress),
+    )
 
     if (result.skipped.length > 0) {
       const left = result.skipped.reduce((n, s) => n + s.count, 0)
@@ -2146,6 +2175,130 @@ export class StrudelEngine implements LiveCodingEngine {
     }
 
     return { blob, haps: result.haps, played: result.played, skipped: result.skipped }
+  }
+
+  /**
+   * The render every path shares: hold the transport and render through the
+   * real graph. User renders reach it through `renderPatternReport`, inside
+   * `trackEnvelopes.exclusive`; the display render (#1731) calls it directly,
+   * because it IS the render that exclusivity waits for.
+   */
+  private async renderPatternRaw(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    pattern: any,
+    duration: number,
+    sampleRate?: number,
+    signal?: AbortSignal,
+    onProgress?: (renderedSeconds: number) => void
+  ) {
+    if (!this.audioCtx) {
+      throw new Error('StrudelEngine not initialized — call init() first')
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wa: any = await import('@strudel/webaudio')
+    const options = {
+      signal,
+      onProgress,
+      cps: this.getCps() ?? 0.5,
+      duration,
+      sampleRate: sampleRate ?? this.audioCtx.sampleRate,
+    }
+    // #1733 — superdough's globals are one per PAGE, so a render waits for any
+    // other engine's render to hand them back. A render cancelled while it
+    // waited never borrows them at all.
+    return withOfflineGraph(() => {
+      if (signal?.aborted) return Promise.reject(new RenderCancelledError())
+      return this.transportHold.hold(() => renderPatternOffline(
+        pattern,
+        options,
+        {
+          getAudioContext: wa.getAudioContext,
+          setAudioContext: wa.setAudioContext,
+          getSuperdoughAudioController: wa.getSuperdoughAudioController,
+          setSuperdoughAudioController: wa.setSuperdoughAudioController,
+          initAudio: wa.initAudio,
+          // #1635 — the alias step live playback applies in `wrappedOutput`. The
+          // render calls superdough directly, so without this `kick` was "not
+          // found" in a bounce while it played live.
+          superdough: (value, t, hapDuration, cps, cycle) =>
+            wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? undefined).value, t, hapDuration, cps, cycle),
+          // #1675 — a reverb's impulse response lands asynchronously; the render
+          // waits for it at each window instead of rendering the room silent.
+          settle: wa.reverbsReady,
+          createContext: (frames, rate) => new OfflineAudioContext(2, frames, rate),
+        }
+      ))
+    })
+  }
+
+  /**
+   * #1731 — the Song timeline's handle on the synth-track renders: which tracks
+   * it wants, their envelopes, and a change signal. Renders run only while the
+   * transport is stopped, one track at a time, and only for tracks whose events
+   * changed since their last render (`trackEnvelopes.ts`).
+   */
+  readonly trackEnvelopeAccess: TrackEnvelopeAccess = {
+    request: (trackIds, cycles) => this.trackEnvelopes.request(trackIds, cycles),
+    get: (trackId) => this.trackEnvelopes.get(trackId),
+    status: () => this.trackEnvelopes.status(),
+    subscribe: (listener) => {
+      this.trackEnvelopeListeners.add(listener)
+      return () => {
+        this.trackEnvelopeListeners.delete(listener)
+      }
+    },
+  }
+
+  /**
+   * #1731 — what a track plays over `[0, cycles)`, as a digest: every onset's
+   * span and value, plus tempo and span. Two evaluates that leave a track's
+   * events alone give the same digest, so its envelope survives an edit to
+   * another track. Queried from `songPatterns`, the frame before the seek and
+   * loop wraps, which is also what `renderTrackEnvelope` renders.
+   */
+  private trackFingerprint(trackId: string, cycles: number): string | null {
+    const pattern = this.songPatterns.get(trackId)
+    if (!pattern) return null
+    let text = `${this.getCps() ?? 0.5}|${cycles}|`
+    try {
+      for (const hap of pattern.queryArc(0, cycles)) {
+        if (hap.whole == null) continue
+        if (typeof hap.hasOnset === 'function' && !hap.hasOnset()) continue
+        text += `${Number(hap.whole.begin)},${Number(hap.whole.end)},${JSON.stringify(hap.value)};`
+      }
+    } catch {
+      // Unreadable events cannot be compared: stale after every evaluate.
+      return `unreadable:${this.evalEpoch}`
+    }
+    return digest(text)
+  }
+
+  /**
+   * #1731 — render one track's own pattern over `[0, cycles)` and reduce it to
+   * an envelope; null when it is silent.
+   *
+   * ⚠ IT RENDERS THE PER-TRACK CAPTURE, NOT WHAT PLAYS. `songPatterns` is taken
+   * inside the `.p` hook, before Strudel applies `all(...)`, so the drawn shape
+   * is the track's own sound before master-level processing. That is also what
+   * lets it render after a seek or with a loop armed, where the loaded render
+   * refuses: the capture predates both wraps.
+   *
+   * ⚠ AT THE LIVE CONTEXT'S SAMPLE RATE, ALTHOUGH AN ENVELOPE NEEDS FAR LESS.
+   * superdough decodes a sample with whatever context is current when a note
+   * first asks for it, and caches the decoded buffer by URL for everyone
+   * (`superdough/sampler.mjs` `loadBuffer`, called with `getAudioContext()`).
+   * A render at a low rate would leave a low-rate copy of every sample it loads
+   * in that cache, and live playback would use it from then on.
+   */
+  private async renderTrackEnvelope(trackId: string, cycles: number, signal: AbortSignal): Promise<TrackEnvelope | null> {
+    const pattern = this.songPatterns.get(trackId)
+    if (!pattern || !this.audioCtx) return null
+    const duration = cycles / (this.getCps() ?? 0.5)
+    const { buffer } = await this.renderPatternRaw(pattern, duration, this.audioCtx.sampleRate, signal)
+    const channels: Float32Array[] = []
+    for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c))
+    const env = envelopeFromChannels(channels, Math.max(1, Math.ceil(duration * TRACK_ENVELOPE_COLUMNS_PER_SECOND)))
+    return env ? { ...env, cycles } : null
   }
 
   /**
@@ -2185,13 +2338,13 @@ export class StrudelEngine implements LiveCodingEngine {
       throw new Error('StrudelEngine not initialized — call init() first')
     }
     const sampleRate = this.audioCtx.sampleRate
-    return this.transportHold.hold(() =>
+    return this.trackEnvelopes.exclusive(() => this.transportHold.hold(() =>
       renderStemsInOrder(
         stems,
         (code) => this.renderOfflineReport(code, duration, sampleRate),
         onProgress
       )
-    )
+    ))
   }
 
   getAnalyser(): AnalyserNode {
@@ -2415,6 +2568,9 @@ export class StrudelEngine implements LiveCodingEngine {
     // #1627 — like stop(): a render still running must not restart playback
     // (on this repl, or on the one a later init() builds) when it finishes.
     this.transportHold.cancelResume()
+    this.trackEnvelopes.dispose()
+    this.trackEnvelopeListeners.clear()
+    this.unregisterBackgroundRender()
     this.repl?.scheduler?.stop()
     this.hapStream.dispose()
     this.analyserNode?.disconnect()

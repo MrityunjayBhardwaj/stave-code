@@ -116,3 +116,32 @@ describe('stack-arm mark attribution (#950)', () => {
     ])
   })
 })
+
+describe('the one engine track behind each lane (#1731)', () => {
+  const at = (start: number, trackId: string) => ({ ...hapAt(start, 'C3'), trackId })
+
+  it('pairs a lane with the track whose haps land on it', () => {
+    const code = '$: note("c3")\n$: note("e3")'
+    const haps = [at(4, '$0'), at(18, '$1')] as unknown as Parameters<typeof collectNoteMarks>[0]
+    const marks = collectNoteMarks(haps, pipeline(code), wholeSongWindow(4))
+    expect([...(marks.trackIdByLane ?? [])]).toEqual([
+      ['d1', '$0'],
+      ['d2', '$1'],
+    ])
+  })
+
+  it('pairs no lane with a track split across several lanes (a comma stack\'s arms)', () => {
+    const haps = [hapAt(6, 'C3'), hapAt(10, 'E3')] as unknown as Parameters<typeof collectNoteMarks>[0]
+    const marks = collectNoteMarks(haps, pipeline('$: s("bd, cp")'), wholeSongWindow(4))
+    expect(marks.marksByLane.get('d1')).toHaveLength(1) // the arms are separate lanes…
+    expect(marks.marksByLane.get('d2')).toHaveLength(1)
+    expect([...(marks.trackIdByLane ?? [])]).toEqual([]) // …so neither is the track's whole sound
+  })
+
+  it('pairs no track with a lane several tracks land on', () => {
+    const haps = [at(4, '$0'), at(5, '$7')] as unknown as Parameters<typeof collectNoteMarks>[0]
+    const marks = collectNoteMarks(haps, pipeline('$: note("c3 e3")'), wholeSongWindow(4))
+    expect(marks.marksByLane.get('d1')).toHaveLength(2)
+    expect([...(marks.trackIdByLane ?? [])]).toEqual([])
+  })
+})

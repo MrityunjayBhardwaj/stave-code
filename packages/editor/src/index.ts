@@ -77,6 +77,7 @@ export { SONG_LEVEL_STEM } from './engine/stemSplit'
 export { SONG_LEVEL_STEM_NAME } from './visualEdit/mixer/stemNames'
 export { describeSkipped } from './engine/renderPatternOffline'
 export type { SkippedSounds } from './engine/renderPatternOffline'
+export type { TrackEnvelopeAccess, TrackEnvelopeView, TrackEnvelopeStatus } from './engine/trackEnvelopes'
 export { LiveRecorder } from './engine/LiveRecorder'
 export { noteToMidi } from './engine/noteToMidi'
 

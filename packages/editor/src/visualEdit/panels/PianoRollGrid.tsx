@@ -34,6 +34,7 @@ import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
 import { opensPianoRoll } from './surfaceRoute'
 import { useGridModel } from './useGridModel'
+import { onLiveGraph } from '../../engine/offlineGraph'
 import { emitLog } from '../../engine/engineLog'
 import { usePlayingStep } from './usePlayingStep'
 import {
@@ -630,7 +631,9 @@ export function PianoRollGrid({
   // sample/soundfont sounds need the engine initialized (a played doc) — else
   // this silently no-ops. superdough is async: an unready/unknown sound REJECTS,
   // so .catch it too (the try/catch only guards a synchronous throw).
-  const playMidi = (midi: number): void => {
+  // #1733 — through `onLiveGraph`, so a key tap during a background waveform
+  // render waits for it to hand superdough back instead of playing into it.
+  const playMidi = (midi: number): void => onLiveGraph(() => {
     try {
       const ctx = getAudioContext()
       void ctx.resume() // the press is the user gesture that unlocks audio
@@ -646,7 +649,7 @@ export function PianoRollGrid({
     } catch {
       /* audio graph not ready — never break the UI */
     }
-  }
+  })
 
   // Press-and-hold sustains the pitch (#633): superdough has no live note-off, so
   // a tight retrigger of an overlapping sustained note keeps it sounding while
