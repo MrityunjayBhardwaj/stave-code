@@ -1472,8 +1472,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const closeLaneMenu = useCallback(() => setLaneMenu(null), [])
   const openLaneMenu = useCallback(
     (e: React.MouseEvent<HTMLElement>, laneKey: string, name: string) => {
-      const target = e.target as HTMLElement
-      if (target.closest('button, input') && e.currentTarget.contains(target.closest('button, input'))) return
+      const control = (e.target as HTMLElement).closest('button, input')
+      if (control && e.currentTarget.contains(control)) return
       e.preventDefault()
       e.stopPropagation()
       setLaneMenu({ laneKey, name, x: e.clientX, y: e.clientY, anchor: e.currentTarget })
