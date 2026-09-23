@@ -1884,6 +1884,8 @@ declare class StrudelEngine implements LiveCodingEngine {
      */
     private trackEnvelopeListeners;
     private trackEnvelopes;
+    /** #1733 — an audition anywhere on the page interrupts this engine's display render. */
+    private unregisterBackgroundRender;
     private audioCtx;
     /** Notes handed to superdough after their start time, which it drops (#1348). */
     private lateNotes;
