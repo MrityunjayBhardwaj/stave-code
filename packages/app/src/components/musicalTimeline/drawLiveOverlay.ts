@@ -161,10 +161,32 @@ export function drawLiveOverlay(
         if (!lit.has(n)) continue
         const r = markRect(n, band, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
         if (!r) continue
-        drawLitMark(ctx, r, n.gain, theme, markHasWaveform(n, r, waveforms, pxPerCycle))
+        drawLitMark(ctx, r, n.gain, theme, markShowsShape(lane, box.expanded, n, r, waveforms, pxPerCycle))
       }
     }
   })
+}
+
+/**
+ * Does the base canvas draw a SHAPE inside this mark (#1742)? If so the lit mark
+ * is a ring around it; if not, the bar is the whole rendering and it fills.
+ *
+ * The lane's type decides first, as it does in the base draw (#1738): a lane set
+ * to Bars draws no shape in any mark. Then either source of a shape counts —
+ * a collapsed synth lane with a render draws it inside every bar (#1740), and a
+ * sample mark draws its own file's slice (#1506).
+ */
+function markShowsShape(
+  lane: TimelineScene['lanes'][number],
+  expanded: boolean,
+  note: SceneNote,
+  r: { readonly w: number; readonly h: number },
+  waveforms: WaveformSource | undefined,
+  pxPerCycle: number,
+): boolean {
+  if (lane.bars === true) return false
+  if (!expanded && lane.envelope != null) return true
+  return markHasWaveform(note, r, waveforms, pxPerCycle)
 }
 
 /**
