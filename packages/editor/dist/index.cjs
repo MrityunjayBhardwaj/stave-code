@@ -5826,6 +5826,210 @@ function createTransportHold(transport) {
 }
 __name(createTransportHold, "createTransportHold");
 
+// src/engine/trackEnvelopes.ts
+function createTrackEnvelopeScheduler(deps) {
+  let wanted = [];
+  let cycles = 0;
+  const envelopes = /* @__PURE__ */ new Map();
+  const refused2 = /* @__PURE__ */ new Map();
+  const current4 = /* @__PURE__ */ new Map();
+  let overCap = [];
+  let rendering = null;
+  let cancelTimer = null;
+  let inFlight2 = null;
+  let suspended = 0;
+  let playRequested = false;
+  let disposed = false;
+  const refingerprint = /* @__PURE__ */ __name(() => {
+    let changed = false;
+    for (const id of wanted) {
+      let fp;
+      try {
+        fp = deps.fingerprint(id, cycles);
+      } catch {
+        fp = null;
+      }
+      if (current4.get(id) !== fp) changed = true;
+      current4.set(id, fp);
+    }
+    return changed;
+  }, "refingerprint");
+  const abortInFlight = /* @__PURE__ */ __name(() => {
+    inFlight2?.controller.abort();
+  }, "abortInFlight");
+  const kick = /* @__PURE__ */ __name(() => {
+    cancelTimer?.();
+    cancelTimer = null;
+    if (disposed || suspended > 0 || playRequested || deps.isPlaying()) return;
+    cancelTimer = deps.schedule(() => {
+      cancelTimer = null;
+      void run();
+    }, deps.debounceMs);
+  }, "kick");
+  const plan = /* @__PURE__ */ __name(() => {
+    const todo = [];
+    const over = [];
+    const cps = deps.cps();
+    const seconds = cps > 0 ? cycles / cps : Infinity;
+    let spent = 0;
+    for (const id of wanted) {
+      const fp = current4.get(id);
+      if (fp == null) continue;
+      if (spent + seconds > deps.capSeconds) {
+        over.push(id);
+        continue;
+      }
+      spent += seconds;
+      if (envelopes.get(id)?.fingerprint === fp) continue;
+      if (refused2.get(id) === fp) continue;
+      todo.push(id);
+    }
+    return { todo, over };
+  }, "plan");
+  const run = /* @__PURE__ */ __name(async () => {
+    if (disposed || inFlight2) return;
+    const controller = new AbortController();
+    let finish;
+    inFlight2 = { controller, done: new Promise((r) => finish = r) };
+    try {
+      const { todo, over } = plan();
+      if (over.join("\0") !== overCap.join("\0")) {
+        overCap = over;
+        deps.onChange();
+      }
+      for (const id of over) if (envelopes.delete(id)) deps.onChange();
+      for (const id of todo) {
+        if (controller.signal.aborted) break;
+        const fp = current4.get(id);
+        if (fp == null) continue;
+        rendering = id;
+        deps.onChange();
+        let result = null;
+        let failed = false;
+        try {
+          result = await deps.render(id, cycles, controller.signal);
+        } catch {
+          failed = true;
+        }
+        rendering = null;
+        if (controller.signal.aborted) {
+          deps.onChange();
+          break;
+        }
+        if (failed || result == null) {
+          refused2.set(id, fp);
+          envelopes.delete(id);
+        } else {
+          envelopes.set(id, { ...result, fingerprint: fp });
+          refused2.delete(id);
+        }
+        deps.onChange();
+      }
+    } finally {
+      rendering = null;
+      inFlight2 = null;
+      finish();
+    }
+    if (plan().todo.length > 0) kick();
+  }, "run");
+  return {
+    request(trackIds, span) {
+      const nextWanted = [...trackIds];
+      const same = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id, i) => id === wanted[i]);
+      if (same) return;
+      if (span !== cycles) abortInFlight();
+      wanted = nextWanted;
+      cycles = span;
+      for (const id of [...current4.keys()]) if (!wanted.includes(id)) current4.delete(id);
+      refingerprint();
+      deps.onChange();
+      kick();
+    },
+    evaluated() {
+      abortInFlight();
+      if (refingerprint()) deps.onChange();
+      kick();
+    },
+    playing() {
+      playRequested = true;
+      cancelTimer?.();
+      cancelTimer = null;
+      abortInFlight();
+    },
+    stopped() {
+      playRequested = false;
+      kick();
+    },
+    async exclusive(fn) {
+      suspended++;
+      cancelTimer?.();
+      cancelTimer = null;
+      const pending = inFlight2;
+      pending?.controller.abort();
+      try {
+        if (pending) await pending.done;
+        return await fn();
+      } finally {
+        suspended--;
+        kick();
+      }
+    },
+    get(trackId) {
+      const env = envelopes.get(trackId);
+      if (!env) return null;
+      return {
+        data: env.data,
+        columns: env.columns,
+        cycles: env.cycles,
+        stale: current4.get(trackId) !== env.fingerprint
+      };
+    },
+    status: /* @__PURE__ */ __name(() => ({ rendering, overCap }), "status"),
+    dispose() {
+      disposed = true;
+      cancelTimer?.();
+      cancelTimer = null;
+      abortInFlight();
+    }
+  };
+}
+__name(createTrackEnvelopeScheduler, "createTrackEnvelopeScheduler");
+function envelopeFromChannels(channels, columns) {
+  const length = channels[0]?.length ?? 0;
+  if (length === 0 || columns <= 0) return null;
+  const data = new Float32Array(columns * 2);
+  let any = false;
+  for (let c = 0; c < columns; c++) {
+    const from = Math.floor(c * length / columns);
+    const to = Math.max(from + 1, Math.floor((c + 1) * length / columns));
+    let min = 0;
+    let max = 0;
+    for (const ch of channels) {
+      for (let i = from; i < to && i < length; i++) {
+        const v = ch[i];
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+    }
+    if (min !== 0 || max !== 0) any = true;
+    data[2 * c] = min;
+    data[2 * c + 1] = max;
+  }
+  return any ? { data, columns } : null;
+}
+__name(envelopeFromChannels, "envelopeFromChannels");
+function digest(text) {
+  let a = 2166136261;
+  let b = 16777619;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    a = Math.imul(a ^ c, 16777619) >>> 0;
+    b = Math.imul(b ^ c, 1540483477) >>> 0;
+  }
+  return `${text.length.toString(36)}-${a.toString(36)}-${b.toString(36)}`;
+}
+__name(digest, "digest");
+
 // src/engine/liveTriggerDrain.ts
 function createLiveTriggerDrain() {
   const inFlight2 = /* @__PURE__ */ new Map();
@@ -8977,6 +9181,9 @@ function createOptionalStep(initRemaining, phaseRemaining) {
   };
 }
 __name(createOptionalStep, "createOptionalStep");
+var TRACK_ENVELOPE_DEBOUNCE_MS = 700;
+var TRACK_ENVELOPE_CAP_SECONDS = 1200;
+var TRACK_ENVELOPE_COLUMNS_PER_SECOND = 100;
 var _StrudelEngine = class _StrudelEngine {
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -9016,6 +9223,26 @@ var _StrudelEngine = class _StrudelEngine {
           });
         }
       }, "drain")
+    });
+    /**
+     * #1731 — each wanted synth track rendered offline for the Song timeline to
+     * draw, only while the transport is stopped. See `trackEnvelopes.ts`.
+     */
+    this.trackEnvelopeListeners = /* @__PURE__ */ new Set();
+    this.trackEnvelopes = createTrackEnvelopeScheduler({
+      isPlaying: /* @__PURE__ */ __name(() => Boolean(this.repl?.scheduler?.started), "isPlaying"),
+      cps: /* @__PURE__ */ __name(() => this.getCps() ?? 0.5, "cps"),
+      fingerprint: /* @__PURE__ */ __name((trackId, cycles) => this.trackFingerprint(trackId, cycles), "fingerprint"),
+      render: /* @__PURE__ */ __name((trackId, cycles, signal) => this.renderTrackEnvelope(trackId, cycles, signal), "render"),
+      schedule: /* @__PURE__ */ __name((fn, ms) => {
+        const id = setTimeout(fn, ms);
+        return () => clearTimeout(id);
+      }, "schedule"),
+      onChange: /* @__PURE__ */ __name(() => {
+        for (const listener of this.trackEnvelopeListeners) listener();
+      }, "onChange"),
+      debounceMs: TRACK_ENVELOPE_DEBOUNCE_MS,
+      capSeconds: TRACK_ENVELOPE_CAP_SECONDS
     });
     this.audioCtx = null;
     /** Notes handed to superdough after their start time, which it drops (#1348). */
@@ -9152,6 +9379,23 @@ var _StrudelEngine = class _StrudelEngine {
     /** resolves superdough's GLOBAL audio controller (the live one). */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     this.superdoughControllerFn = null;
+    /**
+     * #1731 — the Song timeline's handle on the synth-track renders: which tracks
+     * it wants, their envelopes, and a change signal. Renders run only while the
+     * transport is stopped, one track at a time, and only for tracks whose events
+     * changed since their last render (`trackEnvelopes.ts`).
+     */
+    this.trackEnvelopeAccess = {
+      request: /* @__PURE__ */ __name((trackIds, cycles) => this.trackEnvelopes.request(trackIds, cycles), "request"),
+      get: /* @__PURE__ */ __name((trackId) => this.trackEnvelopes.get(trackId), "get"),
+      status: /* @__PURE__ */ __name(() => this.trackEnvelopes.status(), "status"),
+      subscribe: /* @__PURE__ */ __name((listener) => {
+        this.trackEnvelopeListeners.add(listener);
+        return () => {
+          this.trackEnvelopeListeners.delete(listener);
+        };
+      }, "subscribe")
+    };
   }
   /** Read-only snapshot of the tier flags consumed at this engine's init(). */
   getTierFlagsSnapshot() {
@@ -9502,6 +9746,13 @@ var _StrudelEngine = class _StrudelEngine {
   }
   async evaluate(code) {
     if (!this.initialized) await this.init();
+    return this.trackEnvelopes.exclusive(async () => {
+      const result = await this.evaluateCode(code);
+      if (!result.error) this.trackEnvelopes.evaluated();
+      return result;
+    });
+  }
+  async evaluateCode(code) {
     this.lastEvaluatedCode = code;
     this.lastAliasResolutions = [];
     const capturedPatterns = /* @__PURE__ */ new Map();
@@ -9773,6 +10024,7 @@ var _StrudelEngine = class _StrudelEngine {
     return scanVizRequestLines(requests, code, this.vizOptions);
   }
   play() {
+    this.trackEnvelopes.playing();
     if (this.transportHold.requestPlay()) return;
     this.repl?.scheduler?.start();
     this.followMasterAnalyser();
@@ -9806,6 +10058,7 @@ var _StrudelEngine = class _StrudelEngine {
   stop() {
     this.transportHold.cancelResume();
     this.repl?.scheduler?.stop();
+    this.trackEnvelopes.stopped();
   }
   /**
    * Phase 20-07 (DEC-AMENDED-1) — debugger pause. Calls
@@ -9828,6 +10081,7 @@ var _StrudelEngine = class _StrudelEngine {
    * cyclist.mjs:101-111). Idempotent.
    */
   resume() {
+    this.trackEnvelopes.playing();
     if (!this.transportHold.requestPlay()) this.repl?.scheduler?.start?.();
     this.setPaused(false);
   }
@@ -10059,14 +10313,14 @@ var _StrudelEngine = class _StrudelEngine {
     const byId = {};
     for (const p of planned) byId[p.id] = p.pattern;
     const total = duration * planned.length;
-    const stems = await this.transportHold.hold(
+    const stems = await this.trackEnvelopes.exclusive(() => this.transportHold.hold(
       () => renderStemsInOrder(
         byId,
         (pattern, _id, i) => this.renderPatternReport(pattern, duration, sampleRate, signal, (s) => onProgress?.(i * duration + s, total)),
         void 0,
         signal ? { signal, error: /* @__PURE__ */ __name(() => new RenderCancelledError(), "error") } : void 0
       )
-    );
+    ));
     return { order: planned.map((p) => p.id), stems };
   }
   /** The load both loaded renders use, or the reason it cannot be rendered. */
@@ -10091,36 +10345,9 @@ var _StrudelEngine = class _StrudelEngine {
   }
   /** The render both entry points share: hold the transport, render, report, encode. */
   async renderPatternReport(pattern, duration, sampleRate, signal, onProgress) {
-    if (!this.audioCtx) {
-      throw new Error("StrudelEngine not initialized \u2014 call init() first");
-    }
-    const wa = await import('@strudel/webaudio');
-    const options = {
-      signal,
-      onProgress,
-      cps: this.getCps() ?? 0.5,
-      duration,
-      sampleRate: sampleRate ?? this.audioCtx.sampleRate
-    };
-    const result = await this.transportHold.hold(() => renderPatternOffline(
-      pattern,
-      options,
-      {
-        getAudioContext: wa.getAudioContext,
-        setAudioContext: wa.setAudioContext,
-        getSuperdoughAudioController: wa.getSuperdoughAudioController,
-        setSuperdoughAudioController: wa.setSuperdoughAudioController,
-        initAudio: wa.initAudio,
-        // #1635 — the alias step live playback applies in `wrappedOutput`. The
-        // render calls superdough directly, so without this `kick` was "not
-        // found" in a bounce while it played live.
-        superdough: /* @__PURE__ */ __name((value, t, hapDuration, cps, cycle) => wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? void 0).value, t, hapDuration, cps, cycle), "superdough"),
-        // #1675 — a reverb's impulse response lands asynchronously; the render
-        // waits for it at each window instead of rendering the room silent.
-        settle: wa.reverbsReady,
-        createContext: /* @__PURE__ */ __name((frames, rate) => new OfflineAudioContext(2, frames, rate), "createContext")
-      }
-    ));
+    const result = await this.trackEnvelopes.exclusive(
+      () => this.renderPatternRaw(pattern, duration, sampleRate, signal, onProgress)
+    );
     if (result.skipped.length > 0) {
       const left = result.skipped.reduce((n, s) => n + s.count, 0);
       emitLog({
@@ -10140,6 +10367,93 @@ var _StrudelEngine = class _StrudelEngine {
       throw err;
     }
     return { blob, haps: result.haps, played: result.played, skipped: result.skipped };
+  }
+  /**
+   * The render every path shares: hold the transport and render through the
+   * real graph. User renders reach it through `renderPatternReport`, inside
+   * `trackEnvelopes.exclusive`; the display render (#1731) calls it directly,
+   * because it IS the render that exclusivity waits for.
+   */
+  async renderPatternRaw(pattern, duration, sampleRate, signal, onProgress) {
+    if (!this.audioCtx) {
+      throw new Error("StrudelEngine not initialized \u2014 call init() first");
+    }
+    const wa = await import('@strudel/webaudio');
+    const options = {
+      signal,
+      onProgress,
+      cps: this.getCps() ?? 0.5,
+      duration,
+      sampleRate: sampleRate ?? this.audioCtx.sampleRate
+    };
+    return this.transportHold.hold(() => renderPatternOffline(
+      pattern,
+      options,
+      {
+        getAudioContext: wa.getAudioContext,
+        setAudioContext: wa.setAudioContext,
+        getSuperdoughAudioController: wa.getSuperdoughAudioController,
+        setSuperdoughAudioController: wa.setSuperdoughAudioController,
+        initAudio: wa.initAudio,
+        // #1635 — the alias step live playback applies in `wrappedOutput`. The
+        // render calls superdough directly, so without this `kick` was "not
+        // found" in a bounce while it played live.
+        superdough: /* @__PURE__ */ __name((value, t, hapDuration, cps, cycle) => wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? void 0).value, t, hapDuration, cps, cycle), "superdough"),
+        // #1675 — a reverb's impulse response lands asynchronously; the render
+        // waits for it at each window instead of rendering the room silent.
+        settle: wa.reverbsReady,
+        createContext: /* @__PURE__ */ __name((frames, rate) => new OfflineAudioContext(2, frames, rate), "createContext")
+      }
+    ));
+  }
+  /**
+   * #1731 — what a track plays over `[0, cycles)`, as a digest: every onset's
+   * span and value, plus tempo and span. Two evaluates that leave a track's
+   * events alone give the same digest, so its envelope survives an edit to
+   * another track. Queried from `songPatterns`, the frame before the seek and
+   * loop wraps, which is also what `renderTrackEnvelope` renders.
+   */
+  trackFingerprint(trackId, cycles) {
+    const pattern = this.songPatterns.get(trackId);
+    if (!pattern) return null;
+    let text = `${this.getCps() ?? 0.5}|${cycles}|`;
+    try {
+      for (const hap of pattern.queryArc(0, cycles)) {
+        if (hap.whole == null) continue;
+        if (typeof hap.hasOnset === "function" && !hap.hasOnset()) continue;
+        text += `${Number(hap.whole.begin)},${Number(hap.whole.end)},${JSON.stringify(hap.value)};`;
+      }
+    } catch {
+      return `unreadable:${this.evalEpoch}`;
+    }
+    return digest(text);
+  }
+  /**
+   * #1731 — render one track's own pattern over `[0, cycles)` and reduce it to
+   * an envelope; null when it is silent.
+   *
+   * ⚠ IT RENDERS THE PER-TRACK CAPTURE, NOT WHAT PLAYS. `songPatterns` is taken
+   * inside the `.p` hook, before Strudel applies `all(...)`, so the drawn shape
+   * is the track's own sound before master-level processing. That is also what
+   * lets it render after a seek or with a loop armed, where the loaded render
+   * refuses: the capture predates both wraps.
+   *
+   * ⚠ AT THE LIVE CONTEXT'S SAMPLE RATE, ALTHOUGH AN ENVELOPE NEEDS FAR LESS.
+   * superdough decodes a sample with whatever context is current when a note
+   * first asks for it, and caches the decoded buffer by URL for everyone
+   * (`superdough/sampler.mjs` `loadBuffer`, called with `getAudioContext()`).
+   * A render at a low rate would leave a low-rate copy of every sample it loads
+   * in that cache, and live playback would use it from then on.
+   */
+  async renderTrackEnvelope(trackId, cycles, signal) {
+    const pattern = this.songPatterns.get(trackId);
+    if (!pattern || !this.audioCtx) return null;
+    const duration = cycles / (this.getCps() ?? 0.5);
+    const { buffer } = await this.renderPatternRaw(pattern, duration, this.audioCtx.sampleRate, signal);
+    const channels = [];
+    for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c));
+    const env = envelopeFromChannels(channels, Math.max(1, Math.ceil(duration * TRACK_ENVELOPE_COLUMNS_PER_SECOND)));
+    return env ? { ...env, cycles } : null;
   }
   /**
    * Render each stem's standalone program to its own WAV, through the same real
@@ -10169,13 +10483,13 @@ var _StrudelEngine = class _StrudelEngine {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
     const sampleRate = this.audioCtx.sampleRate;
-    return this.transportHold.hold(
+    return this.trackEnvelopes.exclusive(() => this.transportHold.hold(
       () => renderStemsInOrder(
         stems,
         (code) => this.renderOfflineReport(code, duration, sampleRate),
         onProgress
       )
-    );
+    ));
   }
   getAnalyser() {
     if (!this.analyserNode) throw new Error("StrudelEngine not initialized");
@@ -10374,6 +10688,8 @@ var _StrudelEngine = class _StrudelEngine {
   }
   dispose() {
     this.transportHold.cancelResume();
+    this.trackEnvelopes.dispose();
+    this.trackEnvelopeListeners.clear();
     this.repl?.scheduler?.stop();
     this.hapStream.dispose();
     this.analyserNode?.disconnect();
@@ -43134,6 +43450,15 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
     return engine.getTimelineEvents?.(endCycle) ?? [];
   }
   /**
+   * #1731 — the Song timeline's handle on its synth-track renders, from this
+   * runtime's engine. Null for an engine that renders nothing (non-Strudel) and
+   * after dispose.
+   */
+  getTrackEnvelopes() {
+    if (this.isDisposed) return null;
+    return this.engine.trackEnvelopeAccess ?? null;
+  }
+  /**
    * The capture keys behind those events (#1107) — read-through in the same
    * shape, from the same engine, so the two can never describe different track
    * sets. Lets the Song analysis tell "this track has not played yet" from
@@ -45115,11 +45440,11 @@ function wrap5(req) {
 }
 __name(wrap5, "wrap");
 var sha256Hex = /* @__PURE__ */ __name(async (bytes) => {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const digest2 = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest2)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }, "sha256Hex");
-async function putAsset(blob, digest = sha256Hex) {
-  const hash = await digest(await blob.arrayBuffer());
+async function putAsset(blob, digest2 = sha256Hex) {
+  const hash = await digest2(await blob.arrayBuffer());
   const db = await openDb5();
   try {
     const existing = await wrap5(

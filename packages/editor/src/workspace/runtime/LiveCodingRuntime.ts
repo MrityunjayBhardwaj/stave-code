@@ -98,6 +98,7 @@
  * Both consume the same event source, no two-way coupling.
  */
 
+import type { TrackEnvelopeAccess } from '../../engine/trackEnvelopes'
 import type { LiveCodingEngine } from '../../engine/LiveCodingEngine'
 import type { HapStream } from '../../engine/HapStream'
 import type { IREvent } from '../../ir/IREvent'
@@ -1406,6 +1407,16 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
     // for one. The caller filters to its band regardless, so this is correct,
     // just as expensive as before the band existed.
     return engine.getTimelineEvents?.(endCycle) ?? []
+  }
+
+  /**
+   * #1731 — the Song timeline's handle on its synth-track renders, from this
+   * runtime's engine. Null for an engine that renders nothing (non-Strudel) and
+   * after dispose.
+   */
+  getTrackEnvelopes(): TrackEnvelopeAccess | null {
+    if (this.isDisposed) return null
+    return (this.engine as { trackEnvelopeAccess?: TrackEnvelopeAccess }).trackEnvelopeAccess ?? null
   }
 
   /**
