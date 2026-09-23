@@ -35,19 +35,42 @@
 import { getAudioContext, getCachedBuffer, getSampleInfo, getSound, loadBuffer } from '@strudel/webaudio'
 
 /**
- * Envelope resolution held per sample, independent of zoom.
+ * Envelope resolution held per sample, independent of zoom — the FLOOR.
  *
- * Peaks are cached ONCE at this width and downsampled to whatever a mark is
- * worth at draw time, rather than cached per (sample, pixel width). The
- * alternative thrashes: a mark's width changes on every zoom step and on every
- * window resize, so a width-keyed cache would recompute the whole envelope for
- * a scroll gesture and hold an entry per width it ever saw.
+ * Peaks are cached ONCE per sample and downsampled to whatever a mark is worth
+ * at draw time, rather than cached per (sample, pixel width). The alternative
+ * thrashes: a mark's width changes on every zoom step and on every window
+ * resize, so a width-keyed cache would recompute the whole envelope for a
+ * scroll gesture and hold an entry per width it ever saw.
  *
- * 1024 is well past what any single mark can show — a mark that wide is most of
- * the viewport — so downsampling is always a reduction and never an
- * interpolation that would invent detail the sample does not have.
+ * 1024 is well past what a mark playing the WHOLE of a short sample can show.
+ * It is not enough for a long file played in slices (#1736): a mark shows only
+ * its slice, so the detail it needs scales with the file's length. That is
+ * `PEAK_COLUMNS_PER_SECOND`; this is the minimum a short sample still gets.
  */
 export const PEAK_COLUMNS = 1024
+
+/**
+ * Envelope resolution in TIME, for a file long enough to exceed the floor
+ * (#1736). A 374 s vocal played one ~2 s bar per mark had 1024 columns for the
+ * whole file — about 5 per mark, drawn as flat plateaus. 256 per second is a
+ * column per ~4 ms, finer than the timeline's closest zoom on a song that long
+ * (~190 px per second for 187 bars), so a slice is still a reduction there.
+ */
+export const PEAK_COLUMNS_PER_SECOND = 256
+
+/**
+ * Upper bound on a single sample's columns: 2^18 pairs is 2 MB of Float32, and
+ * reaches 1024 s (~17 min) at full time resolution. A longer file loses
+ * resolution rather than growing the cache without limit.
+ */
+export const MAX_PEAK_COLUMNS = 1 << 18
+
+/** How many columns a sample of this length is cached at. */
+export function peakColumnsFor(durationSeconds: number): number {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return PEAK_COLUMNS
+  return Math.min(MAX_PEAK_COLUMNS, Math.max(PEAK_COLUMNS, Math.ceil(durationSeconds * PEAK_COLUMNS_PER_SECOND)))
+}
 
 /**
  * A sample's drawable shape.
@@ -207,9 +230,10 @@ export function peaksForSample(ref: SampleRef, deps: SamplePeaksDeps = liveDeps)
   if (cached) return cached
   const buffer = deps.getCachedBuffer(url)
   if (buffer == null) return null
+  const columns = peakColumnsFor(buffer.duration)
   const peaks: SamplePeaks = {
-    data: computePeaks(channelsOf(buffer), PEAK_COLUMNS),
-    columns: PEAK_COLUMNS,
+    data: computePeaks(channelsOf(buffer), columns),
+    columns,
     duration: buffer.duration,
   }
   peakCache.set(url, peaks)

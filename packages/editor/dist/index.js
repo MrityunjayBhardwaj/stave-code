@@ -45679,6 +45679,13 @@ function renameAssetRecord(id, name) {
 }
 __name(renameAssetRecord, "renameAssetRecord");
 var PEAK_COLUMNS = 1024;
+var PEAK_COLUMNS_PER_SECOND = 256;
+var MAX_PEAK_COLUMNS = 1 << 18;
+function peakColumnsFor(durationSeconds) {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return PEAK_COLUMNS;
+  return Math.min(MAX_PEAK_COLUMNS, Math.max(PEAK_COLUMNS, Math.ceil(durationSeconds * PEAK_COLUMNS_PER_SECOND)));
+}
+__name(peakColumnsFor, "peakColumnsFor");
 function computePeaks(channels, columns) {
   if (columns <= 0) return new Float32Array(0);
   const out = new Float32Array(columns * 2);
@@ -45741,9 +45748,10 @@ function peaksForSample(ref, deps = liveDeps) {
   if (cached2) return cached2;
   const buffer = deps.getCachedBuffer(url);
   if (buffer == null) return null;
+  const columns = peakColumnsFor(buffer.duration);
   const peaks = {
-    data: computePeaks(channelsOf(buffer), PEAK_COLUMNS),
-    columns: PEAK_COLUMNS,
+    data: computePeaks(channelsOf(buffer), columns),
+    columns,
     duration: buffer.duration
   };
   peakCache.set(url, peaks);
