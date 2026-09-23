@@ -24,7 +24,7 @@
 import type { TimelineScene, SceneLane, SceneNote, SceneClip, SceneStepped, SceneSignal, SignalTimeAt, LaneEnvelope } from './timelineScene'
 import { stepSegments, stepY, type StepBand } from './steppedLane'
 import { NO_VOICE } from './timelineScene'
-import type { LaneLayout, LaneBox } from './laneLayout'
+import { SUB_ROW_HEIGHT, type LaneLayout, type LaneBox } from './laneLayout'
 import type { DisplayMeter } from '../../lib/meter'
 import { songCycleToXUnclamped, type SongWindow } from './songAxis'
 import type { SignalAutomation, SignalKind, UnboundedSignalKind } from '@stave/editor'
@@ -1135,10 +1135,11 @@ export interface MarkBand {
  * bd/sd/hh sit on separate lines (#424); sub-row geometry comes straight from the
  * shared `LaneLayout` (PV120). Otherwise a single band: the bar scales with the
  * row height so the row-height setting grows it like the live monitor (#459); an
- * expanded single band WITH a pitch range keeps a thin mark so its pitch spread
- * reads as a contour. Without one (a sample track, a one-pitch voice) there is no
- * contour to leave room for, so it keeps the full bar — and with it the waveform,
- * which a sliver is too short to hold (#1713).
+ * expanded single band WITH a pitch range spends its height on pitch-Y, with each
+ * bar the size one sub-row's bar is, so the Timeline sub-row setting grows it as
+ * it grows a drum voice's (#1744). Without a range (a sample track, a one-pitch
+ * voice) there is no pitch to place, so it keeps the full bar — and with it the
+ * waveform (#1713).
  * PURE — the geometry the base `drawTimeline` and the live overlay both consume,
  * so a lit mark lands exactly over its base mark (no drift).
  */
@@ -1178,8 +1179,12 @@ export function laneMarkBands(lane: SceneLane, box: LaneBox): MarkBand[] {
   }
   const pMin = lane.pitchMin
   const pMax = lane.pitchMax
+  // #1744 — an expanded band with a pitch range spends its height on pitch-Y,
+  // with each bar the size ONE sub-row's bar is — the same bar a multi-voice
+  // lane's voice rows get above — so it follows the Timeline sub-row setting
+  // rather than a fixed sliver.
   const markH = box.expanded && hasPitchSpread(pMin, pMax)
-    ? PITCH_CONTOUR_MARK_H
+    ? barHeightForBand((box.subRowHeight ?? SUB_ROW_HEIGHT) - 2 * VOICE_BAND_PAD_Y)
     : barHeightForBand(box.height - 2 * SINGLE_BAND_PAD_Y)
   return [
     {
@@ -1192,10 +1197,6 @@ export function laneMarkBands(lane: SceneLane, box: LaneBox): MarkBand[] {
     },
   ]
 }
-
-/** Mark height in an expanded single band that has a pitch range: a sliver, so
- *  the band's height goes to pitch-Y and the notes read as a contour. */
-const PITCH_CONTOUR_MARK_H = 4
 
 /** Whether a band has a pitch range to spread marks over. The one predicate
  *  behind both "is this mark placed by pitch" (`markRect`) and "does this band
