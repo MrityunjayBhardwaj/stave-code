@@ -1297,31 +1297,47 @@ function drawMarkWaveform(
   return budget - columns
 }
 
-/** Each envelope's own loudest sample, cached per render (a render's data array
- *  is never mutated, so its identity is the cache key). */
-const envelopePeakCache = new WeakMap<Float32Array, number>()
+/** The share of an envelope's sounding columns that fit inside the row (#1731).
+ *  The rest — onset clicks, a single accent — clip at the row's edge. */
+export const ENVELOPE_SCALE_QUANTILE = 0.95
 
-function envelopePeak(data: Float32Array): number {
-  let peak = envelopePeakCache.get(data)
-  if (peak === undefined) {
-    peak = 0
-    for (let i = 0; i < data.length; i++) {
-      const v = Math.abs(data[i])
-      if (v > peak) peak = v
+/** Each envelope's reference level, cached per render (a render's data array is
+ *  never mutated, so its identity is the cache key). */
+const envelopeScaleCache = new WeakMap<Float32Array, number>()
+
+/**
+ * The level that fills the row: the `ENVELOPE_SCALE_QUANTILE` of the loudest
+ * sample per SOUNDING column. Not the single loudest sample: an oscillator's
+ * note starts with a click several times louder than the tone it then holds —
+ * measured on a `square` bass, where scaling to the maximum left the held notes
+ * a band no taller than the note marks drawn over them, and the envelope showed
+ * only as a spike at each onset. Silent columns are left out, so a sparse track
+ * is scaled by its notes rather than by its rests.
+ */
+function envelopeScale(data: Float32Array): number {
+  let scale = envelopeScaleCache.get(data)
+  if (scale === undefined) {
+    const levels: number[] = []
+    for (let i = 0; i + 1 < data.length; i += 2) {
+      const v = Math.max(Math.abs(data[i]), Math.abs(data[i + 1]))
+      if (v > 0) levels.push(v)
     }
-    envelopePeakCache.set(data, peak)
+    levels.sort((a, b) => a - b)
+    scale = levels.length === 0 ? 0 : levels[Math.min(levels.length - 1, Math.floor(levels.length * ENVELOPE_SCALE_QUANTILE))]
+    envelopeScaleCache.set(data, scale)
   }
-  return peak
+  return scale
 }
 
 /**
  * Draw a lane's rendered loudness across the row (#1731): min/max per screen
  * pixel, mirrored about the row's centre.
  *
- * ⚠ SCALED TO THE TRACK'S OWN LOUDEST MOMENT, not to full scale. The render is
- * the track before the master bus, and synth levels commonly peak far below 1,
- * which at full scale draws a flat line. What the lane has to show is where the
- * track swells and drops across the song, so its loudest moment fills the row.
+ * ⚠ SCALED TO THE TRACK'S OWN LEVEL, not to full scale. The render is the track
+ * before the master bus, and synth levels commonly peak far below 1, which at
+ * full scale draws a flat line. What the lane has to show is where the track
+ * swells and drops across the song, so its typical loud level fills the row
+ * (`envelopeScale`) and anything louder clips at the edge.
  * Two lanes' heights are therefore not comparable levels — the Mixer's meters
  * are where levels are compared.
  */
@@ -1335,8 +1351,8 @@ function drawLaneEnvelope(
   theme: DrawTheme,
   toScreenX: (cycle: number) => number,
 ): void {
-  const peak = envelopePeak(env.data)
-  if (peak <= 0 || env.columns <= 0 || env.cycles <= 0) return
+  const scale = envelopeScale(env.data)
+  if (scale <= 0 || env.columns <= 0 || env.cycles <= 0) return
   const originX = toScreenX(0)
   const pxPerCycle = toScreenX(1) - originX
   if (!(pxPerCycle > 0)) return
@@ -1361,8 +1377,8 @@ function drawLaneEnvelope(
       if (hi > max) max = hi
     }
     if (min === 0 && max === 0) continue
-    const yTop = centreY - (max / peak) * halfH
-    const yBottom = centreY - (min / peak) * halfH
+    const yTop = centreY - Math.min(1, max / scale) * halfH
+    const yBottom = centreY - Math.max(-1, min / scale) * halfH
     ctx.fillRect(x, yTop, 1, Math.max(1, yBottom - yTop))
   }
   ctx.restore()

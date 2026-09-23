@@ -157,6 +157,25 @@ describe('drawTimeline — a collapsed synth lane draws its envelope (#1731)', (
     expect(cols[0].h).toBeCloseTo(box.height - 2 * 3, 5)
   })
 
+  it('an onset click does not set the scale: the held level fills the row', () => {
+    // 100 columns over 4 cycles; each 25-column note opens with a 1.0 click and
+    // then holds 0.25 — the shape of an oscillator's note, measured on a square.
+    // Clicks are 4% of the columns (a real 10 ms click on a 1 s note is 1%).
+    const data = new Float32Array(200)
+    for (let c = 0; c < 100; c++) {
+      const v = c % 25 === 0 ? 1 : 0.25
+      data[2 * c] = -v
+      data[2 * c + 1] = v
+    }
+    const scene = sceneOf([lane('d1', synth, { envelope: { data, columns: 100, cycles: 4, stale: false } })])
+    const layout = computeLaneLayout(scene.lanes, new Set(), 60, 88)
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, scene, transform, theme, layout)
+    const held = envelopeColumns(rects, ENVELOPE_ALPHA).filter((r) => r.x === 50) // mid-note: column 12
+    expect(held).toHaveLength(1)
+    expect(held[0].h).toBeCloseTo(layout.boxes[0].height - 2 * 3, 5)
+  })
+
   it('a stale envelope draws in the muted caption colour, at its own opacity', () => {
     const scene = sceneOf([lane('d1', synth, { envelope: swell(true) })])
     const layout = computeLaneLayout(scene.lanes, new Set(), 60, 88)
