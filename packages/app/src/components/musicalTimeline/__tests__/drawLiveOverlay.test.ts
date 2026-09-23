@@ -378,6 +378,59 @@ describe('a lit mark over a waveform is outlined, not covered (#1508)', () => {
   })
 })
 
+
+describe('the highlight follows the lane type: a ring over a shape, a fill over a bar (#1742)', () => {
+  const SIG = new Set(['saw|60'])
+  /** A synth track's render, loud throughout: the base canvas draws it inside
+   *  this lane's bars when collapsed (#1740). */
+  const envelope = { data: new Float32Array([-0.5, 0.5, -0.5, 0.5]), columns: 2, cycles: 4, stale: false }
+  const withLane = (extra: Partial<TimelineScene['lanes'][number]>): TimelineScene => {
+    const scene = sceneFixture()
+    return { ...scene, lanes: [{ ...scene.lanes[0], ...extra }] }
+  }
+
+  it('a collapsed synth lane carrying its render: the lit mark is a ring, nothing filled', () => {
+    const scene = withLane({ envelope })
+    const { ctx, rects, strokes } = mockCtx()
+    drawLiveOverlay(ctx, scene, WIDE, layoutFor(scene), 1.2, SIG, THEME)
+    expect(rects.length).toBe(0)
+    expect(strokes.length).toBe(2)
+  })
+
+  it('CONTROL: the same synth lane with no render yet still fills', () => {
+    const scene = withLane({})
+    const { ctx, rects, strokes } = mockCtx()
+    drawLiveOverlay(ctx, scene, WIDE, layoutFor(scene), 1.2, SIG, THEME)
+    expect(rects.length).toBe(2)
+    expect(strokes.length).toBe(0)
+  })
+
+  it('an EXPANDED synth lane draws no render in its bars, so it fills', () => {
+    const scene = withLane({ envelope })
+    const layout = computeLaneLayout(scene.lanes, new Set(['a']), 40, 96)
+    const { ctx, rects, strokes } = mockCtx()
+    drawLiveOverlay(ctx, scene, WIDE, layout, 1.2, SIG, THEME)
+    expect(rects.length).toBeGreaterThan(0)
+    expect(strokes.length).toBe(0)
+  })
+
+  it('a sample lane set to Bars draws no waveform, so its decoded mark fills', () => {
+    const scene = withLane({ bars: true })
+    const { ctx, rects, strokes } = mockCtx()
+    drawLiveOverlay(ctx, scene, WIDE, layoutFor(scene), 1.2, SIG, THEME, waveformsFor('saw', 1))
+    expect(rects.length).toBe(2)
+    expect(strokes.length).toBe(0)
+  })
+
+  it('a synth lane set to Bars fills, even if a render is still attached', () => {
+    const scene = withLane({ envelope, bars: true })
+    const { ctx, rects, strokes } = mockCtx()
+    drawLiveOverlay(ctx, scene, WIDE, layoutFor(scene), 1.2, SIG, THEME)
+    expect(rects.length).toBe(2)
+    expect(strokes.length).toBe(0)
+  })
+})
+
 function layoutFor(scene: TimelineScene) {
   return computeLaneLayout(scene.lanes, new Set(), 40, 96)
 }
