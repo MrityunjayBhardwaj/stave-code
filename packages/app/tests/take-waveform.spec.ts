@@ -186,6 +186,23 @@ async function litMarkCoverage(
   })
 }
 
+/**
+ * One cycle — one slot — in canvas (backing-store) pixels, off the ruler's own
+ * ticks, the `loop-locators` reading. Never off the ink being judged: a claim
+ * about where sound sits inside its slot needs the slot measured independently.
+ */
+async function cyclePx(page: Page): Promise<number> {
+  const { ticks, dpr } = await page.evaluate(() => ({
+    ticks: Array.from(document.querySelectorAll('[data-full-song-tick]')).map((t) => ({
+      label: (t.textContent ?? '').trim(),
+      left: parseFloat((t as HTMLElement).style.left) || 0,
+    })),
+    dpr: window.devicePixelRatio || 1,
+  }))
+  const at = (label: string) => ticks.find((t) => t.label === label)?.left ?? 0
+  return (at('1') - at('0')) * dpr
+}
+
 async function bootWithTimeline(page: Page): Promise<void> {
   await bootApp(page, { e2eHooks: true, drawer: { tabId: 'musical-timeline' } })
   await page.waitForFunction(() => Boolean((window as ProbeWindow).__staveAssetProbe), { timeout: 30_000 })
@@ -258,10 +275,16 @@ test.describe('a take is visible on the Song timeline', () => {
     console.log(`[#1506] tallest=${tallest} quietest=${quietest} ratio=${(tallest / quietest).toFixed(2)}`)
     expect(tallest / quietest).toBeGreaterThan(3)
 
-    // …and the quiet columns are in the mark's FIRST half, where this take's
-    // silence actually is — not merely somewhere convenient.
+    // …and the quiet columns are where this take's silence actually is — not
+    // merely somewhere convenient. The take is 1s, loud then silent, in a 2s
+    // slot, so its silence begins a quarter of the way into the SLOT. Measured
+    // against the slot off the ruler (#1730): the mark's own ink no longer runs
+    // to the slot's end, because the part of a clip past its audio is body.
+    const slot = await cyclePx(page)
+    expect(slot, 'the ruler must show cycle ticks').toBeGreaterThan(10)
     const quietestIndex = mark.indexOf(quietest)
-    expect(quietestIndex).toBeLessThan(mark.length / 2)
+    expect(quietestIndex).toBeGreaterThan(slot * 0.2)
+    expect(quietestIndex).toBeLessThan(slot / 2)
 
     expect(errors).toEqual([])
   })
@@ -324,6 +347,98 @@ test.describe('a take is visible on the Song timeline', () => {
     console.log(`[#1713] expanded tallest=${tallest} quietest=${quietest} ratio=${(tallest / quietest).toFixed(2)}`)
     expect(tallest / quietest).toBeGreaterThan(3)
     expect(mark.indexOf(quietest)).toBeLessThan(mark.length / 2)
+
+    expect(errors).toEqual([])
+  })
+
+  test('at the DEFAULT row height a collapsed take fills its row, where a synth track beside it stays a thin bar (#1730)', async ({ page }) => {
+    // The two arms above make the row 48px tall so the shape has room. At the
+    // default 25px a collapsed mark was 7px, the band less the 12px kept for
+    // pitch, so a take looked like every other bar until its lane was expanded.
+    // A lane whose every sound is a file now gives its marks the whole row.
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+
+    await bootWithTimeline(page)
+    await page.evaluate(() => (window as ProbeWindow).__staveAssetProbe!.reset())
+    await page.evaluate(() => {
+      try {
+        localStorage.removeItem('stave:musicalTimeline.subRowHeight')
+      } catch {
+        /* ignore */
+      }
+    })
+
+    const wav = loudThenSilentWav()
+    await page.evaluate(async (base64) => {
+      const p = (window as ProbeWindow).__staveAssetProbe!
+      const res = await p.import(base64, 'audio/wav', 'take_1.wav', await p.docList())
+      await p.docAdd(res.record)
+    }, wav)
+
+    // The take alone first, so its ink is the only lane ink on the canvas.
+    await seedCode(page, 'vox: s("take_1")')
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.waitForFunction(() => Boolean((window as ProbeWindow).__staveAssetProbe), { timeout: 30_000 })
+    await page.waitForFunction(() => (window as ProbeWindow).__staveAssetProbe!.inSoundMap('take_1'), undefined, {
+      timeout: 30_000,
+    })
+    await page.locator('[data-full-song-canvas]').waitFor({ timeout: 20_000 })
+
+    const lane = page.locator('[data-full-song-lane]').first()
+    await expect(lane).toHaveAttribute('data-expanded', 'false')
+    const rowCss = await lane.evaluate((el) => (el as HTMLElement).getBoundingClientRect().height)
+    const dpr = await page.evaluate(() => window.devicePixelRatio || 1)
+    const rowPx = rowCss * dpr
+
+    // Ink RUNS, with where each starts. A slot here is one cycle; the 1s take
+    // fills half of it, loud then silent, and the rest of the slot is clip body.
+    // So a drawn shape's first run is the loud half alone.
+    const runs = async () => {
+      const { columns } = await readInk(page)
+      const out: { start: number; len: number }[] = []
+      columns.forEach((n, x) => {
+        const last = out[out.length - 1]
+        if (n > 0) {
+          if (last && last.start + last.len === x) last.len++
+          else out.push({ start: x, len: 1 })
+        }
+      })
+      return out
+    }
+    const slot = await cyclePx(page)
+    expect(slot, 'the ruler must show cycle ticks').toBeGreaterThan(10)
+    // The claim that it is the take's SHAPE, not a taller bar: a mark with no
+    // shape is ink across its whole slot (at full weight, or as a body with
+    // nothing brighter on the canvas), so its first run is at least a cycle
+    // long. The loud half of a 1s take in a 2s slot is a quarter of the slot.
+    // Bounded below too: with no shape on the canvas the brightest ink left is
+    // a 1px accent line at the lane's edge, and a run that short is not a
+    // waveform either. Polled, because it only becomes true once the decode lands.
+    const loudShare = async () => {
+      const r = await runs()
+      return r.length > 0 ? r[0].len / slot : 1
+    }
+    await expect.poll(loudShare, { timeout: 30_000 }).toBeLessThan(0.4)
+    expect(await loudShare()).toBeGreaterThan(0.1)
+    const r = await runs()
+    const tallest = Math.max(...firstMark(await readInk(page)))
+    // eslint-disable-next-line no-console
+    console.log(`[#1730] row=${rowPx}px tallest=${tallest}px fill=${(tallest / rowPx).toFixed(2)} runs=${r.map((x) => x.len).join(',')} cycle=${slot}px`)
+    // The waveform reaches most of the row — a 7px mark in a 25px row is 0.28.
+    expect(tallest / rowPx).toBeGreaterThan(0.6)
+
+    // CONTROL: a synth track has no file, so its lane keeps the thin bar.
+    await seedCode(page, 'lead: note("c4 e4").s("sawtooth")')
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.locator('[data-full-song-canvas]').waitFor({ timeout: 20_000 })
+    await expect
+      .poll(async () => firstMark(await readInk(page)).length, { timeout: 30_000 })
+      .toBeGreaterThan(20)
+    const synth = firstMark(await readInk(page))
+    // eslint-disable-next-line no-console
+    console.log(`[#1730] synth tallest=${Math.max(...synth)}px of row ${rowPx}px`)
+    expect(Math.max(...synth) / rowPx).toBeLessThan(0.45)
 
     expect(errors).toEqual([])
   })

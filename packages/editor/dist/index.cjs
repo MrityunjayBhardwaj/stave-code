@@ -48914,6 +48914,7 @@ exports.resolveAlias = resolveAlias;
 exports.resolveAliasesForEngine = resolveAliasesForEngine;
 exports.resolveAsset = resolveAsset;
 exports.resolveDescriptor = resolveDescriptor;
+exports.resolveSampleUrl = resolveSampleUrl;
 exports.restoreFileToCommit = restoreFileToCommit;
 exports.restoreProject = restoreProject;
 exports.restoreSnapshot = restoreSnapshot;

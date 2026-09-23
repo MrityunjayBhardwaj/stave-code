@@ -27,7 +27,15 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 // Two arms, no marks inside (bare `s("bd")`/`s("hh")`) so the clip fill/border
 // is unobstructed by note marks for the readback. Period = 2 + 2 = 4 cycles.
-const ARRANGE_SONG = 'arrange([2, s("bd")], [2, s("hh")])'
+/**
+ * Synth notes, not drum samples (#1730). This spec is about STRUCTURE — two arms
+ * become two clips with a border between them — and it finds the border as the
+ * brightest column in the lane band. Samples now draw as audio in a collapsed
+ * lane, a full-height transient at every onset, and the second arm's first onset
+ * sits exactly on the border it looks for. What the arms play was incidental;
+ * notes keep them thin.
+ */
+const ARRANGE_SONG = 'arrange([2, note("c3").s("sawtooth")], [2, note("e3").s("sawtooth")])'
 
 async function bootShell(page: Page): Promise<void> {
   await page.addInitScript(() => {

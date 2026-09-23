@@ -173,6 +173,11 @@ export interface SceneClip {
 /** One timeline row. */
 export interface SceneLane {
   readonly laneKey: string
+  /** #1730 — every mark on this lane plays an audio file (a take, a vocal, a
+   *  drum kit, `s("casio")`), so its collapsed row draws it as an audio track.
+   *  Set by `markAudioLanes`, never by `buildTimelineScene`, which knows the
+   *  events but not which names are files. Absent means false. */
+  readonly audio?: boolean
   /** The display NAME (#579 STEP 2). The source LABEL for a named track
    *  (`bass`, `lead`), else the positional `laneKey` (`d{N}`) for an anonymous
    *  `$:`. The lane's IDENTITY stays `laneKey` (drives the live overlay match);
@@ -734,4 +739,42 @@ function groupVoices(notes: readonly SceneNote[]): SceneVoice[] {
     const g = acc.get(key)!
     return { key, label: g.label, melodic: g.melodic, pitchMin: g.min, pitchMax: g.max }
   })
+}
+
+/**
+ * Flag each lane whose every mark plays an audio file (#1730).
+ *
+ * A LANE-level answer, not a per-mark one. A lane that mixes files with synth
+ * notes keeps its ordinary row: giving only its file marks the full height would
+ * draw them over the synth notes they share the row with. A lane with no marks
+ * is not an audio lane, since there is nothing to draw.
+ *
+ * Returns the SAME scene when nothing changes, so a memo downstream of it does
+ * not see a new identity on every re-check.
+ */
+export function markAudioLanes(
+  scene: TimelineScene,
+  isFileBacked: ((voice: string, pitch: number | null) => boolean) | undefined,
+): TimelineScene {
+  if (isFileBacked == null) return scene
+  const memo = new Map<string, boolean>()
+  const backed = (voice: string, pitch: number | null) => {
+    const key = `${voice}\u0000${pitch ?? ''}`
+    let got = memo.get(key)
+    if (got === undefined) {
+      got = isFileBacked(voice, pitch)
+      memo.set(key, got)
+    }
+    return got
+  }
+  let changed = false
+  const lanes = scene.lanes.map((lane) => {
+    const audio =
+      lane.notes.length > 0 &&
+      lane.notes.every((n) => n.voice != null && n.voice !== NO_VOICE && backed(n.voice, n.pitch ?? null))
+    if ((lane.audio === true) === audio) return lane
+    changed = true
+    return { ...lane, audio }
+  })
+  return changed ? { ...scene, lanes } : scene
 }

@@ -74,7 +74,10 @@ test('a muted track draws its clip as an outline, and a sounding one is unchange
   await page.locator('.monaco-editor').first().click()
   await page.keyboard.press(`${MOD}+A`)
   await page.keyboard.press('Backspace')
-  await page.keyboard.type('$: s("bd*4")\n_$: s("hh*8")', { delay: 6 })
+  // The SOUNDING track is a synth note (#1730): the claim below is that it keeps
+  // its ordinary bar rendering, and a sample lane no longer draws one — it draws
+  // as audio, clip bodies and waveforms (`take-waveform.spec.ts`).
+  await page.keyboard.type('$: note("c3*4").s("sawtooth")\n_$: s("hh*8")', { delay: 6 })
   await page.waitForTimeout(300)
   await page.keyboard.press(`${MOD}+Enter`)
   await page.waitForTimeout(1800)

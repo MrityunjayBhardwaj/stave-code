@@ -433,3 +433,41 @@ describe('drawTimeline — waveform tier', () => {
     expect(bars[0].y).not.toBe(bars[1].y) // two pitches, two heights in the band
   })
 })
+
+describe('a collapsed audio lane draws each mark as a clip body (#1730)', () => {
+  // 0.1s at 1 cps over 1000px/cycle = 100px of audio inside a 250px mark: the
+  // audio ends well before the mark does, which is where the two rules differ.
+  const warm: WaveformSource = { cps: 1, peaksFor: () => fullScalePeaks(0.1) }
+  const audioScene = (): TimelineScene => {
+    const s = sceneWith(oneTake)
+    return { ...s, lanes: [{ ...s.lanes[0], audio: true }] }
+  }
+  /** Background-coloured scrims — the bed a waveform is drawn against. The
+   *  canvas's own background fill spans the viewport and is not one. */
+  const beds = (rects: Rect[]) =>
+    rects.filter((r) => r.style === theme.background && r.h > 1 && r.w < transform.viewportWidth)
+
+  it('recedes the WHOLE mark, not only the audio’s extent', () => {
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, audioScene(), transform, theme, tall, undefined, warm)
+    const widest = Math.max(...beds(rects).map((r) => r.w))
+    expect(widest).toBe(250)
+    // …and lays that bed once: no second, darker bed under the audio.
+    expect(beds(rects).length).toBe(1)
+    expect(waveformColumns(rects).length).toBe(100)
+  })
+
+  it('an ordinary lane keeps its bar past the audio — the control', () => {
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, sceneWith(oneTake), transform, theme, tall, undefined, warm)
+    expect(Math.max(...beds(rects).map((r) => r.w))).toBe(100)
+  })
+
+  it('before the sample decodes, the audio lane is still a body, not a full-weight slab', () => {
+    const cold: WaveformSource = { cps: 1, peaksFor: () => null }
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, audioScene(), transform, theme, tall, undefined, cold)
+    expect(beds(rects).map((r) => r.w)).toEqual([250])
+    expect(waveformColumns(rects).length).toBe(0)
+  })
+})

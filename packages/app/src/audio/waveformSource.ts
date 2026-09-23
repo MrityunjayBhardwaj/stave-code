@@ -12,7 +12,7 @@
  * `warmWaveforms`, and only for local assets.
  */
 
-import { peaksForSample } from "@stave/editor";
+import { peaksForSample, resolveSampleUrl } from "@stave/editor";
 
 import type { WaveformSource } from "../components/musicalTimeline/drawTimeline";
 
@@ -57,5 +57,8 @@ export function createWaveformSource(getCps: () => number | null): WaveformSourc
       return getCps() ?? ASSUMED_CPS;
     },
     peaksFor: (voice, pitch) => peaksForSample({ s: voice, note: pitch }),
+    // #1730 — the same resolution `peaksFor` starts from, minus the decode: a
+    // file that has not loaded yet is still a file.
+    isFileBacked: (voice, pitch) => resolveSampleUrl({ s: voice, note: pitch }) != null,
   };
 }

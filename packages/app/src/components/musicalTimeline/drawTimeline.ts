@@ -117,6 +117,8 @@ const CLIP_CAPTION_PAD_X = 4
  *  Kept in sync with the app's `--font-mono` by eye; a drift shows as a font
  *  change in the timeline only, never as a wrong name. */
 const CLIP_CAPTION_FONT = '10px ui-monospace, SFMono-Regular, Menlo, monospace'
+/** Gap above a caption pinned to the top of its clip (#1730). */
+const CLIP_CAPTION_TOP_PAD_Y = 1
 
 /** Minimum mark width (px) so a zero/near-zero-duration trigger still shows and
  *  stays clickable — mirrors the live view's `MIN_BLOCK_PX` (timeAxis.ts). */
@@ -140,6 +142,13 @@ export interface WaveformSource {
     voice: string,
     pitch: number | null,
   ) => { readonly data: Float32Array; readonly columns: number; readonly duration: number } | null
+  /**
+   * Does this voice play an audio FILE at all (#1730)? Asked of the sample
+   * registry, not of the decode cache: a file that has not loaded yet is still
+   * a file, and a row whose geometry changed the moment a decode landed would
+   * jump under the reader. Absent means no lane is treated as an audio lane.
+   */
+  readonly isFileBacked?: (voice: string, pitch: number | null) => boolean
 }
 
 /**
@@ -306,7 +315,10 @@ export function drawTimeline(
     // Read-only clip segments (#386) — behind the note marks. A bare track has
     // one implicit clip (no visible seams); an arrangement track shows a rect
     // per arm with bordered edges.
-    drawClips(ctx, lane, top, rowHeight, viewportWidth, theme, scene.windowOriginCycles, toScreenX)
+    // #1730 — a collapsed audio lane's clip bodies fill the row, so its section
+    // captions go on top of them (below) rather than underneath.
+    const captionsOnTop = lane.audio === true && !expanded
+    drawClips(ctx, lane, top, rowHeight, viewportWidth, theme, scene.windowOriginCycles, toScreenX, captionsOnTop)
     const mode = laneRenderMode(pxPerCycle, lane.notes.length > 0, expanded)
     if (expanded) {
       drawBeatGrid(ctx, top, rowHeight, pxPerCycle, firstCycle, lastCycle, viewportWidth, theme, toScreenX, transform.meter)
@@ -332,6 +344,12 @@ export function drawTimeline(
       // against, so a lit mark sits exactly over its base mark — one source, no
       // drift (PV120). All marks share the lane color; gain drives intensity.
       ctx.fillStyle = lane.color
+      // #1730 — a collapsed audio lane draws each mark as a CLIP BODY: the whole
+      // mark recedes to the waveform's bed and only the audio is bright. A bar at
+      // full weight past a short drum hit's end is a thin line in an ordinary row
+      // but a solid slab at full row height, and it reads as sound where there is
+      // none. Before a sample has decoded, the body is all there is.
+      const clipBody = lane.audio === true && !expanded
       for (const band of laneMarkBands(lane, box)) {
         for (const n of band.notes) {
           const r = markRect(n, band, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
@@ -339,18 +357,27 @@ export function drawTimeline(
           const alpha = 0.4 + 0.6 * Math.min(1, Math.max(0, n.gain))
           ctx.globalAlpha = alpha
           ctx.fillRect(r.x, r.y, r.w, r.h)
+          if (clipBody) {
+            ctx.globalAlpha = WAVEFORM_BED_SCRIM
+            ctx.fillStyle = theme.background
+            ctx.fillRect(r.x, r.y, r.w, r.h)
+            ctx.fillStyle = lane.color
+          }
           // The mark's own audio shape, drawn INSIDE the bar just placed (#1506).
           // Additive by construction: the bar is already down, so a sample with
           // no decoded audio, a row too short, or a mark too narrow simply leaves
           // what was always there.
           waveformColumnsLeft = drawMarkWaveform(
             ctx, n, r, peaksFor, waveformCps, pxPerCycle, waveformColumnsLeft,
-            lane.color, theme.background,
+            lane.color, theme.background, clipBody,
           )
           ctx.globalAlpha = alpha
         }
       }
       ctx.globalAlpha = 1
+    }
+    if (captionsOnTop) {
+      drawClipCaptionsOnTop(ctx, lane, top, rowHeight, viewportWidth, theme, toScreenX)
     }
     // Continuous automation (#1464 Stage 1) — over the marks, under the silence
     // wash, so a muted track's curve dims with the rest of its lane.
@@ -474,6 +501,10 @@ function drawClipCaption(
   top: number,
   rowHeight: number,
   theme: DrawTheme,
+  /** #1730 — `top` pins the caption to the clip's top-left corner, where a DAW
+   *  writes a region's name, instead of across the middle of the row, which on
+   *  an audio lane is where a quiet waveform's only line runs. */
+  anchor: 'middle' | 'top' = 'middle',
 ): void {
   // A bare track is not an arrangement and has no section to name.
   if (clip.sectionName === '') return
@@ -483,7 +514,7 @@ function drawClipCaption(
   ctx.save()
   ctx.font = CLIP_CAPTION_FONT
   ctx.fillStyle = theme.clipCaption
-  ctx.textBaseline = 'middle'
+  ctx.textBaseline = anchor
 
   let text = clip.sectionName
   if (ctx.measureText(text).width > box) {
@@ -495,7 +526,7 @@ function drawClipCaption(
     text = text.length > 0 ? `${text}…` : ''
   }
   if (text !== '') {
-    ctx.fillText(text, left + CLIP_CAPTION_PAD_X, top + rowHeight / 2)
+    ctx.fillText(text, left + CLIP_CAPTION_PAD_X, anchor === 'top' ? top + CLIP_CAPTION_TOP_PAD_Y : top + rowHeight / 2)
   }
   ctx.restore()
 }
@@ -509,6 +540,8 @@ function drawClips(
   theme: DrawTheme,
   windowOriginCycles: number,
   toScreenX: (cycle: number) => number,
+  /** #1730 — the caller draws the captions itself, over the marks. */
+  captionsOnTop = false,
 ): void {
   for (const clip of lane.clips) {
     const x0 = toScreenX(clip.startCycle)
@@ -531,7 +564,7 @@ function drawClips(
     // empty clip raises. Anchored to the clip's real left edge when it is on
     // screen, else to the viewport, so a section scrolled half off still says
     // what it is instead of losing its name off the left.
-    drawClipCaption(ctx, clip, left, right, top, rowHeight, theme)
+    if (!captionsOnTop) drawClipCaption(ctx, clip, left, right, top, rowHeight, theme)
     if (clipHasContent(lane, clip, windowOriginCycles)) continue
     // Empty clip: outline it in the lane's own colour. Top/bottom run the
     // CLAMPED width (they follow what's on screen); the verticals stay at the
@@ -561,6 +594,32 @@ function drawClips(
     ctx.globalAlpha = EMPTY_CLIP_OUTLINE_ALPHA
     edges()
     ctx.globalAlpha = 1
+  }
+}
+
+/**
+ * Section captions drawn OVER a lane's marks (#1730). A collapsed audio lane's
+ * clip bodies fill the row, so a caption laid down beneath them, where every
+ * other lane has it, would be painted out. A DAW writes a clip's name on top of
+ * its waveform; this does the same, with the clip geometry `drawClips` uses.
+ */
+function drawClipCaptionsOnTop(
+  ctx: CanvasRenderingContext2D,
+  lane: SceneLane,
+  top: number,
+  rowHeight: number,
+  viewportWidth: number,
+  theme: DrawTheme,
+  toScreenX: (cycle: number) => number,
+): void {
+  for (const clip of lane.clips) {
+    const x0 = toScreenX(clip.startCycle)
+    const x1 = toScreenX(clip.endCycle)
+    if (x1 <= 0 || x0 >= viewportWidth) continue
+    const left = Math.max(0, x0)
+    const right = Math.min(viewportWidth, x1)
+    if (right - left <= 0) continue
+    drawClipCaption(ctx, clip, left, right, top, rowHeight, theme, 'top')
   }
 }
 
@@ -1073,6 +1132,24 @@ export function laneMarkBands(lane: SceneLane, box: LaneBox): MarkBand[] {
       }
     })
   }
+  // #1730 — a COLLAPSED lane whose every sound is a file is an audio track in
+  // overview: each mark takes the whole row, and nothing is placed by pitch,
+  // because the waveform is the content. That is how a DAW draws a clip on an
+  // audio track. Expanding is still the editing view (voice rows, pitch), so
+  // this applies to the collapsed band only. `bandH` 0 puts every mark at the
+  // band's top, since `markRect` centres a mark with no pitch spread.
+  if (lane.audio === true && !box.expanded) {
+    return [
+      {
+        notes: lane.notes,
+        bandTop: box.top + SINGLE_BAND_PAD_Y,
+        bandH: 0,
+        markH: Math.max(BAR_HEIGHT_MIN, box.height - 2 * SINGLE_BAND_PAD_Y),
+        pMin: null,
+        pMax: null,
+      },
+    ]
+  }
   const pMin = lane.pitchMin
   const pMax = lane.pitchMax
   const markH = box.expanded && hasPitchSpread(pMin, pMax)
@@ -1163,6 +1240,9 @@ function drawMarkWaveform(
   budget: number,
   inkStyle: string,
   bedStyle: string,
+  /** #1730 — the whole mark is already a recessed clip body; a second bed would
+   *  darken the audio's extent against the rest of the clip. */
+  bedLaid = false,
 ): number {
   if (budget <= 0) return budget
   const voice = note.voice
@@ -1181,9 +1261,11 @@ function drawMarkWaveform(
 
   // Clear a bed first. The bar underneath is the same colour and, at full gain,
   // the same opacity — painting the shape straight onto it draws it invisibly.
-  ctx.globalAlpha = WAVEFORM_BED_SCRIM
-  ctx.fillStyle = bedStyle
-  ctx.fillRect(r.x, r.y, columns, r.h)
+  if (!bedLaid) {
+    ctx.globalAlpha = WAVEFORM_BED_SCRIM
+    ctx.fillStyle = bedStyle
+    ctx.fillRect(r.x, r.y, columns, r.h)
+  }
 
   // Then the shape, at full opacity against that recessed bed. This assignment
   // is also what hands the lane colour back to the band loop for the next mark —
