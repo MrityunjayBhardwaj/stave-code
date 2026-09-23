@@ -18,6 +18,11 @@ import { bootApp, seedCode } from './_appBoot'
  *     next stop renders it fresh again.
  *  3. Play pressed while a render is in flight starts at once rather than after
  *     the render: the render is aborted, not waited out.
+ *  4. An audition fired while a render is in flight reaches the LIVE graph
+ *     (#1733). Counted at the one place a synth note makes its sound: which
+ *     context `createOscillator` is called on. The rendering track is white
+ *     noise, which makes no oscillator, so any oscillator made on an offline
+ *     context during the render can only be the audition's.
  *
  * Slots are measured off the ruler's own ticks, never off the ink being judged
  * (the lesson of #1730's instruments), and ink is matched to the LANE'S OWN hue,
@@ -163,5 +168,58 @@ test.describe('synth lane envelope (#1731)', () => {
     console.log(`[#1731] evaluate-and-play: idle ${idle} ms, during a render ${during} ms`)
     expect(during - idle).toBeLessThan(400)
     await page.keyboard.press(`${MOD}+Period`)
+  })
+
+  test('an audition during a render plays through the live graph, not into the render (#1733)', async ({ page }) => {
+    await page.addInitScript(() => {
+      const w = window as unknown as { __osc: { live: number; offline: number }; __offlineActive: number }
+      w.__osc = { live: 0, offline: 0 }
+      w.__offlineActive = 0
+      const create = BaseAudioContext.prototype.createOscillator
+      BaseAudioContext.prototype.createOscillator = function (this: BaseAudioContext) {
+        if (this instanceof OfflineAudioContext) w.__osc.offline++
+        else w.__osc.live++
+        return create.call(this)
+      }
+      const start = OfflineAudioContext.prototype.startRendering
+      OfflineAudioContext.prototype.startRendering = function (this: OfflineAudioContext) {
+        w.__offlineActive++
+        const done = start.call(this)
+        void done.finally(() => w.__offlineActive--)
+        return done
+      }
+    })
+    await page.reload()
+    await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 30_000 })
+    // Tracks 1 and 2 render first and are long white noise; track 3 is the
+    // sawtooth the Pattern tab's ▶ auditions, an oscillator.
+    await seedCode(
+      page,
+      'setcps(0.5)\n$: arrange([256, s("white*16").gain(0.3)])\n$: arrange([256, s("pink*16").gain(0.3)])\n$: note("c3").s("sawtooth")',
+    )
+    // Caret into the sawtooth's pattern, so the Pattern tab offers its sound.
+    await page.evaluate(() => {
+      const m = (window as unknown as {
+        monaco: { editor: { getEditors: () => Array<{ setPosition: (p: { lineNumber: number; column: number }) => void; focus: () => void }> } }
+      }).monaco
+      const ed = m.editor.getEditors()[0]
+      ed.setPosition({ lineNumber: 4, column: 12 })
+      ed.focus()
+    })
+    await expect.poll(() => rendering(page), { timeout: 30_000, intervals: [20] }).toBe('$0')
+    const before = await page.evaluate(() => (window as unknown as { __osc: { live: number; offline: number } }).__osc)
+    expect(before.offline).toBe(0) // noise has no oscillator: the render itself makes none
+
+    await page.locator('[data-bottom-panel="root"]').locator('role=tab[name="Pattern"]').click()
+    const play = page.locator('[data-mixer-sound-audition]:not([disabled])').first()
+    await play.waitFor({ timeout: 10_000 })
+    const midRender = await page.evaluate(() => (window as unknown as { __offlineActive: number }).__offlineActive)
+    await play.click()
+    await page.waitForTimeout(400)
+    const after = await page.evaluate(() => (window as unknown as { __osc: { live: number; offline: number } }).__osc)
+    console.log(`[#1733] offline renders active at the click: ${midRender}; oscillators live ${after.live - before.live}, offline ${after.offline - before.offline}`)
+    expect(midRender).toBeGreaterThan(0) // the click really landed during a render
+    expect(after.offline - before.offline).toBe(0)
+    expect(after.live - before.live).toBeGreaterThan(0)
   })
 })
