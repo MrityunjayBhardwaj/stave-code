@@ -109,6 +109,11 @@ describe('envelopeTrackIds — which tracks to render (#1731)', () => {
     expect(envelopeTrackIds(scene, byLane)).toEqual(['$0', '$3'])
   })
 
+  it('skips a lane set to Bars, so its track is never rendered (#1738)', () => {
+    const scene = sceneOf([lane('d1', synth, { bars: true }), lane('d2', synth)])
+    expect(envelopeTrackIds(scene, new Map([['d1', '$0'], ['d2', '$1']]))).toEqual(['$1'])
+  })
+
   it('asks for nothing without the lane→track join', () => {
     expect(envelopeTrackIds(sceneOf([lane('d1', synth)]), undefined)).toEqual([])
   })
@@ -121,6 +126,14 @@ describe('attachEnvelopes — each render on its lane (#1731)', () => {
     const out = attachEnvelopes(scene, new Map([['d1', '$0'], ['d2', '$1']]), () => env)
     expect(out.lanes[0].envelope).toBe(env)
     expect(out.lanes[1].envelope).toBeUndefined()
+  })
+
+  it('puts no envelope on a lane set to Bars (#1738)', () => {
+    const env = swell()
+    const scene = sceneOf([lane('d1', synth, { bars: true }), lane('d2', synth)])
+    const out = attachEnvelopes(scene, new Map([['d1', '$0'], ['d2', '$1']]), () => env)
+    expect(out.lanes[0].envelope).toBeUndefined()
+    expect(out.lanes[1].envelope).toBe(env)
   })
 
   it('drops an envelope the engine no longer has', () => {

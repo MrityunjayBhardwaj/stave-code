@@ -77,7 +77,7 @@ import {
 } from '@stave/editor'
 import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
-import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeTrackIds, markAudioLanes, type SceneActivity } from './musicalTimeline/timelineScene'
+import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeTrackIds, markAudioLanes, markBarsLanes, type SceneActivity } from './musicalTimeline/timelineScene'
 import {
   nextWindowOriginFor,
   clampSeekToWindow,
@@ -85,6 +85,7 @@ import {
   windowNotice,
 } from './musicalTimeline/windowPaging'
 import { TrackSwatchPopover } from './TrackSwatchPopover'
+import { TrackLaneMenu } from './musicalTimeline/TrackLaneMenu'
 import { useRulerUnits } from '../state/rulerUnits'
 import { useDisplayMeter } from '../state/displayMeter'
 import {
@@ -101,7 +102,7 @@ import {
 import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
 import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf, shapeAlternatives, crossClassShapes } from '@stave/editor'
-import type { FixedParameter } from '@stave/editor'
+import type { FixedParameter, TrackDisplay } from '@stave/editor'
 import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepTravel, stepY, travelledPx, withFineDrag, withStepValue, type StepBand, type StepHit, type StepTravel } from './musicalTimeline/steppedLane'
 import { stepCountOptions, type StepCountGroup } from './musicalTimeline/stepCountMenu'
 import { songLoopCycles } from './songLength'
@@ -282,6 +283,14 @@ export interface FullSongTimelineProps {
   /** Clear a track's custom colour → fall back to the palette (Phase D, #581).
    *  Receives the lane's DISPLAY NAME. */
   readonly onResetTrackColor?: (displayName: string) => void
+  /** #1738 — display names of tracks set to draw as BARS (notes only, no
+   *  waveform or render), from the per-file `TrackMeta` store. Absent → every
+   *  lane draws its default, `waveform`. */
+  readonly barsNames?: ReadonlySet<string>
+  /** #1738 — save a track's lane type, chosen from its header menu. Receives
+   *  the lane's DISPLAY NAME, the same key as its colour. Absent → the menu has
+   *  no Type entry. */
+  readonly onSetTrackDisplay?: (displayName: string, display: TrackDisplay) => void
   /** Display names of tracks that read as silenced — muted, or dimmed by a solo
    *  elsewhere (#731). Their lane (gutter row + canvas band) draws FADED, keyed by
    *  the same display name the Mixer dims by, so a solo/mute shows identically in
@@ -545,6 +554,10 @@ const EXTEND_AUTOSCROLL_BAND_PX = 48
 /** Max px the autoscroll advances per frame while the cursor is held in the band
  *  — a deliberate, controllable pace (~7px/frame ≈ 420px/s at 60fps), not a rush. */
 const EXTEND_AUTOSCROLL_STEP_PX = 7
+
+/** #1738 — no lane set to Bars; one ref-stable empty set, so the scene memo
+ *  does not see a new identity per render. */
+const NO_BARS: ReadonlySet<string> = new Set()
 
 export function FullSongTimeline(props: FullSongTimelineProps): React.ReactElement {
   const { analysis, onSeek } = props
@@ -1289,11 +1302,13 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // #1730 — which lanes are audio tracks, asked of the sample registry. Its own
   // memo, re-asked when the waveform epoch moves: a take registers its name
   // when the project's assets load, which can land after the scene was built.
-  const { waveforms, waveformsEpoch, trackEnvelopes } = props
+  const { waveforms, waveformsEpoch, trackEnvelopes, barsNames } = props
+  // #1738 — a lane the user set to Bars is flagged first, so it is never an
+  // audio lane and its track is never rendered.
   const audioScene = useMemo(
-    () => markAudioLanes(baseScene, waveforms?.isFileBacked),
+    () => markAudioLanes(markBarsLanes(baseScene, barsNames ?? NO_BARS), waveforms?.isFileBacked),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the epoch is the re-ask signal
-    [baseScene, waveforms, waveformsEpoch],
+    [baseScene, barsNames, waveforms, waveformsEpoch],
   )
   // #1731 — every non-audio lane's track, rendered by the engine while the
   // transport is stopped. Asked for over the song's own length (`loopCycles`),
@@ -1448,7 +1463,23 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // Which lane's colour swatch is open (Phase D, #581), by laneKey + the anchor
   // rect of its dot. Picking writes to the per-file TrackMeta store via the
   // parent; the lane recolours through the ref-stable `customColorByName` map.
-  const { onSetTrackColor, onResetTrackColor } = props
+  const { onSetTrackColor, onResetTrackColor, onSetTrackDisplay } = props
+  // #1738 — the track menu (Type ▸ Waveform / Bars, Rename), opened by a
+  // double-click or right-click on a lane header, at the pointer.
+  const [laneMenu, setLaneMenu] = useState<
+    { laneKey: string; name: string; x: number; y: number; anchor: HTMLElement } | null
+  >(null)
+  const closeLaneMenu = useCallback(() => setLaneMenu(null), [])
+  const openLaneMenu = useCallback(
+    (e: React.MouseEvent<HTMLElement>, laneKey: string, name: string) => {
+      const control = (e.target as HTMLElement).closest('button, input')
+      if (control && e.currentTarget.contains(control)) return
+      e.preventDefault()
+      e.stopPropagation()
+      setLaneMenu({ laneKey, name, x: e.clientX, y: e.clientY, anchor: e.currentTarget })
+    },
+    [],
+  )
   const [colorPickerLane, setColorPickerLane] = useState<
     { laneKey: string; name: string; rect: DOMRect } | null
   >(null)
@@ -3272,6 +3303,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               // DISPLAY NAME (the same key the Mixer uses), so a colour set here
               // shows on the matching strip too.
               const colorPickerEnabled = onSetTrackColor !== undefined
+              const menuEnabled = renameEnabled || onSetTrackDisplay !== undefined
               // #641/#642 — the lane the editor caret currently sits in is
               // selected. Keyed off the once-resolved `selectedLaneKey` so the
               // gutter row and the full-width grid band (below) light the SAME
@@ -3309,6 +3341,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                     onClick={
                       selectEnabled ? () => onSelectLane!(selectOffset!) : undefined
                     }
+                    // #1738 — double-click or right-click opens the track menu at
+                    // the pointer. Not from the header's own controls (caret, ∿,
+                    // #, colour dot) or the rename input, which keep their gestures.
+                    onDoubleClick={menuEnabled ? (e) => openLaneMenu(e, box.laneKey, displayName) : undefined}
+                    onContextMenu={menuEnabled ? (e) => openLaneMenu(e, box.laneKey, displayName) : undefined}
                   >
                     <button
                       type="button"
@@ -3440,9 +3477,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                       />
                     ) : (
                       <span
-                        style={{ ...styles.laneName, cursor: renameEnabled ? 'text' : 'default' }}
-                        title={renameEnabled ? `${displayName} — double-click to rename` : undefined}
-                        onDoubleClick={renameEnabled ? () => openLaneRename(box.laneKey) : undefined}
+                        style={styles.laneName}
+                        title={menuEnabled ? `${displayName} — double-click or right-click for the track menu` : undefined}
                       >
                         {headerName}
                       </span>
@@ -3464,6 +3500,24 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             </div>
           )}
         </div>
+        {laneMenu && (
+          <TrackLaneMenu
+            x={laneMenu.x}
+            y={laneMenu.y}
+            anchor={laneMenu.anchor}
+            trackName={laneMenu.name}
+            display={barsNames?.has(laneMenu.name) ? 'bars' : 'waveform'}
+            onSetDisplay={
+              onSetTrackDisplay ? (display) => onSetTrackDisplay(laneMenu.name, display) : undefined
+            }
+            onRename={
+              onRenameLane !== undefined && laneByKey.get(laneMenu.laneKey)?.labelOffset != null
+                ? () => openLaneRename(laneMenu.laneKey)
+                : undefined
+            }
+            onClose={closeLaneMenu}
+          />
+        )}
         {colorPickerLane && onSetTrackColor && (
           <TrackSwatchPopover
             anchorRect={colorPickerLane.rect}

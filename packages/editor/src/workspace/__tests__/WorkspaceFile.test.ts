@@ -403,6 +403,20 @@ describe('20-12 α-2 — trackMeta', () => {
     expect(getTrackMeta('f1', 'd1')).toEqual({ color: '#ff0000', collapsed: true })
   })
 
+  it('setTrackMeta({display}) round-trips and merges with the colour (#1738)', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'd1', { color: '#ff0000' })
+    setTrackMeta('f1', 'd1', { display: 'bars' })
+    expect(getTrackMeta('f1', 'd1')).toEqual({ color: '#ff0000', display: 'bars' })
+  })
+
+  it('clearing the colour keeps a record that still carries a display mode (#1738)', () => {
+    createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
+    setTrackMeta('f1', 'd1', { color: '#ff0000', display: 'bars' })
+    setTrackMeta('f1', 'd1', { color: undefined })
+    expect(getTrackMeta('f1', 'd1').display).toBe('bars')
+  })
+
   it('setTrackMeta with both fields undefined deletes the key (cleanup)', () => {
     createWorkspaceFile('f1', 'p.strudel', 'x', 'strudel')
     setTrackMeta('f1', 'd1', { color: '#ff0000' })

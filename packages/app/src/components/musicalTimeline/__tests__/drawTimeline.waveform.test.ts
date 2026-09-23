@@ -142,6 +142,19 @@ describe('drawTimeline — waveform tier', () => {
     expect(cols[0].h).toBeCloseTo(rects.find((r) => r.w === 250)!.h, 6)
   })
 
+  it('a lane set to Bars draws no waveform, even with its sample decoded (#1738)', () => {
+    const warm: WaveformSource = { cps: 1, peaksFor: () => fullScalePeaks(0.1) }
+    const scene = sceneWith(oneTake)
+    const bars: TimelineScene = { ...scene, lanes: [{ ...scene.lanes[0], bars: true }] }
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, bars, transform, theme, tall, undefined, warm)
+    expect(waveformColumns(rects)).toEqual([])
+    // CONTROL — the same lane without the setting draws its 100 columns.
+    const { ctx: c2, rects: control } = mockCtx()
+    drawTimeline(c2, scene, transform, theme, tall, undefined, warm)
+    expect(waveformColumns(control)).toHaveLength(100)
+  })
+
   // ── #1512 — the mark draws the slice it PLAYS ────────────────────────────
   //
   // The renderer's half of the region work: that `note.region` reaches

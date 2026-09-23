@@ -382,10 +382,13 @@ export function drawTimeline(
           // Additive by construction: the bar is already down, so a sample with
           // no decoded audio, a row too short, or a mark too narrow simply leaves
           // what was always there.
-          waveformColumnsLeft = drawMarkWaveform(
-            ctx, n, r, peaksFor, waveformCps, pxPerCycle, waveformColumnsLeft,
-            lane.color, theme.background, clipBody,
-          )
+          // #1738 — a lane set to Bars keeps the bar alone.
+          if (lane.bars !== true) {
+            waveformColumnsLeft = drawMarkWaveform(
+              ctx, n, r, peaksFor, waveformCps, pxPerCycle, waveformColumnsLeft,
+              lane.color, theme.background, clipBody,
+            )
+          }
           ctx.globalAlpha = alpha
         }
       }

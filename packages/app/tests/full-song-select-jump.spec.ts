@@ -134,9 +134,11 @@ test('#610 — clicking a lane header jumps the editor to its code (no expand); 
   await page.waitForTimeout(120)
   await expect(page.locator(`[data-full-song-lane="${laneKey}"]`)).toHaveAttribute('data-expanded', 'true')
 
-  // Double-click the name → inline rename input mounts and keeps focus (the
+  // Double-click the name → menu → Rename → inline rename input mounts and keeps focus (the
   // header-jump's editor-focus must not blow the rename away).
   await page.locator(`[data-full-song-lane="${laneKey}"]`).getByText(laneKey!, { exact: false }).first().dblclick()
+  // #1738 — a double-click opens the track menu; Rename is its entry.
+  await page.locator('[data-full-song-lane-menu-rename]').click()
   await page.waitForTimeout(150)
   await expect(page.locator('[data-full-song-lane-rename]')).toHaveCount(1)
   expect(

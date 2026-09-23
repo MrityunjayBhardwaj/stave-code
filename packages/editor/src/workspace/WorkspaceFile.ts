@@ -780,7 +780,7 @@ export function subscribeToZoneOverrides(fileId: string, cb: Subscriber): () => 
 // in song A doesn't bleed into song B; per-file matches DAW semantics.
 //
 // Storage shape inside each file's Y.Map:
-//   trackMeta: Y.Map<trackId, { color?: string; collapsed?: boolean }>
+//   trackMeta: Y.Map<trackId, { color?: string; collapsed?: boolean; display?: TrackDisplay }>
 //
 // Observer wires by REFERENCE-IDENTITY (Set<fileId>), NOT a boolean
 // (feedback_observer_wire_race.md). resetFileStore + tests reset clear the
@@ -791,11 +791,18 @@ export function subscribeToZoneOverrides(fileId: string, cb: Subscriber): () => 
  * Yjs doc. Mirrors ZoneOverride shape; one record per trackId.
  *  - `color`: user-picked from TRACK_PALETTE_32 (overrides paletteForTrack auto)
  *  - `collapsed`: chevron state (default = expanded; users notice collapse by absence)
+ *  - `display`: how the track's Song timeline lane draws (#1738) — `waveform`
+ *    (its audio: a sample's file, a synth's own render) or `bars` (notes only).
+ *    Absent means `waveform`.
  */
 export interface TrackMeta {
   color?: string
   collapsed?: boolean
+  display?: TrackDisplay
 }
+
+/** #1738 — what a track's collapsed timeline lane draws. */
+export type TrackDisplay = 'waveform' | 'bars'
 
 /** Frozen empty sentinel — `getTrackMeta` returns this for absent records so
  *  every read sees the same reference. Required by `useSyncExternalStore`'s
@@ -954,7 +961,7 @@ export function setTrackMeta(
   doc.transact(() => {
     const existing = (meta.get(trackId) as TrackMeta | undefined) ?? {}
     const merged: TrackMeta = { ...existing, ...partial }
-    if (merged.color === undefined && merged.collapsed === undefined) {
+    if (merged.color === undefined && merged.collapsed === undefined && merged.display === undefined) {
       meta.delete(trackId)
     } else {
       meta.set(trackId, merged)

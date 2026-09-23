@@ -43,6 +43,7 @@ import {
   type OffsetEdit,
   type WriteSource,
   type WriteOutcome,
+  type TrackDisplay,
   detectAllChunks,
   getActiveEditor,
   getActiveFileId,
@@ -494,6 +495,14 @@ export function MusicalTimeline(
     }
     return m
   }, [trackMeta])
+  // #1738 — tracks whose lane draws as BARS (notes only), from the same store.
+  const barsNames = React.useMemo(() => {
+    const names = new Set<string>()
+    for (const [name, meta] of trackMeta) {
+      if (meta.display === 'bars') names.add(name)
+    }
+    return names
+  }, [trackMeta])
 
   // #731 — the display names of tracks that read as silenced (muted, or dimmed by
   // a solo elsewhere), from the Mixer's own solo/mute state. The Timeline fades the
@@ -573,6 +582,13 @@ export function MusicalTimeline(
     (displayName: string, color: string) => {
       if (!fileId) return
       setTrackMeta(fileId, displayName, { color })
+    },
+    [fileId],
+  )
+  const handleSetTrackDisplay = React.useCallback(
+    (displayName: string, display: TrackDisplay) => {
+      if (!fileId) return
+      setTrackMeta(fileId, displayName, { display })
     },
     [fileId],
   )
@@ -823,10 +839,11 @@ export function MusicalTimeline(
       // Migrate a custom-colour override from the OLD display name to the new
       // label (#581) — else the rename orphans the colour (the override is keyed
       // by display name, which the rename changes). snapshot.source === fileId.
-      const prevColor = getTrackMeta(snapshot.source, oldDisplayName).color
-      if (prevColor && oldDisplayName !== newLabel) {
-        setTrackMeta(snapshot.source, newLabel, { color: prevColor })
-        setTrackMeta(snapshot.source, oldDisplayName, { color: undefined })
+      // #1738 — the lane type moves with it, under the same key.
+      const prev = getTrackMeta(snapshot.source, oldDisplayName)
+      if ((prev.color || prev.display) && oldDisplayName !== newLabel) {
+        setTrackMeta(snapshot.source, newLabel, { color: prev.color, display: prev.display })
+        setTrackMeta(snapshot.source, oldDisplayName, { color: undefined, display: undefined })
       }
     },
     [snapshot],
@@ -1196,6 +1213,8 @@ export function MusicalTimeline(
           onRenameLane={handleRenameLane}
           selectedStatementOffset={selectedStatementOffset}
           customColorByName={customColorByName}
+          barsNames={barsNames}
+          onSetTrackDisplay={handleSetTrackDisplay}
           onSetTrackColor={handleSetTrackColor}
           onResetTrackColor={handleResetTrackColor}
           silencedNames={silencedNames}
