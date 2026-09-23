@@ -5978,6 +5978,9 @@ function createTrackEnvelopeScheduler(deps) {
     },
     evaluated() {
       abortInFlight();
+      for (const kept of [envelopes, refused2]) {
+        for (const id of [...kept.keys()]) if (!deps.exists(id)) kept.delete(id);
+      }
       refingerprint();
     },
     playing() {
@@ -9273,6 +9276,7 @@ var _StrudelEngine = class _StrudelEngine {
     this.trackEnvelopes = createTrackEnvelopeScheduler({
       isPlaying: /* @__PURE__ */ __name(() => Boolean(this.repl?.scheduler?.started), "isPlaying"),
       cps: /* @__PURE__ */ __name(() => this.getCps() ?? 0.5, "cps"),
+      exists: /* @__PURE__ */ __name((trackId) => this.songPatterns.has(trackId), "exists"),
       fingerprint: /* @__PURE__ */ __name((trackId, cycles) => this.trackFingerprint(trackId, cycles), "fingerprint"),
       render: /* @__PURE__ */ __name((trackId, cycles, signal) => this.renderTrackEnvelope(trackId, cycles, signal), "render"),
       schedule: /* @__PURE__ */ __name((fn, ms) => {

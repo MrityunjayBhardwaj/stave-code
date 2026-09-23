@@ -222,4 +222,15 @@ test.describe('synth lane envelope (#1731)', () => {
     expect(after.offline - before.offline).toBe(0)
     expect(after.live - before.live).toBeGreaterThan(0)
   })
+
+  test('a song too long to render every track says how many it left out', async ({ page }) => {
+    // Three 256-cycle tracks at 0.5 cps are 512 s of audio each; the budget is
+    // 1200 s a pass, so the first two are drawn and the third is named.
+    const part = (n: string) => `$: arrange([256, note("${n}*2").s("sawtooth")])`
+    await seedCode(page, ['setcps(0.5)', part('c3'), part('e3'), part('g3')].join('\n'))
+    await waitForEnvelopes(page, 'd1:fresh d2:fresh', 60_000)
+    const notice = page.locator('[data-full-song-envelope-over-cap]')
+    await expect(notice).toHaveAttribute('data-full-song-envelope-over-cap', '1')
+    await expect(notice).toHaveText('1 track too long to draw')
+  })
 })

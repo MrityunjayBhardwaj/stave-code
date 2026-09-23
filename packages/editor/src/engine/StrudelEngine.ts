@@ -457,6 +457,7 @@ export class StrudelEngine implements LiveCodingEngine {
   private trackEnvelopes = createTrackEnvelopeScheduler({
     isPlaying: () => Boolean(this.repl?.scheduler?.started),
     cps: () => this.getCps() ?? 0.5,
+    exists: (trackId) => this.songPatterns.has(trackId),
     fingerprint: (trackId, cycles) => this.trackFingerprint(trackId, cycles),
     render: (trackId, cycles, signal) => this.renderTrackEnvelope(trackId, cycles, signal),
     schedule: (fn, ms) => {

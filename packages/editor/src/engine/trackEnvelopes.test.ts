@@ -38,6 +38,7 @@ function fakeEngine() {
   const deps = {
     isPlaying: () => state.playing,
     cps: () => state.cps,
+    exists: (id: string) => state.plays.has(id),
     fingerprint: (id: string, cycles: number) => {
       fingerprints++
       const p = state.plays.get(id)
@@ -342,6 +343,21 @@ describe('createTrackEnvelopeScheduler (#1731)', () => {
     expect(s.interrupt()).toBeNull()
     expect(f.scheduled()).toBe(armed + 1) // the settle time starts again
     expect(f.pendingTimers()).toBe(1)
+  })
+
+  it('a track the engine no longer has keeps nothing; one merely not asked for keeps its render', async () => {
+    const f = fakeEngine()
+    const s = createTrackEnvelopeScheduler(f.deps)
+    s.request(['a', 'b'], 4)
+    await f.flush()
+    s.request(['a'], 4) // 'b' scrolled out of the request, not deleted
+    f.state.plays.delete('a') // … and 'a' deleted from the document
+    s.request(['b'], 4)
+    s.evaluated()
+    await f.flush()
+    expect(s.get('a')).toBeNull()
+    expect(s.get('b')).toMatchObject({ stale: false })
+    expect(f.log).toEqual(['render a', 'render b']) // 'b' was not rendered again
   })
 
   it('dispose stops everything', async () => {

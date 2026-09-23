@@ -81,6 +81,9 @@ export interface TrackEnvelopeDeps {
   isPlaying(): boolean
   /** Tempo, cycles per second, to turn the budget's seconds into cycles. */
   cps(): number
+  /** Does the loaded document still have this track? Cheap: asked of every
+   *  kept envelope after each evaluate, where a fingerprint would cost a query. */
+  exists(trackId: string): boolean
   /** What the track plays over `[0, cycles)`, as a comparable string; null when
    *  there is no such track. */
   fingerprint(trackId: string, cycles: number): string | null
@@ -296,6 +299,12 @@ export function createTrackEnvelopeScheduler(deps: TrackEnvelopeDeps): TrackEnve
     },
     evaluated() {
       abortInFlight()
+      // A track deleted from the document keeps nothing. One merely missing from
+      // the request (a lane with no notes in the page on screen) keeps its
+      // render, so paging back costs no render.
+      for (const kept of [envelopes, refused]) {
+        for (const id of [...kept.keys()]) if (!deps.exists(id)) kept.delete(id)
+      }
       refingerprint()
     },
     playing() {
