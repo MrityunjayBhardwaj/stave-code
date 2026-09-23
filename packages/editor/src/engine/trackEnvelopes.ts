@@ -108,6 +108,13 @@ export interface TrackEnvelopeScheduler {
   stopped(): void
   /** Run `fn` with no display render in flight or starting (see header). */
   exclusive<T>(fn: () => Promise<T>): Promise<T>
+  /**
+   * Stop the render in flight for a live sound (#1733, `offlineGraph.ts`).
+   * Null when none was in flight; otherwise settles once it has let go. The
+   * next render waits out the usual settle time from here, so a run of
+   * auditions keeps renders off until they end.
+   */
+  interrupt(): Promise<void> | null
   get(trackId: string): TrackEnvelopeView | null
   status(): TrackEnvelopeStatus
   dispose(): void
@@ -314,6 +321,19 @@ export function createTrackEnvelopeScheduler(deps: TrackEnvelopeDeps): TrackEnve
         suspended--
         kick()
       }
+    },
+    interrupt() {
+      const pending = inFlight
+      if (pending == null) {
+        // Nothing to stop, but a render about to start is pushed back too.
+        if (cancelTimer != null) kick()
+        return null
+      }
+      cancelTimer?.()
+      cancelTimer = null
+      pending.controller.abort()
+      // The aborted run kicks the next one from its own tail.
+      return pending.done
     },
     get(trackId) {
       const env = envelopes.get(trackId)

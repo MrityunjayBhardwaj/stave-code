@@ -34,6 +34,7 @@ function fakeEngine() {
   let gate: { release: () => void } | null = null
   let holdRenders = false
   let fingerprints = 0
+  let scheduled = 0
   const deps = {
     isPlaying: () => state.playing,
     cps: () => state.cps,
@@ -54,6 +55,7 @@ function fakeEngine() {
       return env(state.plays.get(id) === 'a2' ? 0.5 : 1)
     },
     schedule: (fn: () => void) => {
+      scheduled++
       const t = { fn, live: true }
       timers.push(t)
       return () => {
@@ -81,6 +83,7 @@ function fakeEngine() {
     flush,
     changes: () => changes,
     fingerprints: () => fingerprints,
+    scheduled: () => scheduled,
     /** Fire only the timers pending right now, once. */
     step: () => {
       for (const t of timers.splice(0).filter((t) => t.live)) t.fn()
@@ -307,6 +310,38 @@ describe('createTrackEnvelopeScheduler (#1731)', () => {
     await f.flush()
     expect(f.log).toEqual(['render a', 'render a'])
     expect(s.get('a')?.stale).toBe(false)
+  })
+
+  it('interrupt stops the render in flight for a live sound, and the render comes back after', async () => {
+    const f = fakeEngine()
+    const s = createTrackEnvelopeScheduler(f.deps)
+    expect(s.interrupt()).toBeNull() // nothing in flight: the sound plays at once
+    f.holdRenders(true)
+    s.request(['a'], 4)
+    await f.flush()
+    expect(s.status().rendering).toBe('a')
+    const letGo = s.interrupt()
+    expect(letGo).not.toBeNull()
+    f.holdRenders(false)
+    f.release()
+    await letGo
+    expect(f.log).toEqual(['render a', 'cancelled a'])
+    await f.flush()
+    expect(f.log).toEqual(['render a', 'cancelled a', 'render a'])
+    expect(s.get('a')?.stale).toBe(false)
+  })
+
+  it('interrupt pushes back a render that was about to start', async () => {
+    const f = fakeEngine()
+    const s = createTrackEnvelopeScheduler(f.deps)
+    s.request(['a'], 4)
+    f.step() // fingerprint 'a'
+    f.step() // the pass ends and arms the settle timer
+    expect(f.pendingTimers()).toBe(1)
+    const armed = f.scheduled()
+    expect(s.interrupt()).toBeNull()
+    expect(f.scheduled()).toBe(armed + 1) // the settle time starts again
+    expect(f.pendingTimers()).toBe(1)
   })
 
   it('dispose stops everything', async () => {

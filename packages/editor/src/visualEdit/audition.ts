@@ -17,6 +17,7 @@
  *     instruments in a musical range.
  */
 import { superdough, getAudioContext } from '@strudel/webaudio'
+import { onLiveGraph } from '../engine/offlineGraph'
 
 /**
  * Shared audition envelope (#816). Both this one-shot preview and PianoRollGrid's
@@ -43,6 +44,12 @@ export const AUDITION_DUR_S = 0.22
  *  behind both the one-shot preview and the sustained/looping preview so they
  *  can never drift (same envelope, same scheduling). */
 function fireOnce(sound: string, note: string): void {
+  // #1733 — a background waveform render borrows superdough's context; the note
+  // waits for it to hand the context back rather than playing into the render.
+  onLiveGraph(() => fireNow(sound, note))
+}
+
+function fireNow(sound: string, note: string): void {
   try {
     const ctx = getAudioContext()
     // The click/select is the user gesture that unlocks a suspended context.

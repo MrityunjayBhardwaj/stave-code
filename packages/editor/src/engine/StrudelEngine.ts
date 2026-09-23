@@ -8,6 +8,7 @@ import { renderPatternOffline, describeSkipped, RenderCancelledError, type Skipp
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { planStems, tagTrack } from './stemSplit'
 import { createTransportHold } from './transportHold'
+import { registerBackgroundRender, withOfflineGraph } from './offlineGraph'
 import {
   createTrackEnvelopeScheduler,
   digest,
@@ -468,6 +469,8 @@ export class StrudelEngine implements LiveCodingEngine {
     debounceMs: TRACK_ENVELOPE_DEBOUNCE_MS,
     capSeconds: TRACK_ENVELOPE_CAP_SECONDS,
   })
+  /** #1733 — an audition anywhere on the page interrupts this engine's display render. */
+  private unregisterBackgroundRender = registerBackgroundRender(() => this.trackEnvelopes.interrupt())
   private audioCtx: AudioContext | null = null
   /** Notes handed to superdough after their start time, which it drops (#1348). */
   private lateNotes = 0
@@ -2199,26 +2202,32 @@ export class StrudelEngine implements LiveCodingEngine {
       duration,
       sampleRate: sampleRate ?? this.audioCtx.sampleRate,
     }
-    return this.transportHold.hold(() => renderPatternOffline(
-      pattern,
-      options,
-      {
-        getAudioContext: wa.getAudioContext,
-        setAudioContext: wa.setAudioContext,
-        getSuperdoughAudioController: wa.getSuperdoughAudioController,
-        setSuperdoughAudioController: wa.setSuperdoughAudioController,
-        initAudio: wa.initAudio,
-        // #1635 — the alias step live playback applies in `wrappedOutput`. The
-        // render calls superdough directly, so without this `kick` was "not
-        // found" in a bounce while it played live.
-        superdough: (value, t, hapDuration, cps, cycle) =>
-          wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? undefined).value, t, hapDuration, cps, cycle),
-        // #1675 — a reverb's impulse response lands asynchronously; the render
-        // waits for it at each window instead of rendering the room silent.
-        settle: wa.reverbsReady,
-        createContext: (frames, rate) => new OfflineAudioContext(2, frames, rate),
-      }
-    ))
+    // #1733 — superdough's globals are one per PAGE, so a render waits for any
+    // other engine's render to hand them back. A render cancelled while it
+    // waited never borrows them at all.
+    return withOfflineGraph(() => {
+      if (signal?.aborted) return Promise.reject(new RenderCancelledError())
+      return this.transportHold.hold(() => renderPatternOffline(
+        pattern,
+        options,
+        {
+          getAudioContext: wa.getAudioContext,
+          setAudioContext: wa.setAudioContext,
+          getSuperdoughAudioController: wa.getSuperdoughAudioController,
+          setSuperdoughAudioController: wa.setSuperdoughAudioController,
+          initAudio: wa.initAudio,
+          // #1635 — the alias step live playback applies in `wrappedOutput`. The
+          // render calls superdough directly, so without this `kick` was "not
+          // found" in a bounce while it played live.
+          superdough: (value, t, hapDuration, cps, cycle) =>
+            wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? undefined).value, t, hapDuration, cps, cycle),
+          // #1675 — a reverb's impulse response lands asynchronously; the render
+          // waits for it at each window instead of rendering the room silent.
+          settle: wa.reverbsReady,
+          createContext: (frames, rate) => new OfflineAudioContext(2, frames, rate),
+        }
+      ))
+    })
   }
 
   /**
@@ -2560,6 +2569,7 @@ export class StrudelEngine implements LiveCodingEngine {
     this.transportHold.cancelResume()
     this.trackEnvelopes.dispose()
     this.trackEnvelopeListeners.clear()
+    this.unregisterBackgroundRender()
     this.repl?.scheduler?.stop()
     this.hapStream.dispose()
     this.analyserNode?.disconnect()
