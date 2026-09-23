@@ -21,7 +21,7 @@
  * (`SongTimelineCanvas`) owns the surface, sizing, and dirty-flagged scheduling.
  */
 
-import type { TimelineScene, SceneLane, SceneNote, SceneClip, SceneStepped, SceneSignal, SignalTimeAt } from './timelineScene'
+import type { TimelineScene, SceneLane, SceneNote, SceneClip, SceneStepped, SceneSignal, SignalTimeAt, LaneEnvelope } from './timelineScene'
 import { stepSegments, stepY, type StepBand } from './steppedLane'
 import { NO_VOICE } from './timelineScene'
 import type { LaneLayout, LaneBox } from './laneLayout'
@@ -180,6 +180,15 @@ export const WAVEFORM_COLUMN_BUDGET = 20000
  */
 export const WAVEFORM_BED_SCRIM = 0.62
 
+/** #1731 — a rendered envelope sits behind the lane's marks at this opacity:
+ *  strong enough to read as the track's loudness, weak enough that a mark in the
+ *  lane colour stays distinct on top of it. */
+export const ENVELOPE_ALPHA = 0.45
+/** #1731 — a STALE envelope (the track plays something else now) is drawn in the
+ *  muted caption colour at this opacity, so it reads as out of date rather than
+ *  as the current sound. */
+export const ENVELOPE_STALE_ALPHA = 0.35
+
 /** Note-bar height scales with its band — mirrors the live monitor's
  *  `leafBarHeight` (MusicalTimeline): the bar fills most of the band, reserving
  *  ~`BAR_PITCH_RESERVE`px for melodic pitch motion, floored so a tiny band still
@@ -319,6 +328,12 @@ export function drawTimeline(
     // captions go on top of them (below) rather than underneath.
     const captionsOnTop = lane.audio === true && !expanded
     drawClips(ctx, lane, top, rowHeight, viewportWidth, theme, scene.windowOriginCycles, toScreenX, captionsOnTop)
+    // #1731 — a collapsed synth lane's own rendered loudness, BEHIND its marks:
+    // the marks still say what plays and where the pitch goes, the envelope
+    // says how loud it is while it does.
+    if (!expanded && lane.envelope != null) {
+      drawLaneEnvelope(ctx, lane.envelope, lane.color, top, rowHeight, viewportWidth, theme, toScreenX)
+    }
     const mode = laneRenderMode(pxPerCycle, lane.notes.length > 0, expanded)
     if (expanded) {
       drawBeatGrid(ctx, top, rowHeight, pxPerCycle, firstCycle, lastCycle, viewportWidth, theme, toScreenX, transform.meter)
@@ -1280,4 +1295,75 @@ function drawMarkWaveform(
     ctx.fillRect(r.x + i, top, 1, Math.max(1, bottom - top))
   }
   return budget - columns
+}
+
+/** Each envelope's own loudest sample, cached per render (a render's data array
+ *  is never mutated, so its identity is the cache key). */
+const envelopePeakCache = new WeakMap<Float32Array, number>()
+
+function envelopePeak(data: Float32Array): number {
+  let peak = envelopePeakCache.get(data)
+  if (peak === undefined) {
+    peak = 0
+    for (let i = 0; i < data.length; i++) {
+      const v = Math.abs(data[i])
+      if (v > peak) peak = v
+    }
+    envelopePeakCache.set(data, peak)
+  }
+  return peak
+}
+
+/**
+ * Draw a lane's rendered loudness across the row (#1731): min/max per screen
+ * pixel, mirrored about the row's centre.
+ *
+ * ⚠ SCALED TO THE TRACK'S OWN LOUDEST MOMENT, not to full scale. The render is
+ * the track before the master bus, and synth levels commonly peak far below 1,
+ * which at full scale draws a flat line. What the lane has to show is where the
+ * track swells and drops across the song, so its loudest moment fills the row.
+ * Two lanes' heights are therefore not comparable levels — the Mixer's meters
+ * are where levels are compared.
+ */
+function drawLaneEnvelope(
+  ctx: CanvasRenderingContext2D,
+  env: LaneEnvelope,
+  color: string,
+  top: number,
+  rowHeight: number,
+  viewportWidth: number,
+  theme: DrawTheme,
+  toScreenX: (cycle: number) => number,
+): void {
+  const peak = envelopePeak(env.data)
+  if (peak <= 0 || env.columns <= 0 || env.cycles <= 0) return
+  const originX = toScreenX(0)
+  const pxPerCycle = toScreenX(1) - originX
+  if (!(pxPerCycle > 0)) return
+  const colsPerPx = env.columns / (env.cycles * pxPerCycle)
+  const x0 = Math.max(0, Math.floor(originX))
+  const x1 = Math.min(viewportWidth, Math.ceil(toScreenX(env.cycles)))
+  if (x1 <= x0) return
+  const halfH = Math.max(1, rowHeight / 2 - SINGLE_BAND_PAD_Y)
+  const centreY = top + rowHeight / 2
+  ctx.save()
+  ctx.globalAlpha = env.stale ? ENVELOPE_STALE_ALPHA : ENVELOPE_ALPHA
+  ctx.fillStyle = env.stale ? theme.clipCaption : color
+  for (let x = x0; x < x1; x++) {
+    const c0 = Math.max(0, Math.floor((x - originX) * colsPerPx))
+    const c1 = Math.min(env.columns, Math.max(c0 + 1, Math.ceil((x + 1 - originX) * colsPerPx)))
+    let min = 0
+    let max = 0
+    for (let c = c0; c < c1; c++) {
+      const lo = env.data[2 * c]
+      const hi = env.data[2 * c + 1]
+      if (lo < min) min = lo
+      if (hi > max) max = hi
+    }
+    if (min === 0 && max === 0) continue
+    const yTop = centreY - (max / peak) * halfH
+    const yBottom = centreY - (min / peak) * halfH
+    ctx.fillRect(x, yTop, 1, Math.max(1, yBottom - yTop))
+  }
+  ctx.restore()
 }

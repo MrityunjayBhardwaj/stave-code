@@ -25,7 +25,9 @@ import {
   type HapStream,
   type IREvent,
   type BreakpointStore,
+  type TrackEnvelopeAccess,
 } from "@stave/editor";
+import { createTrackEnvelopeRelay } from "../audio/trackEnvelopeRelay";
 import { seedProjectFromTemplate } from "../templates";
 import { exportProjectAsZip } from "../exportProject";
 import { buildStemsArchive, stemDisplayName } from "../stemsArchive";
@@ -978,6 +980,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // track"; default `[]` makes no claim, which is right for a runtime that has
   // not attached or is not Strudel.
   const getSongTrackIdsRef = useRef<() => string[]>(() => []);
+  // #1731 — the active runtime's synth-track renders, relayed so the Timeline
+  // (registered once) keeps hearing from whichever runtime is active.
+  const trackEnvelopeRelay = useMemo(() => createTrackEnvelopeRelay(), []);
   // #384/#385 — transport seek accessors for the full-song timeline. Same
   // ref-closure shape as getCycleRef so the registered element never
   // re-registers when the active runtime swaps. getSongPosition is the
@@ -1022,6 +1027,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             getTimelineEventsBand?: (startCycle: number, endCycle: number) => IREvent[];
             // #1107 — registered track ids behind those events.
             getSongTrackIds?: () => string[];
+            // #1731 — synth-track renders for the Song timeline.
+            fileId?: string;
+            trackEnvelopes?: TrackEnvelopeAccess;
             // #384/#385 — transport seek accessors (Strudel only).
             getSongPosition?: () => number | null;
             onSeek?: (cycle: number) => void;
@@ -1047,6 +1055,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       getTimelineEventsRef.current = s?.getTimelineEvents ?? (() => []);
       getTimelineEventsBandRef.current = s?.getTimelineEventsBand ?? (() => []);
       getSongTrackIdsRef.current = s?.getSongTrackIds ?? (() => []);
+      trackEnvelopeRelay.attach(s?.fileId ?? null, s?.trackEnvelopes ?? null);
       getSongPositionRef.current = s?.getSongPosition ?? (() => null);
       onSeekRef.current = s?.onSeek ?? (() => {});
       onRequestSnapshotRef.current = s?.onRequestSnapshot ?? (() => {});
@@ -1065,7 +1074,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         return { isPlaying: s.isPlaying, error };
       });
     },
-    [],
+    [trackEnvelopeRelay],
   );
 
   // Phase 20-01 PR-B (DA-05 idempotent replace) — register the real
@@ -1088,6 +1097,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
             getTimelineEventsBandRef.current(startCycle, endCycle)
           }
           getSongTrackIds={() => getSongTrackIdsRef.current()}
+          trackEnvelopes={trackEnvelopeRelay.access}
           getSongPosition={() => getSongPositionRef.current()}
           onSeek={(cycle) => onSeekRef.current(cycle)}
           onRequestSnapshot={() => onRequestSnapshotRef.current()}
@@ -1100,7 +1110,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     // placeholder seed is benign even after a hot reload because the
     // registry's idempotent semantics (DA-05) make re-registration a
     // no-fanfare swap.
-  }, []);
+  }, [trackEnvelopeRelay]); // stable for the app's life: registers once
 
   // #391 — expose the live transport cycle to the editor-seeded visual panels
   // (Sequencer / Piano Roll) so they can highlight the playing step. The panels

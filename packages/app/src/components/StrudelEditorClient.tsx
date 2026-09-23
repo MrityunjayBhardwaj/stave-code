@@ -66,6 +66,7 @@ import {
   type PreviewProvider,
   type HapStream,
   type IREvent,
+  type TrackEnvelopeAccess,
   type BreakpointStore,
   loadShellState,
   saveShellState,
@@ -429,6 +430,13 @@ interface StrudelEditorClientProps {
      */
     getSongTrackIds: () => string[];
     /**
+     * #1731 — the Song timeline's handle on this file's synth-track renders.
+     * Each call reads through `runtimesRef` like the accessors above; a
+     * subscription made through it stays with the runtime it was made on,
+     * which is why the app relays it (`trackEnvelopeRelay.ts`).
+     */
+    trackEnvelopes: TrackEnvelopeAccess;
+    /**
      * #384/#385 — transport seek accessors for the full-song timeline.
      * `getSongPosition` is the transport-offset-aware clock; `onSeek`
      * seeks to an absolute song cycle. Closure-bound through `runtimesRef`
@@ -582,6 +590,19 @@ function SetBackdropButton({
       <span style={{ fontSize: 9, opacity: 0.8 }}>▾</span>
     </button>
   );
+}
+
+/**
+ * #1731 — a file's handle on its synth-track renders, read through the runtime
+ * getter on every call so it follows a runtime recreated for the same file.
+ */
+function trackEnvelopeHandle(runtime: () => LiveCodingRuntime | undefined): TrackEnvelopeAccess {
+  return {
+    request: (trackIds, cycles) => runtime()?.getTrackEnvelopes()?.request(trackIds, cycles),
+    get: (trackId) => runtime()?.getTrackEnvelopes()?.get(trackId) ?? null,
+    status: () => runtime()?.getTrackEnvelopes()?.status() ?? { rendering: null, overCap: [] },
+    subscribe: (listener) => runtime()?.getTrackEnvelopes()?.subscribe(listener) ?? (() => {}),
+  };
 }
 
 export default function StrudelEditorClient({
@@ -2074,6 +2095,8 @@ export default function StrudelEditorClient({
       // events above so the two can never describe different track sets.
       getSongTrackIds: () =>
         runtimesRef.current.get(accessorFid)?.getSongTrackIds?.() ?? [],
+      // #1731 — synth-track renders, from the same runtime as the events above.
+      trackEnvelopes: trackEnvelopeHandle(() => runtimesRef.current.get(accessorFid)),
       // #384/#385 — transport seek accessors. Closure-bound through
       // runtimesRef like getHapStream; seekTo is fire-and-forget here (the
       // full-song ruler doesn't await the re-eval — clock + playhead reflect
@@ -2257,6 +2280,8 @@ export default function StrudelEditorClient({
           // #1107 — registered track ids (same shape as the builder above).
           getSongTrackIds: () =>
             runtimesRef.current.get(accessorFid)?.getSongTrackIds?.() ?? [],
+          // #1731 — same handle as the builder above.
+          trackEnvelopes: trackEnvelopeHandle(() => runtimesRef.current.get(accessorFid)),
           // #384/#385 — transport seek accessors (same shape as the
           // useEffect builder above).
           getSongPosition: () =>

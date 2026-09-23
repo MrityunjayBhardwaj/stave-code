@@ -170,6 +170,15 @@ export interface SceneClip {
   readonly sectionName: string
 }
 
+/** A lane's rendered loudness (#1731): `columns` min/max pairs spread evenly
+ *  over song cycles `[0, cycles)`. `stale` = the track plays something else now. */
+export interface LaneEnvelope {
+  readonly data: Float32Array
+  readonly columns: number
+  readonly cycles: number
+  readonly stale: boolean
+}
+
 /** One timeline row. */
 export interface SceneLane {
   readonly laneKey: string
@@ -178,6 +187,9 @@ export interface SceneLane {
    *  Set by `markAudioLanes`, never by `buildTimelineScene`, which knows the
    *  events but not which names are files. Absent means false. */
   readonly audio?: boolean
+  /** #1731 — the lane's own rendered loudness, for a lane that is not an audio
+   *  lane. Set by `attachEnvelopes`; absent when there is no render (yet). */
+  readonly envelope?: LaneEnvelope
   /** The display NAME (#579 STEP 2). The source LABEL for a named track
    *  (`bass`, `lead`), else the positional `laneKey` (`d{N}`) for an anonymous
    *  `$:`. The lane's IDENTITY stays `laneKey` (drives the live overlay match);
@@ -277,6 +289,10 @@ export interface CollectedMarks {
   readonly clipsByLane: ReadonlyMap<string, SceneClip[]>
   /** True if any lane hit the cap (marks dropped — surfaced, not silent). */
   readonly capped: boolean
+  /** #1731 — the ONE engine track whose haps landed on each lane, by the same
+   *  join the marks use (`laneKeyForHap`). A lane fed by two tracks is absent:
+   *  no single render is its sound. Optional so hand-built marks stay terse. */
+  readonly trackIdByLane?: ReadonlyMap<string, string>
 }
 
 /** A shared empty collection (the no-IR / no-marks default). */
@@ -777,4 +793,47 @@ export function markAudioLanes(
     return { ...lane, audio }
   })
   return changed ? { ...scene, lanes } : scene
+}
+
+/**
+ * Give each non-audio lane its track's rendered envelope (#1731), looked up
+ * through the lane's one engine track (`trackIdByLane`). An audio lane keeps
+ * none: its waveform is its files' own (#1730). Returns the SAME scene when
+ * nothing changes, like `markAudioLanes`.
+ */
+export function attachEnvelopes(
+  scene: TimelineScene,
+  trackIdByLane: ReadonlyMap<string, string> | undefined,
+  envelopeFor: ((trackId: string) => LaneEnvelope | null) | undefined,
+): TimelineScene {
+  if (trackIdByLane == null || envelopeFor == null) return scene
+  let changed = false
+  const lanes = scene.lanes.map((lane) => {
+    const trackId = lane.audio === true ? undefined : trackIdByLane.get(lane.laneKey)
+    const envelope = trackId == null ? null : envelopeFor(trackId)
+    if ((envelope ?? undefined) === lane.envelope) return lane
+    changed = true
+    if (envelope == null) {
+      const { envelope: _dropped, ...rest } = lane
+      return rest
+    }
+    return { ...lane, envelope }
+  })
+  return changed ? { ...scene, lanes } : scene
+}
+
+/** The engine tracks behind the lanes that could draw an envelope: every lane
+ *  with marks that is not an audio lane, in lane order, each track once. */
+export function envelopeTrackIds(
+  scene: TimelineScene,
+  trackIdByLane: ReadonlyMap<string, string> | undefined,
+): string[] {
+  if (trackIdByLane == null) return []
+  const out: string[] = []
+  for (const lane of scene.lanes) {
+    if (lane.audio === true || lane.notes.length === 0) continue
+    const id = trackIdByLane.get(lane.laneKey)
+    if (id != null && !out.includes(id)) out.push(id)
+  }
+  return out
 }

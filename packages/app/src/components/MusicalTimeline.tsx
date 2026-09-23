@@ -89,6 +89,7 @@ import {
   type SignalKind,
   useSilencedTrackNames,
   type SongAnalysis,
+  type TrackEnvelopeAccess,
   type WindowAnalysis,
 } from '@stave/editor'
 import { FullSongTimeline } from './FullSongTimeline'
@@ -142,6 +143,12 @@ export interface MusicalTimelineProps {
    * the analysis makes no claim about tracks it has not seen (the #1104 rule).
    */
   readonly getSongTrackIds?: () => string[]
+  /**
+   * #1731 — the active runtime's synth-track renders: the Song timeline asks
+   * for the tracks it would draw and draws what comes back. Optional: without
+   * it no synth lane draws a waveform, which is what every lane did before.
+   */
+  readonly trackEnvelopes?: TrackEnvelopeAccess
   /** Drawer open state — forwarded to FullSongTimeline to gate its playhead
    *  rAF loop (Trap NEW-1). */
   readonly getDrawerOpen: () => boolean
@@ -1164,6 +1171,7 @@ export function MusicalTimeline(
           getTimelineEventsBand={props.getTimelineEventsBand}
           waveforms={waveforms}
           waveformsEpoch={waveformsEpoch}
+          trackEnvelopes={props.trackEnvelopes}
           getSongPosition={props.getSongPosition ?? (() => null)}
           onSeek={props.onSeek ?? (() => {})}
           getDrawerOpen={props.getDrawerOpen}

@@ -277,9 +277,10 @@ export function collectNoteMarks(
   // (display fidelity — PV174). Attributed to the IR lanes by source containment
   // (NOT trackId equality, which diverges for anon `$:` — PV175). Structure
   // (source/arrange/label offsets, clips) stays IR-owned above.
-  const activeMarksByLane = useEval
+  const collected = useEval
     ? collectHapMarks(events as IREvent[], { originCycle, spanCycles: displayCycles }, labelOffsetByLane, captureLaneOrder(ir))
-    : marksByLane
+    : null
+  const activeMarksByLane = collected?.marks ?? marksByLane
   // Bound each lane to `capPerLane` marks by downsampling ACROSS its span (keep
   // every Nth), not by dropping the tail. A dense lane (e.g. a drum stack at
   // ~35 onsets/cycle) keeps its full clip extent with uniformly thinner ticks
@@ -345,7 +346,15 @@ export function collectNoteMarks(
     flush(originCycle + nCycles)
     if (clips.length > 0) clipsByLane.set(key, clips)
   }
-  return { marksByLane: activeMarksByLane, sourceByLane, arrangeByLane, labelOffsetByLane, clipsByLane, capped }
+  return {
+    marksByLane: activeMarksByLane,
+    sourceByLane,
+    arrangeByLane,
+    labelOffsetByLane,
+    clipsByLane,
+    capped,
+    ...(collected ? { trackIdByLane: collected.trackIdByLane } : {}),
+  }
 }
 
 /**
@@ -516,8 +525,10 @@ function collectHapMarks(
   window: SongWindow,
   labelOffsetByLane: ReadonlyMap<string, number>,
   captureLanes: readonly string[],
-): Map<string, SceneNote[]> {
+): { marks: Map<string, SceneNote[]>; trackIdByLane: Map<string, string> } {
   const out = new Map<string, SceneNote[]>()
+  // #1731 — which engine track fed each lane; '' marks a lane fed by several.
+  const trackOf = new Map<string, string>()
   // (laneKey, dollarPos) pairs ascending by dollarPos — the containment index.
   const anchors = [...labelOffsetByLane].sort((a, b) => a[1] - b[1])
   // #1209 — the band the window shows, not a width measured from zero. The
@@ -532,6 +543,11 @@ function collectHapMarks(
     // named/positional IR lane), else an eval-backed lane keyed by the hap's own
     // producer id (#864 / P1b). Shared with the song-analysis remap (#980).
     const key = laneKeyForHap(ev, anchors, captureLanes)
+    if (ev.trackId != null) {
+      const seen = trackOf.get(key)
+      if (seen === undefined) trackOf.set(key, ev.trackId)
+      else if (seen !== ev.trackId) trackOf.set(key, '')
+    }
     let arr = out.get(key)
     if (!arr) {
       arr = []
@@ -548,5 +564,13 @@ function collectHapMarks(
       ...(region ? { region } : {}),
     })
   }
-  return out
+  // A lane gets a track only when each is the other's ONLY partner. Several
+  // tracks on one lane: no single render is its sound. One track on several
+  // lanes (a comma stack split into arms, #950): the render is every arm's
+  // sound together, and would draw on each arm as if it were that arm's own.
+  const lanesPerTrack = new Map<string, number>()
+  for (const id of trackOf.values()) if (id !== '') lanesPerTrack.set(id, (lanesPerTrack.get(id) ?? 0) + 1)
+  const trackIdByLane = new Map<string, string>()
+  for (const [lane, id] of trackOf) if (id !== '' && lanesPerTrack.get(id) === 1) trackIdByLane.set(lane, id)
+  return { marks: out, trackIdByLane }
 }
