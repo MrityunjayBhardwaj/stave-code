@@ -217,6 +217,8 @@ test('renaming a coloured track carries the colour forward (override migrates)',
 
   // Rename `bass` → `kick` from the Timeline lane.
   await page.locator('[data-full-song-lane="bass"] span').last().dblclick()
+  // #1738 — a double-click opens the track menu; Rename is its entry.
+  await page.locator('[data-full-song-lane-menu-rename]').click()
   const input = page.locator('[data-full-song-lane-rename="bass"]')
   await input.waitFor({ timeout: 5000 })
   await input.fill('kick')

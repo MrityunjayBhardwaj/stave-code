@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { laneMarkBands, markRect } from '../drawTimeline'
 import { computeLaneLayout } from '../laneLayout'
-import { markAudioLanes, NO_VOICE, type TimelineScene, type SceneNote } from '../timelineScene'
+import { markAudioLanes, markBarsLanes, NO_VOICE, type TimelineScene, type SceneNote } from '../timelineScene'
 
 function sceneOf(notes: SceneNote[], pitchMin: number | null = null, pitchMax: number | null = null): TimelineScene {
   return {
@@ -109,5 +109,26 @@ describe('laneMarkBands — an audio lane in overview (#1730)', () => {
     const audio = bands(true, true)
     const plain = bands(false, true)
     expect(audio.band).toEqual(plain.band)
+  })
+})
+
+describe('markBarsLanes — a track set to Bars (#1738)', () => {
+  const take: SceneNote[] = [{ cycle: 0, end: 1, pitch: null, gain: 1, voice: 'take_1' }]
+
+  it('marks the lane whose display name is set to Bars', () => {
+    expect(markBarsLanes(sceneOf(take), new Set(['a'])).lanes[0].bars).toBe(true)
+  })
+
+  it('returns the SAME scene when no lane is set to Bars', () => {
+    const scene = sceneOf(take)
+    expect(markBarsLanes(scene, new Set())).toBe(scene)
+    expect(markBarsLanes(scene, new Set(['other']))).toBe(scene)
+  })
+
+  it('a lane set to Bars is never an audio lane, even when every mark is a file', () => {
+    const bars = markBarsLanes(sceneOf(take), new Set(['a']))
+    expect(markAudioLanes(bars, files('take_1')).lanes[0].audio ?? false).toBe(false)
+    // CONTROL — the same lane unset is one.
+    expect(markAudioLanes(sceneOf(take), files('take_1')).lanes[0].audio).toBe(true)
   })
 })

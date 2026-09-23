@@ -19294,7 +19294,7 @@ function setTrackMeta(fileId, trackId, partial) {
   doc.transact(() => {
     const existing = meta.get(trackId) ?? {};
     const merged = { ...existing, ...partial };
-    if (merged.color === void 0 && merged.collapsed === void 0) {
+    if (merged.color === void 0 && merged.collapsed === void 0 && merged.display === void 0) {
       meta.delete(trackId);
     } else {
       meta.set(trackId, merged);

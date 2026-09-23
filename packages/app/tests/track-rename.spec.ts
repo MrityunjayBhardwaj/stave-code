@@ -144,6 +144,8 @@ test('Timeline: rename a named lane replaces the label and updates the view', as
   await expect(lane.locator('span').last()).toHaveText('bass')
 
   await lane.locator('span').last().dblclick()
+  // #1738 — a double-click opens the track menu; Rename is its entry.
+  await page.locator('[data-full-song-lane-menu-rename]').click()
   const input = page.locator('[data-full-song-lane-rename="bass"]')
   await input.waitFor({ timeout: 5000 })
   await input.fill('kick')
@@ -203,6 +205,8 @@ test('Timeline: renaming a lane to a sibling lane’s name is rejected (#585)', 
   await expect(lane.locator('span').last()).toHaveText('bass')
 
   await lane.locator('span').last().dblclick()
+  // #1738 — a double-click opens the track menu; Rename is its entry.
+  await page.locator('[data-full-song-lane-menu-rename]').click()
   const input = page.locator('[data-full-song-lane-rename="bass"]')
   await input.waitFor({ timeout: 5000 })
   await input.fill('lead') // collides with the existing lead: lane

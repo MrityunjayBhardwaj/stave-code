@@ -187,6 +187,11 @@ export interface SceneLane {
    *  Set by `markAudioLanes`, never by `buildTimelineScene`, which knows the
    *  events but not which names are files. Absent means false. */
   readonly audio?: boolean
+  /** #1738 — the user set this track to draw as BARS: no waveform inside its
+   *  marks, no audio-lane clip body, no rendered envelope. Set by
+   *  `markBarsLanes`, which runs before `markAudioLanes`. Absent means the
+   *  default, `waveform`. */
+  readonly bars?: boolean
   /** #1731 — the lane's own rendered loudness, for a lane that is not an audio
    *  lane. Set by `attachEnvelopes`; absent when there is no render (yet). */
   readonly envelope?: LaneEnvelope
@@ -758,6 +763,29 @@ function groupVoices(notes: readonly SceneNote[]): SceneVoice[] {
 }
 
 /**
+ * Flag each lane the user set to draw as BARS (#1738), by DISPLAY NAME — the
+ * key the per-file track settings are stored under, as a custom colour is.
+ * Runs before `markAudioLanes`: a Bars lane is never an audio lane, and
+ * `attachEnvelopes` / `envelopeTrackIds` skip it, so its track is not rendered.
+ *
+ * Returns the SAME scene when nothing changes, like `markAudioLanes`.
+ */
+export function markBarsLanes(scene: TimelineScene, barsNames: ReadonlySet<string>): TimelineScene {
+  let changed = false
+  const lanes = scene.lanes.map((lane) => {
+    const bars = barsNames.has(lane.displayName)
+    if ((lane.bars === true) === bars) return lane
+    changed = true
+    if (!bars) {
+      const { bars: _dropped, ...rest } = lane
+      return rest
+    }
+    return { ...lane, bars: true }
+  })
+  return changed ? { ...scene, lanes } : scene
+}
+
+/**
  * Flag each lane whose every mark plays an audio file (#1730).
  *
  * A LANE-level answer, not a per-mark one. A lane that mixes files with synth
@@ -786,6 +814,7 @@ export function markAudioLanes(
   let changed = false
   const lanes = scene.lanes.map((lane) => {
     const audio =
+      lane.bars !== true &&
       lane.notes.length > 0 &&
       lane.notes.every((n) => n.voice != null && n.voice !== NO_VOICE && backed(n.voice, n.pitch ?? null))
     if ((lane.audio === true) === audio) return lane
@@ -809,7 +838,7 @@ export function attachEnvelopes(
   if (trackIdByLane == null || envelopeFor == null) return scene
   let changed = false
   const lanes = scene.lanes.map((lane) => {
-    const trackId = lane.audio === true ? undefined : trackIdByLane.get(lane.laneKey)
+    const trackId = lane.audio === true || lane.bars === true ? undefined : trackIdByLane.get(lane.laneKey)
     const envelope = trackId == null ? null : envelopeFor(trackId)
     if ((envelope ?? undefined) === lane.envelope) return lane
     changed = true
@@ -831,7 +860,7 @@ export function envelopeTrackIds(
   if (trackIdByLane == null) return []
   const out: string[] = []
   for (const lane of scene.lanes) {
-    if (lane.audio === true || lane.notes.length === 0) continue
+    if (lane.audio === true || lane.bars === true || lane.notes.length === 0) continue
     const id = trackIdByLane.get(lane.laneKey)
     if (id != null && !out.includes(id)) out.push(id)
   }

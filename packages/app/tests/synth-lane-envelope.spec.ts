@@ -233,4 +233,43 @@ test.describe('synth lane envelope (#1731)', () => {
     await expect(notice).toHaveAttribute('data-full-song-envelope-over-cap', '1')
     await expect(notice).toHaveText('1 track too long to draw')
   })
+  test('a track set to Bars from its header menu draws notes only, and stays so after a reload (#1738)', async ({ page }) => {
+    const code = 'setcps(0.5)\n$: note("c3").s("sine").gain("<0.1 0.4 0.7 1>")\n$: note("e2").s("square")'
+    await seedCode(page, code)
+    await waitForEnvelopes(page, 'd1:fresh d2:fresh')
+    const shaped = (await inkRows(page, 'd1', 2)) - (await inkRows(page, 'd1', 0))
+    expect(shaped).toBeGreaterThanOrEqual(4) // PRECONDITION: the render is drawn
+
+    // Right-click the name area → Type ▸ shows Waveform checked → pick Bars.
+    const header = page.locator('[data-full-song-lane="d1"]').getByText('d1', { exact: true })
+    await header.click({ button: 'right' })
+    const menu = page.locator('[data-full-song-lane-menu="d1"]')
+    await expect(menu).toBeVisible()
+    await expect(menu.locator('[data-full-song-lane-menu-rename]')).toBeVisible()
+    await menu.locator('[data-full-song-lane-menu-type]').hover()
+    await expect(menu.locator('[data-full-song-lane-menu-display="waveform"]')).toHaveAttribute('aria-checked', 'true')
+    await menu.locator('[data-full-song-lane-menu-display="bars"]').click()
+    await expect(menu).toHaveCount(0)
+
+    // d1 is no longer rendered at all; d2 keeps its render.
+    await waitForEnvelopes(page, 'd2:fresh')
+    const flat = (await inkRows(page, 'd1', 2)) - (await inkRows(page, 'd1', 0))
+    console.log(`[#1738] loud-minus-quiet ink rows: waveform ${shaped}, bars ${flat}`)
+    expect(flat).toBeLessThanOrEqual(1) // the note marks alone are the same height
+
+    // Saved in the file's Yjs doc: a reload keeps d1 on Bars.
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.locator('[data-full-song-lane="d1"]').waitFor({ timeout: 30_000 })
+    await waitForEnvelopes(page, 'd2:fresh', 30_000)
+    // A DOUBLE-click this time: its first click jumps to the code and the editor
+    // scrolls, which must not close the menu it opens.
+    await page.locator('[data-full-song-lane="d1"]').getByText('d1', { exact: true }).dblclick()
+    const again = page.locator('[data-full-song-lane-menu="d1"]')
+    await again.locator('[data-full-song-lane-menu-type]').hover()
+    await expect(again.locator('[data-full-song-lane-menu-display="bars"]')).toHaveAttribute('aria-checked', 'true')
+
+    // And back: Waveform renders it again.
+    await again.locator('[data-full-song-lane-menu-display="waveform"]').click()
+    await waitForEnvelopes(page, 'd1:fresh d2:fresh')
+  })
 })
