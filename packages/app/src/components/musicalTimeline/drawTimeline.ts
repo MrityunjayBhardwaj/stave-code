@@ -329,10 +329,10 @@ export function drawTimeline(
     const captionsOnTop = lane.audio === true && !expanded
     drawClips(ctx, lane, top, rowHeight, viewportWidth, theme, scene.windowOriginCycles, toScreenX, captionsOnTop)
     const mode = laneRenderMode(pxPerCycle, lane.notes.length > 0, expanded)
-    // #1731 — a collapsed synth lane's own rendered loudness. With bars on
-    // screen it is drawn INSIDE them (#1740, after the marks below); zoomed out
-    // to density there are no bars to follow, so it spans the row behind the
-    // density blocks.
+    // #1731 — a synth lane's own rendered loudness. With bars on screen it is
+    // drawn INSIDE them, collapsed or expanded (#1740, #1745, after the marks
+    // below); zoomed out to density there are no bars to follow, so it spans
+    // the row behind the density blocks.
     if (!expanded && lane.envelope != null && mode === 'density') {
       drawLaneEnvelope(ctx, lane.envelope, lane.color, top, rowHeight, viewportWidth, theme, toScreenX)
     }
@@ -366,9 +366,11 @@ export function drawTimeline(
       // but a solid slab at full row height, and it reads as sound where there is
       // none. Before a sample has decoded, the body is all there is.
       const clipBody = lane.audio === true && !expanded
-      // #1740 — the bars a collapsed synth lane's envelope is drawn inside.
+      // #1740 — the bars a synth lane's envelope is drawn inside; collapsed or
+      // expanded (#1745), since an expanded bar is a sub-row tall (#1744). Not
+      // on a lane set to Bars (#1738).
       const envelopeBars: { x: number; y: number; w: number; h: number }[] | null =
-        !expanded && lane.envelope != null ? [] : null
+        lane.envelope != null && lane.bars !== true ? [] : null
       for (const band of laneMarkBands(lane, box)) {
         for (const n of band.notes) {
           const r = markRect(n, band, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)

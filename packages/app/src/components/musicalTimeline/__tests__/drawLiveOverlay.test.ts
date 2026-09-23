@@ -405,12 +405,21 @@ describe('the highlight follows the lane type: a ring over a shape, a fill over 
     expect(strokes.length).toBe(0)
   })
 
-  it('an EXPANDED synth lane draws no render in its bars, so it fills', () => {
+  it('an EXPANDED synth lane draws its render in its bars too, so it rings (#1745)', () => {
     const scene = withLane({ envelope })
     const layout = computeLaneLayout(scene.lanes, new Set(['a']), 40, 96)
     const { ctx, rects, strokes } = mockCtx()
     drawLiveOverlay(ctx, scene, WIDE, layout, 1.2, SIG, THEME)
-    expect(rects.length).toBeGreaterThan(0)
+    expect(rects.length).toBe(0)
+    expect(strokes.length).toBe(2)
+  })
+
+  it('CONTROL: an expanded synth lane set to Bars still fills', () => {
+    const scene = withLane({ envelope, bars: true })
+    const layout = computeLaneLayout(scene.lanes, new Set(['a']), 40, 96)
+    const { ctx, rects, strokes } = mockCtx()
+    drawLiveOverlay(ctx, scene, WIDE, layout, 1.2, SIG, THEME)
+    expect(rects.length).toBe(2)
     expect(strokes.length).toBe(0)
   })
 
