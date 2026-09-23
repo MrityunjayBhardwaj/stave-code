@@ -149,72 +149,167 @@ describe('attachEnvelopes — each render on its lane (#1731)', () => {
   })
 })
 
-describe('drawTimeline — a collapsed synth lane draws its envelope (#1731)', () => {
-  // 100 px per cycle; the envelope covers 400 px, 50 px per column.
+describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its bars (#1731, #1740)', () => {
+  // 100 px per cycle.
   const transform: DrawTransform = { scrollLeft: 0, contentWidth: 400, viewportWidth: 400, meter: DEFAULT_METER }
+  // 10 px per cycle: below COARSEN_PX, so the lane draws density, not bars.
+  const zoomedOut: DrawTransform = { scrollLeft: 0, contentWidth: 40, viewportWidth: 400, meter: DEFAULT_METER }
 
-  const envelopeColumns = (rects: Rect[], alpha: number) =>
-    rects.filter((r) => r.w === 1 && Math.abs(r.alpha - alpha) < 1e-9)
+  /** Envelope columns: 1 px wide, in the lane colour (or the stale caption
+   *  colour). Bars are 50+ px; an expanded lane's beat gridlines are 1 px too,
+   *  in the gridline colour. */
+  const columns = (rects: Rect[]) => rects.filter((r) => r.w === 1 && (r.style === '#0af' || r.style === theme.clipCaption))
+  const inX = (rects: Rect[], x0: number, x1: number) => rects.filter((r) => r.x >= x0 && r.x < x1)
+  /** The bar drawn for a note starting at `x` (lane colour, full width). */
+  const barAt = (rects: Rect[], x: number, w: number) => rects.find((r) => r.x === x && r.w === w && r.style === '#0af')!
 
-  it('draws where the track sounds and nothing where it is silent, scaled to its own peak', () => {
-    const scene = sceneOf([lane('d1', synth, { envelope: swell() })])
-    const layout = computeLaneLayout(scene.lanes, new Set(), 60, 88)
+  /** Loud (±v) across `from..to` of 8 columns over 4 cycles, silent elsewhere. */
+  function loud(from: number, to: number, v = 0.2, stale = false): LaneEnvelope {
+    const data = new Float32Array(16)
+    for (let c = from; c < to; c++) {
+      data[2 * c] = -v
+      data[2 * c + 1] = v
+    }
+    return { data, columns: 8, cycles: 4, stale }
+  }
+
+  /** A low note in cycle 0 and a high note in cycle 1 — two bars at two heights. */
+  const lowHigh: SceneNote[] = [
+    { cycle: 0, end: 1, pitch: 36, gain: 1, voice: 'sawtooth' },
+    { cycle: 1, end: 2, pitch: 60, gain: 1, voice: 'sawtooth' },
+  ]
+  const pitched = (notes: SceneNote[], envelope: LaneEnvelope) =>
+    sceneOf([lane('d1', notes, { envelope, pitchMin: 36, pitchMax: 60 })])
+
+  it('draws each moment inside the bar sounding then, centred on THAT bar', () => {
+    const scene = pitched(lowHigh, loud(0, 4))
+    const layout = computeLaneLayout(scene.lanes, new Set(), 48, 88)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
-    const cols = envelopeColumns(rects, ENVELOPE_ALPHA)
-    expect(cols.length).toBe(200) // x 200..399: the loud half, one per pixel
-    expect(Math.min(...cols.map((r) => r.x))).toBe(200)
-    expect(cols.every((r) => r.style === '#0af')).toBe(true)
-    // Peak 0.2 fills the row minus its padding: 0.2 is the track's loudest.
-    const box = layout.boxes[0]
-    expect(cols[0].h).toBeCloseTo(box.height - 2 * 3, 5)
+    const low = barAt(rects, 0, 100)
+    const high = barAt(rects, 100, 100)
+    expect(low.y).toBeGreaterThan(high.y) // PRECONDITION: two heights
+    for (const [bar, x0] of [[low, 0], [high, 100]] as const) {
+      const cols = inX(columns(rects), x0, x0 + 100)
+      expect(cols).toHaveLength(100)
+      for (const c of cols) {
+        expect(c.y).toBeGreaterThanOrEqual(bar.y - 1e-6)
+        expect(c.y + c.h).toBeLessThanOrEqual(bar.y + bar.h + 1e-6)
+        expect(c.y + c.h / 2).toBeCloseTo(bar.y + bar.h / 2, 5)
+      }
+    }
   })
 
-  it('an onset click does not set the scale: the held level fills the row', () => {
-    // 100 columns over 4 cycles; each 25-column note opens with a 1.0 click and
-    // then holds 0.25 — the shape of an oscillator's note, measured on a square.
-    // Clicks are 4% of the columns (a real 10 ms click on a 1 s note is 1%).
+  it('the track\'s loud level fills the bar, not the row', () => {
+    const scene = pitched(lowHigh, loud(0, 4))
+    const layout = computeLaneLayout(scene.lanes, new Set(), 48, 88)
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, scene, transform, theme, layout)
+    const bar = barAt(rects, 0, 100)
+    expect(bar.h).toBeLessThan(layout.boxes[0].height - 6)
+    expect(inX(columns(rects), 0, 100)[0].h).toBeCloseTo(bar.h, 5)
+  })
+
+  it('an onset click does not set the scale: the held level fills the bar', () => {
     const data = new Float32Array(200)
     for (let c = 0; c < 100; c++) {
       const v = c % 25 === 0 ? 1 : 0.25
       data[2 * c] = -v
       data[2 * c + 1] = v
     }
-    const scene = sceneOf([lane('d1', synth, { envelope: { data, columns: 100, cycles: 4, stale: false } })])
+    const notes: SceneNote[] = [0, 1, 2, 3].map((c) => ({ cycle: c, end: c + 1, pitch: 48, gain: 1, voice: 'sawtooth' }))
+    const scene = sceneOf([lane('d1', notes, { envelope: { data, columns: 100, cycles: 4, stale: false } })])
     const layout = computeLaneLayout(scene.lanes, new Set(), 60, 88)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
-    const held = envelopeColumns(rects, ENVELOPE_ALPHA).filter((r) => r.x === 50) // mid-note: column 12
+    const held = inX(columns(rects), 50, 51) // mid-note: column 12
     expect(held).toHaveLength(1)
-    expect(held[0].h).toBeCloseTo(layout.boxes[0].height - 2 * 3, 5)
+    expect(held[0].h).toBeCloseTo(barAt(rects, 0, 100).h, 5)
   })
 
-  it('a stale envelope draws in the muted caption colour, at its own opacity', () => {
-    const scene = sceneOf([lane('d1', synth, { envelope: swell(true) })])
+  it('draws over its bar, on a recessed bed, so the bar does not hide it', () => {
+    const scene = pitched(lowHigh, loud(0, 4))
+    const layout = computeLaneLayout(scene.lanes, new Set(), 48, 88)
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, scene, transform, theme, layout)
+    const bar = rects.findIndex((r) => r.x === 0 && r.w === 100 && r.style === '#0af')
+    const bed = rects.findIndex((r, i) => i > bar && r.x === 0 && r.w === 100 && r.style === theme.background)
+    const firstColumn = rects.findIndex((r) => r.w === 1 && r.x === 0 && r.style === '#0af')
+    expect(bed).toBeGreaterThan(bar)
+    expect(firstColumn).toBeGreaterThan(bed)
+    expect(rects[firstColumn].alpha).toBe(1)
+    expect(rects[firstColumn].style).toBe('#0af')
+  })
+
+  it('a chord: every bar sounding at a moment carries that moment', () => {
+    const chord: SceneNote[] = [
+      { cycle: 0, end: 1, pitch: 36, gain: 1, voice: 'triangle' },
+      { cycle: 0, end: 1, pitch: 60, gain: 1, voice: 'triangle' },
+    ]
+    const scene = pitched(chord, loud(0, 2))
+    const layout = computeLaneLayout(scene.lanes, new Set(), 48, 88)
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, scene, transform, theme, layout)
+    const atX = inX(columns(rects), 40, 41)
+    expect(atX).toHaveLength(2)
+    expect(new Set(atX.map((c) => c.y + c.h / 2)).size).toBe(2)
+  })
+
+  it('a release tail continues at its bar\'s height, fainter, until the sound stops', () => {
+    // Note 0..0.5 (x 0..50); sound through column 1 (x 0..100), silent after.
+    const notes: SceneNote[] = [{ cycle: 0, end: 0.5, pitch: 48, gain: 1, voice: 'sawtooth' }]
+    const scene = sceneOf([lane('d1', notes, { envelope: loud(0, 2) })])
     const layout = computeLaneLayout(scene.lanes, new Set(), 60, 88)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
-    expect(envelopeColumns(rects, ENVELOPE_ALPHA).length).toBe(0)
-    const cols = envelopeColumns(rects, ENVELOPE_STALE_ALPHA)
-    expect(cols.length).toBe(200)
+    const bar = barAt(rects, 0, 50)
+    const tail = inX(columns(rects), 50, 400)
+    expect(tail).toHaveLength(50) // x 50..99, then silence
+    for (const c of tail) {
+      expect(c.alpha).toBeCloseTo(ENVELOPE_ALPHA, 9)
+      expect(c.y + c.h / 2).toBeCloseTo(bar.y + bar.h / 2, 5)
+    }
+  })
+
+  it('a tail stops where the next bar starts', () => {
+    const notes: SceneNote[] = [
+      { cycle: 0, end: 0.5, pitch: 48, gain: 1, voice: 'sawtooth' },
+      { cycle: 1, end: 2, pitch: 48, gain: 1, voice: 'sawtooth' },
+    ]
+    const scene = sceneOf([lane('d1', notes, { envelope: loud(0, 8) })])
+    const layout = computeLaneLayout(scene.lanes, new Set(), 60, 88)
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, scene, transform, theme, layout)
+    const faint = columns(rects).filter((c) => Math.abs(c.alpha - ENVELOPE_ALPHA) < 1e-9)
+    expect(Math.min(...faint.map((c) => c.x))).toBe(50)
+    expect(faint.filter((c) => c.x < 200).every((c) => c.x < 100)).toBe(true)
+  })
+
+  it('a stale envelope draws in the muted caption colour', () => {
+    const scene = pitched(lowHigh, loud(0, 4, 0.2, true))
+    const layout = computeLaneLayout(scene.lanes, new Set(), 48, 88)
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, scene, transform, theme, layout)
+    const cols = inX(columns(rects), 0, 200)
+    expect(cols).toHaveLength(200)
     expect(cols.every((r) => r.style === theme.clipCaption)).toBe(true)
   })
 
+  it('zoomed out to density there are no bars to follow: the row carries it, as before', () => {
+    const scene = sceneOf([lane('d1', synth, { envelope: loud(4, 8) })])
+    const layout = computeLaneLayout(scene.lanes, new Set(), 60, 88)
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, scene, zoomedOut, theme, layout)
+    const cols = columns(rects).filter((r) => Math.abs(r.alpha - ENVELOPE_ALPHA) < 1e-9)
+    expect(cols.length).toBe(20) // x 20..39: the loud half at 10 px per cycle
+    expect(cols[0].h).toBeCloseTo(layout.boxes[0].height - 2 * 3, 5)
+  })
+
   it('an expanded lane draws no envelope: expanding is the note-editing view', () => {
-    const scene = sceneOf([lane('d1', synth, { envelope: swell() })])
+    const scene = pitched(lowHigh, loud(0, 4))
     const layout = computeLaneLayout(scene.lanes, new Set(['d1']), 60, 88)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
-    expect(envelopeColumns(rects, ENVELOPE_ALPHA).length).toBe(0)
-  })
-
-  it('draws behind the marks: every envelope column comes before the first mark', () => {
-    const scene = sceneOf([lane('d1', [{ cycle: 3, end: 3.5, pitch: 48, gain: 1, voice: 'sawtooth' }], { envelope: swell() })])
-    const layout = computeLaneLayout(scene.lanes, new Set(), 60, 88)
-    const { ctx, rects } = mockCtx()
-    drawTimeline(ctx, scene, transform, theme, layout)
-    const lastEnvelope = rects.map((r, i) => (r.w === 1 && Math.abs(r.alpha - ENVELOPE_ALPHA) < 1e-9 ? i : -1)).reduce((a, b) => Math.max(a, b))
-    const mark = rects.findIndex((r) => r.x === 300 && r.w === 50 && r.style === '#0af')
-    expect(mark).toBeGreaterThan(lastEnvelope)
+    expect(columns(rects)).toHaveLength(0)
   })
 })

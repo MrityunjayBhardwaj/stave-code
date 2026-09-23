@@ -328,13 +328,14 @@ export function drawTimeline(
     // captions go on top of them (below) rather than underneath.
     const captionsOnTop = lane.audio === true && !expanded
     drawClips(ctx, lane, top, rowHeight, viewportWidth, theme, scene.windowOriginCycles, toScreenX, captionsOnTop)
-    // #1731 — a collapsed synth lane's own rendered loudness, BEHIND its marks:
-    // the marks still say what plays and where the pitch goes, the envelope
-    // says how loud it is while it does.
-    if (!expanded && lane.envelope != null) {
+    const mode = laneRenderMode(pxPerCycle, lane.notes.length > 0, expanded)
+    // #1731 — a collapsed synth lane's own rendered loudness. With bars on
+    // screen it is drawn INSIDE them (#1740, after the marks below); zoomed out
+    // to density there are no bars to follow, so it spans the row behind the
+    // density blocks.
+    if (!expanded && lane.envelope != null && mode === 'density') {
       drawLaneEnvelope(ctx, lane.envelope, lane.color, top, rowHeight, viewportWidth, theme, toScreenX)
     }
-    const mode = laneRenderMode(pxPerCycle, lane.notes.length > 0, expanded)
     if (expanded) {
       drawBeatGrid(ctx, top, rowHeight, pxPerCycle, firstCycle, lastCycle, viewportWidth, theme, toScreenX, transform.meter)
     }
@@ -365,6 +366,9 @@ export function drawTimeline(
       // but a solid slab at full row height, and it reads as sound where there is
       // none. Before a sample has decoded, the body is all there is.
       const clipBody = lane.audio === true && !expanded
+      // #1740 — the bars a collapsed synth lane's envelope is drawn inside.
+      const envelopeBars: { x: number; y: number; w: number; h: number }[] | null =
+        !expanded && lane.envelope != null ? [] : null
       for (const band of laneMarkBands(lane, box)) {
         for (const n of band.notes) {
           const r = markRect(n, band, pxPerCycle, viewportWidth, firstCycle, lastCycle, toScreenX)
@@ -372,6 +376,7 @@ export function drawTimeline(
           const alpha = 0.4 + 0.6 * Math.min(1, Math.max(0, n.gain))
           ctx.globalAlpha = alpha
           ctx.fillRect(r.x, r.y, r.w, r.h)
+          envelopeBars?.push(r)
           if (clipBody) {
             ctx.globalAlpha = WAVEFORM_BED_SCRIM
             ctx.fillStyle = theme.background
@@ -393,6 +398,9 @@ export function drawTimeline(
         }
       }
       ctx.globalAlpha = 1
+      if (envelopeBars != null && envelopeBars.length > 0) {
+        drawEnvelopeInBars(ctx, lane.envelope!, envelopeBars, lane.color, viewportWidth, theme, toScreenX)
+      }
     }
     if (captionsOnTop) {
       drawClipCaptionsOnTop(ctx, lane, top, rowHeight, viewportWidth, theme, toScreenX)
@@ -1354,13 +1362,9 @@ function drawLaneEnvelope(
   theme: DrawTheme,
   toScreenX: (cycle: number) => number,
 ): void {
-  const scale = envelopeScale(env.data)
-  if (scale <= 0 || env.columns <= 0 || env.cycles <= 0) return
-  const originX = toScreenX(0)
-  const pxPerCycle = toScreenX(1) - originX
-  if (!(pxPerCycle > 0)) return
-  const colsPerPx = env.columns / (env.cycles * pxPerCycle)
-  const x0 = Math.max(0, Math.floor(originX))
+  const read = envelopeReader(env, toScreenX)
+  if (read == null) return
+  const x0 = Math.max(0, Math.floor(read.originX))
   const x1 = Math.min(viewportWidth, Math.ceil(toScreenX(env.cycles)))
   if (x1 <= x0) return
   const halfH = Math.max(1, rowHeight / 2 - SINGLE_BAND_PAD_Y)
@@ -1369,20 +1373,114 @@ function drawLaneEnvelope(
   ctx.globalAlpha = env.stale ? ENVELOPE_STALE_ALPHA : ENVELOPE_ALPHA
   ctx.fillStyle = env.stale ? theme.clipCaption : color
   for (let x = x0; x < x1; x++) {
-    const c0 = Math.max(0, Math.floor((x - originX) * colsPerPx))
-    const c1 = Math.min(env.columns, Math.max(c0 + 1, Math.ceil((x + 1 - originX) * colsPerPx)))
-    let min = 0
-    let max = 0
-    for (let c = c0; c < c1; c++) {
-      const lo = env.data[2 * c]
-      const hi = env.data[2 * c + 1]
-      if (lo < min) min = lo
-      if (hi > max) max = hi
+    const col = read.at(x)
+    if (col != null) fillEnvelopeColumn(ctx, x, col, centreY, halfH)
+  }
+  ctx.restore()
+}
+
+/**
+ * The envelope's extremes under one screen pixel, scaled to the track's own
+ * level (`envelopeScale`), or null where it is silent or outside the render.
+ */
+function envelopeReader(
+  env: LaneEnvelope,
+  toScreenX: (cycle: number) => number,
+): { originX: number; at: (x: number) => { min: number; max: number } | null } | null {
+  const scale = envelopeScale(env.data)
+  if (scale <= 0 || env.columns <= 0 || env.cycles <= 0) return null
+  const originX = toScreenX(0)
+  const pxPerCycle = toScreenX(1) - originX
+  if (!(pxPerCycle > 0)) return null
+  const colsPerPx = env.columns / (env.cycles * pxPerCycle)
+  return {
+    originX,
+    at(x) {
+      const c0 = Math.max(0, Math.floor((x - originX) * colsPerPx))
+      const c1 = Math.min(env.columns, Math.max(c0 + 1, Math.ceil((x + 1 - originX) * colsPerPx)))
+      let min = 0
+      let max = 0
+      for (let c = c0; c < c1; c++) {
+        const lo = env.data[2 * c]
+        const hi = env.data[2 * c + 1]
+        if (lo < min) min = lo
+        if (hi > max) max = hi
+      }
+      if (min === 0 && max === 0) return null
+      return { min: Math.max(-1, min / scale), max: Math.min(1, max / scale) }
+    },
+  }
+}
+
+/** One 1-px envelope column, mirrored about `centreY`, at least 1 px tall. */
+function fillEnvelopeColumn(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  col: { min: number; max: number },
+  centreY: number,
+  halfH: number,
+): void {
+  const yTop = centreY - col.max * halfH
+  const yBottom = centreY - col.min * halfH
+  ctx.fillRect(x, yTop, 1, Math.max(1, yBottom - yTop))
+}
+
+/**
+ * Draw a synth track's rendered loudness INSIDE the bars it belongs to (#1740).
+ *
+ * The render is one signal for the whole track (`engine/trackEnvelopes.ts`):
+ * it has no pitch and no per-note split, so it cannot be placed by itself. The
+ * bars can. The audio at a moment is drawn inside every bar sounding at that
+ * moment, centred on that bar and scaled to its height, over a recessed bed as
+ * a sample mark's waveform is (#1506) — so the shape sits where the note does.
+ *
+ * - One note at a time (a bass, a lead): exact, the audio at t is that note's.
+ * - A chord: each of its bars carries the same combined shape. The mix cannot
+ *   be split into its notes.
+ * - A release tail past a bar's end continues at that bar's height, at the
+ *   envelope's lighter opacity, until the sound stops or another bar begins.
+ */
+function drawEnvelopeInBars(
+  ctx: CanvasRenderingContext2D,
+  env: LaneEnvelope,
+  bars: readonly { x: number; y: number; w: number; h: number }[],
+  color: string,
+  viewportWidth: number,
+  theme: DrawTheme,
+  toScreenX: (cycle: number) => number,
+): void {
+  const read = envelopeReader(env, toScreenX)
+  if (read == null) return
+  const ink = env.stale ? theme.clipCaption : color
+  // Which pixels some bar covers: a tail runs only where no bar is sounding.
+  const covered = new Uint8Array(Math.max(0, Math.ceil(viewportWidth)))
+  const spans = bars.map((r) => {
+    const x0 = Math.max(0, Math.floor(r.x))
+    const x1 = Math.min(covered.length, Math.ceil(r.x + r.w))
+    covered.fill(1, x0, Math.max(x0, x1))
+    return { r, x0, x1 }
+  })
+  ctx.save()
+  for (const { r, x0, x1 } of spans) {
+    const centreY = r.y + r.h / 2
+    const halfH = r.h / 2
+    // The bar recedes to a bed, as a sample clip body does, so the shape drawn
+    // over it in the same colour stays visible.
+    ctx.globalAlpha = WAVEFORM_BED_SCRIM
+    ctx.fillStyle = theme.background
+    ctx.fillRect(r.x, r.y, r.w, r.h)
+    ctx.fillStyle = ink
+    ctx.globalAlpha = 1
+    for (let x = x0; x < x1; x++) {
+      const col = read.at(x)
+      if (col != null) fillEnvelopeColumn(ctx, x, col, centreY, halfH)
     }
-    if (min === 0 && max === 0) continue
-    const yTop = centreY - Math.min(1, max / scale) * halfH
-    const yBottom = centreY - Math.max(-1, min / scale) * halfH
-    ctx.fillRect(x, yTop, 1, Math.max(1, yBottom - yTop))
+    ctx.globalAlpha = ENVELOPE_ALPHA
+    for (let x = x1; x < covered.length && covered[x] === 0; x++) {
+      const col = read.at(x)
+      if (col == null) break
+      fillEnvelopeColumn(ctx, x, col, centreY, halfH)
+    }
   }
   ctx.restore()
 }
