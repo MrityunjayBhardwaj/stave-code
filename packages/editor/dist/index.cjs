@@ -8302,13 +8302,15 @@ function onVizInputsLiveValuesChange(cb) {
 }
 __name(onVizInputsLiveValuesChange, "onVizInputsLiveValuesChange");
 var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 25;
+var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN = 12;
+var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX = 48;
 var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
 var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
 function readMusicalTimelineSubRowHeight() {
   const ls = safeLocalStorage2();
   if (!ls) return DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
   const saved = Number(ls.getItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE));
-  return Number.isFinite(saved) && saved >= 12 && saved <= 48 ? saved : DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
+  return Number.isFinite(saved) && saved >= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN && saved <= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX ? saved : DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
 }
 __name(readMusicalTimelineSubRowHeight, "readMusicalTimelineSubRowHeight");
 function writeMusicalTimelineSubRowHeight(h) {
@@ -8320,7 +8322,10 @@ function getMusicalTimelineSubRowHeight() {
 }
 __name(getMusicalTimelineSubRowHeight, "getMusicalTimelineSubRowHeight");
 function setMusicalTimelineSubRowHeight(h) {
-  const clamped = Math.max(12, Math.min(48, Math.round(h)));
+  const clamped = Math.max(
+    MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN,
+    Math.min(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, Math.round(h))
+  );
   writeMusicalTimelineSubRowHeight(clamped);
   for (const cb of Array.from(musicalTimelineSubRowHeightListeners)) cb(clamped);
 }
@@ -48956,6 +48961,8 @@ exports.MIN_REGION_SPAN = MIN_REGION_SPAN;
 exports.MIXER_CONSOLE_TAB_ID = MIXER_CONSOLE_TAB_ID;
 exports.MIXER_TAB_ID = MIXER_TAB_ID;
 exports.MULTI_VOICE_HEADS = MULTI_VOICE_HEADS;
+exports.MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX = MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX;
+exports.MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN = MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN;
 exports.MainSignalSampler = MainSignalSampler;
 exports.Mixer = Mixer;
 exports.P5VizRenderer = P5VizRenderer;

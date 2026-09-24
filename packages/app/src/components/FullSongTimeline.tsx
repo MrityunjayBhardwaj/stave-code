@@ -74,9 +74,13 @@ import {
   wholeWalkWindow,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
+  setMusicalTimelineSubRowHeight,
+  MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN,
+  MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX,
 } from '@stave/editor'
 import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
+import { rowHeightForEdge } from './musicalTimeline/rowEdgeResize'
 import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeNotices, envelopeTrackIds, markAudioLanes, markBarsLanes, type SceneActivity } from './musicalTimeline/timelineScene'
 import {
   nextWindowOriginFor,
@@ -559,6 +563,8 @@ const EXTEND_AUTOSCROLL_STEP_PX = 7
  *  does not see a new identity per render. */
 const NO_BARS: ReadonlySet<string> = new Set()
 const NO_WAITING: readonly string[] = []
+/** #1750 — height of the grab strip centred on each edge between two tracks. */
+const ROW_EDGE_GRAB = 6
 
 export function FullSongTimeline(props: FullSongTimelineProps): React.ReactElement {
   const { analysis, onSeek } = props
@@ -1422,10 +1428,61 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // the EXPANDED single-band note-detail height stays a fixed zoom.
   const [rowH, setRowH] = useState<number>(() => getMusicalTimelineSubRowHeight())
   useEffect(() => onMusicalTimelineSubRowHeightChange(setRowH), [])
-  const layout = useMemo(
-    () => computeLaneLayout(scene.lanes, expanded, rowH, EXPANDED_ROW_HEIGHT, rowH),
-    [scene.lanes, expanded, rowH],
+  // The layout at any row height. ONE function, so the view and the row-edge
+  // drag (#1750), which asks where an edge lands at other heights, cannot
+  // disagree about the geometry.
+  const layoutAt = useCallback(
+    (h: number) => computeLaneLayout(scene.lanes, expanded, h, EXPANDED_ROW_HEIGHT, h),
+    [scene.lanes, expanded],
   )
+  const layout = useMemo(() => layoutAt(rowH), [layoutAt, rowH])
+  // #1750 — drag the edge between two track names to set the row height. The
+  // edge grabbed stays under the pointer: every lane above it scales with the
+  // one shared setting, so the height is solved against the layout
+  // (`rowHeightForEdge`), not moved by the pointer's delta. `offset` keeps the
+  // grab point: a press a few px off the edge must not jump it to the pointer.
+  const rowEdgeDragRef = useRef<{ index: number; offset: number; written: number } | null>(null)
+  const [hoverRowEdge, setHoverRowEdge] = useState<string | null>(null)
+  const [dragRowEdge, setDragRowEdge] = useState<string | null>(null)
+  const rowEdgeY = (clientY: number): number | null => {
+    const inner = gutterInnerRef.current
+    // The inner stack is translated by the scroll, so its rect top is already
+    // content-space zero.
+    return inner == null ? null : clientY - inner.getBoundingClientRect().top
+  }
+  const onRowEdgeDown = (e: React.PointerEvent<HTMLDivElement>, index: number, laneKey: string): void => {
+    if (e.button !== 0) return
+    const y = rowEdgeY(e.clientY)
+    const box = layout.boxes[index]
+    if (y == null || box == null) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    rowEdgeDragRef.current = { index, offset: box.top + box.height - y, written: rowH }
+    setDragRowEdge(laneKey)
+  }
+  const onRowEdgeMove = (e: React.PointerEvent<HTMLDivElement>): void => {
+    const drag = rowEdgeDragRef.current
+    if (drag == null) return
+    const y = rowEdgeY(e.clientY)
+    if (y == null) return
+    const h = rowHeightForEdge(
+      layoutAt,
+      drag.index,
+      y + drag.offset,
+      MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN,
+      MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX,
+    )
+    if (h == null || h === drag.written) return
+    drag.written = h
+    setMusicalTimelineSubRowHeight(h)
+  }
+  const onRowEdgeEnd = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (rowEdgeDragRef.current == null) return
+    rowEdgeDragRef.current = null
+    setDragRowEdge(null)
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+  }
   // Refs so the double-click hit-test reads live scene/layout without stale
   // closures (mirrors the scrollLeftRef/zoomRef pattern above).
   const sceneRef = useRef(scene)
@@ -3309,6 +3366,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                 // style keeps it correct across unrelated re-renders.
                 transform: `translateY(${-scrollTop}px)`,
                 willChange: 'transform',
+                // #1750 — the row-edge handles are placed absolutely in it.
+                position: 'relative' as const,
               }}
             >
             {layout.boxes.map((box) => {
@@ -3539,6 +3598,32 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                       {sr.label}
                     </div>
                   ))}
+                </div>
+              )
+            })}
+            {/* #1750 — a grab strip on each edge between two tracks. Over the
+                rows, not inside them: a row clips its content, and the strip
+                straddles the edge. */}
+            {layout.boxes.slice(0, -1).map((box, i) => {
+              const active = dragRowEdge === box.laneKey || (dragRowEdge == null && hoverRowEdge === box.laneKey)
+              return (
+                <div
+                  key={`row-edge-${box.laneKey}`}
+                  data-full-song-row-edge={box.laneKey}
+                  data-active={active ? 'true' : undefined}
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="Resize the timeline's rows"
+                  title="Drag to resize the timeline's rows"
+                  style={{ ...styles.rowEdge, top: box.top + box.height - ROW_EDGE_GRAB / 2 }}
+                  onPointerEnter={() => setHoverRowEdge(box.laneKey)}
+                  onPointerLeave={() => setHoverRowEdge((k) => (k === box.laneKey ? null : k))}
+                  onPointerDown={(e) => onRowEdgeDown(e, i, box.laneKey)}
+                  onPointerMove={onRowEdgeMove}
+                  onPointerUp={onRowEdgeEnd}
+                  onPointerCancel={onRowEdgeEnd}
+                >
+                  {active && <div style={styles.rowEdgeLine} />}
                 </div>
               )
             })}
@@ -4260,6 +4345,26 @@ const styles = {
   // continuous selection. Tuned up from the original near-invisible 0.12/2px,
   // which was perceptible only in the 88px gutter and missed entirely against
   // the canvas where the user actually looks (#642).
+  // #1750 — the grab strip on the edge between two track names, and the line
+  // drawn on it while hovered or dragged.
+  rowEdge: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    height: ROW_EDGE_GRAB,
+    cursor: 'row-resize',
+    zIndex: 2,
+    touchAction: 'none' as const,
+  },
+  rowEdgeLine: {
+    position: 'absolute' as const,
+    left: 0,
+    right: 0,
+    top: ROW_EDGE_GRAB / 2 - 1,
+    height: 2,
+    background: 'var(--accent, #8b5cf6)',
+    pointerEvents: 'none' as const,
+  },
   laneRowSelected: {
     background: 'var(--accent-faint, rgba(110,168,254,0.20))',
     boxShadow: 'inset 3px 0 0 var(--accent, #6ea8fe)',

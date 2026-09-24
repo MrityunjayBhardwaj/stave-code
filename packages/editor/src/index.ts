@@ -346,6 +346,8 @@ export {
   getMusicalTimelineSubRowHeight,
   setMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
+  MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN,
+  MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX,
   getEditorBackdropBlur,
   setEditorBackdropBlur,
   applyPersistedBackdropBlur,

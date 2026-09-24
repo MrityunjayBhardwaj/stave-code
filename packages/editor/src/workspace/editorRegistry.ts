@@ -789,6 +789,10 @@ export function onVizInputsLiveValuesChange(cb: (on: boolean) => void): () => vo
 // pitch contours" comfortable. No CSS variable — the consumer is React
 // (layoutTrackRows + MusicalTimeline), not CSS.
 const DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 25
+/** The setting's range, px. Exported for a caller that solves for a height
+ *  (the Song timeline's row-edge drag, #1750) and must search inside it. */
+export const MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN = 12
+export const MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX = 48
 const MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = 'stave:musicalTimeline.subRowHeight'
 const musicalTimelineSubRowHeightListeners = new Set<(h: number) => void>()
 
@@ -796,7 +800,9 @@ function readMusicalTimelineSubRowHeight(): number {
   const ls = safeLocalStorage()
   if (!ls) return DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT
   const saved = Number(ls.getItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE))
-  return Number.isFinite(saved) && saved >= 12 && saved <= 48
+  return Number.isFinite(saved) &&
+    saved >= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN &&
+    saved <= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX
     ? saved
     : DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT
 }
@@ -810,7 +816,10 @@ export function getMusicalTimelineSubRowHeight(): number {
 }
 
 export function setMusicalTimelineSubRowHeight(h: number): void {
-  const clamped = Math.max(12, Math.min(48, Math.round(h)))
+  const clamped = Math.max(
+    MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN,
+    Math.min(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, Math.round(h)),
+  )
   writeMusicalTimelineSubRowHeight(clamped)
   for (const cb of Array.from(musicalTimelineSubRowHeightListeners)) cb(clamped)
 }
