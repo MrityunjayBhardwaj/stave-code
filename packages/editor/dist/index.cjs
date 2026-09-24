@@ -5842,23 +5842,33 @@ function withOfflineGraph(render) {
   return run;
 }
 __name(withOfflineGraph, "withOfflineGraph");
-var interrupts = /* @__PURE__ */ new Set();
-function registerBackgroundRender(interrupt) {
-  interrupts.add(interrupt);
+var renderers = /* @__PURE__ */ new Set();
+function registerBackgroundRender(renderer) {
+  renderers.add(renderer);
   return () => {
-    interrupts.delete(interrupt);
+    renderers.delete(renderer);
   };
 }
 __name(registerBackgroundRender, "registerBackgroundRender");
 function interruptBackgroundRenders() {
   const waits = [];
-  for (const interrupt of interrupts) {
-    const wait = interrupt();
+  for (const renderer of renderers) {
+    const wait = renderer.interrupt();
     if (wait) waits.push(wait);
   }
   return waits.length === 0 ? null : Promise.all(waits).then(() => void 0);
 }
 __name(interruptBackgroundRenders, "interruptBackgroundRenders");
+function withUserRender(render) {
+  interruptBackgroundRenders();
+  let run = render;
+  for (const renderer of renderers) {
+    const inner = run;
+    run = /* @__PURE__ */ __name(() => renderer.exclusive(inner), "run");
+  }
+  return run();
+}
+__name(withUserRender, "withUserRender");
 function onLiveGraph(play) {
   const wait = interruptBackgroundRenders();
   if (wait == null) {
@@ -9324,8 +9334,11 @@ var _StrudelEngine = class _StrudelEngine {
       debounceMs: TRACK_ENVELOPE_DEBOUNCE_MS,
       capSeconds: TRACK_ENVELOPE_CAP_SECONDS
     });
-    /** #1733 — an audition anywhere on the page interrupts this engine's display render. */
-    this.unregisterBackgroundRender = registerBackgroundRender(() => this.trackEnvelopes.interrupt());
+    /**
+     * #1733 — an audition anywhere on the page interrupts this engine's display
+     * render; #1735 — so does a user render in any file, for as long as it runs.
+     */
+    this.unregisterBackgroundRender = registerBackgroundRender(this.trackEnvelopes);
     this.audioCtx = null;
     /** Notes handed to superdough after their start time, which it drops (#1348). */
     this.lateNotes = 0;
@@ -10395,7 +10408,7 @@ var _StrudelEngine = class _StrudelEngine {
     const byId = {};
     for (const p of planned) byId[p.id] = p.pattern;
     const total = duration * planned.length;
-    const stems = await this.trackEnvelopes.exclusive(() => this.transportHold.hold(
+    const stems = await withUserRender(() => this.transportHold.hold(
       () => renderStemsInOrder(
         byId,
         (pattern, _id, i) => this.renderPatternReport(pattern, duration, sampleRate, signal, (s) => onProgress?.(i * duration + s, total)),
@@ -10427,7 +10440,7 @@ var _StrudelEngine = class _StrudelEngine {
   }
   /** The render both entry points share: hold the transport, render, report, encode. */
   async renderPatternReport(pattern, duration, sampleRate, signal, onProgress) {
-    const result = await this.trackEnvelopes.exclusive(
+    const result = await withUserRender(
       () => this.renderPatternRaw(pattern, duration, sampleRate, signal, onProgress)
     );
     if (result.skipped.length > 0) {
@@ -10453,7 +10466,7 @@ var _StrudelEngine = class _StrudelEngine {
   /**
    * The render every path shares: hold the transport and render through the
    * real graph. User renders reach it through `renderPatternReport`, inside
-   * `trackEnvelopes.exclusive`; the display render (#1731) calls it directly,
+   * `withUserRender`; the display render (#1731) calls it directly,
    * because it IS the render that exclusivity waits for.
    */
   async renderPatternRaw(pattern, duration, sampleRate, signal, onProgress) {
@@ -10568,7 +10581,7 @@ var _StrudelEngine = class _StrudelEngine {
       throw new Error("StrudelEngine not initialized \u2014 call init() first");
     }
     const sampleRate = this.audioCtx.sampleRate;
-    return this.trackEnvelopes.exclusive(() => this.transportHold.hold(
+    return withUserRender(() => this.transportHold.hold(
       () => renderStemsInOrder(
         stems,
         (code) => this.renderOfflineReport(code, duration, sampleRate),
@@ -25965,7 +25978,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
     }, "pause"), resume: /* @__PURE__ */ __name(() => {
     }, "resume") };
   }
-  const renderers = [];
+  const renderers2 = [];
   const visibilityCleanups = [];
   const bufferedSchedulers = [];
   const zoneEntries = [];
@@ -26028,7 +26041,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
         onAfterTeardown: /* @__PURE__ */ __name(() => container.querySelector("[data-viz-canvas-wrap]")?.remove(), "onAfterTeardown"),
         onAfterReinit: /* @__PURE__ */ __name(() => relayout(), "onAfterReinit")
       }) : makeInner();
-      renderers.push(renderer);
+      renderers2.push(renderer);
       visibilityCleanups.push(
         attachVizLifecycle(renderer, container, zoneComponents, renderSize, console.error, {
           teardownMs,
@@ -26366,7 +26379,7 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       editorDom?.removeEventListener("mouseleave", mouseLeaveHandler);
       floatingBar?.remove();
       visibilityCleanups.forEach((fn) => fn());
-      renderers.forEach((r) => r.destroy());
+      renderers2.forEach((r) => r.destroy());
       bufferedSchedulers.forEach((s) => s.dispose());
       editor.changeViewZones((accessor2) => {
         zoneEntries.forEach((e) => accessor2.removeZone(e.zoneId));
@@ -26374,10 +26387,10 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
       zoneEntries.forEach((e) => e.vizDecoration?.clear());
     },
     pause() {
-      renderers.forEach((r) => r.pause());
+      renderers2.forEach((r) => r.pause());
     },
     resume() {
-      renderers.forEach((r) => r.resume());
+      renderers2.forEach((r) => r.resume());
     }
   };
 }

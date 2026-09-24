@@ -1891,7 +1891,10 @@ declare class StrudelEngine implements LiveCodingEngine {
      */
     private trackEnvelopeListeners;
     private trackEnvelopes;
-    /** #1733 — an audition anywhere on the page interrupts this engine's display render. */
+    /**
+     * #1733 — an audition anywhere on the page interrupts this engine's display
+     * render; #1735 — so does a user render in any file, for as long as it runs.
+     */
     private unregisterBackgroundRender;
     private audioCtx;
     /** Notes handed to superdough after their start time, which it drops (#1348). */
@@ -2238,7 +2241,7 @@ declare class StrudelEngine implements LiveCodingEngine {
     /**
      * The render every path shares: hold the transport and render through the
      * real graph. User renders reach it through `renderPatternReport`, inside
-     * `trackEnvelopes.exclusive`; the display render (#1731) calls it directly,
+     * `withUserRender`; the display render (#1731) calls it directly,
      * because it IS the render that exclusivity waits for.
      */
     private renderPatternRaw;
