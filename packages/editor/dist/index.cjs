@@ -5613,6 +5613,15 @@ __name(makeFixedKey, "makeFixedKey");
 // src/engine/renderPatternOffline.ts
 var RENDER_WINDOW_SECONDS = 4;
 var RENDER_WINDOW_LEAD_SECONDS = 0.05;
+function isMissingWorkletError(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  return /AudioWorklet/.test(message);
+}
+__name(isMissingWorkletError, "isMissingWorkletError");
+var _WorkletsNeeded = class _WorkletsNeeded extends Error {
+};
+__name(_WorkletsNeeded, "WorkletsNeeded");
+var WorkletsNeeded = _WorkletsNeeded;
 var _RenderCancelledError = class _RenderCancelledError extends Error {
   constructor() {
     super("The render was cancelled.");
@@ -5621,15 +5630,32 @@ var _RenderCancelledError = class _RenderCancelledError extends Error {
 };
 __name(_RenderCancelledError, "RenderCancelledError");
 var RenderCancelledError = _RenderCancelledError;
-async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal, onProgress }, deps) {
+async function renderPatternOffline(pattern, options, deps) {
+  let reported = 0;
+  const onProgress = options.onProgress && ((seconds) => {
+    if (seconds <= reported) return;
+    reported = seconds;
+    options.onProgress(seconds);
+  });
+  try {
+    return await renderOnce(pattern, { ...options, onProgress }, deps, false);
+  } catch (err) {
+    if (!(err instanceof WorkletsNeeded)) throw err;
+    return renderOnce(pattern, { ...options, onProgress }, deps, true);
+  }
+}
+__name(renderPatternOffline, "renderPatternOffline");
+async function renderOnce(pattern, { cps, duration, sampleRate, signal, onProgress }, deps, worklets) {
   const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
   const liveCtx = deps.getAudioContext();
   const liveController = deps.getSuperdoughAudioController();
   const ctx = deps.createContext(Math.ceil(duration * sampleRate), sampleRate);
   let played = 0;
   const skipped = /* @__PURE__ */ new Map();
+  let needsWorklets = false;
   const schedule = /* @__PURE__ */ __name(async (window2) => {
     for (const hap of window2) {
+      if (needsWorklets) return;
       hap.ensureObjectValue?.();
       const begin = hap.whole.begin.valueOf();
       try {
@@ -5642,6 +5668,10 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
         );
         played++;
       } catch (err) {
+        if (!worklets && isMissingWorkletError(err)) {
+          needsWorklets = true;
+          return;
+        }
         const reason = err instanceof Error ? err.message : String(err);
         skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
       }
@@ -5650,9 +5680,10 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
   try {
     deps.setAudioContext(ctx);
     deps.setSuperdoughAudioController(null);
-    await deps.initAudio({});
+    await deps.initAudio({ disableWorklets: !worklets });
     const windows = ctx.suspend && ctx.resume ? windowsOf(haps, cps, roomChangeTimes(haps, cps), sampleRate) : [{ start: 0, haps }];
     await schedule(windows[0]?.haps ?? []);
+    if (needsWorklets) throw new WorkletsNeeded();
     await deps.settle?.();
     const failures = [];
     const pauses = windows.slice(1).map((window2) => {
@@ -5661,7 +5692,7 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
       return ctx.suspend(at).then(async () => {
         try {
           onProgress?.(Math.min(duration, window2.start));
-          if (!signal?.aborted) await schedule(window2.haps);
+          if (!signal?.aborted && !needsWorklets) await schedule(window2.haps);
           await deps.settle?.();
         } catch (err) {
           failures.push(err);
@@ -5674,19 +5705,21 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
     await Promise.all(pauses);
     if (failures.length > 0) throw failures[0];
     if (signal?.aborted) throw new RenderCancelledError();
+    if (needsWorklets) throw new WorkletsNeeded();
     onProgress?.(duration);
     return {
       buffer,
       haps: haps.length,
       played,
-      skipped: [...skipped].map(([reason, count]) => ({ reason, count }))
+      skipped: [...skipped].map(([reason, count]) => ({ reason, count })),
+      worklets
     };
   } finally {
     deps.setAudioContext(liveCtx);
     deps.setSuperdoughAudioController(liveController);
   }
 }
-__name(renderPatternOffline, "renderPatternOffline");
+__name(renderOnce, "renderOnce");
 function windowsOf(haps, cps, extraStarts, sampleRate) {
   const last = haps.length ? haps[haps.length - 1].whole.begin.valueOf() / cps : 0;
   const gridEnd = Math.floor(last / RENDER_WINDOW_SECONDS);
