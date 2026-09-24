@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 
-import { bootApp, seedCode } from './_appBoot'
+import { bootApp, seedCode, waitForEditorLoaded } from './_appBoot'
 
 /**
  * #1731 — a synth track draws its own loudness on the Song timeline, rendered
@@ -220,7 +220,9 @@ test.describe('synth lane envelope (#1731)', () => {
       }
     })
     await page.reload()
-    await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 30_000 })
+    // #1753 — the reloaded page loads its saved document; seed only after it
+    // has landed, or the load puts the starter back over the fixture.
+    await waitForEditorLoaded(page)
     // Tracks 1 and 2 render first and are long white noise; track 3 is the
     // sawtooth the Pattern tab's ▶ auditions, an oscillator.
     await seedCode(
@@ -236,13 +238,29 @@ test.describe('synth lane envelope (#1731)', () => {
       ed.setPosition({ lineNumber: 4, column: 12 })
       ed.focus()
     })
-    await expect.poll(() => rendering(page), { timeout: 30_000, intervals: [20] }).toBe('$0')
-    const before = await page.evaluate(() => (window as unknown as { __osc: { live: number; offline: number } }).__osc)
-    expect(before.offline).toBe(0) // noise has no oscillator: the render itself makes none
+    // #1753 — wait for THIS document's render. Track ids are positional, so the
+    // page's saved document (the starter song, a `loop 4`) also has a `$0`,
+    // and on a slow page it is evaluated at load and starts rendering before
+    // the seed's evaluate replaces it. Its synth voices are offline
+    // oscillators; counting from page load read them as the audition's. So key
+    // on the seeded document's own span as well, and count from there.
+    const ownRender = () =>
+      page.evaluate(
+        () =>
+          `${document.querySelector('[data-full-song-period]')?.getAttribute('data-full-song-period') ?? ''} / ` +
+          `${document.querySelector('[data-full-song-envelope-rendering]')?.getAttribute('data-full-song-envelope-rendering') ?? ''}`,
+      )
+    await expect.poll(ownRender, { timeout: 30_000, intervals: [20] }).toBe('arranged 256 cycles / $0')
+    const osc = () => page.evaluate(() => ({ ...(window as unknown as { __osc: { live: number; offline: number } }).__osc }))
+    const armed = await osc()
 
     await page.locator('[data-bottom-panel="root"]').locator('role=tab[name="Pattern"]').click()
     const play = page.locator('[data-mixer-sound-audition]:not([disabled])').first()
     await play.waitFor({ timeout: 10_000 })
+    const before = await osc()
+    // Noise has no oscillator: this document's render makes none, so any offline
+    // oscillator after the click can only be the audition's.
+    expect(before.offline - armed.offline).toBe(0)
     const midRender = await page.evaluate(() => (window as unknown as { __offlineActive: number }).__offlineActive)
     await play.click()
     await page.waitForTimeout(400)

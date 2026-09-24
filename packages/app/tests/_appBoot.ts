@@ -95,6 +95,18 @@ export async function bootApp(page: Page, opts: BootOptions = {}): Promise<void>
   }
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await waitForEditorLoaded(page)
+}
+
+/**
+ * Wait until the page's project file has LANDED in the editor (#872).
+ *
+ * Call it after ANY navigation, including a spec's own `page.reload()`: a
+ * reload boots a fresh page whose file load races a seed exactly as the first
+ * boot does, and when it lands second it puts the saved document back over the
+ * fixture (#1753 — a reload followed by a seed read the starter song).
+ */
+export async function waitForEditorLoaded(page: Page): Promise<void> {
   await page.locator('[data-bottom-panel="root"]').waitFor({ timeout: 30_000 })
 
   // Monaco exists…
