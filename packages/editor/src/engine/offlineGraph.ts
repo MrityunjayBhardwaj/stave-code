@@ -21,6 +21,14 @@
  * for it to hand the globals back — at most one render window — and only then
  * plays. When nothing is rendering it plays at once, in the same call.
  *
+ * ⚠ A USER'S RENDER BEFORE EVERY ENGINE'S BACKGROUND RENDER (#1735). A bounce
+ * or a stems export in one file must not wait out another file's waveform
+ * render: that is seconds per track on a long song. `withUserRender` stops the
+ * background render in flight on EVERY engine and keeps them all from starting
+ * one until it ends, not only its own engine's. A stems export is several
+ * renders in a row, and a render that slipped in between two of them would
+ * cost the same wait again.
+ *
  * Not covered, on purpose: a USER's render (a bounce) is not interrupted by an
  * audition. The bounce is what the user asked for; an audition during one still
  * reaches the bounce's context, as it did before this module existed.
@@ -53,18 +61,24 @@ export function offlineGraphBusy(): boolean {
   return held > 0
 }
 
-/**
- * Background renders that can be asked to stop. Each returns a promise that
- * settles once its render has handed the graph back, or null when it has
- * nothing in flight.
- */
-const interrupts = new Set<() => Promise<void> | null>()
+/** A background renderer: one engine's display-render scheduler (#1731). */
+export interface BackgroundRenderer {
+  /**
+   * Stop the render in flight. Settles once it has handed the graph back, or
+   * null when it had nothing in flight.
+   */
+  interrupt(): Promise<void> | null
+  /** Run `fn` with none of this renderer's renders in flight or starting. */
+  exclusive<T>(fn: () => Promise<T>): Promise<T>
+}
 
-/** Register a background renderer's interrupt; returns its removal. */
-export function registerBackgroundRender(interrupt: () => Promise<void> | null): () => void {
-  interrupts.add(interrupt)
+const renderers = new Set<BackgroundRenderer>()
+
+/** Register a background renderer; returns its removal. */
+export function registerBackgroundRender(renderer: BackgroundRenderer): () => void {
+  renderers.add(renderer)
   return () => {
-    interrupts.delete(interrupt)
+    renderers.delete(renderer)
   }
 }
 
@@ -74,11 +88,27 @@ export function registerBackgroundRender(interrupt: () => Promise<void> | null):
  */
 export function interruptBackgroundRenders(): Promise<void> | null {
   const waits: Promise<void>[] = []
-  for (const interrupt of interrupts) {
-    const wait = interrupt()
+  for (const renderer of renderers) {
+    const wait = renderer.interrupt()
     if (wait) waits.push(wait)
   }
   return waits.length === 0 ? null : Promise.all(waits).then(() => undefined)
+}
+
+/**
+ * Run a USER's render (a bounce, a stems export) with no background render in
+ * flight or starting on any engine, until it ends.
+ */
+export function withUserRender<T>(render: () => Promise<T>): Promise<T> {
+  // Every render in flight is told to stop NOW, so they wind down together;
+  // each `exclusive` below only waits for its own to have let go.
+  interruptBackgroundRenders()
+  let run = render
+  for (const renderer of renderers) {
+    const inner = run
+    run = () => renderer.exclusive(inner)
+  }
+  return run()
 }
 
 /**

@@ -6,7 +6,10 @@ import {
   onLiveGraph,
   registerBackgroundRender,
   withOfflineGraph,
+  withUserRender,
+  type BackgroundRenderer,
 } from './offlineGraph'
+import { createTrackEnvelopeScheduler, type TrackEnvelopeScheduler } from './trackEnvelopes'
 
 /**
  * #1733 — superdough's globals are one per page, so the rules for borrowing them
@@ -14,6 +17,12 @@ import {
  */
 
 const tick = () => new Promise((r) => setTimeout(r, 0))
+
+/** A background renderer that only answers `interrupt`. */
+const interruptOnly = (interrupt: () => Promise<void> | null): BackgroundRenderer => ({
+  interrupt,
+  exclusive: (fn) => fn(),
+})
 
 describe('withOfflineGraph', () => {
   it('never lets two renders borrow the graph at once, from any engine', async () => {
@@ -61,10 +70,10 @@ describe('onLiveGraph', () => {
   it('interrupts a background render and plays once it has let go', async () => {
     let letGo!: () => void
     let interrupted = 0
-    const off = registerBackgroundRender(() => {
+    const off = registerBackgroundRender(interruptOnly(() => {
       interrupted++
       return new Promise<void>((r) => (letGo = r))
-    })
+    }))
     try {
       let played = false
       onLiveGraph(() => {
@@ -83,12 +92,116 @@ describe('onLiveGraph', () => {
 
   it('asks every registered renderer, and none after it is removed', () => {
     const asked: string[] = []
-    const offA = registerBackgroundRender(() => (asked.push('a'), null))
-    const offB = registerBackgroundRender(() => (asked.push('b'), null))
+    const offA = registerBackgroundRender(interruptOnly(() => (asked.push('a'), null)))
+    const offB = registerBackgroundRender(interruptOnly(() => (asked.push('b'), null)))
     expect(interruptBackgroundRenders()).toBeNull()
     offA()
     offB()
     expect(interruptBackgroundRenders()).toBeNull()
     expect(asked).toEqual(['a', 'b'])
+  })
+})
+
+/**
+ * #1735 — one file's engine, as far as the page lock can see it: a real display
+ * scheduler whose renders borrow the graph through `withOfflineGraph`. A render
+ * runs until `finish` is called or its signal aborts, which is when a real one
+ * lets go at its next pause.
+ */
+function fileEngine(name: string, log: string[]) {
+  let finish: (() => void) | null = null
+  const scheduler: TrackEnvelopeScheduler = createTrackEnvelopeScheduler({
+    isPlaying: () => false,
+    cps: () => 0.5,
+    exists: () => true,
+    fingerprint: (id) => id,
+    render: (id, _cycles, signal) =>
+      withOfflineGraph(
+        () =>
+          new Promise((resolve, reject) => {
+            log.push(`${name} render ${id}`)
+            finish = () => resolve({ data: new Float32Array([-1, 1]), columns: 1, cycles: 4 })
+            signal.addEventListener('abort', () => {
+              log.push(`${name} let go`)
+              reject(new Error('cancelled'))
+            })
+          }),
+      ),
+    schedule: (fn, ms) => {
+      const id = setTimeout(fn, ms)
+      return () => clearTimeout(id)
+    },
+    onChange: () => {},
+    debounceMs: 5,
+    capSeconds: 1000,
+  })
+  const off = registerBackgroundRender(scheduler)
+  return {
+    scheduler,
+    finish: () => finish?.(),
+    status: () => scheduler.status(),
+    dispose: () => {
+      off()
+      scheduler.dispose()
+    },
+  }
+}
+
+const settle = () => new Promise((r) => setTimeout(r, 30))
+
+describe('withUserRender', () => {
+  it("does not wait out ANOTHER file's display render: that one lets go at once", async () => {
+    const log: string[] = []
+    const a = fileEngine('A', log)
+    const b = fileEngine('B', log)
+    try {
+      b.scheduler.request(['t'], 4)
+      await settle()
+      expect(b.status().rendering).toBe('t')
+      // File A bounces while file B's render is in flight and never finishes
+      // on its own.
+      const bounce = withUserRender(() =>
+        withOfflineGraph(async () => {
+          log.push('A bounce')
+          return 'wav'
+        }),
+      )
+      expect(await bounce).toBe('wav')
+      expect(log).toEqual(['B render t', 'B let go', 'A bounce'])
+    } finally {
+      a.dispose()
+      b.dispose()
+    }
+  })
+
+  it('keeps every file from starting a render until the whole user render ends', async () => {
+    const log: string[] = []
+    const a = fileEngine('A', log)
+    const b = fileEngine('B', log)
+    try {
+      b.scheduler.request(['t'], 4)
+      await settle()
+      // A stems export: two renders with a pause between them far longer than
+      // the settle time a display render waits before starting.
+      const stems = withUserRender(async () => {
+        await withOfflineGraph(async () => log.push('A stem 1'))
+        await settle()
+        await withOfflineGraph(async () => log.push('A stem 2'))
+      })
+      // A render that slipped in between would hold stem 2 off: read the order
+      // instead of waiting on it.
+      await Promise.race([stems, new Promise((r) => setTimeout(r, 200))])
+      expect(log).toEqual(['B render t', 'B let go', 'A stem 1', 'A stem 2'])
+      await stems
+      // … and file B's render comes back once it has ended.
+      await settle()
+      expect(log.at(-1)).toBe('B render t')
+      b.finish()
+      await settle()
+      expect(b.scheduler.get('t')).not.toBeNull()
+    } finally {
+      a.dispose()
+      b.dispose()
+    }
   })
 })

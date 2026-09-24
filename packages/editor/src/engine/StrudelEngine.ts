@@ -8,7 +8,7 @@ import { renderPatternOffline, describeSkipped, RenderCancelledError, type Skipp
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { planStems, tagTrack } from './stemSplit'
 import { createTransportHold } from './transportHold'
-import { registerBackgroundRender, withOfflineGraph } from './offlineGraph'
+import { registerBackgroundRender, withOfflineGraph, withUserRender } from './offlineGraph'
 import {
   createTrackEnvelopeScheduler,
   digest,
@@ -470,8 +470,11 @@ export class StrudelEngine implements LiveCodingEngine {
     debounceMs: TRACK_ENVELOPE_DEBOUNCE_MS,
     capSeconds: TRACK_ENVELOPE_CAP_SECONDS,
   })
-  /** #1733 — an audition anywhere on the page interrupts this engine's display render. */
-  private unregisterBackgroundRender = registerBackgroundRender(() => this.trackEnvelopes.interrupt())
+  /**
+   * #1733 — an audition anywhere on the page interrupts this engine's display
+   * render; #1735 — so does a user render in any file, for as long as it runs.
+   */
+  private unregisterBackgroundRender = registerBackgroundRender(this.trackEnvelopes)
   private audioCtx: AudioContext | null = null
   /** Notes handed to superdough after their start time, which it drops (#1348). */
   private lateNotes = 0
@@ -2099,7 +2102,7 @@ export class StrudelEngine implements LiveCodingEngine {
     const byId: Record<string, unknown> = {}
     for (const p of planned) byId[p.id] = p.pattern
     const total = duration * planned.length
-    const stems = await this.trackEnvelopes.exclusive(() => this.transportHold.hold(() =>
+    const stems = await withUserRender(() => this.transportHold.hold(() =>
       renderStemsInOrder(
         byId,
         (pattern, _id, i) =>
@@ -2142,9 +2145,9 @@ export class StrudelEngine implements LiveCodingEngine {
     signal?: AbortSignal,
     onProgress?: (renderedSeconds: number) => void
   ): Promise<{ blob: Blob; haps: number; played: number; skipped: SkippedSounds[] }> {
-    // #1731 — a user's render goes first: any display render is aborted and
-    // waited for, and none starts until this one ends.
-    const result = await this.trackEnvelopes.exclusive(() =>
+    // #1731 #1735 — a user's render goes first: every file's display render is
+    // aborted and waited for, and none starts until this one ends.
+    const result = await withUserRender(() =>
       this.renderPatternRaw(pattern, duration, sampleRate, signal, onProgress),
     )
 
@@ -2180,7 +2183,7 @@ export class StrudelEngine implements LiveCodingEngine {
   /**
    * The render every path shares: hold the transport and render through the
    * real graph. User renders reach it through `renderPatternReport`, inside
-   * `trackEnvelopes.exclusive`; the display render (#1731) calls it directly,
+   * `withUserRender`; the display render (#1731) calls it directly,
    * because it IS the render that exclusivity waits for.
    */
   private async renderPatternRaw(
@@ -2338,7 +2341,7 @@ export class StrudelEngine implements LiveCodingEngine {
       throw new Error('StrudelEngine not initialized — call init() first')
     }
     const sampleRate = this.audioCtx.sampleRate
-    return this.trackEnvelopes.exclusive(() => this.transportHold.hold(() =>
+    return withUserRender(() => this.transportHold.hold(() =>
       renderStemsInOrder(
         stems,
         (code) => this.renderOfflineReport(code, duration, sampleRate),
