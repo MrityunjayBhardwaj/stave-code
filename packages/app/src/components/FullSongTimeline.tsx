@@ -1339,6 +1339,20 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   )
   const envelopesOverCap = envelopeNotice.overCap
   const waitingLanes = songPos != null ? envelopeNotice.waiting : NO_WAITING
+  // For Playwright: lanes whose track HOLDS a render, drawn or not (a Bars lane
+  // draws none but has one ready). Memoised: the view re-renders every frame
+  // while playing, and this only changes with the scene or a render.
+  const envelopesHeld = useMemo(() => {
+    if (trackIdByLane == null || trackEnvelopes == null) return ''
+    return scene.lanes
+      .filter((l) => {
+        const id = trackIdByLane.get(l.laneKey)
+        return id != null && trackEnvelopes.get(id) != null
+      })
+      .map((l) => l.laneKey)
+      .join(' ')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the tick is the re-read signal
+  }, [scene, trackIdByLane, trackEnvelopes, envelopeTick])
   // #1730 — repaint when an audio lane's sample finishes decoding. A local take
   // announces itself (`notifyWaveformsReady`), but a sample bank loads when a
   // note first plays it, and nothing tells the canvas, which is dirty-flagged:
@@ -3109,19 +3123,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           .map((l) => `${l.laneKey}:${l.envelope!.stale ? 'stale' : 'fresh'}`)
           .join(' ')}
         data-full-song-envelope-rendering={envelopeStatus?.rendering ?? ''}
-        // #1748 — lanes whose track HOLDS a render, drawn or not: a Bars lane
-        // draws none, but has one ready for a switch to Waveform.
-        data-full-song-envelopes-held={
-          trackIdByLane == null || trackEnvelopes == null
-            ? ''
-            : scene.lanes
-                .filter((l) => {
-                  const id = trackIdByLane.get(l.laneKey)
-                  return id != null && trackEnvelopes.get(id) != null
-                })
-                .map((l) => l.laneKey)
-                .join(' ')
-        }
+        // #1748 — lanes whose track holds a render, drawn or not.
+        data-full-song-envelopes-held={envelopesHeld}
         style={{ display: 'none' }}
       />
 
