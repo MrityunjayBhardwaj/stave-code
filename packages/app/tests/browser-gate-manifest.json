@@ -799,6 +799,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "waveform-render-rate.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate \u2014 it runs the whole chromium project"
+  },
   "timeline-row-edge-resize.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"

@@ -112,7 +112,7 @@ import { stepCountOptions, type StepCountGroup } from './musicalTimeline/stepCou
 import { songLoopCycles } from './songLength'
 import { publishDrawnSongFrame } from '../state/drawnSongFrame'
 import type { SceneSignal, SceneStepped } from './musicalTimeline/timelineScene'
-import { computeLaneLayout, laneAtY, type LaneLayout } from './musicalTimeline/laneLayout'
+import { computeLaneLayout, laneAtY, lanesInView, type LaneLayout } from './musicalTimeline/laneLayout'
 import {
   markRegionValue,
   regionEdgeAt,
@@ -683,18 +683,23 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // ── Grid width via ResizeObserver (mirrors MusicalTimeline DB-04) ────────
   const areaRef = useRef<HTMLDivElement>(null)
   const [areaWidth, setAreaWidth] = useState(0)
+  // #1760 — the grid's visible height, for which lanes are on screen.
+  const [areaHeight, setAreaHeight] = useState(0)
   useEffect(() => {
     const el = areaRef.current
     if (!el) return
     if (typeof ResizeObserver === 'undefined') {
       setAreaWidth(el.clientWidth ?? 0)
+      setAreaHeight(el.clientHeight ?? 0)
       return
     }
     const ro = new ResizeObserver((entries) => {
       setAreaWidth(Math.max(0, entries[0]?.contentRect.width ?? 0))
+      setAreaHeight(Math.max(0, entries[0]?.contentRect.height ?? 0))
     })
     ro.observe(el)
     setAreaWidth(el.clientWidth ?? 0)
+    setAreaHeight(el.clientHeight ?? 0)
     return () => ro.disconnect()
   }, [])
 
@@ -1317,15 +1322,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the epoch is the re-ask signal
     [baseScene, barsNames, waveforms, waveformsEpoch],
   )
-  // #1731 — every non-audio lane's track, rendered by the engine while the
-  // transport is stopped. #1748 — Bars lanes' tracks too, requested last, so a
-  // switch to Waveform made while playing has a render to show at once. Asked for over the song's own length (`loopCycles`),
-  // not the view's, so paging and an extend drag do not re-render. The engine
-  // de-duplicates: a request that names the same tracks and span is a no-op.
   const trackIdByLane = marks.trackIdByLane
-  useEffect(() => {
-    trackEnvelopes?.request(envelopeTrackIds(audioScene, trackIdByLane), loopCycles)
-  }, [trackEnvelopes, audioScene, trackIdByLane, loopCycles])
   const [envelopeTick, setEnvelopeTick] = useState(0)
   useEffect(() => trackEnvelopes?.subscribe(() => setEnvelopeTick((t) => t + 1)), [trackEnvelopes])
   const scene = useMemo(
@@ -1436,6 +1433,21 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     [scene.lanes, expanded],
   )
   const layout = useMemo(() => layoutAt(rowH), [layoutAt, rowH])
+  // #1760 — the lanes on screen, as one string so a scroll that crosses no
+  // lane edge leaves it (and the request below) unchanged.
+  const inViewKey = lanesInView(layout, scrollTop, areaHeight).join('\u0000')
+  // #1731 — every non-audio lane's track, rendered by the engine while the
+  // transport is stopped. #1748 — Bars lanes' tracks too, requested last, so a
+  // switch to Waveform made while playing has a render to show at once. #1760 —
+  // the lanes on screen first, so on a song too long to draw every track, what
+  // is in view draws. Asked for over the song's own length (`loopCycles`), not
+  // the view's, so paging and an extend drag do not re-render. The engine
+  // de-duplicates: a request that names the same tracks and span is a no-op,
+  // and the same tracks in a new order re-plan without re-reading any track.
+  useEffect(() => {
+    const inView = new Set(inViewKey === '' ? [] : inViewKey.split('\u0000'))
+    trackEnvelopes?.request(envelopeTrackIds(audioScene, trackIdByLane, inView), loopCycles)
+  }, [trackEnvelopes, audioScene, trackIdByLane, loopCycles, inViewKey])
   // #1750 — drag the edge between two track names to set the row height. The
   // edge grabbed stays under the pointer: every lane above it scales with the
   // one shared setting, so the height is solved against the layout

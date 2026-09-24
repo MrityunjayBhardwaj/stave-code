@@ -1746,7 +1746,10 @@ type StemOutcome<R> = ({
  * ⚠ THE BUDGET IS IN SECONDS OF AUDIO, summed over the tracks in request order.
  * Render cost grows with song length × tracks; a track that would take the sum
  * past `capSeconds` is not rendered and is listed in `status().overCap`, so the
- * caller can say so rather than leave a silent gap.
+ * caller can say so rather than leave a silent gap, unless it already holds a
+ * render for these events and span, which it keeps (#1760). A track the engine renders
+ * at a lower rate counts at `weight` of its seconds (#1759), read after the
+ * fingerprint pass that decided it.
  *
  * Deliberately free of imports so every step can be driven by fakes: the engine
  * arrives as `deps`, the same shape as `transportHold.ts`.
@@ -1891,6 +1894,8 @@ declare class StrudelEngine implements LiveCodingEngine {
      */
     private trackEnvelopeListeners;
     private trackEnvelopes;
+    /** #1759 — the rate each track's display render uses, decided with its fingerprint. */
+    private displayRates;
     /**
      * #1733 — an audition anywhere on the page interrupts this engine's display
      * render; #1735 — so does a user render in any file, for as long as it runs.
@@ -2270,12 +2275,12 @@ declare class StrudelEngine implements LiveCodingEngine {
      * lets it render after a seek or with a loop armed, where the loaded render
      * refuses: the capture predates both wraps.
      *
-     * ⚠ AT THE LIVE CONTEXT'S SAMPLE RATE, ALTHOUGH AN ENVELOPE NEEDS FAR LESS.
-     * superdough decodes a sample with whatever context is current when a note
-     * first asks for it, and caches the decoded buffer by URL for everyone
-     * (`superdough/sampler.mjs` `loadBuffer`, called with `getAudioContext()`).
-     * A render at a low rate would leave a low-rate copy of every sample it loads
-     * in that cache, and live playback would use it from then on.
+     * ⚠ AT 24 kHz ONLY FOR A TRACK OF PLAIN OSCILLATORS, ELSE THE LIVE RATE
+     * (#1759, `displayRate.ts`). superdough caches decoded samples, noise and
+     * soundfont zones page-wide by name, decoded on whatever context is current,
+     * so a low-rate render that loaded one first would leave live playback a
+     * low-rate copy. The rate is decided in `trackFingerprint`, from the events
+     * this render plays.
      */
     private renderTrackEnvelope;
     /**

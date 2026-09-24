@@ -414,6 +414,48 @@ describe('createTrackEnvelopeScheduler (#1731)', () => {
     expect(f.log).toEqual(['render a', 'render b']) // 'b' was not rendered again
   })
 
+  it('a track rendered at a lower rate counts at its weight against the budget (#1759)', async () => {
+    const f = fakeEngine()
+    f.state.plays.set('c', 'c1')
+    // Three 40 s tracks against 60 s: at full weight only one fits.
+    const full = createTrackEnvelopeScheduler({ ...f.deps, capSeconds: 60 })
+    full.request(['a', 'b', 'c'], 20)
+    await f.flush()
+    expect(full.status().overCap).toEqual(['b', 'c'])
+    // At half weight each costs 20 s, so all three fit.
+    const g = fakeEngine()
+    g.state.plays.set('c', 'c1')
+    const half = createTrackEnvelopeScheduler({ ...g.deps, capSeconds: 60, weight: () => 0.5 })
+    half.request(['a', 'b', 'c'], 20)
+    await g.flush()
+    expect(half.status().overCap).toEqual([])
+    expect(g.log).toEqual(['render a', 'render b', 'render c'])
+  })
+
+  it('a track moved past the budget keeps the render it already has, and is not "too long" (#1760)', async () => {
+    const f = fakeEngine()
+    // 40 s tracks against 60 s: one fits per pass.
+    const s = createTrackEnvelopeScheduler({ ...f.deps, capSeconds: 60 })
+    s.request(['a', 'b'], 20)
+    await f.flush()
+    expect(s.status().overCap).toEqual(['b'])
+    // The view scrolls: b is now asked for first. Nothing is fingerprinted again.
+    const taken = f.fingerprints()
+    s.request(['b', 'a'], 20)
+    await f.flush()
+    expect(f.fingerprints()).toBe(taken)
+    expect(f.log).toEqual(['render a', 'render b']) // a is not rendered again
+    expect(s.get('a')).toMatchObject({ stale: false })
+    expect(s.get('b')).toMatchObject({ stale: false })
+    expect(s.status().overCap).toEqual([])
+    // A kept render that no longer matches is dropped as before.
+    f.state.plays.set('a', 'a2')
+    s.evaluated()
+    await f.flush()
+    expect(s.get('a')).toBeNull()
+    expect(s.status().overCap).toEqual(['a'])
+  })
+
   it('dispose stops everything', async () => {
     const f = fakeEngine()
     const s = createTrackEnvelopeScheduler(f.deps)
