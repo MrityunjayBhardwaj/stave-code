@@ -420,9 +420,10 @@ describe('drawTimeline — waveform tier', () => {
     expect(barH(expanded.rects)).toBe(barH(collapsed.rects))
   })
 
-  it('still draws an expanded MELODIC lane as a thin pitch contour (#1713)', () => {
+  it('an expanded MELODIC lane places each note by pitch, its bar one sub-row tall (#1713, #1744)', () => {
     // The other side of the same rule: where there IS a pitch range, the expanded
-    // band spends its height on pitch-Y, so each note stays a sliver at its pitch.
+    // band spends its height on pitch-Y. Each bar is the size one sub-row's bar is
+    // (#1744) — it was a fixed 4 px sliver, whatever the sub-row setting.
     const notes: SceneNote[] = [
       { cycle: 0, end: 0.25, pitch: 48, gain: 1, voice: 'piano' },
       { cycle: 0.4, end: 0.65, pitch: 72, gain: 1, voice: 'piano' },
@@ -442,7 +443,11 @@ describe('drawTimeline — waveform tier', () => {
     drawTimeline(ctx, melodic, transform, theme, layout)
     const bars = rects.filter((r) => r.w === 250 && r.style === LANE_COLOR)
     expect(bars).toHaveLength(2)
-    expect(bars.every((r) => r.h === 4)).toBe(true)
+    // Sub-row 60 → 60 − 2·2 padding − 12 pitch reserve = 44 px.
+    expect(bars.every((r) => r.h === 44)).toBe(true)
+    // …and still at two heights: the higher note sits higher.
+    const [low, high] = [...bars].sort((a, b) => a.x - b.x)
+    expect(high.y).toBeLessThan(low.y)
     expect(bars[0].y).not.toBe(bars[1].y) // two pitches, two heights in the band
   })
 })

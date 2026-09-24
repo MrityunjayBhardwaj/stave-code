@@ -99,6 +99,10 @@ export interface LaneBox {
    *  voices (#424). Absent for collapsed lanes and single-voice/melodic expanded
    *  lanes (those draw one band). The boxes stack to fill `[top, top+height)`. */
   readonly subRows?: readonly SubRowBox[]
+  /** #1744 — the sub-row height this expanded lane was laid out with (the
+   *  Timeline sub-row setting). A single-band pitched lane sizes its bars from
+   *  it, as a multi-voice lane's sub-rows do. Absent on collapsed lanes. */
+  readonly subRowHeight?: number
 }
 
 /** The full vertical layout: one box per lane (in lane order) + the total. */
@@ -153,7 +157,7 @@ export function computeLaneLayout(
         height: sub,
       }))
       const height = voices.length * sub
-      const box: LaneBox = { laneKey: lane.laneKey, top, height, expanded: true, subRows }
+      const box: LaneBox = { laneKey: lane.laneKey, top, height, expanded: true, subRows, subRowHeight: sub }
       top += height
       return box
     }
@@ -166,7 +170,7 @@ export function computeLaneLayout(
     if (isExpanded && voices.length === 1 && sub > 0) {
       const rows = voices[0].melodic ? MELODIC_SINGLE_VOICE_ROWS : 1
       const height = withAutomationFloor(rows * sub, lane)
-      const box: LaneBox = { laneKey: lane.laneKey, top, height, expanded: true }
+      const box: LaneBox = { laneKey: lane.laneKey, top, height, expanded: true, subRowHeight: sub }
       top += height
       return box
     }
