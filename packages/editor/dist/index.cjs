@@ -6054,7 +6054,11 @@ function createTrackEnvelopeScheduler(deps) {
         stale: current4.get(trackId) !== env.fingerprint
       };
     },
-    status: /* @__PURE__ */ __name(() => ({ rendering, overCap }), "status"),
+    status: /* @__PURE__ */ __name(() => ({
+      rendering,
+      overCap,
+      waiting: plan().todo.filter((id) => !envelopes.has(id))
+    }), "status"),
     dispose() {
       disposed = true;
       cancelTimer?.();

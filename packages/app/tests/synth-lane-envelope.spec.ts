@@ -104,6 +104,27 @@ async function inkRows(page: Page, laneKey: string, cycle: number): Promise<numb
   )
 }
 
+async function held(page: Page): Promise<string> {
+  return page.evaluate(
+    () => document.querySelector('[data-full-song-envelopes-held]')?.getAttribute('data-full-song-envelopes-held') ?? '',
+  )
+}
+
+/** Stop by the transport's own button, and wait for the playhead to go: a
+ *  keyboard stop after a click in the timeline does not reach the editor. */
+async function stopTransport(page: Page): Promise<void> {
+  await page.getByTestId('strudel-chrome-transport').click()
+  await page.locator('[data-full-song="playhead"]').waitFor({ state: 'detached', timeout: 10_000 })
+}
+
+async function chooseDisplay(page: Page, laneKey: string, display: 'waveform' | 'bars'): Promise<void> {
+  await page.locator(`[data-full-song-lane="${laneKey}"]`).getByText(laneKey, { exact: true }).click({ button: 'right' })
+  const menu = page.locator(`[data-full-song-lane-menu="${laneKey}"]`)
+  await menu.locator('[data-full-song-lane-menu-type]').hover()
+  await menu.locator(`[data-full-song-lane-menu-display="${display}"]`).click()
+  await expect(menu).toHaveCount(0)
+}
+
 async function waitForEnvelopes(page: Page, want: string, timeout = 20_000): Promise<void> {
   await expect.poll(() => envelopes(page), { timeout }).toBe(want)
 }
@@ -260,7 +281,7 @@ test.describe('synth lane envelope (#1731)', () => {
     await menu.locator('[data-full-song-lane-menu-display="bars"]').click()
     await expect(menu).toHaveCount(0)
 
-    // d1 is no longer rendered at all; d2 keeps its render.
+    // d1 draws no render; d2 keeps drawing its own.
     await waitForEnvelopes(page, 'd2:fresh')
     const flat = (await inkRows(page, 'd1', 2)) - (await inkRows(page, 'd1', 0))
     console.log(`[#1738] loud-minus-quiet ink rows: waveform ${shaped}, bars ${flat}`)
@@ -301,5 +322,60 @@ test.describe('synth lane envelope (#1731)', () => {
     await menu.locator('[data-full-song-lane-menu-display="bars"]').click()
     await waitForEnvelopes(page, 'd2:fresh')
     expect(await inkRows(page, 'd1', 2)).toBe(0)
+  })
+
+  test('a Bars track has a render ready, so Waveform chosen while playing draws at once (#1748)', async ({ page }) => {
+    const code = 'setcps(0.5)\n$: note("c3").s("sine").gain("<0.1 0.4 0.7 1>")\n$: note("e2").s("square")'
+    await seedCode(page, code)
+    await waitForEnvelopes(page, 'd1:fresh d2:fresh')
+    await chooseDisplay(page, 'd1', 'bars')
+    await waitForEnvelopes(page, 'd2:fresh')
+
+    // A reload drops every render: the page starts with none. While stopped,
+    // the Bars track is rendered too, after d2, and draws nothing.
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await page.locator('[data-full-song-lane="d1"]').waitFor({ timeout: 30_000 })
+    await waitForEnvelopes(page, 'd2:fresh', 30_000)
+    await expect.poll(() => held(page), { timeout: 20_000 }).toBe('d1 d2')
+    expect(await envelopes(page)).toBe('d2:fresh')
+
+    await page.locator('.monaco-editor').first().click()
+    await page.keyboard.press(`${MOD}+Enter`)
+    await page.locator('[data-full-song="playhead"]').waitFor({ timeout: 10_000 })
+    const t0 = Date.now()
+    await chooseDisplay(page, 'd1', 'waveform')
+    await waitForEnvelopes(page, 'd1:fresh d2:fresh', 3_000)
+    console.log(`[#1748] Waveform while playing drew d1 in ${Date.now() - t0} ms`)
+    // Still playing, and nothing is waiting.
+    await expect(page.locator('[data-full-song="playhead"]')).toHaveCount(1)
+    await expect(page.locator('[data-full-song-envelope-waiting]')).toHaveCount(0)
+    await expect.poll(async () => (await inkRows(page, 'd1', 2)) - (await inkRows(page, 'd1', 0)), { timeout: 5_000 }).toBeGreaterThanOrEqual(4)
+    await stopTransport(page)
+  })
+
+  test('a Waveform track with no render yet says it draws when stopped, while playing (#1748)', async ({ page }) => {
+    const one = 'setcps(0.5)\n$: note("c3").s("sine")'
+    await seedCode(page, one)
+    await waitForEnvelopes(page, 'd1:fresh')
+    await expect(page.locator('[data-full-song-envelope-waiting]')).toHaveCount(0)
+
+    await page.locator('.monaco-editor').first().click()
+    await page.keyboard.press(`${MOD}+Enter`)
+    await page.locator('[data-full-song="playhead"]').waitFor({ timeout: 10_000 })
+    // A track added while playing has no render, and none can start until Stop.
+    await seedCode(page, `${one}\n$: note("e2").s("square")`)
+    await page.locator('.monaco-editor').first().click()
+    await page.keyboard.press(`${MOD}+Enter`)
+    const notice = page.locator('[data-full-song-envelope-waiting]')
+    await expect(notice).toHaveAttribute('data-full-song-envelope-waiting', 'd2', { timeout: 10_000 })
+    await expect(notice).toHaveText('1 track draws when stopped')
+    await expect(page.locator('[data-full-song-lane="d2"]')).toHaveAttribute('data-full-song-lane-waiting', 'true')
+    await expect(page.locator('[data-full-song-lane="d1"]')).not.toHaveAttribute('data-full-song-lane-waiting', 'true')
+    await page.screenshot({ path: 'test-results/synth-lane-waiting.png' })
+
+    await stopTransport(page)
+    await expect(notice).toHaveCount(0)
+    await expect(page.locator('[data-full-song-lane="d2"]')).not.toHaveAttribute('data-full-song-lane-waiting', 'true')
+    await waitForEnvelopes(page, 'd1:fresh d2:fresh')
   })
 })

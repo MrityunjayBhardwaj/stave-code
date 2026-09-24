@@ -10,6 +10,7 @@ import { computeLaneLayout } from '../laneLayout'
 import { DEFAULT_METER } from '../../../lib/meter'
 import {
   attachEnvelopes,
+  envelopeNotices,
   envelopeTrackIds,
   type LaneEnvelope,
   type SceneLane,
@@ -109,13 +110,64 @@ describe('envelopeTrackIds — which tracks to render (#1731)', () => {
     expect(envelopeTrackIds(scene, byLane)).toEqual(['$0', '$3'])
   })
 
-  it('skips a lane set to Bars, so its track is never rendered (#1738)', () => {
-    const scene = sceneOf([lane('d1', synth, { bars: true }), lane('d2', synth)])
-    expect(envelopeTrackIds(scene, new Map([['d1', '$0'], ['d2', '$1']]))).toEqual(['$1'])
+  it('asks for a Bars lane\'s track too, after every Waveform lane, so it has a render ready (#1748)', () => {
+    const scene = sceneOf([
+      lane('d1', synth, { bars: true }),
+      lane('d2', synth),
+      lane('d3', synth, { bars: true }),
+      lane('d4', synth),
+    ])
+    const byLane = new Map([
+      ['d1', '$0'],
+      ['d2', '$1'],
+      ['d3', '$2'],
+      ['d4', '$3'],
+    ])
+    expect(envelopeTrackIds(scene, byLane)).toEqual(['$1', '$3', '$0', '$2'])
+  })
+
+  it('a track behind both a Waveform and a Bars lane is asked for once, with the Waveform lanes', () => {
+    const scene = sceneOf([lane('d1', synth, { bars: true }), lane('d2', synth), lane('d3', synth)])
+    const byLane = new Map([
+      ['d1', '$0'],
+      ['d2', '$1'],
+      ['d3', '$0'],
+    ])
+    expect(envelopeTrackIds(scene, byLane)).toEqual(['$1', '$0'])
   })
 
   it('asks for nothing without the lane→track join', () => {
     expect(envelopeTrackIds(sceneOf([lane('d1', synth)]), undefined)).toEqual([])
+  })
+})
+
+describe('envelopeNotices — what the timeline says about lanes with no shape (#1748)', () => {
+  const byLane = new Map([
+    ['d1', '$0'],
+    ['d2', '$1'],
+    ['d3', '$2'],
+  ])
+
+  it('names a Waveform lane whose track has no render yet as waiting', () => {
+    const scene = sceneOf([lane('d1', synth), lane('d2', synth, { envelope: swell() }), lane('d3', synth)])
+    const got = envelopeNotices(scene, byLane, { rendering: null, overCap: [], waiting: ['$0', '$2'] })
+    expect(got.waiting).toEqual(['d1', 'd3'])
+  })
+
+  it('never names a Bars lane or an audio lane as waiting, though its track is', () => {
+    const scene = sceneOf([lane('d1', synth, { bars: true }), lane('d2', synth, { audio: true })])
+    const got = envelopeNotices(scene, byLane, { rendering: null, overCap: [], waiting: ['$0', '$1'] })
+    expect(got.waiting).toEqual([])
+  })
+
+  it('counts only Waveform lanes past the budget: a Bars track the budget leaves out is not "too long to draw"', () => {
+    const scene = sceneOf([lane('d1', synth), lane('d2', synth, { bars: true }), lane('d3', synth)])
+    const got = envelopeNotices(scene, byLane, { rendering: null, overCap: ['$1', '$2'], waiting: [] })
+    expect(got.overCap).toBe(1)
+  })
+
+  it('says nothing without a status', () => {
+    expect(envelopeNotices(sceneOf([lane('d1', synth)]), byLane, null)).toEqual({ overCap: 0, waiting: [] })
   })
 })
 

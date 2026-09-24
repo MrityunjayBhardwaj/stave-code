@@ -24,7 +24,7 @@ import { containingAnchor } from './laneIdentity'
 import { resolveLaneName } from './trackLabel'
 import { resolveSectionName } from './sectionLabel'
 import type { DeclaredTrack } from './trackOrder'
-import type { SignalAutomation } from '@stave/editor'
+import type { SignalAutomation, TrackEnvelopeStatus } from '@stave/editor'
 import type { SteppedEntry } from './steppedLane'
 
 /** Grouping key for marks with no sample name (`s == null`) — synth notes that
@@ -766,7 +766,8 @@ function groupVoices(notes: readonly SceneNote[]): SceneVoice[] {
  * Flag each lane the user set to draw as BARS (#1738), by DISPLAY NAME — the
  * key the per-file track settings are stored under, as a custom colour is.
  * Runs before `markAudioLanes`: a Bars lane is never an audio lane, and
- * `attachEnvelopes` / `envelopeTrackIds` skip it, so its track is not rendered.
+ * `attachEnvelopes` gives it no envelope, so it draws none. Its track is still
+ * rendered, last (`envelopeTrackIds`, #1748).
  *
  * Returns the SAME scene when nothing changes, like `markAudioLanes`.
  */
@@ -851,18 +852,56 @@ export function attachEnvelopes(
   return changed ? { ...scene, lanes } : scene
 }
 
-/** The engine tracks behind the lanes that could draw an envelope: every lane
- *  with marks that is not an audio lane, in lane order, each track once. */
+/**
+ * The engine tracks to render: the track behind every lane with marks that is
+ * not an audio lane, each once. Waveform lanes first, in lane order, then Bars
+ * lanes (#1748).
+ *
+ * A Bars lane draws no envelope, but its track is still asked for, LAST: the
+ * engine spends its budget in request order, so a Bars track only gets render
+ * time and budget the Waveform tracks leave. The point is a render ready for
+ * the moment the lane is switched to Waveform: renders only run while stopped,
+ * so without one a switch made while playing would show nothing until Stop.
+ */
 export function envelopeTrackIds(
   scene: TimelineScene,
   trackIdByLane: ReadonlyMap<string, string> | undefined,
 ): string[] {
   if (trackIdByLane == null) return []
   const out: string[] = []
+  for (const bars of [false, true]) {
+    for (const lane of scene.lanes) {
+      if (lane.audio === true || (lane.bars === true) !== bars || lane.notes.length === 0) continue
+      const id = trackIdByLane.get(lane.laneKey)
+      if (id != null && !out.includes(id)) out.push(id)
+    }
+  }
+  return out
+}
+
+/**
+ * What the timeline says about Waveform lanes that draw no shape (#1731, #1748):
+ * how many are past the render budget, and which ones have no render yet (the
+ * engine renders only while stopped, so while playing these wait for Stop).
+ *
+ * Only Waveform lanes count. A Bars lane's track is rendered too, last in line
+ * (`envelopeTrackIds`), so it can be past the budget or waiting, but the lane
+ * draws no shape either way and there is nothing to tell the user about it.
+ */
+export function envelopeNotices(
+  scene: TimelineScene,
+  trackIdByLane: ReadonlyMap<string, string> | undefined,
+  status: TrackEnvelopeStatus | null,
+): { overCap: number; waiting: string[] } {
+  if (status == null || trackIdByLane == null) return { overCap: 0, waiting: [] }
+  const over = new Set<string>()
+  const waiting: string[] = []
   for (const lane of scene.lanes) {
     if (lane.audio === true || lane.bars === true || lane.notes.length === 0) continue
     const id = trackIdByLane.get(lane.laneKey)
-    if (id != null && !out.includes(id)) out.push(id)
+    if (id == null) continue
+    if (status.overCap.includes(id)) over.add(id)
+    if (lane.envelope == null && status.waiting.includes(id)) waiting.push(lane.laneKey)
   }
-  return out
+  return { overCap: over.size, waiting }
 }

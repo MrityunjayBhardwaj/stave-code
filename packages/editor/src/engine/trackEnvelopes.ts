@@ -61,6 +61,13 @@ export interface TrackEnvelopeStatus {
   readonly rendering: string | null
   /** Wanted tracks the budget left out, in request order. */
   readonly overCap: readonly string[]
+  /**
+   * Wanted tracks inside the budget that have no envelope yet and will get one
+   * at the next stop (#1748), in request order. Not a stale track (it still
+   * draws its old one), not one whose render came back silent or failed, and
+   * not one the budget leaves out.
+   */
+  readonly waiting: readonly string[]
 }
 
 /**
@@ -354,7 +361,11 @@ export function createTrackEnvelopeScheduler(deps: TrackEnvelopeDeps): TrackEnve
         stale: current.get(trackId) !== env.fingerprint,
       }
     },
-    status: () => ({ rendering, overCap }),
+    status: () => ({
+      rendering,
+      overCap,
+      waiting: plan().todo.filter((id) => !envelopes.has(id)),
+    }),
     dispose() {
       disposed = true
       cancelTimer?.()
