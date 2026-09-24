@@ -600,7 +600,7 @@ function trackEnvelopeHandle(runtime: () => LiveCodingRuntime | undefined): Trac
   return {
     request: (trackIds, cycles) => runtime()?.getTrackEnvelopes()?.request(trackIds, cycles),
     get: (trackId) => runtime()?.getTrackEnvelopes()?.get(trackId) ?? null,
-    status: () => runtime()?.getTrackEnvelopes()?.status() ?? { rendering: null, overCap: [] },
+    status: () => runtime()?.getTrackEnvelopes()?.status() ?? { rendering: null, overCap: [], waiting: [] },
     subscribe: (listener) => runtime()?.getTrackEnvelopes()?.subscribe(listener) ?? (() => {}),
   };
 }

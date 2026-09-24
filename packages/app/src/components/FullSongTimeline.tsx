@@ -77,7 +77,7 @@ import {
 } from '@stave/editor'
 import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
-import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeTrackIds, markAudioLanes, markBarsLanes, type SceneActivity } from './musicalTimeline/timelineScene'
+import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeNotices, envelopeTrackIds, markAudioLanes, markBarsLanes, type SceneActivity } from './musicalTimeline/timelineScene'
 import {
   nextWindowOriginFor,
   clampSeekToWindow,
@@ -558,6 +558,7 @@ const EXTEND_AUTOSCROLL_STEP_PX = 7
 /** #1738 — no lane set to Bars; one ref-stable empty set, so the scene memo
  *  does not see a new identity per render. */
 const NO_BARS: ReadonlySet<string> = new Set()
+const NO_WAITING: readonly string[] = []
 
 export function FullSongTimeline(props: FullSongTimelineProps): React.ReactElement {
   const { analysis, onSeek } = props
@@ -1311,7 +1312,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     [baseScene, barsNames, waveforms, waveformsEpoch],
   )
   // #1731 — every non-audio lane's track, rendered by the engine while the
-  // transport is stopped. Asked for over the song's own length (`loopCycles`),
+  // transport is stopped. #1748 — Bars lanes' tracks too, requested last, so a
+  // switch to Waveform made while playing has a render to show at once. Asked for over the song's own length (`loopCycles`),
   // not the view's, so paging and an extend drag do not re-render. The engine
   // de-duplicates: a request that names the same tracks and span is a no-op.
   const trackIdByLane = marks.trackIdByLane
@@ -1327,7 +1329,30 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   )
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the tick is the re-read signal
   const envelopeStatus = useMemo(() => trackEnvelopes?.status() ?? null, [trackEnvelopes, envelopeTick])
-  const envelopesOverCap = envelopeStatus?.overCap.length ?? 0
+  // #1748 — only Waveform lanes count: a Bars track past the budget draws
+  // nothing either way. `waiting` = Waveform lanes with no render yet, which the
+  // engine only makes while stopped; said only while playing, since a stop
+  // starts their render within a second.
+  const envelopeNotice = useMemo(
+    () => envelopeNotices(scene, trackIdByLane, envelopeStatus),
+    [scene, trackIdByLane, envelopeStatus],
+  )
+  const envelopesOverCap = envelopeNotice.overCap
+  const waitingLanes = songPos != null ? envelopeNotice.waiting : NO_WAITING
+  // For Playwright: lanes whose track HOLDS a render, drawn or not (a Bars lane
+  // draws none but has one ready). Memoised: the view re-renders every frame
+  // while playing, and this only changes with the scene or a render.
+  const envelopesHeld = useMemo(() => {
+    if (trackIdByLane == null || trackEnvelopes == null) return ''
+    return scene.lanes
+      .filter((l) => {
+        const id = trackIdByLane.get(l.laneKey)
+        return id != null && trackEnvelopes.get(id) != null
+      })
+      .map((l) => l.laneKey)
+      .join(' ')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the tick is the re-read signal
+  }, [scene, trackIdByLane, trackEnvelopes, envelopeTick])
   // #1730 — repaint when an audio lane's sample finishes decoding. A local take
   // announces itself (`notifyWaveformsReady`), but a sample bank loads when a
   // note first plays it, and nothing tells the canvas, which is dirty-flagged:
@@ -3098,6 +3123,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
           .map((l) => `${l.laneKey}:${l.envelope!.stale ? 'stale' : 'fresh'}`)
           .join(' ')}
         data-full-song-envelope-rendering={envelopeStatus?.rendering ?? ''}
+        // #1748 — lanes whose track holds a render, drawn or not.
+        data-full-song-envelopes-held={envelopesHeld}
         style={{ display: 'none' }}
       />
 
@@ -3173,6 +3200,21 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
             title="Drawing a synth track's waveform means rendering it, and this song is too long to render every track. The first tracks are drawn; these are not."
           >
             {envelopesOverCap === 1 ? '1 track too long to draw' : `${envelopesOverCap} tracks too long to draw`}
+          </span>
+        )}
+        {/* #1748 — a Waveform synth lane with no render yet, while playing. The
+            render only runs while stopped, so say so rather than let the lane
+            look as if it were set to Bars. */}
+        {waitingLanes.length > 0 && (
+          <span
+            data-full-song-envelope-waiting={waitingLanes.join(' ')}
+            role="status"
+            style={styles.fallbackNotice}
+            title={`A synth track's waveform is drawn from a render of it, and renders only run while the transport is stopped. Not rendered yet: ${waitingLanes
+              .map((key) => scene.lanes.find((l) => l.laneKey === key)?.displayName ?? key)
+              .join(', ')}.`}
+          >
+            {waitingLanes.length === 1 ? '1 track draws when stopped' : `${waitingLanes.length} tracks draw when stopped`}
           </span>
         )}
       </div>
@@ -3314,6 +3356,8 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               // by DISPLAY NAME (the Mixer's dim key), so the same track fades in
               // both views (PV155).
               const isSilenced = props.silencedNames?.has(displayName) ?? false
+              // #1748 — a Waveform lane still waiting for its first render.
+              const isWaiting = waitingLanes.includes(box.laneKey)
               return (
                 <div
                   key={box.laneKey}
@@ -3322,13 +3366,14 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
                   data-full-song-lane-silenced={isSilenced ? displayName : undefined}
                   data-expanded={box.expanded ? 'true' : 'false'}
                   data-full-song-voices={subRows ? subRows.length : undefined}
+                  data-full-song-lane-waiting={isWaiting ? 'true' : undefined}
                   style={{
                     ...styles.laneRow,
                     height: box.height,
                     ...(isSelected ? styles.laneRowSelected : null),
                     ...(isSilenced ? styles.laneRowSilenced : null),
                   }}
-                  title={displayName}
+                  title={isWaiting ? `${displayName} — its waveform draws when the transport stops` : displayName}
                 >
                   <div
                     data-full-song-lane-select={selectEnabled ? box.laneKey : undefined}

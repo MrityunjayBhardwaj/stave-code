@@ -34,7 +34,7 @@ export function createTrackEnvelopeRelay(): TrackEnvelopeRelay {
     access: {
       request: (trackIds, cycles) => source?.request(trackIds, cycles),
       get: (trackId) => source?.get(trackId) ?? null,
-      status: () => source?.status() ?? { rendering: null, overCap: [] },
+      status: () => source?.status() ?? { rendering: null, overCap: [], waiting: [] },
       subscribe: (listener) => {
         listeners.add(listener);
         return () => {

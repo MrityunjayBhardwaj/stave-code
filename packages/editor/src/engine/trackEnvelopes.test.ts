@@ -276,6 +276,60 @@ describe('createTrackEnvelopeScheduler (#1731)', () => {
     expect(s.get('b')).toBeNull()
   })
 
+  it('lists the tracks with no render yet as waiting, until a render lands (#1748)', async () => {
+    const f = fakeEngine()
+    f.state.playing = true
+    const s = createTrackEnvelopeScheduler(f.deps)
+    s.playing()
+    s.request(['a', 'b'], 4)
+    await f.flush()
+    expect(f.log).toEqual([])
+    expect(s.status().waiting).toEqual(['a', 'b'])
+    f.state.playing = false
+    s.stopped()
+    await f.flush()
+    expect(s.status().waiting).toEqual([])
+  })
+
+  it('a track that is stale, silent or past the budget is not waiting (#1748)', async () => {
+    const f = fakeEngine()
+    f.deps.capSeconds = 10 // one 8 s track fits
+    f.state.plays.set('c', 'c1')
+    f.state.silent.add('a')
+    const s = createTrackEnvelopeScheduler(f.deps)
+    s.request(['a', 'b', 'c'], 4)
+    await f.flush()
+    // `a` takes the budget and renders silent; `b` and `c` are past it.
+    expect(f.log).toEqual(['render a'])
+    expect(s.status().overCap).toEqual(['b', 'c'])
+    expect(s.status().waiting).toEqual([])
+  })
+
+  it('a stale track is not waiting: it still draws the render it has (#1748)', async () => {
+    const f = fakeEngine()
+    const s = createTrackEnvelopeScheduler(f.deps)
+    s.request(['a'], 4)
+    await f.flush()
+    f.state.playing = true
+    s.playing()
+    f.state.plays.set('a', 'a2')
+    s.evaluated()
+    await f.flush()
+    expect(s.get('a')?.stale).toBe(true) // PRECONDITION
+    expect(s.status().waiting).toEqual([])
+  })
+
+  it('the budget goes to tracks in request order, so a track asked for last renders last (#1748)', async () => {
+    const f = fakeEngine()
+    f.deps.capSeconds = 10
+    const s = createTrackEnvelopeScheduler(f.deps)
+    s.request(['b', 'a'], 4)
+    await f.flush()
+    expect(f.log).toEqual(['render b'])
+    expect(s.status().overCap).toEqual(['a'])
+    expect(s.status().waiting).toEqual([])
+  })
+
   it('a user render waits for the display render to let go, and none starts during it', async () => {
     const f = fakeEngine()
     const s = createTrackEnvelopeScheduler(f.deps)

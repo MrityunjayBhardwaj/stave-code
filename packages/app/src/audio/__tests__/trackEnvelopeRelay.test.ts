@@ -14,7 +14,7 @@ function fakeHandle(name: string) {
       requests.push([ids, cycles])
     },
     get: (id) => ({ data: new Float32Array([0, 1]), columns: 1, cycles: 1, stale: id === name }),
-    status: () => ({ rendering: name, overCap: [] }),
+    status: () => ({ rendering: name, overCap: [], waiting: [] }),
     subscribe: (l) => {
       listeners.add(l)
       return () => listeners.delete(l)
@@ -27,7 +27,7 @@ describe('createTrackEnvelopeRelay (#1731)', () => {
   it('answers from whichever runtime is attached, and nothing before one is', () => {
     const relay = createTrackEnvelopeRelay()
     expect(relay.access.get('x')).toBeNull()
-    expect(relay.access.status()).toEqual({ rendering: null, overCap: [] })
+    expect(relay.access.status()).toEqual({ rendering: null, overCap: [], waiting: [] })
     const a = fakeHandle('a')
     relay.attach('file-a', a.handle)
     relay.access.request(['$0'], 8)
