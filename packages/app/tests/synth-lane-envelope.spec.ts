@@ -281,4 +281,25 @@ test.describe('synth lane envelope (#1731)', () => {
     await again.locator('[data-full-song-lane-menu-display="waveform"]').click()
     await waitForEnvelopes(page, 'd1:fresh d2:fresh')
   })
+  test('an EXPANDED synth lane draws its shape inside its pitched bars; Bars takes it away (#1745)', async ({ page }) => {
+    // A pitch range, so the expanded lane places bars by pitch at the sub-row
+    // bar height (#1744), and a gain swell, so the shape differs cycle to cycle.
+    const code = 'setcps(0.5)\n$: note("<c3 e3 g3 c4>").s("sine").gain("<0.1 0.4 0.7 1>")\n$: note("e2").s("square")'
+    await seedCode(page, code)
+    await waitForEnvelopes(page, 'd1:fresh d2:fresh')
+    await page.locator('[data-full-song-lane-expand="d1"]').click()
+    await expect(page.locator('[data-full-song-lane="d1"]')).toHaveAttribute('data-expanded', 'true')
+    await expect.poll(async () => (await inkRows(page, 'd1', 2)) - (await inkRows(page, 'd1', 0)), { timeout: 10_000 }).toBeGreaterThanOrEqual(3)
+    const quiet = await inkRows(page, 'd1', 0)
+    const loud = await inkRows(page, 'd1', 2)
+    console.log(`[#1745] expanded ink rows: quiet cycle ${quiet}, loud cycle ${loud}`)
+    await page.locator('[data-full-song-canvas]').screenshot({ path: 'test-results/synth-lane-expanded-shape.png' })
+
+    await page.locator('[data-full-song-lane="d1"]').getByText('d1', { exact: true }).click({ button: 'right' })
+    const menu = page.locator('[data-full-song-lane-menu="d1"]')
+    await menu.locator('[data-full-song-lane-menu-type]').hover()
+    await menu.locator('[data-full-song-lane-menu-display="bars"]').click()
+    await waitForEnvelopes(page, 'd2:fresh')
+    expect(await inkRows(page, 'd1', 2)).toBe(0)
+  })
 })

@@ -305,9 +305,58 @@ describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its 
     expect(cols[0].h).toBeCloseTo(layout.boxes[0].height - 2 * 3, 5)
   })
 
-  it('an expanded lane draws no envelope: expanding is the note-editing view', () => {
-    const scene = pitched(lowHigh, loud(0, 4))
-    const layout = computeLaneLayout(scene.lanes, new Set(['d1']), 60, 88)
+  it('an EXPANDED lane draws it inside its bars too, each at its own pitch height (#1745)', () => {
+    const scene = sceneOf([lane('d1', lowHigh, {
+      envelope: loud(0, 4),
+      pitchMin: 36,
+      pitchMax: 60,
+      voices: [{ key: 'sawtooth', label: 'sawtooth', melodic: true, pitchMin: 36, pitchMax: 60 }],
+    })])
+    const layout = computeLaneLayout(scene.lanes, new Set(['d1']), 25, 88, 40)
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, scene, transform, theme, layout)
+    const low = barAt(rects, 0, 100)
+    const high = barAt(rects, 100, 100)
+    expect(low.h).toBe(24) // PRECONDITION: the sub-row bar (#1744), room for a shape
+    expect(low.y).toBeGreaterThan(high.y)
+    for (const [bar, x0] of [[low, 0], [high, 100]] as const) {
+      const cols = inX(columns(rects), x0, x0 + 100)
+      expect(cols).toHaveLength(100)
+      for (const c of cols) expect(c.y + c.h / 2).toBeCloseTo(bar.y + bar.h / 2, 5)
+    }
+  })
+
+  it('an expanded lane with several synth voices carries the shape in each voice row', () => {
+    const notes: SceneNote[] = [
+      { cycle: 0, end: 1, pitch: 48, gain: 1, voice: 'sawtooth' },
+      { cycle: 0, end: 1, pitch: 60, gain: 1, voice: 'square' },
+    ]
+    const scene = sceneOf([lane('d1', notes, {
+      envelope: loud(0, 2),
+      pitchMin: 48,
+      pitchMax: 60,
+      voices: [
+        { key: 'sawtooth', label: 'sawtooth', melodic: true, pitchMin: 48, pitchMax: 48 },
+        { key: 'square', label: 'square', melodic: true, pitchMin: 60, pitchMax: 60 },
+      ],
+    })])
+    const layout = computeLaneLayout(scene.lanes, new Set(['d1']), 25, 88, 40)
+    expect(layout.boxes[0].subRows).toHaveLength(2) // PRECONDITION: two voice rows
+    const { ctx, rects } = mockCtx()
+    drawTimeline(ctx, scene, transform, theme, layout)
+    const atX = inX(columns(rects), 40, 41)
+    expect(atX).toHaveLength(2)
+    const rows = layout.boxes[0].subRows!
+    const centres = atX.map((c) => c.y + c.h / 2).sort((a, b) => a - b)
+    expect(centres[0]).toBeGreaterThan(rows[0].top)
+    expect(centres[0]).toBeLessThan(rows[0].top + rows[0].height)
+    expect(centres[1]).toBeGreaterThan(rows[1].top)
+    expect(centres[1]).toBeLessThan(rows[1].top + rows[1].height)
+  })
+
+  it('an expanded lane set to Bars draws no shape, even with a render attached', () => {
+    const scene = sceneOf([lane('d1', lowHigh, { envelope: loud(0, 4), pitchMin: 36, pitchMax: 60, bars: true })])
+    const layout = computeLaneLayout(scene.lanes, new Set(['d1']), 25, 88, 40)
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
     expect(columns(rects)).toHaveLength(0)
