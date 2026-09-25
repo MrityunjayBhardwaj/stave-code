@@ -129,6 +129,35 @@ async function waitForEnvelopes(page: Page, want: string, timeout = 20_000): Pro
   await expect.poll(() => envelopes(page), { timeout }).toBe(want)
 }
 
+/** Evaluate-and-play while a display render is in flight starts about as fast as with none. */
+async function playsAtOnceDuringRender(page: Page, tag: string): Promise<void> {
+  // One long, dense track, so a render is seconds of work and certainly in
+  // flight when Play is pressed.
+  const code = 'setcps(0.5)\n$: arrange([256, note("c3*8 e3*8").s("sawtooth").lpf(1200)])'
+  await seedCode(page, code)
+  await waitForEnvelopes(page, 'd1:fresh', 60_000)
+
+  // Baseline: evaluate-and-play with no render running.
+  const playLatency = async (): Promise<number> => {
+    await page.locator('.monaco-editor').first().click()
+    const t0 = Date.now()
+    await page.keyboard.press(`${MOD}+Enter`)
+    await page.locator('[data-full-song="playhead"]').waitFor({ timeout: 30_000 })
+    return Date.now() - t0
+  }
+  const idle = await playLatency()
+  await page.keyboard.press(`${MOD}+Period`)
+  await page.locator('[data-full-song="playhead"]').waitFor({ state: 'detached', timeout: 10_000 })
+
+  // A new document to render, then Play the moment the render starts.
+  await seedCode(page, code.replace('lpf(1200)', 'lpf(900)'))
+  await expect.poll(() => rendering(page), { timeout: 30_000, intervals: [20] }).not.toBe('')
+  const during = await playLatency()
+  console.log(`[${tag}] evaluate-and-play: idle ${idle} ms, during a render ${during} ms`)
+  expect(during - idle).toBeLessThan(400)
+  await page.keyboard.press(`${MOD}+Period`)
+}
+
 test.describe('synth lane envelope (#1731)', () => {
   test.beforeEach(async ({ page }) => {
     await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 360 } })
@@ -173,31 +202,7 @@ test.describe('synth lane envelope (#1731)', () => {
   })
 
   test('Play pressed during a render starts at once instead of waiting for it', async ({ page }) => {
-    // One long, dense track, so a render is seconds of work and certainly in
-    // flight when Play is pressed.
-    const code = 'setcps(0.5)\n$: arrange([256, note("c3*8 e3*8").s("sawtooth").lpf(1200)])'
-    await seedCode(page, code)
-    await waitForEnvelopes(page, 'd1:fresh', 60_000)
-
-    // Baseline: evaluate-and-play with no render running.
-    const playLatency = async (): Promise<number> => {
-      await page.locator('.monaco-editor').first().click()
-      const t0 = Date.now()
-      await page.keyboard.press(`${MOD}+Enter`)
-      await page.locator('[data-full-song="playhead"]').waitFor({ timeout: 30_000 })
-      return Date.now() - t0
-    }
-    const idle = await playLatency()
-    await page.keyboard.press(`${MOD}+Period`)
-    await page.locator('[data-full-song="playhead"]').waitFor({ state: 'detached', timeout: 10_000 })
-
-    // A new document to render, then Play the moment the render starts.
-    await seedCode(page, code.replace('lpf(1200)', 'lpf(900)'))
-    await expect.poll(() => rendering(page), { timeout: 30_000, intervals: [20] }).not.toBe('')
-    const during = await playLatency()
-    console.log(`[#1731] evaluate-and-play: idle ${idle} ms, during a render ${during} ms`)
-    expect(during - idle).toBeLessThan(400)
-    await page.keyboard.press(`${MOD}+Period`)
+    await playsAtOnceDuringRender(page, '#1731')
   })
 
   test('an audition during a render plays through the live graph, not into the render (#1733)', async ({ page }) => {
@@ -400,5 +405,63 @@ test.describe('synth lane envelope (#1731)', () => {
     await expect(notice).toHaveCount(0)
     await expect(page.locator('[data-full-song-lane="d2"]')).not.toHaveAttribute('data-full-song-lane-waiting', 'true')
     await waitForEnvelopes(page, 'd1:fresh d2:fresh')
+  })
+})
+
+/**
+ * #1771 — a browser whose offline context cannot pause (Firefox has no
+ * `OfflineAudioContext.suspend`) renders a synth lane in short pieces, joined,
+ * instead of one render that schedules the whole song up front (whose cost grows
+ * with the length squared: a 512 s track took 83 s in Firefox). Chromium stands
+ * in here with `suspend` deleted from every frame's prototype.
+ *
+ * The count is of `startRendering` calls, recorded in every frame (the render
+ * may run in an audio frame, #1758) into the top window. The shape is checked
+ * the same way as the first arm above, on cycles that lie in the SECOND piece,
+ * so a piece placed at the wrong song time would draw its loud cycle elsewhere.
+ */
+test.describe('synth lane envelope where a render cannot pause (#1771)', () => {
+  const countRenders = (removeSuspend: boolean) => {
+    const top = window.top as unknown as { __renders?: number }
+    const proto = (window as unknown as { OfflineAudioContext?: { prototype: Record<string, unknown> } }).OfflineAudioContext?.prototype
+    if (!proto) return
+    if (removeSuspend) delete proto.suspend
+    const start = proto.startRendering as (this: unknown) => Promise<unknown>
+    proto.startRendering = function (this: unknown) {
+      top.__renders = (top.__renders ?? 0) + 1
+      return start.call(this)
+    }
+  }
+  const renders = (page: Page) => page.evaluate(() => (window as unknown as { __renders?: number }).__renders ?? 0)
+  // 8 cycles at 0.5 cps = 16 s: two 8 s pieces. Cycles 4–7 are the second one.
+  const SONG = 'setcps(0.5)\n$: arrange([8, note("c3").s("sine").gain("<0.1 0.4 0.7 1>")])'
+
+  test('without suspend: the lane renders in pieces, and its loud cycle is drawn where it plays', async ({ page }) => {
+    await page.addInitScript(countRenders, true)
+    await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 360 } })
+    expect(await page.evaluate(() => typeof OfflineAudioContext.prototype.suspend)).toBe('undefined')
+    await seedCode(page, SONG)
+    await waitForEnvelopes(page, 'd1:fresh')
+    const count = await renders(page)
+    const quiet = await inkRows(page, 'd1', 4)
+    const loud = await inkRows(page, 'd1', 6)
+    console.log(`[#1771] renders ${count}; ink rows: quiet cycle 4 ${quiet}, loud cycle 6 ${loud}`)
+    expect(count).toBeGreaterThanOrEqual(2)
+    expect(quiet).toBeGreaterThanOrEqual(0)
+    expect(loud - quiet).toBeGreaterThanOrEqual(4)
+  })
+
+  test('without suspend: Play pressed during a render starts at once instead of waiting for it', async ({ page }) => {
+    await page.addInitScript(countRenders, true)
+    await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 360 } })
+    await playsAtOnceDuringRender(page, '#1771')
+  })
+
+  test('CONTROL — with suspend, the same lane is one render', async ({ page }) => {
+    await page.addInitScript(countRenders, false)
+    await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 360 } })
+    await seedCode(page, SONG)
+    await waitForEnvelopes(page, 'd1:fresh')
+    expect(await renders(page)).toBe(1)
   })
 })
