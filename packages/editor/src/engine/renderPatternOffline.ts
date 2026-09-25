@@ -82,15 +82,19 @@
  *    collected in Chromium: its worklet thread keeps it, and its whole rendered
  *    buffer, alive for the life of the page. Measured in a bare page: the
  *    module load alone pins the context (no worklet node made, or one whose
- *    processor returns false, pins it too); a context built in an iframe that
- *    is then removed is pinned too; a context that never loads one is
+ *    processor returns false, pins it too); a context that never loads one is
  *    collected. So a render first runs WITHOUT worklets. A note that needs one
  *    (supersaw, shape, crush, a ladder filter, an LFO, …) throws from
  *    `new AudioWorkletNode` inside its `superdough()` call, where every worklet
  *    in superdough 1.3.0 is built, and the render then starts over WITH them,
  *    so a bounce still sounds like playback. No list of worklet sounds is kept
- *    that an upgrade could outdate: the graph says when it needs one. A render
- *    that does load them still leaks.
+ *    that an upgrade could outdate: the graph says when it needs one.
+ *
+ * 10. ⚠ A RENDER THAT LOADS WORKLETS IS BUILT IN A FRAME IT CAN THROW AWAY
+ *    (#1758). Removing the frame a context belongs to is what frees it, worklet
+ *    thread and rendered audio included (`audioFrame.ts`). So `createContext` is
+ *    told `{ worklets }`, and the render calls the context's `dispose()` when it
+ *    ends, however it ends. The buffer it returns stays readable.
  *
  * Deliberately free of imports so every step can be driven by fakes: the
  * accessors arrive as `deps`.
@@ -115,8 +119,15 @@ export interface OfflineGraphDeps {
    * Awaited after each window is scheduled, while the render is still held.
    */
   settle?(): Promise<unknown>
-  /** A stereo offline context of `frames` length — `new OfflineAudioContext(2, frames, sampleRate)`. */
-  createContext(frames: number, sampleRate: number): OfflineRenderContext
+  /**
+   * A stereo offline context of `frames` length — `new OfflineAudioContext(2, frames, sampleRate)`.
+   *
+   * `worklets` says whether this render will load audio worklets into it. Such a
+   * context is never freed by Chromium unless the frame it belongs to is removed
+   * (#1758), so the caller should build it in an `openAudioFrame()` and return a
+   * context whose `dispose()` removes that frame.
+   */
+  createContext(frames: number, sampleRate: number, options: { worklets: boolean }): OfflineRenderContext
 }
 
 /**
@@ -127,6 +138,13 @@ export interface OfflineRenderContext {
   startRendering(): Promise<AudioBuffer>
   suspend?(suspendTime: number): Promise<void>
   resume?(): Promise<void>
+  /**
+   * Free whatever keeps this context alive once the render is done with it
+   * (#1758): its frame, for one that loaded worklets. Called when the render
+   * ends, however it ends, after the live context is restored. The rendered
+   * buffer stays readable.
+   */
+  dispose?(): void
 }
 
 /**
@@ -243,7 +261,7 @@ async function renderOnce(
 
   const liveCtx = deps.getAudioContext()
   const liveController = deps.getSuperdoughAudioController()
-  const ctx = deps.createContext(Math.ceil(duration * sampleRate), sampleRate)
+  const ctx = deps.createContext(Math.ceil(duration * sampleRate), sampleRate, { worklets })
 
   let played = 0
   const skipped = new Map<string, number>()
@@ -327,6 +345,7 @@ async function renderOnce(
   } finally {
     deps.setAudioContext(liveCtx)
     deps.setSuperdoughAudioController(liveController)
+    ctx.dispose?.()
   }
 }
 

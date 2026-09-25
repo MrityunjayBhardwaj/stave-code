@@ -1313,8 +1313,10 @@ $: s("hh*16").gain(0.3)`
       await route.fulfill({ status: 200, contentType: 'audio/wav', body }).catch(() => {})
     })
     await page.addInitScript(() => {
-      const w = window as unknown as { __race: { cross: string[]; liveSampleStarts: number } }
-      w.__race = { cross: [], liveSampleStarts: 0 }
+      // Init scripts also run in every frame, and #1758 renders in a throwaway
+      // frame: each copy records into the TOP window, and only the top resets it.
+      const w = (window.top ?? window) as unknown as { __race: { cross: string[]; liveSampleStarts: number } }
+      if (window === window.top) w.__race = { cross: [], liveSampleStarts: 0 }
       const realConnect = AudioNode.prototype.connect as (...a: unknown[]) => unknown
       ;(AudioNode.prototype as unknown as { connect: unknown }).connect = function (this: AudioNode, ...a: unknown[]) {
         const dest = a[0] as { context?: BaseAudioContext } | undefined

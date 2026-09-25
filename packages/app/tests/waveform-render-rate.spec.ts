@@ -27,8 +27,10 @@ const osc = (name: string, sound: string) =>
 test('a long song of oscillator tracks draws every one, from 24 kHz renders (#1759)', async ({ page }) => {
   test.setTimeout(180_000)
   await page.addInitScript(() => {
-    const w = window as unknown as { __renders: string[] }
-    w.__renders = []
+    // Init scripts also run in every frame, and #1758 renders in a throwaway
+    // frame: each copy records into the TOP window, and only the top resets it.
+    const w = (window.top ?? window) as unknown as { __renders: string[] }
+    if (window === window.top) w.__renders = []
     const start = OfflineAudioContext.prototype.startRendering
     OfflineAudioContext.prototype.startRendering = function (this: OfflineAudioContext) {
       w.__renders.push(`${Math.round(this.length / this.sampleRate)}s@${this.sampleRate}`)
@@ -75,8 +77,10 @@ test('a long song of oscillator tracks draws every one, from 24 kHz renders (#17
 test('scrolling a long song brings the lanes on screen into the budget, re-rendering none (#1760)', async ({ page }) => {
   test.setTimeout(240_000)
   await page.addInitScript(() => {
-    const w = window as unknown as { __renders: string[] }
-    w.__renders = []
+    // Init scripts also run in every frame, and #1758 renders in a throwaway
+    // frame: each copy records into the TOP window, and only the top resets it.
+    const w = (window.top ?? window) as unknown as { __renders: string[] }
+    if (window === window.top) w.__renders = []
     const start = OfflineAudioContext.prototype.startRendering
     OfflineAudioContext.prototype.startRendering = function (this: OfflineAudioContext) {
       w.__renders.push(`${Math.round(this.length / this.sampleRate)}s@${this.sampleRate}`)
