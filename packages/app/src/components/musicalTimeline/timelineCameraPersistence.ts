@@ -62,11 +62,25 @@ export function loadTimelineCamera(): TimelineCamera | null {
   }
 }
 
+const listeners = new Set<(camera: TimelineCamera) => void>()
+
+/**
+ * Called with each camera written (#1774). The song analysis frames the song
+ * with the user's bare-loop span while the timeline is closed, and must hear of
+ * a resize made before it closed. Returns the unsubscribe.
+ */
+export function subscribeTimelineCamera(listener: (camera: TimelineCamera) => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
 /**
  * Write the camera. Best-effort: swallows quota/privacy errors so a failed
- * persist never breaks the render path.
+ * persist never breaks the render path. Listeners hear of it either way: what
+ * the user set is the camera, whether or not storage kept it.
  */
 export function saveTimelineCamera(camera: TimelineCamera): void {
+  for (const listener of listeners) listener(camera)
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(

@@ -70,8 +70,6 @@ function measureCaption(text: string): number {
 }
 
 import {
-  structuralWalk,
-  wholeWalkWindow,
   getMusicalTimelineSubRowHeight,
   onMusicalTimelineSubRowHeightChange,
   setMusicalTimelineSubRowHeight,
@@ -145,6 +143,7 @@ import {
   ZOOM_STEP,
   type SongWindow,
 } from './musicalTimeline/songAxis'
+import { MIN_BARE_SPLIT_SPAN, displaySpan, isBareSong, spanLoops } from './musicalTimeline/songFrame'
 
 const TAB_ID = 'musical-timeline'
 /** How long a manual scroll/seek suspends follow (#415), so auto-scroll never
@@ -505,48 +504,6 @@ export interface FullSongTimelineProps {
   }) => number
 }
 
-/** A bare loop's single implicit clip spans the SONG, not just its one-cycle
- *  period — so it has room to be split into addressable bars (#489 D3). A pure
- *  bare song (no `arrange`/`cat` combinator) is floored to this many cycles;
- *  extensible later via #487. A real arrangement already defines its own span. */
-const MIN_BARE_SPAN = 4
-
-/** The smallest span a user may SHRINK a bare loop to by dragging its edge
- *  (#662). Two cycles keeps Split possible (a split needs ≥ 2 to yield two
- *  non-empty arms). Once the user has resized, this clamp — not `MIN_BARE_SPAN`
- *  — is the floor, so a tight 2-bar working area is reachable. */
-const MIN_BARE_SPLIT_SPAN = 2
-
-/** The natural display span: one loop period, or the analyzed horizon. ≥ 1.
- *  The choice between those two is the ANALYSIS's to make and it already made
- *  it — this only applies the floor. */
-function naturalSpan(analysis: SongAnalysis | null): number {
-  if (!analysis) return 1
-  return Math.max(1, analysis.displaySpan.cycles)
-}
-
-/** Display span in cycles. The natural span, but a pure bare loop is floored to
- *  `MIN_BARE_SPAN` so its single implicit clip is splittable (#489 D3). A real
- *  arrangement keeps its own length — flooring a period-2 arrange to 4 would paint
- *  empty bars past the last arm. ≥ 1.
- *
- *  `bareSpanOverride` is the user's resized span (#662, option B): a view-only
- *  preference that grows/shrinks the displayed bars with NO code write-back. When
- *  set it REPLACES the `MIN_BARE_SPAN` floor with the shrinkable `MIN_BARE_SPLIT_SPAN`
- *  clamp (so a 2-bar working area is reachable), but never drops below the true
- *  content period (`natural`) — you can't show fewer bars than one full loop. */
-function displaySpan(
-  analysis: SongAnalysis | null,
-  bareSong: boolean,
-  bareSpanOverride?: number | null,
-): number {
-  const natural = naturalSpan(analysis)
-  if (!bareSong) return natural
-  if (bareSpanOverride != null) {
-    return Math.max(MIN_BARE_SPLIT_SPAN, natural, Math.round(bareSpanOverride))
-  }
-  return Math.max(MIN_BARE_SPAN, natural)
-}
 
 /** Cycles of empty timeline kept PAST the dragged edge while EXTENDING the last
  *  clip, so there's always room to drag into (#487). Transient — present only
@@ -575,21 +532,9 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // an arrange whose first cycles are silent still registers its later arms. This
   // reads the runtime collector (mockable, so the gesture tests stay correct) —
   // NOT the raw IR shape, which tests pass opaquely.
-  const natCycles = naturalSpan(analysis)
-  const bareSong = useMemo(() => {
-    if (props.ir == null) return false
-    // Structure-only probe (#974): "bare" = NO arrange/cat combinator. A lane carries
-    // `armByCycle` iff an event under it had an `armIndex` (an arrangement arm) — the
-    // structural walk sets it from the same source structure `collectCycles` did, so this is
-    // the byte-identical successor to the old `evs.some(e => armIndex)` check, without needing
-    // the behaviour engine and resilient on mid-edit code.
-    // Deliberately the WHOLE song, at every page (#1209): "does this document
-    // contain an arrangement at all" is a property of the DOCUMENT, and it
-    // decides the display span — so a window in which every arm happens to rest
-    // must not make a real arrangement read as a bare loop.
-    const lanes = structuralWalk(props.ir, wholeWalkWindow(Math.max(1, Math.ceil(natCycles))))
-    return !lanes.some((l) => l.armByCycle !== undefined)
-  }, [props.ir, natCycles])
+  // #1726 — the rule lives in `songFrame.ts`, shared with the transport
+  // display, which needs the same span with the drawer closed.
+  const bareSong = useMemo(() => isBareSong(props.ir ?? null, analysis), [props.ir, analysis])
   // The user's resized display span for a pure bare loop (#662, option B). A
   // VIEW-ONLY preference — dragging the bare clip's right edge grows/shrinks the
   // bars shown with NO code write-back (the source `s("bd*4")` stays byte-identical;
@@ -668,7 +613,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   // it is the length after which the song comes back round (the arrangement,
   // folded with any parameter that outlasts it), and an arranged song loops by
   // default (#1396). With nothing past it there is nothing to page to.
-  const looping = analysis == null || analysis.displaySpan.kind !== 'capped'
+  const looping = spanLoops(analysis)
   const loopingRef = useRef(looping)
   loopingRef.current = looping
   // #1725 — hand the frame the playhead wraps in to the transport display, so

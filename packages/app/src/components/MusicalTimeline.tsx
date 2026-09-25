@@ -5,15 +5,15 @@
  * (FullSongTimeline) with a per-note live overlay (#500) painted over it.
  * The old Live/Song `viewMode` fork — a DOM-rendered live 2-cycle window
  * vs the canvas song map — was retired here; this component is now a thin
- * host that owns the data + analysis + the clip write-back handlers and
- * delegates all rendering to FullSongTimeline.
+ * host that owns the data + the clip write-back handlers and delegates all
+ * rendering to FullSongTimeline.
  *
  * Audience: MUSICIAN (PV35 lock). Vocabulary discipline (PV32 / D-06)
  * applies to every visible string.
  *
  * Data flow:
- *   subscribeIRSnapshot ──▶ snapshot ──▶ analyzeSong (budgeted, abortable)
- *                                         ──▶ analysis ──▶ FullSongTimeline
+ *   subscribeIRSnapshot ──▶ snapshot ──────────────────▶ FullSongTimeline
+ *   state/songAnalysis (analyzeSong, at the app, #1726) ──▶ analysis ──▶ ″
  *
  * Lifecycle gates (DB-02 + Trap NEW-1):
  *   - Snapshot subscription is ALWAYS on (cheap fan-out; PK9).
@@ -31,7 +31,6 @@
 import * as React from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import {
-  signalDimensionsOf,
   type IRSnapshot,
   type HapStream,
   type IREvent,
@@ -83,7 +82,6 @@ import {
   pickReorderArm,
   pickDuplicateArm,
   pickSplitArm,
-  analyzeSong,
   analyzeWindow,
   previewShapeSwap,
   type SignalAutomation,
@@ -96,6 +94,7 @@ import {
 import { FullSongTimeline } from './FullSongTimeline'
 import { showConfirm } from '../dialogs/host'
 import { createSongCollector } from './musicalTimeline/songCollector'
+import { readSongAnalysis, subscribeSongAnalysis } from '../state/songAnalysis'
 import { createWaveformSource } from '../audio/waveformSource'
 import { subscribeWaveformsReady } from '../audio/waveformWarm'
 import {
@@ -270,7 +269,10 @@ export function MusicalTimeline(
   // The timeline has ONE renderer now (#497/U5): the full-song canvas + the
   // live overlay (#500). The Live/Song `viewMode` fork and its DOM Live
   // renderer were retired in U5.
-  const [analysis, setAnalysis] = useState<SongAnalysis | null>(null)
+  // #1726 — the analysis runs at the app, whether or not this view is mounted
+  // (`state/songAnalysis.ts`), so the transport display can wrap to the song
+  // with the drawer closed. This view reads it; there is still one per document.
+  const analysis = React.useSyncExternalStore(subscribeSongAnalysis, readSongAnalysis, readSongAnalysis)
   /**
    * The paged window (#1201 item 3), or null while the view is showing the
    * song's own first span.
@@ -308,58 +310,13 @@ export function MusicalTimeline(
   const getSongTrackIdsRef = React.useRef(props.getSongTrackIds)
   getSongTrackIdsRef.current = props.getSongTrackIds
 
-  // Analyze the whole song from the IR snapshot on every new snapshot
-  // (re-eval). The previous run is aborted via a per-run signal so a fast edit
-  // cadence can't pile up overlapping budgeted collections.
+  // #1201 — a new snapshot is a new document: the page the user was on no
+  // longer describes it, and a stale window would draw the old song's activity
+  // at the new song's origin. The song's analysis itself is made at the app
+  // (#1726, `state/songAnalysis.ts`).
   useEffect(() => {
-    const ir = snapshot?.ir ?? null
-    // #1201 — a new snapshot is a new document: the page the user was on no
-    // longer describes it, and a stale window would draw the old song's
-    // activity at the new song's origin. Reset BEFORE the early return so an
-    // edit that empties the IR clears the page too.
     setWindowAnalysis(null)
     setWindowOrigin(0)
-    if (!ir) {
-      // Reset derived analysis when the snapshot has no IR (intentional).
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAnalysis(null)
-      return
-    }
-    // #980 — queryArc-backed collector: eval haps for the whole song, sliced to
-    // each requested [startCycle, endCycle) band. `analyzeSong` reads only
-    // {trackId, s, begin, note}, all present on hap events. When no runtime
-    // accessor is threaded (tests / non-Strudel), fall through to analyzeSong's
-    // default `collectCycles(ir)` — the collect path stays as the safety net.
-    //
-    // Eval haps carry the engine's POSITIONAL trackId (`$N`); analyzeSong groups
-    // lanes by laneKeyOf(=trackId ?? s), while the timeline scene keys rows by the
-    // IR/structural lane (`d{N}` / name). Remap each hap to its containment lane
-    // via the SAME join the marks use (buildLaneAnchors + laneKeyForHap) so
-    // analysis lanes and mark lanes share keys — else the scene renders BOTH and
-    // duplicates every row (PV175). Anchors are built once per analysis run
-    // (cheap; dollarPos is a source offset, so the cycle count is irrelevant).
-    // #1201 — the collector is built by a shared factory rather than inline,
-    // because paging adds a SECOND caller (`analyzeWindow`) that needs onsets
-    // in the same key space under the same band rule. Its header carries why a
-    // copy would drift.
-    const { collectFn, hasUnheardTrack } = createSongCollector(ir, {
-      getTimelineEvents: getTimelineEventsRef.current,
-      getTimelineEventsBand: getTimelineEventsBandRef.current,
-      getSongTrackIds: getSongTrackIdsRef.current,
-    })
-    const signal = { aborted: false }
-    // #1465 — what the SOURCE says is continuously modulated. Read here because
-    // only the caller holds the IR; the rule that uses it is `displayPeriodRule`.
-    analyzeSong(ir, { signal, collectFn, hasUnheardTrack, signals: signalDimensionsOf(ir) })
-      .then((result) => {
-        if (!signal.aborted) setAnalysis(result)
-      })
-      .catch(() => {
-        /* analysis is best-effort; leave the prior result in place */
-      })
-    return () => {
-      signal.aborted = true
-    }
   }, [snapshot])
 
   /**
