@@ -9,6 +9,7 @@ import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { planStems, tagTrack } from './stemSplit'
 import { createTransportHold } from './transportHold'
 import { registerBackgroundRender, withOfflineGraph, withUserRender } from './offlineGraph'
+import { displayRenderRate } from './displayRate'
 import {
   createTrackEnvelopeScheduler,
   digest,
@@ -469,7 +470,14 @@ export class StrudelEngine implements LiveCodingEngine {
     },
     debounceMs: TRACK_ENVELOPE_DEBOUNCE_MS,
     capSeconds: TRACK_ENVELOPE_CAP_SECONDS,
+    weight: (trackId) => {
+      const live = this.audioCtx?.sampleRate
+      const rate = this.displayRates.get(trackId)
+      return live && rate ? rate / live : 1
+    },
   })
+  /** #1759 — the rate each track's display render uses, decided with its fingerprint. */
+  private displayRates = new Map<string, number>()
   /**
    * #1733 — an audition anywhere on the page interrupts this engine's display
    * render; #1735 — so does a user render in any file, for as long as it runs.
@@ -2263,16 +2271,22 @@ export class StrudelEngine implements LiveCodingEngine {
     const pattern = this.songPatterns.get(trackId)
     if (!pattern) return null
     let text = `${this.getCps() ?? 0.5}|${cycles}|`
+    const values: unknown[] = []
     try {
       for (const hap of pattern.queryArc(0, cycles)) {
         if (hap.whole == null) continue
         if (typeof hap.hasOnset === 'function' && !hap.hasOnset()) continue
         text += `${Number(hap.whole.begin)},${Number(hap.whole.end)},${JSON.stringify(hap.value)};`
+        values.push(hap.value)
       }
     } catch {
       // Unreadable events cannot be compared: stale after every evaluate.
+      this.displayRates.delete(trackId)
       return `unreadable:${this.evalEpoch}`
     }
+    // #1759 — decided from the same events the fingerprint stamps, so a render
+    // for this fingerprint always uses this rate.
+    if (this.audioCtx) this.displayRates.set(trackId, displayRenderRate(values, this.audioCtx.sampleRate))
     return digest(text)
   }
 
@@ -2286,18 +2300,19 @@ export class StrudelEngine implements LiveCodingEngine {
    * lets it render after a seek or with a loop armed, where the loaded render
    * refuses: the capture predates both wraps.
    *
-   * ⚠ AT THE LIVE CONTEXT'S SAMPLE RATE, ALTHOUGH AN ENVELOPE NEEDS FAR LESS.
-   * superdough decodes a sample with whatever context is current when a note
-   * first asks for it, and caches the decoded buffer by URL for everyone
-   * (`superdough/sampler.mjs` `loadBuffer`, called with `getAudioContext()`).
-   * A render at a low rate would leave a low-rate copy of every sample it loads
-   * in that cache, and live playback would use it from then on.
+   * ⚠ AT 24 kHz ONLY FOR A TRACK OF PLAIN OSCILLATORS, ELSE THE LIVE RATE
+   * (#1759, `displayRate.ts`). superdough caches decoded samples, noise and
+   * soundfont zones page-wide by name, decoded on whatever context is current,
+   * so a low-rate render that loaded one first would leave live playback a
+   * low-rate copy. The rate is decided in `trackFingerprint`, from the events
+   * this render plays.
    */
   private async renderTrackEnvelope(trackId: string, cycles: number, signal: AbortSignal): Promise<TrackEnvelope | null> {
     const pattern = this.songPatterns.get(trackId)
     if (!pattern || !this.audioCtx) return null
     const duration = cycles / (this.getCps() ?? 0.5)
-    const { buffer } = await this.renderPatternRaw(pattern, duration, this.audioCtx.sampleRate, signal)
+    const rate = this.displayRates.get(trackId) ?? this.audioCtx.sampleRate
+    const { buffer } = await this.renderPatternRaw(pattern, duration, rate, signal)
     const channels: Float32Array[] = []
     for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c))
     const env = envelopeFromChannels(channels, Math.max(1, Math.ceil(duration * TRACK_ENVELOPE_COLUMNS_PER_SECOND)))

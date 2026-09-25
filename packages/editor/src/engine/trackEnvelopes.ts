@@ -36,7 +36,10 @@
  * ⚠ THE BUDGET IS IN SECONDS OF AUDIO, summed over the tracks in request order.
  * Render cost grows with song length × tracks; a track that would take the sum
  * past `capSeconds` is not rendered and is listed in `status().overCap`, so the
- * caller can say so rather than leave a silent gap.
+ * caller can say so rather than leave a silent gap, unless it already holds a
+ * render for these events and span, which it keeps (#1760). A track the engine renders
+ * at a lower rate counts at `weight` of its seconds (#1759), read after the
+ * fingerprint pass that decided it.
  *
  * Deliberately free of imports so every step can be driven by fakes: the engine
  * arrives as `deps`, the same shape as `transportHold.ts`.
@@ -105,6 +108,12 @@ export interface TrackEnvelopeDeps {
   debounceMs: number
   /** Seconds of audio one pass may render, summed over tracks. */
   capSeconds: number
+  /**
+   * What one second of this track costs against the budget, relative to a
+   * full-rate render (#1759); 1 when absent. Asked after the fingerprint pass,
+   * which is where the engine decides it.
+   */
+  weight?(trackId: string): number
 }
 
 export interface TrackEnvelopeScheduler {
@@ -218,12 +227,17 @@ export function createTrackEnvelopeScheduler(deps: TrackEnvelopeDeps): TrackEnve
     for (const id of wanted) {
       const fp = current.get(id)
       if (fp == null) continue
-      if (spent + seconds > deps.capSeconds) {
-        over.push(id)
+      const kept = envelopes.get(id)?.fingerprint === fp
+      const cost = seconds * (deps.weight?.(id) ?? 1)
+      if (spent + cost > deps.capSeconds) {
+        // #1760 — a render it already has, for these events and this span (the
+        // fingerprint carries both), costs nothing to keep and still draws: a
+        // track moved down the request by a scroll is not rendered again later.
+        if (!kept) over.push(id)
         continue
       }
-      spent += seconds
-      if (envelopes.get(id)?.fingerprint === fp) continue
+      spent += cost
+      if (kept) continue
       if (refused.get(id) === fp) continue
       todo.push(id)
     }
@@ -243,8 +257,9 @@ export function createTrackEnvelopeScheduler(deps: TrackEnvelopeDeps): TrackEnve
         overCap = over
         deps.onChange()
       }
-      // Budget-cut tracks keep nothing: an envelope from a shorter span would
-      // draw a shape that stops partway through the song.
+      // Budget-cut tracks keep nothing that no longer matches: an envelope from
+      // a shorter span would draw a shape that stops partway through the song.
+      // One that still matches was never put in `over` (above).
       for (const id of over) if (envelopes.delete(id)) deps.onChange()
       for (const id of todo) {
         // Play and every user render abort the signal; nothing else stops a pass.
@@ -297,9 +312,20 @@ export function createTrackEnvelopeScheduler(deps: TrackEnvelopeDeps): TrackEnve
         nextWanted.length === wanted.length &&
         nextWanted.every((id, i) => id === wanted[i])
       if (same) return
+      // #1760 — the same tracks in another order (the view scrolled): nothing
+      // they play changed, so no fingerprint is taken again; the budget is
+      // simply spent in the new order at the next pass.
+      const reordered =
+        span === cycles &&
+        nextWanted.length === wanted.length &&
+        nextWanted.every((id) => wanted.includes(id))
       if (span !== cycles) abortInFlight()
       wanted = nextWanted
       cycles = span
+      if (reordered) {
+        kick()
+        return
+      }
       for (const id of [...current.keys()]) if (!wanted.includes(id)) current.delete(id)
       deps.onChange()
       refingerprint()
