@@ -7,6 +7,7 @@ import {
   RENDER_WINDOW_LEAD_SECONDS,
   RenderCancelledError,
   roomChangeTimes,
+  isMissingWorkletError,
   type OfflineGraphDeps,
 } from './renderPatternOffline'
 
@@ -561,5 +562,136 @@ describe('renderPatternOffline — a note that reshapes its room gets a pause of
     )
     expect(h.pauses).toEqual([])
     expect(h.calls.map((c) => c.now)).toEqual([0, 0])
+  })
+})
+
+/**
+ * #1755 — a context that has loaded worklets is never freed, so a render loads
+ * them only when a note needs one. The fake behaves like Chromium: a context
+ * whose `initAudio` skipped the worklets throws the browser's own message when
+ * a worklet node is built on it. That the context is then really collected is
+ * measured in the browser (`packages/app/tests/offline-render-memory.spec.ts`).
+ */
+describe('renderPatternOffline — worklets only for a render that plays one (#1755)', () => {
+  const W = RENDER_WINDOW_SECONDS
+  const CPS1 = { cps: 1, duration: 3 * W, sampleRate: 48000 }
+  const CHROMIUM =
+    "Failed to construct 'AudioWorkletNode': AudioWorkletNode cannot be created: AudioWorklet does not have a " +
+    'valid AudioWorkletGlobalScope. Load a script via audioWorklet.addModule() first.'
+
+  function workletHarness(needs: (value: Record<string, unknown>) => boolean) {
+    const state = { ctx: LIVE_CTX as unknown, controller: LIVE_CONTROLLER as unknown }
+    const contexts: Array<{ worklets: boolean | null; rendered: boolean; played: string[] }> = []
+    const progress: number[] = []
+    const buffer = { length: 1 } as unknown as AudioBuffer
+    let current: (typeof contexts)[number] | null = null
+    const deps: OfflineGraphDeps = {
+      getAudioContext: () => state.ctx,
+      setAudioContext: (c) => { state.ctx = c },
+      getSuperdoughAudioController: () => state.controller,
+      setSuperdoughAudioController: (c) => { state.controller = c },
+      initAudio: async (options) => {
+        current!.worklets = !options?.disableWorklets
+      },
+      superdough: async (value) => {
+        if (needs(value) && !current!.worklets) {
+          const err = new Error(CHROMIUM)
+          err.name = 'InvalidStateError'
+          throw err
+        }
+        current!.played.push(String(value.s))
+      },
+      createContext: () => {
+        const record = { worklets: null as boolean | null, rendered: false, played: [] as string[] }
+        contexts.push(record)
+        current = record
+        const waiting: Array<{ at: number; fire: () => void }> = []
+        let resumed: (() => void) | null = null
+        return {
+          suspend: (at: number) => new Promise<void>((fire) => waiting.push({ at, fire })),
+          resume: async () => { resumed?.() },
+          startRendering: async () => {
+            record.rendered = true
+            for (const w of [...waiting].sort((a, b) => a.at - b.at)) {
+              await new Promise<void>((r) => {
+                resumed = r
+                w.fire()
+              })
+            }
+            return buffer
+          },
+        }
+      },
+    }
+    return { deps, contexts, progress, state }
+  }
+
+  it('a song with no worklet sound never loads them: one context, rendered once', async () => {
+    const h = workletHarness((v) => v.s === 'supersaw')
+    const out = await renderPatternOffline(
+      patternOf([hap(0, { s: 'bd' }), hap(W + 1, { s: 'sawtooth' })]),
+      CPS1,
+      h.deps,
+    )
+    expect(h.contexts).toEqual([{ worklets: false, rendered: true, played: ['bd', 'sawtooth'] }])
+    expect({ played: out.played, skipped: out.skipped, worklets: out.worklets }).toEqual({ played: 2, skipped: [], worklets: false })
+  })
+
+  it('a worklet note in the first window drops that context UNRENDERED and renders again with worklets', async () => {
+    const h = workletHarness((v) => v.s === 'supersaw')
+    const out = await renderPatternOffline(
+      patternOf([hap(0, { s: 'bd' }), hap(0.5, { s: 'supersaw' }), hap(W + 1, { s: 'bd' })]),
+      CPS1,
+      h.deps,
+    )
+    expect(h.contexts).toEqual([
+      { worklets: false, rendered: false, played: ['bd'] },
+      { worklets: true, rendered: true, played: ['bd', 'supersaw', 'bd'] },
+    ])
+    // Nothing is reported as left out: the worklet note played in the render kept.
+    expect({ played: out.played, skipped: out.skipped, worklets: out.worklets }).toEqual({ played: 3, skipped: [], worklets: true })
+    expect([h.state.ctx, h.state.controller]).toEqual([LIVE_CTX, LIVE_CONTROLLER])
+  })
+
+  it('a worklet note found at a later pause stops the feed, and the render starts over with worklets', async () => {
+    const h = workletHarness((v) => v.s === 'supersaw')
+    const out = await renderPatternOffline(
+      patternOf([hap(0, { s: 'bd' }), hap(W + 1, { s: 'supersaw' }), hap(2 * W + 1, { s: 'late' })]),
+      CPS1,
+      h.deps,
+    )
+    // The first render never fed the window after the worklet note.
+    expect(h.contexts[0]).toEqual({ worklets: false, rendered: true, played: ['bd'] })
+    expect(h.contexts[1]).toEqual({ worklets: true, rendered: true, played: ['bd', 'supersaw', 'late'] })
+    expect(h.contexts).toHaveLength(2)
+    expect(out.worklets).toBe(true)
+  })
+
+  it('progress never runs backwards when the render starts over', async () => {
+    const h = workletHarness((v) => v.s === 'supersaw')
+    const heard: number[] = []
+    await renderPatternOffline(
+      patternOf([hap(0, { s: 'bd' }), hap(W + 1, { s: 'bd' }), hap(2 * W + 1, { s: 'supersaw' })]),
+      { ...CPS1, onProgress: (s: number) => heard.push(s) },
+      h.deps,
+    )
+    expect(heard).toEqual([...heard].sort((a, b) => a - b))
+    expect(new Set(heard).size).toBe(heard.length)
+    expect(heard.at(-1)).toBe(CPS1.duration)
+  })
+
+  it('any other refusal is counted as before, and does not load worklets', async () => {
+    const h = workletHarness(() => false)
+    h.deps.superdough = async (value) => {
+      if (value.s === 'nosuchsound') throw new Error('sound nosuchsound not found! Is it loaded?')
+    }
+    const out = await renderPatternOffline(patternOf([hap(0, { s: 'nosuchsound' })]), CPS1, h.deps)
+    expect(out.skipped).toEqual([{ reason: 'sound nosuchsound not found! Is it loaded?', count: 1 }])
+    expect(h.contexts.map((c) => c.worklets)).toEqual([false])
+  })
+
+  it("recognises the browser's missing-worklet error, and nothing else", () => {
+    expect(isMissingWorkletError(new Error(CHROMIUM))).toBe(true)
+    expect(isMissingWorkletError(new Error('sound nosuchsound not found! Is it loaded?'))).toBe(false)
   })
 })
