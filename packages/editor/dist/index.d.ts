@@ -8004,7 +8004,11 @@ declare function renameAssetRecord(id: string, name: string): string | null;
  * use the real function from source while they mock the editor barrel.
  */
 
-/** The shape `getSampleInfo` needs — the subset of a hap the timeline can supply. */
+/**
+ * Which file an event plays, as the subset of a hap the timeline can supply.
+ * `resolveSampleUrl` turns it into superdough's own question: it aliases `s`,
+ * joins `bank`, and hands the rest to `getSampleInfo` (#1767).
+ */
 interface SampleRef {
     /**
      * Sound name AS WRITTEN, i.e. the `s` of the event. Not yet aliased and not
