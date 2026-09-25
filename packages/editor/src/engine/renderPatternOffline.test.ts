@@ -429,8 +429,8 @@ describe('renderPatternOffline — the render waits for what a window asked for 
       order.push(`settle:${h.calls.length}`)
     }
     const create = h.deps.createContext
-    h.deps.createContext = (frames, rate) => {
-      const ctx = create(frames, rate)
+    h.deps.createContext = (frames, rate, options) => {
+      const ctx = create(frames, rate, options)
       return { startRendering: () => (order.push('render'), ctx.startRendering()) }
     }
     await renderPatternOffline(patternOf([hap(0, { s: 'a' }), hap(1, { s: 'b' })]), OPTS, h.deps)
@@ -582,6 +582,8 @@ describe('renderPatternOffline — worklets only for a render that plays one (#1
   function workletHarness(needs: (value: Record<string, unknown>) => boolean) {
     const state = { ctx: LIVE_CTX as unknown, controller: LIVE_CONTROLLER as unknown }
     const contexts: Array<{ worklets: boolean | null; rendered: boolean; played: string[] }> = []
+    /** #1758 — per context: what createContext was told, and each dispose with the live context restored or not. */
+    const lifecycle: Array<{ asked: boolean; disposals: Array<'live restored' | 'offline still set'> }> = []
     const progress: number[] = []
     const buffer = { length: 1 } as unknown as AudioBuffer
     let current: (typeof contexts)[number] | null = null
@@ -601,15 +603,18 @@ describe('renderPatternOffline — worklets only for a render that plays one (#1
         }
         current!.played.push(String(value.s))
       },
-      createContext: () => {
+      createContext: (_frames, _rate, options) => {
         const record = { worklets: null as boolean | null, rendered: false, played: [] as string[] }
         contexts.push(record)
+        const life = { asked: options.worklets, disposals: [] as Array<'live restored' | 'offline still set'> }
+        lifecycle.push(life)
         current = record
         const waiting: Array<{ at: number; fire: () => void }> = []
         let resumed: (() => void) | null = null
         return {
           suspend: (at: number) => new Promise<void>((fire) => waiting.push({ at, fire })),
           resume: async () => { resumed?.() },
+          dispose: () => { life.disposals.push(state.ctx === LIVE_CTX ? 'live restored' : 'offline still set') },
           startRendering: async () => {
             record.rendered = true
             for (const w of [...waiting].sort((a, b) => a.at - b.at)) {
@@ -623,7 +628,7 @@ describe('renderPatternOffline — worklets only for a render that plays one (#1
         }
       },
     }
-    return { deps, contexts, progress, state }
+    return { deps, contexts, lifecycle, progress, state }
   }
 
   it('a song with no worklet sound never loads them: one context, rendered once', async () => {
@@ -688,6 +693,37 @@ describe('renderPatternOffline — worklets only for a render that plays one (#1
     const out = await renderPatternOffline(patternOf([hap(0, { s: 'nosuchsound' })]), CPS1, h.deps)
     expect(out.skipped).toEqual([{ reason: 'sound nosuchsound not found! Is it loaded?', count: 1 }])
     expect(h.contexts.map((c) => c.worklets)).toEqual([false])
+  })
+
+  it('asks for a disposable context only for the attempt that loads worklets, and disposes each one once, after the live context is back (#1758)', async () => {
+    const h = workletHarness((v) => v.s === 'supersaw')
+    await renderPatternOffline(
+      patternOf([hap(0, { s: 'bd' }), hap(0.5, { s: 'supersaw' }), hap(W + 1, { s: 'bd' })]),
+      CPS1,
+      h.deps,
+    )
+    // The attempt without worklets is dropped unrendered — and still disposed.
+    expect(h.lifecycle).toEqual([
+      { asked: false, disposals: ['live restored'] },
+      { asked: true, disposals: ['live restored'] },
+    ])
+  })
+
+  it('a song with no worklet sound asks for none, and its one context is disposed (#1758)', async () => {
+    const h = workletHarness(() => false)
+    await renderPatternOffline(patternOf([hap(0, { s: 'bd' })]), CPS1, h.deps)
+    expect(h.lifecycle).toEqual([{ asked: false, disposals: ['live restored'] }])
+  })
+
+  it('disposes the context when the render itself fails (#1758)', async () => {
+    const h = workletHarness(() => false)
+    const create = h.deps.createContext
+    h.deps.createContext = (frames, rate, options) => {
+      const ctx = create(frames, rate, options)
+      return { ...ctx, startRendering: async () => { throw new Error('render failed') } }
+    }
+    await expect(renderPatternOffline(patternOf([hap(0, { s: 'bd' })]), CPS1, h.deps)).rejects.toThrow('render failed')
+    expect(h.lifecycle).toEqual([{ asked: false, disposals: ['live restored'] }])
   })
 
   it("recognises the browser's missing-worklet error, and nothing else", () => {

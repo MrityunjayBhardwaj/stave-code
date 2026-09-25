@@ -5650,7 +5650,7 @@ async function renderOnce(pattern, { cps, duration, sampleRate, signal, onProgre
   const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
   const liveCtx = deps.getAudioContext();
   const liveController = deps.getSuperdoughAudioController();
-  const ctx = deps.createContext(Math.ceil(duration * sampleRate), sampleRate);
+  const ctx = deps.createContext(Math.ceil(duration * sampleRate), sampleRate, { worklets });
   let played = 0;
   const skipped = /* @__PURE__ */ new Map();
   let needsWorklets = false;
@@ -5718,6 +5718,7 @@ async function renderOnce(pattern, { cps, duration, sampleRate, signal, onProgre
   } finally {
     deps.setAudioContext(liveCtx);
     deps.setSuperdoughAudioController(liveController);
+    ctx.dispose?.();
   }
 }
 __name(renderOnce, "renderOnce");
@@ -6363,6 +6364,91 @@ function aliasSoundValue(value, soundMap2) {
   return { value: { ...value, s: aliased }, resolution: { from: rawS, to: aliased } };
 }
 __name(aliasSoundValue, "aliasSoundValue");
+
+// src/engine/audioFrame.ts
+var EXTENDED_AUDIO_CLASSES = ["BaseAudioContext", "AudioContext", "OfflineAudioContext", "AudioNode", "AudioParam"];
+function canOpenAudioFrame(doc = globalThis.document) {
+  return doc != null && doc.body != null && typeof globalThis.OfflineAudioContext === "function";
+}
+__name(canOpenAudioFrame, "canOpenAudioFrame");
+function bridgeAudioExtensions(page, frame) {
+  let copied = 0;
+  for (const name of EXTENDED_AUDIO_CLASSES) {
+    const mine = page[name]?.prototype;
+    const theirs = frame[name]?.prototype;
+    if (mine == null || theirs == null || mine === theirs) continue;
+    for (const key2 of Object.getOwnPropertyNames(mine)) {
+      if (Object.prototype.hasOwnProperty.call(theirs, key2)) continue;
+      const descriptor = Object.getOwnPropertyDescriptor(mine, key2);
+      if (descriptor == null) continue;
+      Object.defineProperty(theirs, key2, descriptor);
+      copied++;
+    }
+  }
+  return copied;
+}
+__name(bridgeAudioExtensions, "bridgeAudioExtensions");
+function openAudioFrame(doc = globalThis.document) {
+  if (doc?.body == null) throw new Error("openAudioFrame needs a document with a body");
+  const element = doc.createElement("iframe");
+  element.style.display = "none";
+  element.setAttribute("aria-hidden", "true");
+  element.setAttribute("tabindex", "-1");
+  element.setAttribute("data-stave-audio-frame", "");
+  doc.body.appendChild(element);
+  const win = element.contentWindow;
+  if (win == null) {
+    element.remove();
+    throw new Error("openAudioFrame could not reach the frame it opened");
+  }
+  bridgeAudioExtensions(doc.defaultView ?? globalThis, win);
+  let disposed = false;
+  const live = /* @__PURE__ */ __name((value) => {
+    if (disposed) throw new Error("This audio frame has been disposed");
+    return value;
+  }, "live");
+  return {
+    get OfflineAudioContext() {
+      return live(win.OfflineAudioContext);
+    },
+    get AudioContext() {
+      return live(win.AudioContext);
+    },
+    offlineContext(channels, length, sampleRate) {
+      return new (live(win.OfflineAudioContext))(channels, length, sampleRate);
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      element.remove();
+    },
+    get disposed() {
+      return disposed;
+    }
+  };
+}
+__name(openAudioFrame, "openAudioFrame");
+async function withAudioFrame(work, doc) {
+  const frame = openAudioFrame(doc);
+  try {
+    return await work(frame);
+  } finally {
+    frame.dispose();
+  }
+}
+__name(withAudioFrame, "withAudioFrame");
+function offlineContextInFrame(channels, length, sampleRate, doc) {
+  const frame = openAudioFrame(doc);
+  try {
+    const ctx = frame.offlineContext(channels, length, sampleRate);
+    ctx.dispose = () => frame.dispose();
+    return ctx;
+  } catch (err) {
+    frame.dispose();
+    throw err;
+  }
+}
+__name(offlineContextInFrame, "offlineContextInFrame");
 
 // src/engine/friendlyErrors.ts
 function parseStackLocation(err) {
@@ -10571,7 +10657,9 @@ var _StrudelEngine = class _StrudelEngine {
           // #1675 — a reverb's impulse response lands asynchronously; the render
           // waits for it at each window instead of rendering the room silent.
           settle: wa.reverbsReady,
-          createContext: /* @__PURE__ */ __name((frames, rate) => new OfflineAudioContext(2, frames, rate), "createContext")
+          // #1758 — a render that loads worklets is built in a frame of its own,
+          // so disposing it frees the context; Chromium never frees it otherwise.
+          createContext: /* @__PURE__ */ __name((frames, rate, { worklets }) => worklets && canOpenAudioFrame() ? offlineContextInFrame(2, frames, rate) : new OfflineAudioContext(2, frames, rate), "createContext")
         }
       ));
     });
@@ -49157,10 +49245,12 @@ exports.arrangedRepeatCycles = arrangedRepeatCycles;
 exports.auditionSound = auditionSound;
 exports.backdropQualityFactor = backdropQualityFactor;
 exports.banksFromDrumMachineManifest = banksFromDrumMachineManifest;
+exports.bridgeAudioExtensions = bridgeAudioExtensions;
 exports.buildAliasSuffix = buildAliasSuffix;
 exports.buildDefaultSnapshot = buildDefaultSnapshot;
 exports.bumpEditorFontSize = bumpEditorFontSize;
 exports.bundledPresetId = bundledPresetId;
+exports.canOpenAudioFrame = canOpenAudioFrame;
 exports.canRedo = canRedo;
 exports.canUndo = canUndo;
 exports.captureSnapshot = captureSnapshot;
@@ -49356,6 +49446,7 @@ exports.normalizeStrudelHap = normalizeStrudelHap;
 exports.noteToMidi = noteToMidi;
 exports.notifyDrumKitChanged = notifyDrumKitChanged;
 exports.notifySoundCatalogChanged = notifySoundCatalogChanged;
+exports.offlineContextInFrame = offlineContextInFrame;
 exports.onActiveEditorChange = onActiveEditorChange;
 exports.onAdaptivePerfChange = onAdaptivePerfChange;
 exports.onBackdropOpacityChange = onBackdropOpacityChange;
@@ -49374,6 +49465,7 @@ exports.onTrackColourBarsChange = onTrackColourBarsChange;
 exports.onUiIconSizeChange = onUiIconSizeChange;
 exports.onVizInputsLiveValuesChange = onVizInputsLiveValuesChange;
 exports.onVizQualityChange = onVizQualityChange;
+exports.openAudioFrame = openAudioFrame;
 exports.otherTrackNames = otherTrackNames;
 exports.parseMessageLocation = parseMessageLocation;
 exports.parseMini = parseMini;
@@ -49575,6 +49667,7 @@ exports.validatePersistedState = validatePersistedState;
 exports.warmMonaco = warmMonaco;
 exports.warmSamplePeaks = warmSamplePeaks;
 exports.wholeWalkWindow = wholeWalkWindow;
+exports.withAudioFrame = withAudioFrame;
 exports.withStructBatch = withStructBatch;
 exports.workspaceAudioBus = workspaceAudioBus;
 exports.workspaceFileIdForPreset = workspaceFileIdForPreset;

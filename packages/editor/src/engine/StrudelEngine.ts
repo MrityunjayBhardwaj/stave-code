@@ -29,6 +29,7 @@ import type { PatternIR } from '../ir/PatternIR'
 import type { IREvent } from '../ir/IREvent'
 import { getTierFlags, type TierFlags } from './tierFlags'
 import { aliasSoundValue } from './aliases'
+import { canOpenAudioFrame, offlineContextInFrame } from './audioFrame'
 import { isSoundfontZoneError, soundfontRangeMessage } from './friendlyErrors'
 import { installMiniStringParser } from './stringParser'
 import { resolveBareCaptureId } from './bareCapture'
@@ -2236,7 +2237,12 @@ export class StrudelEngine implements LiveCodingEngine {
           // #1675 — a reverb's impulse response lands asynchronously; the render
           // waits for it at each window instead of rendering the room silent.
           settle: wa.reverbsReady,
-          createContext: (frames, rate) => new OfflineAudioContext(2, frames, rate),
+          // #1758 — a render that loads worklets is built in a frame of its own,
+          // so disposing it frees the context; Chromium never frees it otherwise.
+          createContext: (frames, rate, { worklets }) =>
+            worklets && canOpenAudioFrame()
+              ? offlineContextInFrame(2, frames, rate)
+              : new OfflineAudioContext(2, frames, rate),
         }
       ))
     })
