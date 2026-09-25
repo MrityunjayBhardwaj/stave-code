@@ -89,6 +89,7 @@ import type { BounceSizing } from "./songLength";
 import { DocsSearchPalette } from "./DocsSearchPalette";
 import { isPerfOverlayToggle } from "./perfToggleKey";
 import { MusicalTimeline } from "./MusicalTimeline";
+import { startSongAnalysis } from "../state/songAnalysis";
 import {
   registerBottomPanelTab,
   readPersistedOpen,
@@ -1111,6 +1112,21 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     // registry's idempotent semantics (DA-05) make re-registration a
     // no-fanfare swap.
   }, [trackEnvelopeRelay]); // stable for the app's life: registers once
+
+  // #1726 — the whole-song analysis runs here, not inside the Song timeline:
+  // the drawer unmounts the timeline when closed, and the transport display
+  // still needs the song's length to wrap the position to it. The timeline
+  // reads the same result. The accessors are the ones the timeline is given.
+  useEffect(
+    () =>
+      startSongAnalysis({
+        getTimelineEvents: (cycles) => getTimelineEventsRef.current(cycles),
+        getTimelineEventsBand: (startCycle, endCycle) =>
+          getTimelineEventsBandRef.current(startCycle, endCycle),
+        getSongTrackIds: () => getSongTrackIdsRef.current(),
+      }),
+    [],
+  );
 
   // #391 — expose the live transport cycle to the editor-seeded visual panels
   // (Sequencer / Piano Roll) so they can highlight the playing step. The panels

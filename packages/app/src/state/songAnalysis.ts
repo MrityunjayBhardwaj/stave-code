@@ -1,0 +1,106 @@
+"use client";
+
+import {
+  analyzeSong,
+  getIRSnapshot,
+  signalDimensionsOf,
+  subscribeIRSnapshot,
+  type IRSnapshot,
+  type SongAnalysis,
+} from "@stave/editor";
+
+import { createSongCollector, type SongCollectorAccessors } from "../components/musicalTimeline/songCollector";
+import { songFrameOf } from "../components/musicalTimeline/songFrame";
+import { loadTimelineCamera } from "../components/musicalTimeline/timelineCameraPersistence";
+import { publishSongFrame } from "./drawnSongFrame";
+
+/**
+ * The whole-song analysis of the current document (#385), run whether or not
+ * the Song timeline is drawn (#1726).
+ *
+ * It used to run inside the timeline, which the bottom drawer unmounts when
+ * closed. The transport display needs the song's length to wrap the song
+ * position to it (#1725), so with the drawer closed it showed the unwrapped
+ * position and no pass. Now the app starts this once; the timeline reads the
+ * result instead of computing its own, so there is still one analysis per
+ * document, and the display gets the frame the timeline would draw.
+ *
+ * Every new IR snapshot (a re-evaluation) starts a new analysis and aborts the
+ * one in flight, so a fast edit cadence cannot pile up overlapping budgeted
+ * collections. The previous result stays readable until the new one lands, as
+ * it always did in the timeline: an analysis is best-effort. Unless the snapshot
+ * is another FILE's: that song's length says nothing about this one, so the
+ * result is withdrawn at once.
+ */
+
+let current: SongAnalysis | null = null;
+const listeners = new Set<() => void>();
+
+function set(analysis: SongAnalysis | null, ir: IRSnapshot["ir"] | null): void {
+  current = analysis;
+  // The frame the timeline would draw for this document at its first page. The
+  // user's resized bare-loop span (#662) is persisted with the timeline's
+  // camera, so it is known with the timeline closed too.
+  const bareSpan = loadTimelineCamera()?.bareSpan;
+  publishSongFrame(
+    songFrameOf(analysis, ir, typeof bareSpan === "number" && Number.isFinite(bareSpan) ? bareSpan : null),
+  );
+  for (const listener of listeners) listener();
+}
+
+/** The latest analysis, or `null` when there is none (no document, or none yet). */
+export function readSongAnalysis(): SongAnalysis | null {
+  return current;
+}
+
+/** Called after every change to the analysis. Returns the unsubscribe. */
+export function subscribeSongAnalysis(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/**
+ * Analyze every IR snapshot as it is published, until the returned function is
+ * called. `accessors` are read at each run, so they may be latest-value closures.
+ */
+export function startSongAnalysis(accessors: SongCollectorAccessors): () => void {
+  let inFlight: { aborted: boolean } | null = null;
+  let source: string | null = null;
+
+  const run = (snapshot: IRSnapshot | null): void => {
+    if (inFlight) inFlight.aborted = true;
+    inFlight = null;
+    const ir = snapshot?.ir ?? null;
+    const nextSource = snapshot?.source ?? null;
+    if (!ir || nextSource !== source) {
+      source = nextSource;
+      if (current != null) set(null, null);
+      if (!ir) return;
+    }
+    // #980 — queryArc-backed collector: eval haps for the whole song, remapped
+    // to the timeline's lane keys (see `songCollector.ts` for why a copy of the
+    // band rule would drift).
+    const { collectFn, hasUnheardTrack } = createSongCollector(ir, accessors);
+    const signal = { aborted: false };
+    inFlight = signal;
+    // #1465 — what the SOURCE says is continuously modulated. Read here because
+    // only the caller holds the IR; the rule that uses it is `displayPeriodRule`.
+    analyzeSong(ir, { signal, collectFn, hasUnheardTrack, signals: signalDimensionsOf(ir) })
+      .then((result) => {
+        if (!signal.aborted) set(result, ir);
+      })
+      .catch(() => {
+        /* analysis is best-effort; leave the prior result in place */
+      });
+  };
+
+  const unsubscribe = subscribeIRSnapshot(run);
+  // Trap NEW-4: a snapshot published before we subscribed is picked up here.
+  run(getIRSnapshot());
+  return () => {
+    unsubscribe();
+    if (inFlight) inFlight.aborted = true;
+    inFlight = null;
+    set(null, null);
+  };
+}
