@@ -56,9 +56,9 @@ export function createWaveformSource(getCps: () => number | null): WaveformSourc
     get cps() {
       return getCps() ?? ASSUMED_CPS;
     },
-    peaksFor: (voice, pitch) => peaksForSample({ s: voice, note: pitch }),
+    peaksFor: (sample) => peaksForSample(sample),
     // #1730 — the same resolution `peaksFor` starts from, minus the decode: a
     // file that has not loaded yet is still a file.
-    isFileBacked: (voice, pitch) => resolveSampleUrl({ s: voice, note: pitch }) != null,
+    isFileBacked: (sample) => resolveSampleUrl(sample) != null,
   };
 }

@@ -56,7 +56,13 @@ const theme: DrawTheme = {
 
 const LANE_COLOR = '#0af'
 
-function sceneWith(notes: SceneNote[]): TimelineScene {
+/** A named mark plays the file of that name at its pitch unless it says
+ *  otherwise — what `timelineMarks` builds with no bank or number (#1764). */
+const withSample = (n: SceneNote): SceneNote =>
+  n.sample !== undefined || n.voice == null ? n : { ...n, sample: { s: n.voice, note: n.pitch } }
+
+function sceneWith(raw: SceneNote[]): TimelineScene {
+  const notes = raw.map(withSample)
   return {
     displayCycles: 4,
     windowOriginCycles: 0,
@@ -289,8 +295,8 @@ describe('drawTimeline — waveform tier', () => {
     const asked: string[] = []
     const source: WaveformSource = {
       cps: 1,
-      peaksFor: (voice) => {
-        asked.push(voice)
+      peaksFor: (sample) => {
+        asked.push(sample.s)
         return fullScalePeaks(0.1)
       },
     }
@@ -362,11 +368,11 @@ describe('drawTimeline — waveform tier', () => {
   })
 
   it('asks again for a different pitch, because that can be a different file', () => {
-    const asked: (number | null)[] = []
+    const asked: (number | string | null | undefined)[] = []
     const source: WaveformSource = {
       cps: 1,
-      peaksFor: (_voice, pitch) => {
-        asked.push(pitch)
+      peaksFor: (sample) => {
+        asked.push(sample.note)
         return fullScalePeaks(0.1)
       },
     }
@@ -379,6 +385,28 @@ describe('drawTimeline — waveform tier', () => {
     const { ctx } = mockCtx()
     drawTimeline(ctx, sceneWith(notes), transform, theme, layout, undefined, source)
     expect(asked).toEqual([48, 72]) // the repeat of 48 was memoised
+  })
+
+  it('asks for the file each mark plays: a bank or a sample number is a different file (#1764)', () => {
+    const asked: string[] = []
+    const source: WaveformSource = {
+      cps: 1,
+      peaksFor: (sample) => {
+        asked.push(`${sample.s}:${sample.n ?? 0}`)
+        return fullScalePeaks(0.1)
+      },
+    }
+    // One row, all `bd`: the default kit's first, the 909's, and the default's fourth.
+    const notes: SceneNote[] = [
+      // All three inside the 400px viewport (1000px per cycle), so none is culled.
+      { cycle: 0, end: 0.1, pitch: null, gain: 1, voice: 'bd', sample: { s: 'bd' } },
+      { cycle: 0.12, end: 0.22, pitch: null, gain: 1, voice: 'bd', sample: { s: 'RolandTR909_bd' } },
+      { cycle: 0.24, end: 0.34, pitch: null, gain: 1, voice: 'bd', sample: { s: 'bd', n: 3 } },
+    ]
+    const layout = computeLaneLayout(sceneWith(notes).lanes, new Set(), 60, 88)
+    const { ctx } = mockCtx()
+    drawTimeline(ctx, sceneWith(notes), transform, theme, layout, undefined, source)
+    expect(asked).toEqual(['bd:0', 'RolandTR909_bd:0', 'bd:3'])
   })
 
   it('spends no more than its per-frame column budget', () => {

@@ -23,11 +23,11 @@
 
 import type { TimelineScene, SceneLane, SceneNote, SceneClip, SceneStepped, SceneSignal, SignalTimeAt, LaneEnvelope } from './timelineScene'
 import { stepSegments, stepY, type StepBand } from './steppedLane'
-import { NO_VOICE } from './timelineScene'
+import { NO_VOICE, sampleKey } from './timelineScene'
 import { SUB_ROW_HEIGHT, type LaneLayout, type LaneBox } from './laneLayout'
 import type { DisplayMeter } from '../../lib/meter'
 import { songCycleToXUnclamped, type SongWindow } from './songAxis'
-import type { SignalAutomation, SignalKind, UnboundedSignalKind } from '@stave/editor'
+import type { SampleRef, SignalAutomation, SignalKind, UnboundedSignalKind } from '@stave/editor'
 import { automationColorOnLane, automationCountOnLane } from './colors'
 import {
   AUTOMATION_PAD_Y,
@@ -137,10 +137,10 @@ export const MIN_MARK_W = 2
 export interface WaveformSource {
   /** Cycles per second; null before the runtime reports a tempo. */
   readonly cps: number | null
-  /** Envelope for a voice at a pitch, or null when it is not decoded yet. */
+  /** Envelope for the file a mark plays (`SceneNote.sample`, #1764), or null
+   *  when it is not decoded yet. */
   readonly peaksFor: (
-    voice: string,
-    pitch: number | null,
+    sample: SampleRef,
   ) => { readonly data: Float32Array; readonly columns: number; readonly duration: number } | null
   /**
    * Does this voice play an audio FILE at all (#1730)? Asked of the sample
@@ -148,7 +148,7 @@ export interface WaveformSource {
    * a file, and a row whose geometry changed the moment a decode landed would
    * jump under the reader. Absent means no lane is treated as an audio lane.
    */
-  readonly isFileBacked?: (voice: string, pitch: number | null) => boolean
+  readonly isFileBacked?: (sample: SampleRef) => boolean
 }
 
 /**
@@ -246,15 +246,16 @@ export function drawTimeline(
   // lives for exactly one draw: the envelope cache behind it is long-lived, but
   // a sample can finish decoding between two frames, and a memo that outlived
   // the frame would keep drawing "not loaded yet" after it had loaded.
-  // Keyed by pitch as well as voice because a multi-sample instrument resolves
-  // to a DIFFERENT FILE per note, not merely a different playback rate.
+  // Keyed by every field that chooses the file (`sampleKey`, #1764): a bank,
+  // a sample number, or a note on a multi-sample instrument each resolve to a
+  // DIFFERENT FILE, not merely a different playback rate.
   const peaksMemo = new Map<string, ReturnType<WaveformSource['peaksFor']>>()
-  const peaksFor = (voice: string, pitch: number | null) => {
+  const peaksFor = (sample: SampleRef) => {
     if (!waveforms) return null
-    const key = `${voice}\u0000${pitch ?? ''}`
+    const key = sampleKey(sample)
     const hit = peaksMemo.get(key)
     if (hit !== undefined) return hit
-    const got = waveforms.peaksFor(voice, pitch)
+    const got = waveforms.peaksFor(sample)
     peaksMemo.set(key, got)
     return got
   }
@@ -1259,7 +1260,7 @@ function drawMarkWaveform(
   ctx: CanvasRenderingContext2D,
   note: SceneNote,
   r: { x: number; y: number; w: number; h: number },
-  peaksFor: (voice: string, pitch: number | null) => {
+  peaksFor: (sample: SampleRef) => {
     readonly data: Float32Array
     readonly columns: number
     readonly duration: number
@@ -1274,11 +1275,10 @@ function drawMarkWaveform(
   bedLaid = false,
 ): number {
   if (budget <= 0) return budget
-  const voice = note.voice
-  // A null-`s` mark is a synth note: it carries a pitch and no sample, so there
-  // is no file whose shape could be drawn.
-  if (voice == null || voice === NO_VOICE) return budget
-  const peaks = peaksFor(voice, note.pitch ?? null)
+  // A mark with no sound name has no file whose shape could be drawn.
+  const sample = note.sample
+  if (sample == null) return budget
+  const peaks = peaksFor(sample)
   if (peaks == null) return budget
   const fit = waveformFit(peaks.duration, cps, r.w, r.h, pxPerCycle, note.region)
   if (fit == null) return budget

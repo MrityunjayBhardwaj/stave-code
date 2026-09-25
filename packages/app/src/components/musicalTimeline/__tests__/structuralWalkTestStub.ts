@@ -26,6 +26,9 @@ import type { IREvent } from '../../../../../editor/src/ir/IREvent'
 // every arm at 0 and folds the lanes back together — the exact #950 failure,
 // reintroduced by the mock rather than by the code under test.
 export { structuralWalk, wholeWalkWindow, rootStackArms, armSourceSpan }
+// #1764 — every mark names the file it plays through `sampleRefOf`; a mock that
+// omits it hands `timelineMarks` undefined and throws on the first mark.
+export { sampleRefOf } from '../../../../../editor/src/workspace/sampleRef'
 
 /**
  * Reduce collect-style events to lane skeletons exactly as `structuralWalk` aggregates its own

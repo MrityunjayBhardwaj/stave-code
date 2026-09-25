@@ -16,7 +16,7 @@
  * builder merges its already-collected output as data.
  */
 
-import type { SongAnalysis, SongSection } from '@stave/editor'
+import type { SampleRef, SongAnalysis, SongSection } from '@stave/editor'
 import type { SongWindow } from './songAxis'
 import type { SampleRegion } from './waveformLane'
 import { trackIdentity } from './colors'
@@ -88,6 +88,17 @@ export interface SceneNote {
    *  word `end` because Strudel's own controls do, and keeping the region in its
    *  own object is what stops them ever being read for one another. */
   readonly region?: SampleRegion
+  /** Which FILE this mark plays (#1764): `s` with any `.bank()` applied, `n`,
+   *  and `note`/`freq`, the fields superdough chooses a sample by. Built once
+   *  in `timelineMarks` (`sampleRefOf`); every waveform lookup reads this, not
+   *  `voice`, which names the sub-row and ignores the bank and the sample
+   *  number. Absent or null for a mark with no sound name. */
+  readonly sample?: SampleRef | null
+}
+
+/** One string per distinct file lookup, for memoising `SampleRef` reads (#1764). */
+export function sampleKey(ref: SampleRef): string {
+  return `${ref.s}\u0000${ref.n ?? ''}\u0000${ref.note ?? ''}\u0000${ref.freq ?? ''}`
 }
 
 /**
@@ -799,15 +810,15 @@ export function markBarsLanes(scene: TimelineScene, barsNames: ReadonlySet<strin
  */
 export function markAudioLanes(
   scene: TimelineScene,
-  isFileBacked: ((voice: string, pitch: number | null) => boolean) | undefined,
+  isFileBacked: ((sample: SampleRef) => boolean) | undefined,
 ): TimelineScene {
   if (isFileBacked == null) return scene
   const memo = new Map<string, boolean>()
-  const backed = (voice: string, pitch: number | null) => {
-    const key = `${voice}\u0000${pitch ?? ''}`
+  const backed = (sample: SampleRef) => {
+    const key = sampleKey(sample)
     let got = memo.get(key)
     if (got === undefined) {
-      got = isFileBacked(voice, pitch)
+      got = isFileBacked(sample)
       memo.set(key, got)
     }
     return got
@@ -817,7 +828,7 @@ export function markAudioLanes(
     const audio =
       lane.bars !== true &&
       lane.notes.length > 0 &&
-      lane.notes.every((n) => n.voice != null && n.voice !== NO_VOICE && backed(n.voice, n.pitch ?? null))
+      lane.notes.every((n) => n.sample != null && backed(n.sample))
     if ((lane.audio === true) === audio) return lane
     changed = true
     return { ...lane, audio }

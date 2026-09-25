@@ -18,6 +18,7 @@ vi.mock('@stave/editor', async () => ({
   collectCycles: () => [],
   structuralWalk: (await import('./structuralWalkTestStub')).structuralWalk,
   wholeWalkWindow: (await import('./structuralWalkTestStub')).wholeWalkWindow,
+  sampleRefOf: (await import('./structuralWalkTestStub')).sampleRefOf,
   rootStackArms: (await import('./structuralWalkTestStub')).rootStackArms,
   armSourceSpan: (await import('./structuralWalkTestStub')).armSourceSpan,
   laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',

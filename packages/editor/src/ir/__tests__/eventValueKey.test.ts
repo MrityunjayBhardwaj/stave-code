@@ -24,10 +24,10 @@ const base = (over: Partial<IREvent> = {}): IREvent => ({
 
 describe('drift against the adapter that defines the partition', () => {
   it('reads every dedicated slot the normaliser fills, and only those', () => {
-    // `n` is an ALIAS the normaliser folds into `note` (`value?.note ?? value?.n`),
-    // not a slot of its own — a key that read it would read nothing. `type` is a
-    // declared IREvent slot no producer writes yet, and is read anyway so it
-    // starts counting the day one does.
+    // `n` is read through its fold into `note` (`value?.note ?? value?.n`), not
+    // through its own slot — see `VALUE_SLOTS`. `type` is a declared IREvent
+    // slot no producer writes yet, and is read anyway so it starts counting the
+    // day one does.
     const fromAdapter = [...KNOWN_VALUE_FIELDS].filter((f) => f !== 'n').sort()
     const fromKey = [...VALUE_SLOTS].filter((f) => f !== 'type').sort()
     expect(fromKey).toEqual(fromAdapter)

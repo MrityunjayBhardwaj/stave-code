@@ -4800,6 +4800,7 @@ function normalizeStrudelHap(hap, trackId, irNodeLocLookup, declaredLocations) {
     velocity: value?.velocity ?? 1,
     color: value?.color ?? null
   };
+  if (value?.n != null) event.n = value.n;
   const extracted = extractLoc(hap);
   const loc = extracted && declaredLocations ? declaredOnly(extracted, declaredLocations) : extracted;
   if (loc) event.loc = loc;
@@ -45802,6 +45803,19 @@ function renameAssetRecord(id, name) {
   return unique;
 }
 __name(renameAssetRecord, "renameAssetRecord");
+
+// src/workspace/sampleRef.ts
+function sampleRefOf(ev) {
+  if (ev.s == null || ev.s === "") return null;
+  const bank = ev.params?.bank;
+  const s = typeof bank === "string" && bank !== "" ? `${bank}_${ev.s}` : ev.s;
+  const n = typeof ev.n === "number" && Number.isFinite(ev.n) ? ev.n : null;
+  const note = ev.note != null && !(n != null && ev.note === n) ? ev.note : null;
+  return { s, n, note, freq: ev.freq ?? null };
+}
+__name(sampleRefOf, "sampleRefOf");
+
+// src/workspace/samplePeaks.ts
 var PEAK_COLUMNS = 1024;
 var PEAK_COLUMNS_PER_SECOND = 256;
 var MAX_PEAK_COLUMNS = 1 << 18;
@@ -45857,6 +45871,7 @@ function resolveSampleUrl(ref, deps = liveDeps) {
   try {
     const hapValue = { s: ref.s };
     if (ref.note != null) hapValue.note = ref.note;
+    if (ref.freq != null) hapValue.freq = ref.freq;
     if (ref.n != null) hapValue.n = ref.n;
     const { url } = deps.getSampleInfo(hapValue, bank);
     return typeof url === "string" && url.length > 0 ? url : null;
@@ -49438,6 +49453,7 @@ exports.revertFileToSeed = revertFileToSeed;
 exports.rootStackArms = rootStackArms;
 exports.routeSurface = routeSurface;
 exports.runPasses = runPasses;
+exports.sampleRefOf = sampleRefOf;
 exports.sanitizePresetName = sanitizePresetName;
 exports.saveShellState = saveShellState;
 exports.saveSnapshot = saveSnapshot;

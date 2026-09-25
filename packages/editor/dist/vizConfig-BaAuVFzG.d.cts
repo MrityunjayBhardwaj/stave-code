@@ -31,6 +31,14 @@ interface IREvent {
     freq: number | null;
     /** Instrument/sample name */
     s: string | null;
+    /**
+     * The hap's own `n`, when it has one (#1764). `note` above folds `n` in when
+     * the hap has no `note` (`note: value.note ?? value.n`), which is right for a
+     * pitch and wrong for a sample: for a sample, `n` picks WHICH FILE of the
+     * sound plays (`superdough/util.mjs:109-128`), and a hap with both keeps only
+     * its `note` there. Absent when the hap has no `n`.
+     */
+    n?: number | string;
     /** Event kind */
     type?: 'synth' | 'sample';
     /** Gain 0-1 (default 1) */

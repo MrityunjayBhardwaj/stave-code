@@ -31,11 +31,12 @@ vi.mock('@stave/editor', async () => {
   // #974 — lane STRUCTURE (incl. `labelOffsetByLane`, the containment anchors these tests
   // exercise) now comes from `structuralWalk`, not collect events. Reduce the SAME IR_EVENTS
   // through the REAL production reducer so d1/d2 keep their dollarPos anchors (PV192).
-  const { skeletonsFromEvents, wholeWalkWindow } = await import('./structuralWalkTestStub')
+  const { skeletonsFromEvents, wholeWalkWindow, sampleRefOf } = await import('./structuralWalkTestStub')
   return {
     structuralWalk: (_ir: unknown, window: { originCycle: number; spanCycles: number }) =>
       skeletonsFromEvents(IR_EVENTS, window),
     wholeWalkWindow,
+    sampleRefOf,
     laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
   }
 })
@@ -149,6 +150,32 @@ describe('collectNoteMarks — eval-backed marks (#861)', () => {
 // the join between an engine that already resolved the region and a renderer
 // that had been discarding it.
 // ---------------------------------------------------------------------------
+describe('collectNoteMarks — the file a mark plays (#1764)', () => {
+  /** One `bd` hap on lane d1, with the file-choosing fields the normaliser leaves on it. */
+  function markFor(extra: Record<string, unknown>) {
+    const haps = [
+      { begin: 0, end: 1, trackId: '$0', s: 'bd', note: null, freq: null, gain: 1, loc: [{ start: 12, end: 14 }], ...extra },
+    ] as unknown as Parameters<typeof collectNoteMarks>[0]
+    const lane = collectNoteMarks(haps, { fake: true } as never, wholeSongWindow(4)).marksByLane.get('d1')
+    expect(lane).toHaveLength(1)
+    return lane![0]
+  }
+
+  it('names the banked sound, while the row keeps the name it was written with', () => {
+    const mark = markFor({ params: { bank: 'RolandTR909' } })
+    expect(mark.sample).toEqual({ s: 'RolandTR909_bd', n: null, note: null, freq: null })
+    expect(mark.voice).toBe('bd')
+  })
+
+  it('carries the sample number as n, not as a note — `s("bd:3")`', () => {
+    expect(markFor({ note: 3, n: 3 }).sample).toEqual({ s: 'bd', n: 3, note: null, freq: null })
+  })
+
+  it('CONTROL — a plain `bd` names plain bd', () => {
+    expect(markFor({}).sample).toEqual({ s: 'bd', n: null, note: null, freq: null })
+  })
+})
+
 describe('collectNoteMarks — the played region (#1512)', () => {
   /** One sample hap on lane d1, carrying whatever `params` it is given. */
   function hapWith(params: Record<string, unknown> | undefined) {
