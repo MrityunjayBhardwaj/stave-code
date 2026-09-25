@@ -1,5 +1,5 @@
 import type { EngineComponents } from '../engine/LiveCodingEngine'
-import { openIdbWithTimeout } from '../idb'
+import { committed, openIdbWithTimeout, requestResult as wrap } from '../idb'
 
 /**
  * A user-authored visualization saved to IndexedDB.
@@ -58,12 +58,6 @@ function tx(
   return db.transaction(STORE_NAME, mode).objectStore(STORE_NAME)
 }
 
-function wrap<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
 
 // ---------------------------------------------------------------------------
 // ID generation
@@ -147,11 +141,11 @@ export const VizPresetStore = {
 
   async put(preset: VizPreset): Promise<void> {
     const db = await openDb()
-    await wrap(tx(db, 'readwrite').put(preset))
+    await committed(tx(db, 'readwrite').put(preset))
   },
 
   async delete(id: string): Promise<void> {
     const db = await openDb()
-    await wrap(tx(db, 'readwrite').delete(id))
+    await committed(tx(db, 'readwrite').delete(id))
   },
 }

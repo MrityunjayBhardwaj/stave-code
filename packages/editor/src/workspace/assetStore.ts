@@ -48,7 +48,7 @@
 
 import { samples } from '@strudel/webaudio'
 
-import { openIdbWithTimeout } from '../idb'
+import { committed, openIdbWithTimeout, requestResult as wrap } from '../idb'
 import type { AssetImportPlan, AssetOrigin, AssetRecord } from './assetNaming'
 import { planAssetImport } from './assetNaming'
 
@@ -92,12 +92,6 @@ function openDb(): Promise<IDBDatabase> {
   })
 }
 
-function wrap<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
 
 // ---------------------------------------------------------------------------
 // Hashing
@@ -165,7 +159,10 @@ export async function putAsset(
       size: blob.size,
       storedAt: Date.now(),
     }
-    await wrap(
+    // Awaited to COMMIT, not to request success: a write the browser refuses
+    // for space succeeds as a request first in Chromium (#1777). Rejects with
+    // `StorageFullError`, so no caller ever records bytes that are not here.
+    await committed(
       db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(record),
     )
     return { hash, written: true }
@@ -198,7 +195,7 @@ export async function deleteAsset(hash: string): Promise<void> {
   releaseAsset(hash)
   const db = await openDb()
   try {
-    await wrap(
+    await committed(
       db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).delete(hash),
     )
   } finally {

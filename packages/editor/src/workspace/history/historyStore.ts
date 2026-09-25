@@ -17,7 +17,12 @@
  */
 
 import type { ProjectHistory } from './historyGraph'
-import { openIdbWithTimeout } from '../../idb'
+import {
+  committed,
+  openIdbWithTimeout,
+  requestResult as wrap,
+  transactionDone,
+} from '../../idb'
 import { isEphemeralProjectId } from '../projectRegistry'
 
 export const DB_NAME = 'stave-snapshots'
@@ -40,12 +45,6 @@ function openDb(): Promise<IDBDatabase> {
   return openIdbWithTimeout(DB_NAME, DB_VERSION, (db) => upgradeHistoryDb(db))
 }
 
-function wrap<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
 
 /** Load a project's history, or null if none has been persisted yet. */
 export async function loadHistory(projectId: string): Promise<ProjectHistory | null> {
@@ -60,7 +59,7 @@ export async function loadHistory(projectId: string): Promise<ProjectHistory | n
 /** Persist a project's history (whole-row put). */
 export async function saveHistory(h: ProjectHistory): Promise<void> {
   const db = await openDb()
-  await wrap(
+  await committed(
     db.transaction(HISTORY_STORE, 'readwrite').objectStore(HISTORY_STORE).put(h),
   )
   db.close()
@@ -69,7 +68,7 @@ export async function saveHistory(h: ProjectHistory): Promise<void> {
 /** Delete a project's history (used by tests / project deletion). */
 export async function deleteHistory(projectId: string): Promise<void> {
   const db = await openDb()
-  await wrap(
+  await committed(
     db.transaction(HISTORY_STORE, 'readwrite').objectStore(HISTORY_STORE).delete(projectId),
   )
   db.close()
@@ -92,7 +91,10 @@ export async function pruneEphemeralHistory(): Promise<void> {
       const store = db
         .transaction(HISTORY_STORE, 'readwrite')
         .objectStore(HISTORY_STORE)
-      await Promise.all(ephemeral.map((k) => wrap(store.delete(k))))
+      await Promise.all([
+        ...ephemeral.map((k) => wrap(store.delete(k))),
+        transactionDone(store.transaction),
+      ])
     }
   } finally {
     db.close()

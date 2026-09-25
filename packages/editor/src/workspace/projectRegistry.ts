@@ -40,7 +40,12 @@ export interface ProjectMeta {
 
 // ── IDB helpers ──────────────────────────────────────────────────────
 
-import { openIdbWithTimeout } from '../idb'
+import {
+  committed,
+  openIdbWithTimeout,
+  requestResult as wrap,
+  transactionDone,
+} from '../idb'
 
 const DB_NAME = 'stave-projects'
 const DB_VERSION = 1
@@ -58,12 +63,6 @@ function tx(db: IDBDatabase, mode: IDBTransactionMode): IDBObjectStore {
   return db.transaction(STORE_NAME, mode).objectStore(STORE_NAME)
 }
 
-function wrap<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
 
 // ── Public API ───────────────────────────────────────────────────────
 
@@ -98,7 +97,7 @@ export async function createProject(name: string): Promise<ProjectMeta> {
     lastOpenedAt: Date.now(),
   }
   const db = await openDb()
-  await wrap(tx(db, 'readwrite').put(meta))
+  await committed(tx(db, 'readwrite').put(meta))
   db.close()
   return meta
 }
@@ -109,7 +108,7 @@ export async function touchProject(id: string): Promise<void> {
   const store = tx(db, 'readwrite')
   const existing = await wrap<ProjectMeta | undefined>(store.get(id))
   if (existing) {
-    await wrap(store.put({ ...existing, lastOpenedAt: Date.now() }))
+    await committed(store.put({ ...existing, lastOpenedAt: Date.now() }))
   }
   db.close()
 }
@@ -130,7 +129,7 @@ export async function dropLegacyBackgroundCrop(id: string): Promise<void> {
   const existing = await wrap<ProjectMeta | undefined>(store.get(id))
   if (existing && existing.backgroundCrop !== undefined) {
     const { backgroundCrop: _drained, ...rest } = existing
-    await wrap(store.put(rest as ProjectMeta))
+    await committed(store.put(rest as ProjectMeta))
   }
   db.close()
 }
@@ -141,7 +140,7 @@ export async function renameProject(id: string, name: string): Promise<void> {
   const store = tx(db, 'readwrite')
   const existing = await wrap<ProjectMeta | undefined>(store.get(id))
   if (existing) {
-    await wrap(store.put({ ...existing, name }))
+    await committed(store.put({ ...existing, name }))
   }
   db.close()
 }
@@ -153,7 +152,7 @@ export async function renameProject(id: string, name: string): Promise<void> {
 export async function deleteProject(id: string): Promise<void> {
   // Delete metadata
   const db = await openDb()
-  await wrap(tx(db, 'readwrite').delete(id))
+  await committed(tx(db, 'readwrite').delete(id))
   db.close()
 
   // Delete the y-indexeddb content database.
@@ -213,7 +212,10 @@ export async function pruneEphemeralProjects(): Promise<void> {
       // Issue every delete synchronously into one readwrite txn (before the
       // await) so the transaction stays active until they're all queued.
       const store = tx(db, 'readwrite')
-      await Promise.all(ephemeral.map((k) => wrap(store.delete(k))))
+      await Promise.all([
+        ...ephemeral.map((k) => wrap(store.delete(k))),
+        transactionDone(store.transaction),
+      ])
     }
   } finally {
     db.close()
