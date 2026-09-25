@@ -7,8 +7,14 @@ import type { IREvent } from '../ir/IREvent'
 
 /** The shape `getSampleInfo` needs — the subset of a hap the timeline can supply. */
 export interface SampleRef {
-  /** Sound name, i.e. the `s` of the event. */
+  /**
+   * Sound name AS WRITTEN, i.e. the `s` of the event. Not yet aliased and not
+   * yet banked: the engine renames it in that order at play time (#1767), and
+   * `resolveSampleUrl` repeats both steps against the live registry.
+   */
   readonly s: string
+  /** Drum-machine bank (`.bank("RolandTR909")`); superdough plays `${bank}_${s}`. */
+  readonly bank?: string | null
   /**
    * MIDI note, when the mark carries one.
    *
@@ -29,7 +35,10 @@ export interface SampleRef {
  * Null for an event with no sound name.
  *
  * - `bank` RENAMES the sound: superdough plays `${bank}_${s}`
- *   (`superdough.mjs:538-539`), and looks that name up lowercased.
+ *   (`superdough.mjs:538-539`), and looks that name up lowercased. It is kept
+ *   apart from `s` here because the engine's alias step (`kick` → `bd`) runs on
+ *   the bare name BEFORE the bank is added (#1767); prefixing here would ask
+ *   the alias table for `RolandTR909_kick`.
  * - `n` picks the file within the sound's list, wrapping round
  *   (`util.mjs:109-128`).
  * - `freq`, else `note`, picks the nearest key of a pitched bank
@@ -42,9 +51,9 @@ export interface SampleRef {
  */
 export function sampleRefOf(ev: Pick<IREvent, 's' | 'n' | 'note' | 'freq' | 'params'>): SampleRef | null {
   if (ev.s == null || ev.s === '') return null
-  const bank = ev.params?.bank
-  const s = typeof bank === 'string' && bank !== '' ? `${bank}_${ev.s}` : ev.s
+  const b = ev.params?.bank
+  const bank = typeof b === 'string' && b !== '' ? b : null
   const n = typeof ev.n === 'number' && Number.isFinite(ev.n) ? ev.n : null
   const note = ev.note != null && !(n != null && ev.note === n) ? ev.note : null
-  return { s, n, note, freq: ev.freq ?? null }
+  return { s: ev.s, bank, n, note, freq: ev.freq ?? null }
 }

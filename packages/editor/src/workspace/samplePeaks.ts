@@ -32,7 +32,8 @@
  * of the code costs an `await` on a value that never settles.
  */
 
-import { getAudioContext, getCachedBuffer, getSampleInfo, getSound, loadBuffer } from '@strudel/webaudio'
+import { getAudioContext, getCachedBuffer, getSampleInfo, getSound, loadBuffer, soundMap } from '@strudel/webaudio'
+import { aliasSoundValue } from '../engine/aliases'
 import type { SampleRef } from './sampleRef'
 
 /**
@@ -170,9 +171,30 @@ export interface SamplePeaksDeps {
   readonly getSound: typeof getSound
   readonly getSampleInfo: typeof getSampleInfo
   readonly getCachedBuffer: typeof getCachedBuffer
+  /** The loaded sound registry the alias step consults; absent reads as empty. */
+  readonly soundMap?: () => Record<string, unknown> | undefined
 }
 
-const liveDeps: SamplePeaksDeps = { getSound, getSampleInfo, getCachedBuffer }
+const liveDeps: SamplePeaksDeps = {
+  getSound,
+  getSampleInfo,
+  getCachedBuffer,
+  soundMap: () => soundMap.get(),
+}
+
+/**
+ * #1767 — the name the engine PLAYS for a written sound name, before any bank.
+ *
+ * The engine's own alias step (`aliasSoundValue`, called by live playback and
+ * by the offline render), asked of the same registry object: a name the loaded
+ * registry has wins, otherwise the curated table renames it (`kick` → `bd`).
+ * This is that function's third caller, never a second table. The registry is
+ * read on every call, so a later `samples(...)` that registers a real `kick`
+ * takes over on the next draw, as it does at the next trigger.
+ */
+export function playedSoundName(s: string, deps: SamplePeaksDeps = liveDeps): string {
+  return aliasSoundValue({ s }, deps.soundMap?.()).value.s
+}
 
 /**
  * Which file would this event play? `null` when the name is not a sample.
@@ -185,11 +207,15 @@ const liveDeps: SamplePeaksDeps = { getSound, getSampleInfo, getCachedBuffer }
  * samples, and that is not a failure.
  */
 export function resolveSampleUrl(ref: SampleRef, deps: SamplePeaksDeps = liveDeps): string | null {
-  const sound = deps.getSound(ref.s)
+  // The engine's order (#1767): alias the bare name, THEN add the bank —
+  // `s("kick").bank("RolandTR909")` plays `rolandtr909-bd`, observed.
+  const played = playedSoundName(ref.s, deps)
+  const name = ref.bank ? `${ref.bank}_${played}` : played
+  const sound = deps.getSound(name)
   const bank = (sound as { data?: { samples?: unknown } } | undefined)?.data?.samples
   if (bank == null || typeof bank !== 'object') return null
   try {
-    const hapValue: Record<string, unknown> = { s: ref.s }
+    const hapValue: Record<string, unknown> = { s: name }
     if (ref.note != null) hapValue.note = ref.note
     if (ref.freq != null) hapValue.freq = ref.freq
     if (ref.n != null) hapValue.n = ref.n

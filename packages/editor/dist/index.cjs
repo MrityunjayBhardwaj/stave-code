@@ -6353,11 +6353,11 @@ function resolveAlias(rawS) {
   return SOUND_ALIASES[rawS.toLowerCase()];
 }
 __name(resolveAlias, "resolveAlias");
-function aliasSoundValue(value, soundMap) {
+function aliasSoundValue(value, soundMap2) {
   if (value === null || typeof value !== "object") return { value };
   const rawS = value.s;
   if (typeof rawS !== "string") return { value };
-  if (soundMap && soundMap[rawS.toLowerCase()] !== void 0) return { value };
+  if (soundMap2 && soundMap2[rawS.toLowerCase()] !== void 0) return { value };
   const aliased = resolveAlias(rawS);
   if (!aliased || aliased === rawS) return { value };
   return { value: { ...value, s: aliased }, resolution: { from: rawS, to: aliased } };
@@ -45807,11 +45807,11 @@ __name(renameAssetRecord, "renameAssetRecord");
 // src/workspace/sampleRef.ts
 function sampleRefOf(ev) {
   if (ev.s == null || ev.s === "") return null;
-  const bank = ev.params?.bank;
-  const s = typeof bank === "string" && bank !== "" ? `${bank}_${ev.s}` : ev.s;
+  const b = ev.params?.bank;
+  const bank = typeof b === "string" && b !== "" ? b : null;
   const n = typeof ev.n === "number" && Number.isFinite(ev.n) ? ev.n : null;
   const note = ev.note != null && !(n != null && ev.note === n) ? ev.note : null;
-  return { s, n, note, freq: ev.freq ?? null };
+  return { s: ev.s, bank, n, note, freq: ev.freq ?? null };
 }
 __name(sampleRefOf, "sampleRefOf");
 
@@ -45863,13 +45863,24 @@ function channelsOf(buffer) {
 }
 __name(channelsOf, "channelsOf");
 var peakCache = /* @__PURE__ */ new Map();
-var liveDeps = { getSound: webaudio.getSound, getSampleInfo: webaudio.getSampleInfo, getCachedBuffer: webaudio.getCachedBuffer };
+var liveDeps = {
+  getSound: webaudio.getSound,
+  getSampleInfo: webaudio.getSampleInfo,
+  getCachedBuffer: webaudio.getCachedBuffer,
+  soundMap: /* @__PURE__ */ __name(() => webaudio.soundMap.get(), "soundMap")
+};
+function playedSoundName(s, deps = liveDeps) {
+  return aliasSoundValue({ s }, deps.soundMap?.()).value.s;
+}
+__name(playedSoundName, "playedSoundName");
 function resolveSampleUrl(ref, deps = liveDeps) {
-  const sound = deps.getSound(ref.s);
+  const played = playedSoundName(ref.s, deps);
+  const name = ref.bank ? `${ref.bank}_${played}` : played;
+  const sound = deps.getSound(name);
   const bank = sound?.data?.samples;
   if (bank == null || typeof bank !== "object") return null;
   try {
-    const hapValue = { s: ref.s };
+    const hapValue = { s: name };
     if (ref.note != null) hapValue.note = ref.note;
     if (ref.freq != null) hapValue.freq = ref.freq;
     if (ref.n != null) hapValue.n = ref.n;
@@ -49393,6 +49404,7 @@ exports.pickSplitArm = splitArm2;
 exports.pitchToMidi = pitchToMidi;
 exports.placeNote = placeNote;
 exports.planAssetImport = planAssetImport;
+exports.playedSoundName = playedSoundName;
 exports.previewProviderRegistry = previewProviderRegistry;
 exports.previewRepeat = previewRepeat;
 exports.previewShapeSwap = previewShapeSwap;

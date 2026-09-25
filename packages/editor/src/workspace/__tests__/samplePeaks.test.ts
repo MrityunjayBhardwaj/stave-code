@@ -7,6 +7,7 @@ import {
   clearSamplePeaksCache,
   computePeaks,
   peaksForSample,
+  playedSoundName,
   resolveSampleUrl,
   sampleRefOf,
   warmSamplePeaks,
@@ -176,24 +177,25 @@ describe('resolveSampleUrl', () => {
 describe('sampleRefOf (#1764)', () => {
   const ev = (over: Partial<Parameters<typeof sampleRefOf>[0]> = {}) => sampleRefOf({ s: 'bd', note: null, freq: null, ...over })
 
-  it('names the banked sound the way superdough plays it', () => {
-    // superdough.mjs:538-539 — `s = \`${bank}_${s}\``.
-    expect(ev({ params: { bank: 'RolandTR909' } })).toEqual({ s: 'RolandTR909_bd', n: null, note: null, freq: null })
+  it('keeps the bank apart from the written name, for the resolver to join after the alias step (#1767)', () => {
+    // superdough.mjs:538-539 — `s = \`${bank}_${s}\`` — but only once the engine
+    // has aliased the bare name, so the ref carries both halves.
+    expect(ev({ params: { bank: 'RolandTR909' } })).toEqual({ s: 'bd', bank: 'RolandTR909', n: null, note: null, freq: null })
   })
 
   it('keeps n as the sample number, not as a note', () => {
     // `s("bd:3")` normalises to note 3 AND n 3: the note is only the fold.
-    expect(ev({ n: 3, note: 3 })).toEqual({ s: 'bd', n: 3, note: null, freq: null })
+    expect(ev({ n: 3, note: 3 })).toEqual({ s: 'bd', bank: null, n: 3, note: null, freq: null })
   })
 
   it('keeps a note and an n that differ — a pitched bank reads both', () => {
-    expect(ev({ s: 'piano', note: 'c4', n: 2 })).toEqual({ s: 'piano', n: 2, note: 'c4', freq: null })
-    expect(ev({ s: 'piano', note: 72, freq: 523.25 })).toEqual({ s: 'piano', n: null, note: 72, freq: 523.25 })
+    expect(ev({ s: 'piano', note: 'c4', n: 2 })).toEqual({ s: 'piano', bank: null, n: 2, note: 'c4', freq: null })
+    expect(ev({ s: 'piano', note: 72, freq: 523.25 })).toEqual({ s: 'piano', bank: null, n: null, note: 72, freq: 523.25 })
   })
 
   it('is null for an event with no sound name, and ignores an empty bank', () => {
     expect(ev({ s: null })).toBeNull()
-    expect(ev({ params: { bank: '' } })?.s).toBe('bd')
+    expect(ev({ params: { bank: '' } })?.bank).toBeNull()
   })
 
   it('hands resolveSampleUrl the fields getSampleInfo reads', () => {
@@ -207,6 +209,49 @@ describe('sampleRefOf (#1764)', () => {
     resolveSampleUrl(ev({ params: { bank: 'RolandTR909' }, n: 3, note: 3 })!, spying)
     resolveSampleUrl(ev({ s: 'piano', freq: 440 })!, spying)
     expect(seen).toEqual([{ s: 'RolandTR909_bd', n: 3 }, { s: 'piano', freq: 440 }])
+  })
+})
+
+describe('the played name (#1767)', () => {
+  beforeEach(clearSamplePeaksCache)
+
+  /** Records which registry names the resolver asks for; `kick` is registered only when `registered`. */
+  function asking(registered: Record<string, unknown> = {}) {
+    const asked: string[] = []
+    const d = deps({
+      getSound: (name: string) => {
+        asked.push(name)
+        return sampleSound(['x.wav'])
+      },
+      soundMap: () => registered,
+    })
+    return { asked, d }
+  }
+
+  it('asks the registry for the aliased name — kick plays as bd', () => {
+    const { asked, d } = asking({ bd: {} })
+    expect(playedSoundName('kick', d)).toBe('bd')
+    resolveSampleUrl({ s: 'kick' }, d)
+    expect(asked).toEqual(['bd'])
+  })
+
+  it('aliases the bare name BEFORE adding the bank, the engine\'s order', () => {
+    // Observed: s("kick").bank("RolandTR909") fetches rolandtr909-bd/…
+    const { asked, d } = asking()
+    resolveSampleUrl({ s: 'kick', bank: 'RolandTR909' }, d)
+    expect(asked).toEqual(['RolandTR909_bd'])
+  })
+
+  it('lets a sound the user registered under the alias name win, looked up lowercased', () => {
+    const { asked, d } = asking({ kick: {} })
+    expect(playedSoundName('Kick', d)).toBe('Kick')
+    resolveSampleUrl({ s: 'kick' }, d)
+    expect(asked).toEqual(['kick'])
+  })
+
+  it('leaves a name with no alias as written', () => {
+    expect(playedSoundName('bd', asking().d)).toBe('bd')
+    expect(playedSoundName('sawtooth', asking().d)).toBe('sawtooth')
   })
 })
 

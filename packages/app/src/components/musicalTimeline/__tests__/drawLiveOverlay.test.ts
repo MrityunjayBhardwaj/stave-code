@@ -167,6 +167,17 @@ describe('pickLitNotes (#507 nearest-occurrence)', () => {
   it('a non-finite playhead lights nothing', () => {
     expect(pickLitNotes([note], Number.NaN, active).size).toBe(0)
   })
+  it('matches a mark by the name the engine PLAYS — a `bd` hit lights a `kick` mark (#1767)', () => {
+    const kick: SceneNote = { cycle: 2, end: 2, pitch: null, gain: 1, voice: 'kick' }
+    const played = (v: string) => (v === 'kick' ? 'bd' : v)
+    const hits = new Set(['bd|'])
+    expect(pickLitNotes([kick], 2, hits, played).has(kick)).toBe(true)
+    // CONTROL — without the played name the written one is used, and misses.
+    expect(pickLitNotes([kick], 2, hits).size).toBe(0)
+    // A name the played-name function leaves alone still matches by itself.
+    const bd: SceneNote = { ...kick, voice: 'bd' }
+    expect(pickLitNotes([bd], 2, hits, played).has(bd)).toBe(true)
+  })
 })
 
 describe('drawLiveOverlay', () => {
