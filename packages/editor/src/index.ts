@@ -420,6 +420,7 @@ export type {
   AssetImportPlan,
   AssetImportInput,
 } from './workspace/assetNaming'
+export { StorageFullError, isQuotaError } from './idb'
 export {
   ASSET_DB_NAME,
   sha256Hex,

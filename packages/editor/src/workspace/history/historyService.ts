@@ -33,6 +33,7 @@ import {
   applySnapshot,
 } from './historyWorkspace'
 import { loadHistory, saveHistory } from './historyStore'
+import { isQuotaError } from '../../idb'
 
 let current: ProjectHistory | null = null
 
@@ -138,7 +139,15 @@ export function initHistory(projectId: string): Promise<ProjectHistory> {
         now(),
         readWorkspaceFileMeta(),
       )
-      await saveHistory(h)
+      // A seed the disk has no room for still becomes the session's history:
+      // the next commit writes the whole row again, so nothing is lost by
+      // holding it in memory — whereas rejecting here left history absent
+      // for the whole session (#1777).
+      try {
+        await saveHistory(h)
+      } catch (err) {
+        if (!isQuotaError(err)) throw err
+      }
     }
     current = h
     return h

@@ -11,7 +11,12 @@
  */
 
 import * as Y from 'yjs'
-import { openIdbWithTimeout } from '../idb'
+import {
+  committed,
+  openIdbWithTimeout,
+  requestResult as wrap,
+  transactionDone,
+} from '../idb'
 import { getActiveDoc } from './projectDoc'
 import { EPHEMERAL_ID_PREFIX } from './projectRegistry'
 import { DB_VERSION, upgradeHistoryDb } from './history/historyStore'
@@ -44,12 +49,6 @@ function openDb(): Promise<IDBDatabase> {
   return openIdbWithTimeout(DB_NAME, DB_VERSION, (db) => upgradeHistoryDb(db))
 }
 
-function wrap<T>(req: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
 
 /**
  * Capture the active Y.Doc as a snapshot tied to the given project.
@@ -74,7 +73,7 @@ export async function saveSnapshot(
   }
   const record: StoredSnapshot = { ...meta, bytes }
   const db = await openDb()
-  await wrap(
+  await committed(
     db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put(record),
   )
   if (kind === 'auto') {
@@ -94,7 +93,13 @@ export async function saveSnapshot(
       const wstore = db
         .transaction(STORE_NAME, 'readwrite')
         .objectStore(STORE_NAME)
+      // Awaited after the loop, but created first so its listeners exist
+      // before the transaction can finish; the catch only keeps a rejection
+      // from going unhandled when a delete throws out of the loop first.
+      const done = transactionDone(wstore.transaction)
+      done.catch(() => {})
       for (const r of toDelete) await wrap(wstore.delete(r.id))
+      await done
     }
   }
   db.close()
@@ -123,7 +128,7 @@ export async function listSnapshots(projectId: string): Promise<SnapshotMeta[]> 
  */
 export async function deleteSnapshot(id: string): Promise<void> {
   const db = await openDb()
-  await wrap(
+  await committed(
     db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).delete(id),
   )
   db.close()
@@ -154,7 +159,10 @@ export async function pruneEphemeralSnapshots(): Promise<void> {
       const store = db
         .transaction(STORE_NAME, 'readwrite')
         .objectStore(STORE_NAME)
-      await Promise.all(ids.map((id) => wrap(store.delete(id))))
+      await Promise.all([
+        ...ids.map((id) => wrap(store.delete(id))),
+        transactionDone(store.transaction),
+      ])
     }
   } finally {
     db.close()

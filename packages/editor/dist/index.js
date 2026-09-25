@@ -2052,8 +2052,8 @@ __name(signalDimensionsOf, "signalDimensionsOf");
 function arrangedRepeatCycles(ir, arrangedCycles, cap = DEFAULT_CAP, signalPeriods = signalDimensionsOf(ir).periods) {
   if (!(arrangedCycles > 0) || !Number.isFinite(arrangedCycles)) return arrangedCycles;
   const tracks = audibleTracks(ir);
-  const named = tracks.filter((t) => t.tag === "Track" && typeof t.trackId === "string");
-  const audible = named.length > 0 ? new Set(named.map((t) => t.trackId)) : null;
+  const named2 = tracks.filter((t) => t.tag === "Track" && typeof t.trackId === "string");
+  const audible = named2.length > 0 ? new Set(named2.map((t) => t.trackId)) : null;
   const periods = [arrangedCycles];
   for (const a of steppedAutomations(ir)) {
     if (audible !== null && !audible.has(a.trackId)) continue;
@@ -2823,13 +2823,13 @@ function trackIdsFromLabels(labels, commented = []) {
     const id = claimed[i];
     if (id !== null && !commented[i]) taken.add(id);
   }
-  const named = claimed.map((id, i) => {
+  const named2 = claimed.map((id, i) => {
     if (id === null || !commented[i]) return id;
     if (taken.has(id)) return null;
     taken.add(id);
     return id;
   });
-  return named.map((id, index) => {
+  return named2.map((id, index) => {
     if (id !== null) return id;
     let n = index + 1;
     while (taken.has(`d${n}`)) n++;
@@ -16856,7 +16856,7 @@ function installLifecycle(p, lifecycle, source, lineOffset, staveUniforms) {
       column: loc?.column
     });
   }, "reportLifecycleError");
-  const wrap6 = /* @__PURE__ */ __name((hook, fn) => {
+  const wrap = /* @__PURE__ */ __name((hook, fn) => {
     if (!fn) return void 0;
     return function(...args) {
       try {
@@ -16866,12 +16866,12 @@ function installLifecycle(p, lifecycle, source, lineOffset, staveUniforms) {
       }
     };
   }, "wrap");
-  if (lifecycle.preload) pi.preload = wrap6("preload", lifecycle.preload);
-  pi.setup = wrap6("setup", lifecycle.setup) ?? function() {
+  if (lifecycle.preload) pi.preload = wrap("preload", lifecycle.preload);
+  pi.setup = wrap("setup", lifecycle.setup) ?? function() {
     pi.createCanvas(pi.windowWidth, pi.windowHeight);
   };
   if (lifecycle.draw) {
-    const wrappedDraw = wrap6("draw", lifecycle.draw);
+    const wrappedDraw = wrap("draw", lifecycle.draw);
     pi.draw = function() {
       staveUniforms?.__tick?.();
       return wrappedDraw?.call(this);
@@ -25677,8 +25677,8 @@ __name(notifyListeners, "notifyListeners");
 
 // src/visualizers/resolveDescriptor.ts
 function resolveDescriptor(vizId, descriptors) {
-  const named = getNamedViz(vizId) ?? getNamedVizByNormalized(vizId);
-  if (named) return named;
+  const named2 = getNamedViz(vizId) ?? getNamedVizByNormalized(vizId);
+  if (named2) return named2;
   const exact = descriptors.find((d) => d.id === vizId);
   if (exact) return exact;
   const { defaultRenderer } = getVizConfig();
@@ -25906,6 +25906,46 @@ function openIdbWithTimeout(name, version, upgrade, opts = {}) {
   });
 }
 __name(openIdbWithTimeout, "openIdbWithTimeout");
+var _StorageFullError = class _StorageFullError extends Error {
+  constructor(cause) {
+    super("storage is full");
+    this.cause = cause;
+    this.name = "StorageFullError";
+  }
+};
+__name(_StorageFullError, "StorageFullError");
+var StorageFullError = _StorageFullError;
+function isQuotaError(err) {
+  return err instanceof StorageFullError || typeof err === "object" && err !== null && err.name === "QuotaExceededError";
+}
+__name(isQuotaError, "isQuotaError");
+function named(err, fallback) {
+  if (err instanceof StorageFullError) return err;
+  if (isQuotaError(err)) return new StorageFullError(err);
+  return err ?? new Error(fallback);
+}
+__name(named, "named");
+function requestResult(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(named(req.error, "idb-request-error"));
+  });
+}
+__name(requestResult, "requestResult");
+function transactionDone(tx3) {
+  return new Promise((resolve, reject) => {
+    tx3.addEventListener("complete", () => resolve());
+    tx3.addEventListener("abort", () => reject(named(tx3.error, "idb-transaction-aborted")));
+  });
+}
+__name(transactionDone, "transactionDone");
+async function committed(req) {
+  const tx3 = req.transaction;
+  if (!tx3) return requestResult(req);
+  const [result] = await Promise.all([requestResult(req), transactionDone(tx3)]);
+  return result;
+}
+__name(committed, "committed");
 
 // src/visualizers/vizPreset.ts
 var DB_NAME = "stave-viz-presets";
@@ -25923,13 +25963,6 @@ function tx(db, mode) {
   return db.transaction(STORE_NAME, mode).objectStore(STORE_NAME);
 }
 __name(tx, "tx");
-function wrap(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-__name(wrap, "wrap");
 var BUNDLED_PREFIX = "__bundled_";
 function sanitizePresetName(name) {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
@@ -25959,19 +25992,19 @@ __name(generateUniquePresetId, "generateUniquePresetId");
 var VizPresetStore = {
   async getAll() {
     const db = await openDb();
-    return wrap(tx(db, "readonly").getAll());
+    return requestResult(tx(db, "readonly").getAll());
   },
   async get(id) {
     const db = await openDb();
-    return wrap(tx(db, "readonly").get(id));
+    return requestResult(tx(db, "readonly").get(id));
   },
   async put(preset) {
     const db = await openDb();
-    await wrap(tx(db, "readwrite").put(preset));
+    await committed(tx(db, "readwrite").put(preset));
   },
   async delete(id) {
     const db = await openDb();
-    await wrap(tx(db, "readwrite").delete(id));
+    await committed(tx(db, "readwrite").delete(id));
   }
 };
 
@@ -26350,9 +26383,9 @@ function addInlineViewZones(editor, components, vizDescriptors, actions, fileId)
           }
         }
         if (!orphan) return;
-        const wrap6 = container.querySelector("[data-viz-canvas-wrap]");
-        if (wrap6?.querySelector("canvas")) return;
-        wrap6?.remove();
+        const wrap = container.querySelector("[data-viz-canvas-wrap]");
+        if (wrap?.querySelector("canvas")) return;
+        wrap?.remove();
         relayout();
       });
       canvasWatcher.observe(container, { childList: true });
@@ -27080,23 +27113,16 @@ function tx2(db, mode) {
   return db.transaction(STORE_NAME2, mode).objectStore(STORE_NAME2);
 }
 __name(tx2, "tx");
-function wrap2(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-__name(wrap2, "wrap");
 async function listProjects() {
   const db = await openDb2();
-  const all = await wrap2(tx2(db, "readonly").getAll());
+  const all = await requestResult(tx2(db, "readonly").getAll());
   db.close();
   return all.sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
 }
 __name(listProjects, "listProjects");
 async function getProject(id) {
   const db = await openDb2();
-  const result = await wrap2(tx2(db, "readonly").get(id));
+  const result = await requestResult(tx2(db, "readonly").get(id));
   db.close();
   return result;
 }
@@ -27114,28 +27140,33 @@ async function createProject(name) {
     lastOpenedAt: Date.now()
   };
   const db = await openDb2();
-  await wrap2(tx2(db, "readwrite").put(meta));
+  await committed(tx2(db, "readwrite").put(meta));
   db.close();
   return meta;
 }
 __name(createProject, "createProject");
 async function touchProject(id) {
   const db = await openDb2();
-  const store = tx2(db, "readwrite");
-  const existing = await wrap2(store.get(id));
-  if (existing) {
-    await wrap2(store.put({ ...existing, lastOpenedAt: Date.now() }));
+  try {
+    const store = tx2(db, "readwrite");
+    const existing = await requestResult(store.get(id));
+    if (existing) {
+      await committed(store.put({ ...existing, lastOpenedAt: Date.now() }));
+    }
+  } catch (err) {
+    if (!isQuotaError(err)) throw err;
+  } finally {
+    db.close();
   }
-  db.close();
 }
 __name(touchProject, "touchProject");
 async function dropLegacyBackgroundCrop(id) {
   const db = await openDb2();
   const store = tx2(db, "readwrite");
-  const existing = await wrap2(store.get(id));
+  const existing = await requestResult(store.get(id));
   if (existing && existing.backgroundCrop !== void 0) {
     const { backgroundCrop: _drained, ...rest } = existing;
-    await wrap2(store.put(rest));
+    await committed(store.put(rest));
   }
   db.close();
 }
@@ -27143,16 +27174,16 @@ __name(dropLegacyBackgroundCrop, "dropLegacyBackgroundCrop");
 async function renameProject(id, name) {
   const db = await openDb2();
   const store = tx2(db, "readwrite");
-  const existing = await wrap2(store.get(id));
+  const existing = await requestResult(store.get(id));
   if (existing) {
-    await wrap2(store.put({ ...existing, name }));
+    await committed(store.put({ ...existing, name }));
   }
   db.close();
 }
 __name(renameProject, "renameProject");
 async function deleteProject(id) {
   const db = await openDb2();
-  await wrap2(tx2(db, "readwrite").delete(id));
+  await committed(tx2(db, "readwrite").delete(id));
   db.close();
   return new Promise((resolve, reject) => {
     const req = indexedDB.deleteDatabase(`stave-${id}`);
@@ -27176,13 +27207,16 @@ __name(isEphemeralProjectId, "isEphemeralProjectId");
 async function pruneEphemeralProjects() {
   const db = await openDb2();
   try {
-    const keys = await wrap2(tx2(db, "readonly").getAllKeys());
+    const keys = await requestResult(tx2(db, "readonly").getAllKeys());
     const ephemeral = keys.filter(
       (k) => typeof k === "string" && isEphemeralProjectId(k)
     );
     if (ephemeral.length) {
       const store = tx2(db, "readwrite");
-      await Promise.all(ephemeral.map((k) => wrap2(store.delete(k))));
+      await Promise.all([
+        ...ephemeral.map((k) => requestResult(store.delete(k))),
+        transactionDone(store.transaction)
+      ]);
     }
   } finally {
     db.close();
@@ -27209,16 +27243,9 @@ function openDb3() {
   return openIdbWithTimeout(DB_NAME3, DB_VERSION3, (db) => upgradeHistoryDb(db));
 }
 __name(openDb3, "openDb");
-function wrap3(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-__name(wrap3, "wrap");
 async function loadHistory(projectId) {
   const db = await openDb3();
-  const row = await wrap3(
+  const row = await requestResult(
     db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).get(projectId)
   );
   db.close();
@@ -27227,7 +27254,7 @@ async function loadHistory(projectId) {
 __name(loadHistory, "loadHistory");
 async function saveHistory(h) {
   const db = await openDb3();
-  await wrap3(
+  await committed(
     db.transaction(HISTORY_STORE, "readwrite").objectStore(HISTORY_STORE).put(h)
   );
   db.close();
@@ -27236,7 +27263,7 @@ __name(saveHistory, "saveHistory");
 async function pruneEphemeralHistory() {
   const db = await openDb3();
   try {
-    const keys = await wrap3(
+    const keys = await requestResult(
       db.transaction(HISTORY_STORE, "readonly").objectStore(HISTORY_STORE).getAllKeys()
     );
     const ephemeral = keys.filter(
@@ -27244,7 +27271,10 @@ async function pruneEphemeralHistory() {
     );
     if (ephemeral.length) {
       const store = db.transaction(HISTORY_STORE, "readwrite").objectStore(HISTORY_STORE);
-      await Promise.all(ephemeral.map((k) => wrap3(store.delete(k))));
+      await Promise.all([
+        ...ephemeral.map((k) => requestResult(store.delete(k))),
+        transactionDone(store.transaction)
+      ]);
     }
   } finally {
     db.close();
@@ -27328,7 +27358,11 @@ function initHistory(projectId) {
         now(),
         readWorkspaceFileMeta()
       );
-      await saveHistory(h);
+      try {
+        await saveHistory(h);
+      } catch (err) {
+        if (!isQuotaError(err)) throw err;
+      }
     }
     current2 = h;
     return h;
@@ -28369,7 +28403,7 @@ function HistoryDiffOverlay({
       }
     };
   }, []);
-  const wrap6 = {
+  const wrap = {
     position: "absolute",
     inset: 0,
     display: "flex",
@@ -28399,7 +28433,7 @@ function HistoryDiffOverlay({
     cursor: "pointer"
   };
   if (changedIds.length === 0) {
-    return /* @__PURE__ */ jsxs("div", { style: wrap6, "data-history-diff-overlay": true, children: [
+    return /* @__PURE__ */ jsxs("div", { style: wrap, "data-history-diff-overlay": true, children: [
       /* @__PURE__ */ jsxs("div", { style: headerRow, children: [
         /* @__PURE__ */ jsxs("span", { style: { flex: 1 }, children: [
           "Diff \xB7 ",
@@ -28414,7 +28448,7 @@ function HistoryDiffOverlay({
   const parent = commit.parent;
   const original = mode === "previous" ? parent ? getFileContentAt(history2, fileId, parent) : null : getFileContentAt(history2, fileId, commit.id);
   const modified = mode === "current" ? getLiveFileContent(fileId) : getFileContentAt(history2, fileId, commit.id);
-  return /* @__PURE__ */ jsxs("div", { style: wrap6, "data-history-diff-overlay": true, children: [
+  return /* @__PURE__ */ jsxs("div", { style: wrap, "data-history-diff-overlay": true, children: [
     /* @__PURE__ */ jsxs("div", { style: headerRow, children: [
       /* @__PURE__ */ jsx(
         "select",
@@ -28506,7 +28540,7 @@ function HistoryViewOverlay({
     },
     []
   );
-  const wrap6 = {
+  const wrap = {
     position: "absolute",
     inset: 0,
     display: "flex",
@@ -28533,7 +28567,7 @@ function HistoryViewOverlay({
     fontSize: 11,
     cursor: "pointer"
   };
-  return /* @__PURE__ */ jsxs("div", { style: wrap6, "data-history-view-overlay": commit.id, children: [
+  return /* @__PURE__ */ jsxs("div", { style: wrap, "data-history-view-overlay": commit.id, children: [
     /* @__PURE__ */ jsxs("div", { style: headerRow, children: [
       /* @__PURE__ */ jsxs(
         "span",
@@ -31418,9 +31452,9 @@ function projectionEditSafe(model, perBar2, bars, base, probeCols) {
       if (got === null) return false;
       if (onsetKey(got) !== onsetKey(expectedFor(bb))) return false;
     }
-    const wrap6 = gridOnsets(edited, bars);
-    if (wrap6 === null) return false;
-    if (onsetKey(wrap6) !== onsetKey(expectedFor(0))) return false;
+    const wrap = gridOnsets(edited, bars);
+    if (wrap === null) return false;
+    if (onsetKey(wrap) !== onsetKey(expectedFor(0))) return false;
   }
   return true;
 }
@@ -31607,8 +31641,8 @@ function leafEditSafe(model, perBar2, bars) {
         const got = gridOnsets(edited, b);
         if (got === null || onsetKey(got) !== onsetKey(want[b])) return false;
       }
-      const wrap6 = gridOnsets(edited, bars);
-      if (wrap6 === null || onsetKey(wrap6) !== onsetKey(want[0])) return false;
+      const wrap = gridOnsets(edited, bars);
+      if (wrap === null || onsetKey(wrap) !== onsetKey(want[0])) return false;
     }
   }
   return true;
@@ -32041,10 +32075,10 @@ function projectionRollEditSafe(model, perBar2, bars, numeric, probes) {
       }));
       if (rollKey(got) !== rollKey(expected)) return false;
     }
-    const wrap6 = rollOnsets(pat, bars);
-    if (wrap6 === null) return false;
+    const wrap = rollOnsets(pat, bars);
+    if (wrap === null) return false;
     const wrap0 = edited.notes.filter((n) => n.start < perBar2).map((n) => ({ pos: n.start / perBar2, dur: n.duration / perBar2, pitch: n.pitch }));
-    if (rollKey(wrap6) !== rollKey(wrap0)) return false;
+    if (rollKey(wrap) !== rollKey(wrap0)) return false;
   }
   return true;
 }
@@ -32282,8 +32316,8 @@ function leafRollEditSafe(model, perBar2, bars, numeric) {
         const got = rollOnsets(edited, b);
         if (got === null || rollKey(got) !== rollKey(want[b])) return false;
       }
-      const wrap6 = rollOnsets(edited, bars);
-      if (wrap6 === null || rollKey(wrap6) !== rollKey(want[0])) return false;
+      const wrap = rollOnsets(edited, bars);
+      if (wrap === null || rollKey(wrap) !== rollKey(want[0])) return false;
     }
   }
   return true;
@@ -45594,13 +45628,6 @@ function openDb4() {
   return openIdbWithTimeout(DB_NAME4, DB_VERSION3, (db) => upgradeHistoryDb(db));
 }
 __name(openDb4, "openDb");
-function wrap4(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-__name(wrap4, "wrap");
 var MAX_AUTO_SNAPSHOTS = 10;
 async function saveSnapshot(projectId, label, kind = "manual") {
   const doc = getActiveDoc();
@@ -45614,19 +45641,23 @@ async function saveSnapshot(projectId, label, kind = "manual") {
   };
   const record = { ...meta, bytes };
   const db = await openDb4();
-  await wrap4(
+  await committed(
     db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).put(record)
   );
   if (kind === "auto") {
     const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
-    const all = await wrap4(index.getAll(projectId));
+    const all = await requestResult(index.getAll(projectId));
     const autos = all.filter(
       (r) => r.kind === "auto" || r.label.startsWith(AUTO_SNAPSHOT_PREFIX)
     ).sort((a, b) => b.createdAt - a.createdAt);
     const toDelete = autos.slice(MAX_AUTO_SNAPSHOTS);
     if (toDelete.length > 0) {
       const wstore = db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3);
-      for (const r of toDelete) await wrap4(wstore.delete(r.id));
+      const done = transactionDone(wstore.transaction);
+      done.catch(() => {
+      });
+      for (const r of toDelete) await requestResult(wstore.delete(r.id));
+      await done;
     }
   }
   db.close();
@@ -45636,14 +45667,14 @@ __name(saveSnapshot, "saveSnapshot");
 async function listSnapshots(projectId) {
   const db = await openDb4();
   const index = db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject");
-  const all = await wrap4(index.getAll(projectId));
+  const all = await requestResult(index.getAll(projectId));
   db.close();
   return all.map(({ bytes: _bytes, ...meta }) => meta).sort((a, b) => b.createdAt - a.createdAt);
 }
 __name(listSnapshots, "listSnapshots");
 async function deleteSnapshot(id) {
   const db = await openDb4();
-  await wrap4(
+  await committed(
     db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3).delete(id)
   );
   db.close();
@@ -45656,12 +45687,15 @@ async function pruneEphemeralSnapshots() {
       EPHEMERAL_ID_PREFIX,
       EPHEMERAL_ID_PREFIX + String.fromCharCode(65535)
     );
-    const ids = await wrap4(
+    const ids = await requestResult(
       db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).index("byProject").getAllKeys(range2)
     );
     if (ids.length) {
       const store = db.transaction(STORE_NAME3, "readwrite").objectStore(STORE_NAME3);
-      await Promise.all(ids.map((id) => wrap4(store.delete(id))));
+      await Promise.all([
+        ...ids.map((id) => requestResult(store.delete(id))),
+        transactionDone(store.transaction)
+      ]);
     }
   } finally {
     db.close();
@@ -45670,7 +45704,7 @@ async function pruneEphemeralSnapshots() {
 __name(pruneEphemeralSnapshots, "pruneEphemeralSnapshots");
 async function restoreSnapshot(id) {
   const db = await openDb4();
-  const stored = await wrap4(
+  const stored = await requestResult(
     db.transaction(STORE_NAME3, "readonly").objectStore(STORE_NAME3).get(id)
   );
   db.close();
@@ -45776,13 +45810,6 @@ function openDb5() {
   });
 }
 __name(openDb5, "openDb");
-function wrap5(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-__name(wrap5, "wrap");
 var sha256Hex = /* @__PURE__ */ __name(async (bytes) => {
   const digest2 = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest2)).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -45791,7 +45818,7 @@ async function putAsset(blob, digest2 = sha256Hex) {
   const hash = await digest2(await blob.arrayBuffer());
   const db = await openDb5();
   try {
-    const existing = await wrap5(
+    const existing = await requestResult(
       db.transaction(STORE_NAME4, "readonly").objectStore(STORE_NAME4).count(hash)
     );
     if (existing > 0) return { hash, written: false };
@@ -45802,7 +45829,7 @@ async function putAsset(blob, digest2 = sha256Hex) {
       size: blob.size,
       storedAt: Date.now()
     };
-    await wrap5(
+    await committed(
       db.transaction(STORE_NAME4, "readwrite").objectStore(STORE_NAME4).put(record)
     );
     return { hash, written: true };
@@ -45814,7 +45841,7 @@ __name(putAsset, "putAsset");
 async function getAsset(hash) {
   const db = await openDb5();
   try {
-    const row = await wrap5(
+    const row = await requestResult(
       db.transaction(STORE_NAME4, "readonly").objectStore(STORE_NAME4).get(hash)
     );
     return row?.blob ?? null;
@@ -45827,7 +45854,7 @@ async function deleteAsset(hash) {
   releaseAsset(hash);
   const db = await openDb5();
   try {
-    await wrap5(
+    await committed(
       db.transaction(STORE_NAME4, "readwrite").objectStore(STORE_NAME4).delete(hash)
     );
   } finally {
@@ -45838,7 +45865,7 @@ __name(deleteAsset, "deleteAsset");
 async function listAssets() {
   const db = await openDb5();
   try {
-    const rows = await wrap5(
+    const rows = await requestResult(
       db.transaction(STORE_NAME4, "readonly").objectStore(STORE_NAME4).getAll()
     );
     return rows.map(({ hash, mime, size, storedAt }) => ({ hash, mime, size, storedAt })).sort((a, b) => a.storedAt - b.storedAt);
@@ -46348,7 +46375,7 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   }, [dirtyPruneKey]);
   const h = getCurrentHistory();
   const now2 = Date.now();
-  const wrap6 = {
+  const wrap = {
     padding: 12,
     fontSize: 12,
     fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
@@ -46358,7 +46385,7 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
     position: "relative"
   };
   if (!h) {
-    return /* @__PURE__ */ jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap6, color: muted2 }, children: "No history yet \u2014 start editing and commits will appear here." });
+    return /* @__PURE__ */ jsx("div", { "data-bottom-panel-tab": "history", style: { ...wrap, color: muted2 }, children: "No history yet \u2014 start editing and commits will appear here." });
   }
   const branches = listBranches(h);
   const fileTarget = getFileHistoryTarget();
@@ -46385,7 +46412,9 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
     const label = commitLabel.trim();
     if (!label) return;
     const only = dirtyIds.length > 0 ? new Set(checkedDirty) : void 0;
-    void commitWorkspace("manual", { label, allowEmpty: true, ...only ? { only } : {} });
+    void commitWorkspace("manual", { label, allowEmpty: true, ...only ? { only } : {} }).catch(
+      (err) => console.warn("[stave] commit failed:", err)
+    );
     setCommitting(false);
     setCommitLabel("");
   }, "confirmCommit");
@@ -46414,7 +46443,7 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const doCheckout = /* @__PURE__ */ __name((c) => {
     enterRuntimeView(c.id, snapshotAt(h, c.id).files);
   }, "doCheckout");
-  return /* @__PURE__ */ jsxs("div", { "data-bottom-panel-tab": "history", style: wrap6, children: [
+  return /* @__PURE__ */ jsxs("div", { "data-bottom-panel-tab": "history", style: wrap, children: [
     fileTarget ? /* @__PURE__ */ jsxs("div", { "data-history-file-mode": true, style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }, children: [
       /* @__PURE__ */ jsx(
         "button",
@@ -49190,6 +49219,6 @@ function isPersistableTab(t) {
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionControlEdit, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionControlEdit, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

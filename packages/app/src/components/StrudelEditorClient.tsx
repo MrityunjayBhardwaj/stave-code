@@ -1008,7 +1008,10 @@ export default function StrudelEditorClient({
         });
       }
     }
-    seedPresets();
+    // Seeding is best-effort: a full disk (or a dead store) leaves the bundled
+    // presets unsaved, not the app broken — and an uncaught rejection here
+    // raised the dev overlay over a working editor (#1777).
+    seedPresets().catch((err) => console.warn("[stave] viz preset seed failed:", err));
   }, [seedState.p5PresetId, seedState.hydraPresetId]);
 
   // Project commit store (file-history Phase F, #196). Seeds commit c0 from
@@ -1024,7 +1027,7 @@ export default function StrudelEditorClient({
       await initHistory(projectId);
       if (cancelled) return;
       teardown = startHistoryDriver();
-    })();
+    })().catch((err) => console.warn("[stave] history init failed:", err));
     return () => {
       cancelled = true;
       teardown();

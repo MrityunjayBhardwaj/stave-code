@@ -370,7 +370,9 @@ export function HistoryPanel({ onOpenHistoryTab }: HistoryPanelProps = {}): Reac
     // checked subset (the rest stays dirty for a later commit). With no working
     // changes, keep the label-only anchor behaviour (allowEmpty).
     const only = dirtyIds.length > 0 ? new Set(checkedDirty) : undefined
-    void commitWorkspace('manual', { label, allowEmpty: true, ...(only ? { only } : {}) })
+    void commitWorkspace('manual', { label, allowEmpty: true, ...(only ? { only } : {}) }).catch(
+      (err) => console.warn('[stave] commit failed:', err),
+    )
     setCommitting(false)
     setCommitLabel('')
   }

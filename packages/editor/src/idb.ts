@@ -98,3 +98,86 @@ export function openIdbWithTimeout(
     }
   })
 }
+
+// ---------------------------------------------------------------------------
+// Writes that report saved only once they ARE saved (#1777)
+// ---------------------------------------------------------------------------
+
+/**
+ * The browser refused a write because the origin is out of room.
+ *
+ * One name for a refusal that arrives in two shapes (measured 2026-09-25 with a
+ * real quota, not a stub):
+ *
+ * - **Chromium 147** — the REQUEST succeeds, then the TRANSACTION aborts with
+ *   `QuotaExceededError`. Anything that resolves on `request.onsuccess` reports
+ *   the bytes saved when nothing was kept.
+ * - **Firefox 148** — the REQUEST itself fails with `QuotaExceededError`, and
+ *   the transaction aborts after it.
+ *
+ * Callers decide what to tell the user; they should never have to know which
+ * browser they are in to tell "full" apart from "broken".
+ */
+export class StorageFullError extends Error {
+  constructor(readonly cause: unknown) {
+    super('storage is full')
+    this.name = 'StorageFullError'
+  }
+}
+
+/** Whether an error is the browser saying it has no room. */
+export function isQuotaError(err: unknown): boolean {
+  return (
+    err instanceof StorageFullError ||
+    (typeof err === 'object' && err !== null &&
+      (err as { name?: unknown }).name === 'QuotaExceededError')
+  )
+}
+
+function named(err: unknown, fallback: string): unknown {
+  if (err instanceof StorageFullError) return err
+  if (isQuotaError(err)) return new StorageFullError(err)
+  return err ?? new Error(fallback)
+}
+
+/**
+ * A request's result, as soon as the request succeeds. For READS only.
+ *
+ * A write must not be awaited through this: in Chromium the request of a write
+ * the browser is about to refuse succeeds first. Use {@link committed}.
+ */
+export function requestResult<T>(req: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(named(req.error, 'idb-request-error'))
+  })
+}
+
+/**
+ * Settles when a transaction has COMMITTED — the only moment its writes are
+ * saved. Rejects on abort or error, with {@link StorageFullError} when the
+ * browser was out of room.
+ *
+ * Listeners are added, not assigned, so several requests of one transaction
+ * can each wait on it without replacing one another.
+ */
+export function transactionDone(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.addEventListener('complete', () => resolve())
+    tx.addEventListener('abort', () => reject(named(tx.error, 'idb-transaction-aborted')))
+  })
+}
+
+/**
+ * A write's result, once its transaction has committed.
+ *
+ * Both waits are attached synchronously, before anything is awaited — a
+ * transaction left without a pending request commits at the next turn, and a
+ * listener added after that would never fire.
+ */
+export async function committed<T>(req: IDBRequest<T>): Promise<T> {
+  const tx = req.transaction
+  if (!tx) return requestResult(req)
+  const [result] = await Promise.all([requestResult(req), transactionDone(tx)])
+  return result
+}
