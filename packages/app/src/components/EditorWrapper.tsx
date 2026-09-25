@@ -40,9 +40,16 @@ function setPreloaderStatus(text: string) {
 function IdbBlockedScreen({
   onRetry,
   onContinue,
+  storageFull,
 }: {
   onRetry: () => Promise<boolean>;
   onContinue: () => void;
+  /**
+   * #1779 — the boot failed because the disk refused a write (a first run
+   * creating its project on a full device). "Another tab… private mode" would
+   * send the user the wrong way, so the cause gets its own sentence.
+   */
+  storageFull: boolean;
 }) {
   const [retrying, setRetrying] = useState(false);
   const handleRetry = async () => {
@@ -106,10 +113,20 @@ function IdbBlockedScreen({
           lineHeight: 1.5,
         }}
       >
-        Local storage isn&apos;t responding. Another tab running Stave may be
-        holding it open, or your browser is in private mode. Close other Stave
-        tabs and retry, or continue in a temporary session (your edits
-        won&apos;t be saved).
+        {storageFull ? (
+          <span data-blocked-storage-full>
+            Your browser&apos;s storage for Stave is full, so a project
+            can&apos;t be saved. Free space in your browser and retry, or
+            continue in a temporary session (your edits won&apos;t be saved).
+          </span>
+        ) : (
+          <>
+            Local storage isn&apos;t responding. Another tab running Stave may be
+            holding it open, or your browser is in private mode. Close other Stave
+            tabs and retry, or continue in a temporary session (your edits
+            won&apos;t be saved).
+          </>
+        )}
       </p>
       <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
         <button
@@ -369,7 +386,11 @@ function makeBootstrapOrchestrator(
       return (
         <>
           <HidePreloader />
-          <IdbBlockedScreen onRetry={handleRetry} onContinue={startEphemeralSession} />
+          <IdbBlockedScreen
+            onRetry={handleRetry}
+            onContinue={startEphemeralSession}
+            storageFull={editor.getStorageStatus().fullSince !== null}
+          />
         </>
       );
     }

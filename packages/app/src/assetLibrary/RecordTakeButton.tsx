@@ -12,6 +12,7 @@ import {
 import { decodeDurationSeconds, saveTake } from "../audio/saveTake";
 import { warmWaveforms } from "../audio/waveformWarm";
 import { notifyAssetProvidersChanged } from "./registry";
+import { isQuotaError } from "@stave/editor";
 
 /**
  * The record control (#1504) — one button, in the library, beside the assets it
@@ -37,7 +38,26 @@ const MESSAGES: Record<RecordStartFailure, string> = {
   unsupported: "This browser cannot record audio.",
 };
 
+/**
+ * A take the disk had no room for (#1779).
+ *
+ * A performance exists nowhere else, so a take the store refused must not be
+ * dropped the way it used to be. It is held HERE, at module scope, rather than
+ * in component state: the library panel unmounts when it is closed, and state
+ * would take the only copy of the take with it. Replaced by the next refused
+ * take — the user has had the download link for this one since it failed.
+ */
+let keptTake: { url: string; filename: string } | null = null;
+
+function keepTake(blob: Blob): { url: string; filename: string } {
+  if (keptTake) URL.revokeObjectURL(keptTake.url);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  keptTake = { url: URL.createObjectURL(blob), filename: `stave-take-${stamp}.webm` };
+  return keptTake;
+}
+
 export function RecordTakeButton(): React.JSX.Element {
+  const [kept, setKept] = React.useState(keptTake);
   const [active, setActive] = React.useState<ActiveRecording | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
@@ -83,8 +103,9 @@ export function RecordTakeButton(): React.JSX.Element {
     const rec = activeRef.current;
     if (!rec) return;
     setBusy(true);
+    let blob: Blob | null = null;
     try {
-      const blob = await rec.stop();
+      blob = await rec.stop();
       activeRef.current = null;
       setActive(null);
       const { record, playable } = await saveTake(blob, {
@@ -102,8 +123,13 @@ export function RecordTakeButton(): React.JSX.Element {
           ? `Saved ${record.name}`
           : `Saved ${record.name}, but it could not be loaded for playback`,
       );
-    } catch {
-      setMessage("The recording could not be saved.");
+    } catch (err) {
+      if (blob && isQuotaError(err)) {
+        setKept(keepTake(blob));
+        setMessage("Storage is full — this take was not saved. Download it to keep it.");
+      } else {
+        setMessage("The recording could not be saved.");
+      }
     } finally {
       setBusy(false);
     }
@@ -130,6 +156,16 @@ export function RecordTakeButton(): React.JSX.Element {
         <div style={styles.message} role="status" data-record-message>
           {message}
         </div>
+      )}
+      {kept && (
+        <a
+          href={kept.url}
+          download={kept.filename}
+          style={{ ...styles.message, display: "block", color: "var(--accent-strong, #6ab)" }}
+          data-record-kept-download
+        >
+          Download take ({kept.filename})
+        </a>
       )}
     </>
   );

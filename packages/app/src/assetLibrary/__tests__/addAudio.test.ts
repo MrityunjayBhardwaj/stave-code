@@ -18,7 +18,7 @@ function saved(...names: string[]) {
 }
 
 function summary(over: Partial<ImportSummary> = {}): ImportSummary {
-  return { saved: [], rejected: [], failed: [], ...over } as ImportSummary;
+  return { saved: [], rejected: [], full: [], failed: [], ...over } as ImportSummary;
 }
 
 describe("#1541 — the sentence a finished import gets", () => {
@@ -67,6 +67,12 @@ describe("#1541 — the sentence a finished import gets", () => {
     );
     expect(line).toBe(
       "Added good; skipped “notes.pdf” — not audio this browser can read; could not save “huge.wav”",
+    );
+  });
+
+  it("#1779 names a full disk as the reason, apart from other failures", () => {
+    expect(summarize(summary({ full: ["big.wav"], failed: ["odd.wav"] }))).toBe(
+      "Could not add “big.wav” — storage is full; could not save “odd.wav”",
     );
   });
 

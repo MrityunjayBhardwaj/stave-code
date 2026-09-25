@@ -25,6 +25,12 @@ const store = {
 let nextId = 0;
 
 vi.mock("@stave/editor", () => ({
+  // The real predicate's rule, not a stub that answers yes: the arms below
+  // throw a real-shaped error and must be told apart from any other failure.
+  isQuotaError: (err: unknown) =>
+    typeof err === "object" &&
+    err !== null &&
+    ["QuotaExceededError", "StorageFullError"].includes((err as { name?: string }).name ?? ""),
   listAssetRecords: () => store.records,
   addAssetRecord: (r: AssetRecord) => {
     store.records.push(r);
@@ -189,9 +195,24 @@ describe("#1541 — several files at once", () => {
     expect(summary.rejected).toEqual(["readme.txt"]);
   });
 
+  it("#1779 a file the disk had no room for is its own outcome, not a failure", async () => {
+    const summary = await importAudioFiles([audioFile("big.wav", "audio/wav", 10)], {
+      measureDuration: async (blob) => {
+        if (blob.size === 10) {
+          throw Object.assign(new Error("full"), { name: "StorageFullError" });
+        }
+        return undefined;
+      },
+    });
+    expect({ full: summary.full, failed: summary.failed }).toEqual({
+      full: ["big.wav"],
+      failed: [],
+    });
+  });
+
   it("does nothing, and says nothing, for an empty drop", async () => {
     const summary = await importAudioFiles([], { measureDuration });
-    expect(summary).toEqual({ saved: [], rejected: [], failed: [] });
+    expect(summary).toEqual({ saved: [], rejected: [], full: [], failed: [] });
     expect(store.records).toHaveLength(0);
   });
 });

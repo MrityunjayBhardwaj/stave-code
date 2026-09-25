@@ -1,6 +1,7 @@
 import {
   addAssetRecord,
   importAsset,
+  isQuotaError,
   listAssetRecords,
   nextTakeName,
   registerAsset,
@@ -155,7 +156,13 @@ export interface ImportSummary {
   readonly saved: SavedTake[];
   /** Filenames refused because they are not audio this browser can read. */
   readonly rejected: string[];
-  /** Filenames that failed for any other reason — a full disk, a dead store. */
+  /**
+   * Filenames the disk had no room for (#1779). Split from `failed` because the
+   * user acts on them differently: "storage is full" points at making room,
+   * "could not save" points nowhere.
+   */
+  readonly full: string[];
+  /** Filenames that failed for any other reason — a dead store, a bug. */
   readonly failed: string[];
 }
 
@@ -180,16 +187,18 @@ export async function importAudioFiles(
 ): Promise<ImportSummary> {
   const saved: SavedTake[] = [];
   const rejected: string[] = [];
+  const full: string[] = [];
   const failed: string[] = [];
   for (const file of files) {
     try {
       saved.push(await importAudioFile(file, deps));
     } catch (err) {
       if (err instanceof UnsupportedAudioError) rejected.push(file.name);
+      else if (isQuotaError(err)) full.push(file.name);
       else failed.push(file.name);
     }
   }
-  return { saved, rejected, failed };
+  return { saved, rejected, full, failed };
 }
 
 /**

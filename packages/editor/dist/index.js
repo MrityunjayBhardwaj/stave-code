@@ -18759,6 +18759,43 @@ function defineStrudelMonacoTheme(monaco) {
 }
 __name(defineStrudelMonacoTheme, "defineStrudelMonacoTheme");
 
+// src/storageStatus.ts
+var CLEAR = { fullSince: null, documentUnsaved: false };
+var status = CLEAR;
+var listeners2 = /* @__PURE__ */ new Set();
+function set(next) {
+  if (next.fullSince === status.fullSince && next.documentUnsaved === status.documentUnsaved) return;
+  status = next;
+  for (const fn of listeners2) fn();
+}
+__name(set, "set");
+function getStorageStatus() {
+  return status;
+}
+__name(getStorageStatus, "getStorageStatus");
+function subscribeStorageStatus(fn) {
+  listeners2.add(fn);
+  return () => {
+    listeners2.delete(fn);
+  };
+}
+__name(subscribeStorageStatus, "subscribeStorageStatus");
+function noteStorageRefused(opts = {}) {
+  set({
+    fullSince: status.fullSince ?? Date.now(),
+    documentUnsaved: status.documentUnsaved || Boolean(opts.document)
+  });
+}
+__name(noteStorageRefused, "noteStorageRefused");
+function noteDocumentSaved() {
+  set(CLEAR);
+}
+__name(noteDocumentSaved, "noteDocumentSaved");
+function noteDocumentReplaced() {
+  set({ fullSince: status.fullSince, documentUnsaved: false });
+}
+__name(noteDocumentReplaced, "noteDocumentReplaced");
+
 // src/idb.ts
 var IDB_OPEN_TIMEOUT_MS = 8e3;
 function openIdbWithTimeout(name, version, upgrade, opts = {}) {
@@ -18820,7 +18857,10 @@ function isQuotaError(err) {
 __name(isQuotaError, "isQuotaError");
 function named(err, fallback) {
   if (err instanceof StorageFullError) return err;
-  if (isQuotaError(err)) return new StorageFullError(err);
+  if (isQuotaError(err)) {
+    noteStorageRefused();
+    return new StorageFullError(err);
+  }
   return err ?? new Error(fallback);
 }
 __name(named, "named");
@@ -18845,43 +18885,6 @@ async function committed(req) {
   return result;
 }
 __name(committed, "committed");
-
-// src/storageStatus.ts
-var CLEAR = { fullSince: null, documentUnsaved: false };
-var status = CLEAR;
-var listeners2 = /* @__PURE__ */ new Set();
-function set(next) {
-  if (next.fullSince === status.fullSince && next.documentUnsaved === status.documentUnsaved) return;
-  status = next;
-  for (const fn of listeners2) fn();
-}
-__name(set, "set");
-function getStorageStatus() {
-  return status;
-}
-__name(getStorageStatus, "getStorageStatus");
-function subscribeStorageStatus(fn) {
-  listeners2.add(fn);
-  return () => {
-    listeners2.delete(fn);
-  };
-}
-__name(subscribeStorageStatus, "subscribeStorageStatus");
-function noteStorageRefused(opts = {}) {
-  set({
-    fullSince: status.fullSince ?? Date.now(),
-    documentUnsaved: status.documentUnsaved || Boolean(opts.document)
-  });
-}
-__name(noteStorageRefused, "noteStorageRefused");
-function noteDocumentSaved() {
-  set(CLEAR);
-}
-__name(noteDocumentSaved, "noteDocumentSaved");
-function noteDocumentReplaced() {
-  set({ fullSince: status.fullSince, documentUnsaved: false });
-}
-__name(noteDocumentReplaced, "noteDocumentReplaced");
 
 // src/workspace/projectDoc.ts
 var activeDoc = null;
