@@ -1,5 +1,5 @@
 diff --git a/dist/index.mjs b/dist/index.mjs
-index da81977b3a8f9cb8af08440c61990437041f69b7..5068ecc04072c84d5f8de348887d8321c88105f7 100644
+index da81977b3a8f9cb8af08440c61990437041f69b7..74d39d17111f1cde55572170d270c0a255116f70 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -24,32 +24,50 @@ function ct(e, t = "superdough") {
@@ -59,7 +59,34 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..5068ecc04072c84d5f8de348887d8321
      node: a,
      stop: (c) => a.stop(c)
    };
-@@ -93,13 +111,19 @@ const st = /* @__PURE__ */ new Map(), ut = Symbol("nodePoolKey"), hn = (e) => !!
+@@ -69,18 +87,18 @@ const st = /* @__PURE__ */ new Map(), ut = Symbol("nodePoolKey"), hn = (e) => !!
+   e.parameters?.forEach((a) => t.add(a));
+   const n = /* @__PURE__ */ new Set();
+   let o = e;
+-  for (; o !== Object.prototype; ) {
++  for (; o != null && o !== Object.prototype; ) {
+     for (const a of Object.getOwnPropertyNames(o)) {
+       if (n.has(a)) continue;
+       n.add(a);
+       const c = e[a];
+-      c instanceof AudioParam && t.add(c);
++      __staveIsAudioParam(c) && t.add(c);
+     }
+     o = Object.getPrototypeOf(o);
+   }
+   return t;
+ }, ht = (e) => {
+-  if (e.disconnect(), e instanceof AudioScheduledSourceNode)
++  if (e.disconnect(), __staveIsAudioScheduledSourceNode(e))
+     return;
+   const t = e[ut];
+   if (t == null) return;
+@@ -89,17 +107,23 @@ const st = /* @__PURE__ */ new Map(), ut = Symbol("nodePoolKey"), hn = (e) => !!
+   const o = st.get(t) ?? [];
+   o.push(new WeakRef(e)), st.set(t, o);
+ }, Gn = (e) => {
+-  if (!(e instanceof AudioWorkletNode)) return !0;
++  if (!(__staveIsAudioWorkletNode(e))) return !0;
    const t = Ct(e), n = e?.parameters?.get("end").value ?? 0;
    return t < n + 0.45;
  }, we = (e, t) => {
@@ -96,7 +123,25 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..5068ecc04072c84d5f8de348887d8321
    return c.connect(e.destination), a.connect(c), ue(a, () => {
      Y(c), Y(a), t();
    }), a.start(n), a.stop(o), a;
-@@ -478,15 +506,26 @@ const Bt = (e) => e / (1 + e), Kn = (e, t) => (e % t + t) % t, gn = (e, t) => (1
+@@ -461,9 +489,9 @@ const Bt = (e) => e / (1 + e), Kn = (e, t) => (e % t + t) % t, gn = (e, t) => (1
+   };
+ }, Y = (e) => {
+   if (e != null) {
+-    if (!(e instanceof AudioNode))
++    if (!(__staveIsAudioNode(e)))
+       throw new Error("releaseAudioNode can only release an AudioNode");
+-    if (e.disconnect(), e instanceof AudioScheduledSourceNode) {
++    if (e.disconnect(), __staveIsAudioScheduledSourceNode(e)) {
+       process.env.NODE_ENV === "development" && e.onended && e.onended.name !== "cleanup" && j(
+         "[superdough] Deprecation warning: it seems your code path is setting 'node.onended = callback' instead of using the onceEnded helper"
+       );
+@@ -473,20 +501,31 @@ const Bt = (e) => e / (1 + e), Kn = (e, t) => (e % t + t) % t, gn = (e, t) => (1
+         e.start(e.context.currentTime + 5), e.stop();
+       }
+     }
+-    e instanceof AudioWorkletNode && e.parameters.get("end")?.setValueAtTime(0, 0);
++    __staveIsAudioWorkletNode(e) && e.parameters.get("end")?.setValueAtTime(0, 0);
+   }
  }, kn = (e, t) => {
    ue(e, () => t.forEach((n) => Y(n)));
  };
@@ -210,6 +255,20 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..5068ecc04072c84d5f8de348887d8321
    stretch: { node: "stretch", param: "pitchFactor" },
    gain: { node: "gain", param: "gain" },
    postgain: { node: "post", param: "gain" },
+@@ -742,11 +797,11 @@ function Bn() {
+ const Qn = (e, t) => {
+   if (e?.parameters) {
+     const o = e.parameters.get(t);
+-    if (o instanceof AudioParam)
++    if (__staveIsAudioParam(o))
+       return o;
+   }
+   let n = e?.[t];
+-  if (n === void 0 && t === "frequency" && (n = e?.detune ?? e?.playbackRate), n instanceof AudioParam)
++  if (n === void 0 && t === "frequency" && (n = e?.detune ?? e?.playbackRate), __staveIsAudioParam(n))
+     return n;
+ }, St = Bn(), vn = (e, t) => {
+   const n = e.split("_")[0];
 @@ -962,7 +1017,7 @@ const ao = async (e, t = e._base || "", n = {}) => {
      },
      t
@@ -232,6 +291,15 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..5068ecc04072c84d5f8de348887d8321
    }
    return I;
  }
+@@ -1905,7 +1962,7 @@ const No = async (e, t, n, o = 0.5, a = 0.5) => {
+     const R = oe.getDjf(f, t);
+     c.main.djf = [R];
+   }
+-  if (Re && !(s instanceof OfflineAudioContext)) {
++  if (Re && !__staveIsOfflineAudioContext(s)) {
+     const R = Ko(Re, 2 ** (Qe + 5)), X = Ue(Ge, R, 1);
+     x.audioNodes.push(X);
+   }
 @@ -2297,6 +2354,16 @@ function ko(e = 1, t = 0.05, n = 220, o = 0, a = 0, c = 0.1, s = 0, d = 1, l = 0
      Math.cos(m * C++), g += E - E * u * (1 - (Math.sin(K) + 1) * 1e9 % 2), I && ++I > r && (n += p, F += p, I = 0), h && !(++k % h) && (n = F, l = Q, I ||= 1);
    return N;
@@ -267,7 +335,7 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..5068ecc04072c84d5f8de348887d8321
    ), C = z(), K = C.createBuffer(1, g.length, C.sampleRate);
    K.getChannelData(0).set(g);
    const I = z().createBufferSource();
-@@ -2533,5 +2600,6 @@ export {
+@@ -2533,5 +2600,15 @@ export {
    pc as superdoughTrigger,
    Ao as tables,
    Fo as waveformN,
@@ -275,11 +343,28 @@ index da81977b3a8f9cb8af08440c61990437041f69b7..5068ecc04072c84d5f8de348887d8321
 +  pe as webAudioTimeout,
 +  __sdReverbsReady as reverbsReady
  };
++
++// stave patch (#1758): realm-independent class checks — see realm.mjs. A render on a
++// throwaway iframe's context makes nodes and params whose classes are not this page's.
++function __staveTagOf(x) { return Object.prototype.toString.call(x).slice(8, -1); }
++function __staveIsAudioParam(x) { return x != null && (x instanceof AudioParam || __staveTagOf(x) === "AudioParam"); }
++function __staveIsAudioNode(x) { return x != null && (x instanceof AudioNode || (typeof x === "object" && typeof x.connect === "function" && typeof x.disconnect === "function" && "numberOfInputs" in x)); }
++function __staveIsAudioScheduledSourceNode(x) { return x != null && (x instanceof AudioScheduledSourceNode || (__staveIsAudioNode(x) && typeof x.start === "function" && typeof x.stop === "function")); }
++function __staveIsAudioWorkletNode(x) { return x != null && (x instanceof AudioWorkletNode || __staveTagOf(x) === "AudioWorkletNode"); }
++function __staveIsOfflineAudioContext(x) { return x != null && (x instanceof OfflineAudioContext || __staveTagOf(x) === "OfflineAudioContext"); }
 diff --git a/helpers.mjs b/helpers.mjs
-index 07199aff6e3ce288b4151b86d9e0dbf39e143025..490c8fb8234a230988b8fec45c7fbfefcdd353ce 100644
+index 07199aff6e3ce288b4151b86d9e0dbf39e143025..04abd297c016a6a462780e81c678ccc381d518d4 100644
 --- a/helpers.mjs
 +++ b/helpers.mjs
-@@ -374,7 +374,11 @@ export function webAudioTimeout(audioContext, onComplete, startTime, stopTime) {
+@@ -3,6 +3,7 @@ import { logger } from './logger.mjs';
+ import { getNoiseBuffer } from './noise.mjs';
+ import { getNodeFromPool } from './nodePools.mjs';
+ import { clamp, nanFallback, midiToFreq, noteToMidi } from './util.mjs';
++import { isAudioNode, isAudioScheduledSourceNode, isAudioWorkletNode } from './realm.mjs'; // stave patch (#1758)
+ 
+ export const noises = ['pink', 'white', 'brown', 'crackle'];
+ 
+@@ -374,7 +375,11 @@ export function webAudioTimeout(audioContext, onComplete, startTime, stopTime) {
  
    // Certain browsers requires audio nodes to be connected in order for their onended events
    // to fire, so we _mute it_ and then connect it to the destination
@@ -292,6 +377,33 @@ index 07199aff6e3ce288b4151b86d9e0dbf39e143025..490c8fb8234a230988b8fec45c7fbfef
    zeroGain.connect(audioContext.destination);
    constantNode.connect(zeroGain);
  
+@@ -615,7 +620,7 @@ export const releaseAudioNode = (node) => {
+   if (node == null) return;
+ 
+   // check we received an AudioNode
+-  if (!(node instanceof AudioNode)) {
++  if (!isAudioNode(node)) {
+     throw new Error('releaseAudioNode can only release an AudioNode');
+   }
+ 
+@@ -624,7 +629,7 @@ export const releaseAudioNode = (node) => {
+ 
+   // make sure all AudioScheduledSourceNodes are in a stopped state
+   // https://developer.mozilla.org/en-US/docs/Web/API/AudioScheduledSourceNode
+-  if (node instanceof AudioScheduledSourceNode) {
++  if (isAudioScheduledSourceNode(node)) {
+     if (process.env.NODE_ENV === 'development' && node.onended && node.onended.name !== 'cleanup') {
+       logger(
+         `[superdough] Deprecation warning: it seems your code path is setting 'node.onended = callback' instead of using the onceEnded helper`,
+@@ -647,7 +652,7 @@ export const releaseAudioNode = (node) => {
+   // An AudioWorkletNode is actively processing when its AudioWorkletProcessor's [[callable process]]
+   // returns true and either its active source flag is true or
+   // any AudioNode connected to one of its inputs is actively processing.
+-  if (node instanceof AudioWorkletNode) {
++  if (isAudioWorkletNode(node)) {
+     // while `end` is not native to the web audio API, it is common practice in superdough
+     // to use that param in the worklets to trigger returning false from the processor
+     node.parameters.get('end')?.setValueAtTime(0, 0);
 diff --git a/index.mjs b/index.mjs
 index c3d2f6c52e481aa38b4a56fb2e90766465ce65b5..143607432a02f35df0e40f0ad05783d5d6f4e73b 100644
 --- a/index.mjs
@@ -301,20 +413,83 @@ index c3d2f6c52e481aa38b4a56fb2e90766465ce65b5..143607432a02f35df0e40f0ad05783d5
  export * from './audioContext.mjs';
  export * from './wavetable.mjs';
 +export { reverbsReady } from './reverb.mjs';
+diff --git a/modulators.mjs b/modulators.mjs
+index 05674baa0b43eb5b2d20847093fa537a13c9f07f..71a28e3152640de9b77ed1268d3447453ef6a597 100644
+--- a/modulators.mjs
++++ b/modulators.mjs
+@@ -9,12 +9,13 @@ import { gainNode, getEnvelope, getLfo, webAudioTimeout } from './helpers.mjs';
+ import { errorLogger } from './logger.mjs';
+ import { getSuperdoughControlTargets } from './superdoughdata.mjs';
+ import { clamp } from './util.mjs';
++import { isAudioParam } from './realm.mjs'; // stave patch (#1758)
+ 
+ const getNodeParam = (node, name) => {
+   // Worklet case
+   if (node?.parameters) {
+     const p = node.parameters.get(name);
+-    if (p instanceof AudioParam) {
++    if (isAudioParam(p)) {
+       return p;
+     }
+   }
+@@ -24,7 +25,7 @@ const getNodeParam = (node, name) => {
+     // Fallbacks for source nodes without 'frequency' params (e.g. soundfonts)
+     p = node?.['detune'] ?? node?.['playbackRate'];
+   }
+-  if (p instanceof AudioParam) {
++  if (isAudioParam(p)) {
+     return p;
+   }
+   return undefined;
 diff --git a/nodePools.mjs b/nodePools.mjs
-index 90b4c0ae7e968a4bb78430ba9384c60f69910af9..61997d333f86eaf4769f18e10964ec7a1189b834 100644
+index 90b4c0ae7e968a4bb78430ba9384c60f69910af9..8b96b1f3283fd4ca94b16e23409ed05463199fd2 100644
 --- a/nodePools.mjs
 +++ b/nodePools.mjs
-@@ -5,6 +5,8 @@ Copyright (C) 2025 Strudel contributors - see <https://codeberg.org/uzu/strudel/
+@@ -5,6 +5,9 @@ Copyright (C) 2025 Strudel contributors - see <https://codeberg.org/uzu/strudel/
  This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Affero General Public License for more details. You should have received a copy of the GNU Affero General Public License along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
  
 +import { getAudioContext } from './audioContext.mjs';
++import { isAudioParam, isAudioScheduledSourceNode, isAudioWorkletNode } from './realm.mjs'; // stave patch (#1758)
 +
  const nodePools = new Map();
  const POOL_KEY = Symbol('nodePoolKey');
  
-@@ -65,13 +67,18 @@ const isNodeAlive = (node) => {
+@@ -20,12 +23,13 @@ const getParams = (node) => {
+   const visited = new Set(); // prioritize deepest definition
+   let proto = node;
+   // Move up the prototype chain
+-  while (proto !== Object.prototype) {
++  // stave patch (#1758): a node from another frame ends at THAT frame's Object.prototype.
++  while (proto != null && proto !== Object.prototype) {
+     for (const key of Object.getOwnPropertyNames(proto)) {
+       if (visited.has(key)) continue;
+       visited.add(key);
+       const value = node[key];
+-      if (value instanceof AudioParam) {
++      if (isAudioParam(value)) {
+         params.add(value);
+       }
+     }
+@@ -36,7 +40,7 @@ const getParams = (node) => {
+ 
+ export const releaseNodeToPool = (node) => {
+   node.disconnect();
+-  if (node instanceof AudioScheduledSourceNode) {
++  if (isAudioScheduledSourceNode(node)) {
+     // not reusable
+     return;
+   }
+@@ -56,7 +60,7 @@ export const releaseNodeToPool = (node) => {
+ // re-use
+ const isNodeAlive = (node) => {
+   // Skip check if node is not a worklet
+-  if (!(node instanceof AudioWorkletNode)) return true;
++  if (!isAudioWorkletNode(node)) return true;
+   const now = getNodeTime(node);
+   const end = node?.parameters?.get('end').value ?? 0;
+   return now < end + 0.45;
+@@ -65,13 +69,18 @@ const isNodeAlive = (node) => {
  // Attempt to get node from the pool. If this fails, fall back
  // to building it with the factory
  export const getNodeFromPool = (key, factory) => {
@@ -397,6 +572,35 @@ index 52d9306a18f68d286cee82df68a5ee3acb40660d..49ce3665b4c4913bd8f8af0eb6542f22
    o.loop = true;
    o.start(t);
    return {
+diff --git a/realm.mjs b/realm.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..668f3706cddb298757cf3d70d4f3cca0a3686433
+--- /dev/null
++++ b/realm.mjs
+@@ -0,0 +1,23 @@
++// stave patch (#1758): audio objects may come from ANOTHER FRAME's realm — Stave
++// renders a worklet-loading offline context on a throwaway iframe, because
++// removing the frame is the only way Chromium frees such a context. That frame's
++// nodes and params are not instances of this page's classes, so `instanceof`
++// answers false for them. These checks answer by what the object IS instead.
++
++const tagOf = (x) => Object.prototype.toString.call(x).slice(8, -1);
++
++export const isAudioParam = (x) => x != null && (x instanceof AudioParam || tagOf(x) === 'AudioParam');
++
++export const isAudioNode = (x) =>
++  x != null &&
++  (x instanceof AudioNode ||
++    (typeof x === 'object' && typeof x.connect === 'function' && typeof x.disconnect === 'function' && 'numberOfInputs' in x));
++
++export const isAudioScheduledSourceNode = (x) =>
++  x != null &&
++  (x instanceof AudioScheduledSourceNode || (isAudioNode(x) && typeof x.start === 'function' && typeof x.stop === 'function'));
++
++export const isAudioWorkletNode = (x) => x != null && (x instanceof AudioWorkletNode || tagOf(x) === 'AudioWorkletNode');
++
++export const isOfflineAudioContext = (x) =>
++  x != null && (x instanceof OfflineAudioContext || tagOf(x) === 'OfflineAudioContext');
 diff --git a/reverb.mjs b/reverb.mjs
 index c8b6eb3e5b3222b1d28b991582fb881c08cfbd26..a2a22acec1712e50328e9c25af330b66c2a46704 100644
 --- a/reverb.mjs
@@ -559,6 +763,27 @@ index 25c34c641ccff7292fe917bf3a5489ff7b512340..b904e93c8144144b3b193a5b8f5dce9c
      const prev = cutGroups[cut];
      if (prev) {
        prev.node.gain.setValueAtTime(1, time);
+diff --git a/superdough.mjs b/superdough.mjs
+index 03a4c3da8f01c6f303ae0aa1205dbab340798b65..950104e80b9c228f282d31df42b8b4d426087879 100644
+--- a/superdough.mjs
++++ b/superdough.mjs
+@@ -29,6 +29,7 @@ import { loadBuffer } from './sampler.mjs';
+ import { getAudioContext } from './audioContext.mjs';
+ import { SuperdoughAudioController } from './superdoughoutput.mjs';
+ import { resetSeenKeys } from './wavetable.mjs';
++import { isOfflineAudioContext } from './realm.mjs'; // stave patch (#1758)
+ 
+ export const DEFAULT_MAX_POLYPHONY = 128;
+ const DEFAULT_AUDIO_DEVICE_NAME = 'System Standard';
+@@ -965,7 +966,7 @@ export const superdough = async (value, t, hapDuration, cps = 0.5, cycle = 0.5)
+   }
+ 
+   // analyser
+-  if (analyze && !(ac instanceof OfflineAudioContext)) {
++  if (analyze && !isOfflineAudioContext(ac)) {
+     const analyserNode = getAnalyserById(analyze, 2 ** (fft + 5));
+     const analyserSend = effectSend(post, analyserNode, 1);
+     chain.audioNodes.push(analyserSend);
 diff --git a/util.mjs b/util.mjs
 index 48830541af26ae9985f7110c322196c3540386ce..bccd6426c871efe2d9c3d7a3807fcc5ec998f399 100644
 --- a/util.mjs
