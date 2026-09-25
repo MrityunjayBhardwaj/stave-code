@@ -4,7 +4,8 @@ import { LiveRecorder } from './LiveRecorder'
 import { perf } from '../perf/profiler'
 import { WavEncoder, SilentCaptureError } from './WavEncoder'
 import { emitLog } from './engineLog'
-import { renderPatternOffline, describeSkipped, RenderCancelledError, type SkippedSounds } from './renderPatternOffline'
+import { renderPatternOffline, describeSkipped, RenderCancelledError, type OfflineGraphDeps, type SkippedSounds } from './renderPatternOffline'
+import { canPauseOfflineRender, piecesOf, renderInPieces } from './pieceRender'
 import { renderStemsInOrder, type StemOutcome } from './renderStemsInOrder'
 import { planStems, tagTrack } from './stemSplit'
 import { createTransportHold } from './transportHold'
@@ -401,6 +402,15 @@ const TRACK_ENVELOPE_DEBOUNCE_MS = 700
 const TRACK_ENVELOPE_CAP_SECONDS = 1200
 /** #1731 — envelope resolution: 10 ms columns. */
 const TRACK_ENVELOPE_COLUMNS_PER_SECOND = 100
+/**
+ * #1771 — where a render cannot pause (Firefox), the display render is split
+ * into pieces this long, each started this much early so what rings into it is
+ * heard (`pieceRender.ts`). Measured at these values only, not tuned: a redraw
+ * of two 512 s tracks went from 112.5 s to 9.1 s in Firefox (Chromium 10–11 s).
+ * The lead-in is rendered and dropped, so a piece renders 1.5× its audio.
+ */
+const DISPLAY_PIECE_SECONDS = 8
+const DISPLAY_PIECE_LEAD_SECONDS = 4
 
 /**
  * Single source of truth for audio in Stave.
@@ -2220,33 +2230,75 @@ export class StrudelEngine implements LiveCodingEngine {
     // waited never borrows them at all.
     return withOfflineGraph(() => {
       if (signal?.aborted) return Promise.reject(new RenderCancelledError())
-      return this.transportHold.hold(() => renderPatternOffline(
-        pattern,
-        options,
-        {
-          getAudioContext: wa.getAudioContext,
-          setAudioContext: wa.setAudioContext,
-          getSuperdoughAudioController: wa.getSuperdoughAudioController,
-          setSuperdoughAudioController: wa.setSuperdoughAudioController,
-          initAudio: wa.initAudio,
-          // #1635 — the alias step live playback applies in `wrappedOutput`. The
-          // render calls superdough directly, so without this `kick` was "not
-          // found" in a bounce while it played live.
-          superdough: (value, t, hapDuration, cps, cycle) =>
-            wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? undefined).value, t, hapDuration, cps, cycle),
-          // #1675 — a reverb's impulse response lands asynchronously; the render
-          // waits for it at each window instead of rendering the room silent.
-          settle: wa.reverbsReady,
-          // #1758 — a render that loads worklets is built in a frame of its own,
-          // so disposing it frees the context; Chromium never frees it otherwise.
-          // Samples it loads are decoded on the LIVE context: superdough caches a
-          // load page-wide, and a decode left on a removed frame never settles.
-          createContext: (frames, rate, { worklets }) =>
-            worklets && canOpenAudioFrame()
-              ? offlineContextInFrame(2, frames, rate, { decodeWith: () => this.audioCtx })
-              : new OfflineAudioContext(2, frames, rate),
-        }
-      ))
+      return this.transportHold.hold(() => renderPatternOffline(pattern, options, this.offlineGraphDeps(wa)))
+    })
+  }
+
+  /**
+   * What an offline render borrows from the engine: superdough's module globals,
+   * the alias step, the reverb wait and where its context is built.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private offlineGraphDeps(wa: any): OfflineGraphDeps {
+    return {
+      getAudioContext: wa.getAudioContext,
+      setAudioContext: wa.setAudioContext,
+      getSuperdoughAudioController: wa.getSuperdoughAudioController,
+      setSuperdoughAudioController: wa.setSuperdoughAudioController,
+      initAudio: wa.initAudio,
+      // #1635 — the alias step live playback applies in `wrappedOutput`. The
+      // render calls superdough directly, so without this `kick` was "not
+      // found" in a bounce while it played live.
+      superdough: (value, t, hapDuration, cps, cycle) =>
+        wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? undefined).value, t, hapDuration, cps, cycle),
+      // #1675 — a reverb's impulse response lands asynchronously; the render
+      // waits for it at each window instead of rendering the room silent.
+      settle: wa.reverbsReady,
+      // #1758 — a render that loads worklets is built in a frame of its own,
+      // so disposing it frees the context; Chromium never frees it otherwise.
+      // Samples it loads are decoded on the LIVE context: superdough caches a
+      // load page-wide, and a decode left on a removed frame never settles.
+      createContext: (frames, rate, { worklets }) =>
+        worklets && canOpenAudioFrame()
+          ? offlineContextInFrame(2, frames, rate, { decodeWith: () => this.audioCtx })
+          : new OfflineAudioContext(2, frames, rate),
+    }
+  }
+
+  /**
+   * #1771 — `renderPatternRaw` for a browser whose offline context cannot pause:
+   * the song rendered as short pieces and joined (`pieceRender.ts`), so its cost
+   * grows with the length rather than its square. Display renders only: a join
+   * cuts whatever rings past the lead-in. Holds the graph and the transport once
+   * for every piece, so no Play starts between two of them.
+   */
+  private async renderPatternInPieces(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    pattern: any,
+    duration: number,
+    sampleRate: number,
+    signal: AbortSignal,
+  ): Promise<Float32Array[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wa: any = await import('@strudel/webaudio')
+    const deps = this.offlineGraphDeps(wa)
+    const cps = this.getCps() ?? 0.5
+    const pieces = piecesOf(duration, DISPLAY_PIECE_SECONDS, DISPLAY_PIECE_LEAD_SECONDS)
+    return withOfflineGraph(() => {
+      if (signal.aborted) return Promise.reject(new RenderCancelledError())
+      return this.transportHold.hold(() =>
+        renderInPieces(
+          duration,
+          sampleRate,
+          pieces,
+          async (start, seconds) => {
+            const { buffer } = await renderPatternOffline(pattern, { signal, cps, duration: seconds, sampleRate, start }, deps)
+            return Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c))
+          },
+          signal,
+          () => new RenderCancelledError(),
+        ),
+      )
     })
   }
 
@@ -2314,15 +2366,26 @@ export class StrudelEngine implements LiveCodingEngine {
    * so a low-rate render that loaded one first would leave live playback a
    * low-rate copy. The rate is decided in `trackFingerprint`, from the events
    * this render plays.
+   *
+   * ⚠ IN PIECES WHERE A RENDER CANNOT PAUSE (#1771, Firefox): 8 s pieces joined,
+   * each with a 4 s lead-in (`renderPatternInPieces`). What rings longer than
+   * the lead-in is cut at a join, and a supersaw's voices take their phase from
+   * the note's time on the piece's clock, so its fine beating differs from a
+   * single render's: an equally valid draw, as live playback is another.
    */
   private async renderTrackEnvelope(trackId: string, cycles: number, signal: AbortSignal): Promise<TrackEnvelope | null> {
     const pattern = this.songPatterns.get(trackId)
     if (!pattern || !this.audioCtx) return null
     const duration = cycles / (this.getCps() ?? 0.5)
     const rate = this.displayRates.get(trackId) ?? this.audioCtx.sampleRate
-    const { buffer } = await this.renderPatternRaw(pattern, duration, rate, signal)
-    const channels: Float32Array[] = []
-    for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c))
+    let channels: Float32Array[]
+    if (canPauseOfflineRender()) {
+      const { buffer } = await this.renderPatternRaw(pattern, duration, rate, signal)
+      channels = []
+      for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c))
+    } else {
+      channels = await this.renderPatternInPieces(pattern, duration, rate, signal)
+    }
     const env = envelopeFromChannels(channels, Math.max(1, Math.ceil(duration * TRACK_ENVELOPE_COLUMNS_PER_SECOND)))
     return env ? { ...env, cycles } : null
   }
