@@ -125,3 +125,19 @@ describe('discardFileChanges — revert working file to HEAD, NO commit (#211 Ti
     expect(listCommits(getCurrentHistory()!).length).toBe(commitsBefore)
   })
 })
+
+describe('initHistory when the disk is full (#1777)', () => {
+  it('keeps the seeded history for the session when its first save is refused for space', async () => {
+    const { saveHistory } = await import('../historyStore')
+    const { StorageFullError } = await import('../../../idb')
+    vi.mocked(saveHistory).mockRejectedValueOnce(new StorageFullError(null))
+    await seedProject()
+    expect(getCurrentHistory()).not.toBeNull()
+  })
+
+  it('still rejects for a failure that is not about space', async () => {
+    const { saveHistory } = await import('../historyStore')
+    vi.mocked(saveHistory).mockRejectedValueOnce(new Error('dead store'))
+    await expect(seedProject()).rejects.toThrow('dead store')
+  })
+})

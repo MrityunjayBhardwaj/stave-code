@@ -42,6 +42,7 @@ export interface ProjectMeta {
 
 import {
   committed,
+  isQuotaError,
   openIdbWithTimeout,
   requestResult as wrap,
   transactionDone,
@@ -102,15 +103,28 @@ export async function createProject(name: string): Promise<ProjectMeta> {
   return meta
 }
 
-/** Update the lastOpenedAt timestamp. Call when opening a project. */
+/**
+ * Update the lastOpenedAt timestamp. Call when opening a project.
+ *
+ * A timestamp the disk has no room for is NOT an error here: all it orders is
+ * the project list, and boot awaits this call — letting a full disk reject it
+ * would turn "storage is full" into "couldn't load your saved projects" and
+ * stop the app opening at all (observed, #1777). Every other failure still
+ * rejects.
+ */
 export async function touchProject(id: string): Promise<void> {
   const db = await openDb()
-  const store = tx(db, 'readwrite')
-  const existing = await wrap<ProjectMeta | undefined>(store.get(id))
-  if (existing) {
-    await committed(store.put({ ...existing, lastOpenedAt: Date.now() }))
+  try {
+    const store = tx(db, 'readwrite')
+    const existing = await wrap<ProjectMeta | undefined>(store.get(id))
+    if (existing) {
+      await committed(store.put({ ...existing, lastOpenedAt: Date.now() }))
+    }
+  } catch (err) {
+    if (!isQuotaError(err)) throw err
+  } finally {
+    db.close()
   }
-  db.close()
 }
 
 /**

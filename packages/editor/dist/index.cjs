@@ -27090,12 +27090,17 @@ async function createProject(name) {
 __name(createProject, "createProject");
 async function touchProject(id) {
   const db = await openDb2();
-  const store = tx2(db, "readwrite");
-  const existing = await requestResult(store.get(id));
-  if (existing) {
-    await committed(store.put({ ...existing, lastOpenedAt: Date.now() }));
+  try {
+    const store = tx2(db, "readwrite");
+    const existing = await requestResult(store.get(id));
+    if (existing) {
+      await committed(store.put({ ...existing, lastOpenedAt: Date.now() }));
+    }
+  } catch (err) {
+    if (!isQuotaError(err)) throw err;
+  } finally {
+    db.close();
   }
-  db.close();
 }
 __name(touchProject, "touchProject");
 async function dropLegacyBackgroundCrop(id) {
@@ -27296,7 +27301,11 @@ function initHistory(projectId) {
         now(),
         readWorkspaceFileMeta()
       );
-      await saveHistory(h);
+      try {
+        await saveHistory(h);
+      } catch (err) {
+        if (!isQuotaError(err)) throw err;
+      }
     }
     current2 = h;
     return h;
@@ -46346,7 +46355,9 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
     const label = commitLabel.trim();
     if (!label) return;
     const only = dirtyIds.length > 0 ? new Set(checkedDirty) : void 0;
-    void commitWorkspace("manual", { label, allowEmpty: true, ...only ? { only } : {} });
+    void commitWorkspace("manual", { label, allowEmpty: true, ...only ? { only } : {} }).catch(
+      (err) => console.warn("[stave] commit failed:", err)
+    );
     setCommitting(false);
     setCommitLabel("");
   }, "confirmCommit");

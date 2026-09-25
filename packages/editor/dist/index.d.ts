@@ -8624,7 +8624,15 @@ declare function getProject(id: string): Promise<ProjectMeta | undefined>;
 declare function getLastOpenedProject(): Promise<ProjectMeta | undefined>;
 /** Create a new project and return its metadata. */
 declare function createProject(name: string): Promise<ProjectMeta>;
-/** Update the lastOpenedAt timestamp. Call when opening a project. */
+/**
+ * Update the lastOpenedAt timestamp. Call when opening a project.
+ *
+ * A timestamp the disk has no room for is NOT an error here: all it orders is
+ * the project list, and boot awaits this call — letting a full disk reject it
+ * would turn "storage is full" into "couldn't load your saved projects" and
+ * stop the app opening at all (observed, #1777). Every other failure still
+ * rejects.
+ */
 declare function touchProject(id: string): Promise<void>;
 /**
  * Empty the legacy project-global backdrop crop slot (#1435). Called once, by

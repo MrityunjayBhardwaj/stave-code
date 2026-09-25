@@ -55,11 +55,9 @@ interface Probe {
   docList(): Promise<Array<{ name: string }>>
 }
 
-declare global {
-  interface Window {
-    __staveAssetProbe?: Probe
-  }
-}
+/** The page's asset probe. Cast locally: several specs declare it globally with
+ *  different shapes, and a second global declaration is a type error. */
+type ProbeWindow = { __staveAssetProbe?: Probe }
 
 /** A short stereo wav with noise in it, so it is not compressible to nothing. */
 function wav(seconds: number): Buffer {
@@ -98,8 +96,8 @@ async function boot(page: Page): Promise<void> {
   })
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await waitForEditorLoaded(page)
-  await page.waitForFunction(() => Boolean(window.__staveAssetProbe), { timeout: 30_000 })
-  await page.evaluate(() => window.__staveAssetProbe!.reset())
+  await page.waitForFunction(() => Boolean((window as unknown as ProbeWindow).__staveAssetProbe), { timeout: 30_000 })
+  await page.evaluate(() => (window as unknown as ProbeWindow).__staveAssetProbe!.reset())
 }
 
 /** Fill what room is left until the browser refuses a row. Returns the rows kept. */
@@ -143,7 +141,7 @@ async function addAudio(page: Page): Promise<string> {
 }
 
 const docNames = (page: Page) =>
-  page.evaluate(async () => (await window.__staveAssetProbe!.docList()).map((r) => r.name))
+  page.evaluate(async () => (await (window as unknown as ProbeWindow).__staveAssetProbe!.docList()).map((r) => r.name))
 
 // ---------------------------------------------------------------------------
 // Controls: the instrument can both succeed and fill
@@ -169,7 +167,7 @@ test('#1777 the store call rejects as storage-full instead of reporting written'
   await fillStorage(page)
   const outcome = await page.evaluate(async (b64) => {
     try {
-      const r = await window.__staveAssetProbe!.put(b64, 'audio/wav')
+      const r = await (window as unknown as ProbeWindow).__staveAssetProbe!.put(b64, 'audio/wav')
       return `resolved written=${r.written}`
     } catch (e) {
       return `rejected ${(e as Error).name}`
@@ -189,4 +187,15 @@ test('#1777 adding a sound that does not fit leaves no record in the project', a
   await fillStorage(page)
   await addAudio(page)
   expect(await docNames(page)).toEqual([])
+})
+
+test('#1777 a full disk still lets the app open — boot does not wait on a timestamp', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  const opened = await waitForEditorLoaded(page).then(
+    () => 'opened',
+    () => 'did not open',
+  )
+  expect(opened).toBe('opened')
 })
