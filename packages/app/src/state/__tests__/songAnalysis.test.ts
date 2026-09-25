@@ -42,8 +42,20 @@ vi.mock('@stave/editor', () => ({
 vi.mock('../../components/musicalTimeline/songCollector', () => ({
   createSongCollector: () => ({ collectFn: undefined, hasUnheardTrack: () => false }),
 }))
+const camera = {
+  saved: null as { bareSpan?: number } | null,
+  listeners: new Set<(c: { bareSpan?: number }) => void>(),
+  save(c: { zoom: number; expanded: string[]; bareSpan?: number }) {
+    this.saved = c
+    for (const l of this.listeners) l(c)
+  },
+}
 vi.mock('../../components/musicalTimeline/timelineCameraPersistence', () => ({
-  loadTimelineCamera: () => null,
+  loadTimelineCamera: () => camera.saved,
+  subscribeTimelineCamera: (l: (c: { bareSpan?: number }) => void) => {
+    camera.listeners.add(l)
+    return () => camera.listeners.delete(l)
+  },
 }))
 
 const { startSongAnalysis, readSongAnalysis, subscribeSongAnalysis } = await import('../songAnalysis')
@@ -59,6 +71,8 @@ beforeEach(() => {
   snapshots.listeners.clear()
   runs.length = 0
   walkLanes = [{ armByCycle: [0] }]
+  camera.saved = null
+  camera.listeners.clear()
   publishDrawnSongFrame(null)
 })
 afterEach(() => stop?.())
@@ -159,6 +173,21 @@ describe('the frame the display reads (#1725, #1726)', () => {
     runs[0].resolve(analysis(1, 'loop'))
     await flush()
     expect(readDrawnSongFrame()).toEqual({ window: { originCycle: 0, spanCycles: 4 }, looping: true })
+  })
+
+  it("a bare loop the user resized is framed at the resized length, even a resize saved after the analysis (#1774)", async () => {
+    walkLanes = [{}]
+    camera.saved = { bareSpan: 6 }
+    stop = startSongAnalysis({})
+    snapshots.publish({ source: 'a', ir: 'IR-a' })
+    runs[0].resolve(analysis(1, 'loop'))
+    await flush()
+    expect(readDrawnSongFrame()?.window.spanCycles).toBe(6)
+    // Dragged to 7 in the timeline, then the drawer closes: no new analysis.
+    camera.save({ zoom: 1, expanded: [], bareSpan: 7 })
+    expect(readDrawnSongFrame()?.window.spanCycles).toBe(7)
+    stop()
+    expect(camera.listeners.size).toBe(0)
   })
 
   it('a span the analysis gave up at does not loop', async () => {

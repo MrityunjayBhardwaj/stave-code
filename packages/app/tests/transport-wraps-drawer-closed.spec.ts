@@ -176,3 +176,28 @@ test('another file evaluated with the drawer closed wraps to its own length', as
   console.log(`[#1726] back on the first file: ${back.map((r) => r.text).join(' · ')}`)
   for (const r of back) expect(r.cycle, `"${r.text}" shows no position`).toBeNull()
 })
+
+// #1774 — the user's resized bare-loop span is saved by the timeline after the
+// analysis has run; closing the drawer must not fall back to the unresized span.
+test('a bare loop resized before the drawer closes wraps at its new length', async ({ page }) => {
+  test.setTimeout(90_000)
+  await boot(page, true)
+  await evaluate(page, 'setcps(1)\ns("bd*4")')
+  await page.locator('[data-full-song-lane]').first().waitFor({ timeout: 10_000 })
+  const majorTicks = () => page.locator('[data-full-song-tick="major"]').count()
+  await expect.poll(majorTicks).toBe(4)
+  // Drag the loop's right edge into the auto-scroll band, as #662's spec does.
+  const box = (await page.locator('[data-full-song="grid"]').boundingBox())!
+  await page.mouse.move(box.x + box.width - 2, box.y + 8)
+  await page.mouse.down()
+  for (let i = 0; i < 12; i++) {
+    await page.mouse.move(box.x + box.width - 3, box.y + 8)
+    await page.waitForTimeout(50)
+  }
+  await page.mouse.up()
+  const bars = await majorTicks()
+  expect(bars, 'the drag grew the loop').toBeGreaterThan(5)
+  await page.locator('[data-bottom-panel="toggle"]').click()
+  await expect.poll(async () => (await read(page)).drawn).toBe(false)
+  expectWrapped(await sample(page, 2 * bars + 4, 500), bars, `bare loop resized to ${bars}, drawer closed`)
+})

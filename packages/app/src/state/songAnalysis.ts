@@ -11,7 +11,11 @@ import {
 
 import { createSongCollector, type SongCollectorAccessors } from "../components/musicalTimeline/songCollector";
 import { songFrameOf } from "../components/musicalTimeline/songFrame";
-import { loadTimelineCamera } from "../components/musicalTimeline/timelineCameraPersistence";
+import {
+  loadTimelineCamera,
+  subscribeTimelineCamera,
+  type TimelineCamera,
+} from "../components/musicalTimeline/timelineCameraPersistence";
 import { publishSongFrame } from "./drawnSongFrame";
 
 /**
@@ -34,17 +38,23 @@ import { publishSongFrame } from "./drawnSongFrame";
  */
 
 let current: SongAnalysis | null = null;
+let currentIr: IRSnapshot["ir"] | null = null;
+/** The user's resized bare-loop span (#662), from the timeline's camera. */
+let bareSpan: number | null = null;
 const listeners = new Set<() => void>();
+
+const bareSpanOf = (camera: TimelineCamera | null): number | null =>
+  typeof camera?.bareSpan === "number" && Number.isFinite(camera.bareSpan) ? camera.bareSpan : null;
+
+/** The frame the timeline would draw for this document at its first page. */
+function publishFrame(): void {
+  publishSongFrame(songFrameOf(current, currentIr, bareSpan));
+}
 
 function set(analysis: SongAnalysis | null, ir: IRSnapshot["ir"] | null): void {
   current = analysis;
-  // The frame the timeline would draw for this document at its first page. The
-  // user's resized bare-loop span (#662) is persisted with the timeline's
-  // camera, so it is known with the timeline closed too.
-  const bareSpan = loadTimelineCamera()?.bareSpan;
-  publishSongFrame(
-    songFrameOf(analysis, ir, typeof bareSpan === "number" && Number.isFinite(bareSpan) ? bareSpan : null),
-  );
+  currentIr = ir;
+  publishFrame();
   for (const listener of listeners) listener();
 }
 
@@ -94,10 +104,21 @@ export function startSongAnalysis(accessors: SongCollectorAccessors): () => void
       });
   };
 
+  // #1774 — the bare-loop span as the user last set it: read once, then kept up
+  // to date as the timeline saves its camera, so a resize made just before the
+  // drawer closes still frames the song.
+  bareSpan = bareSpanOf(loadTimelineCamera());
+  const unsubscribeCamera = subscribeTimelineCamera((camera) => {
+    const next = bareSpanOf(camera);
+    if (next === bareSpan) return;
+    bareSpan = next;
+    publishFrame();
+  });
   const unsubscribe = subscribeIRSnapshot(run);
   // Trap NEW-4: a snapshot published before we subscribed is picked up here.
   run(getIRSnapshot());
   return () => {
+    unsubscribeCamera();
     unsubscribe();
     if (inFlight) inFlight.aborted = true;
     inFlight = null;
