@@ -2239,9 +2239,11 @@ export class StrudelEngine implements LiveCodingEngine {
           settle: wa.reverbsReady,
           // #1758 — a render that loads worklets is built in a frame of its own,
           // so disposing it frees the context; Chromium never frees it otherwise.
+          // Samples it loads are decoded on the LIVE context: superdough caches a
+          // load page-wide, and a decode left on a removed frame never settles.
           createContext: (frames, rate, { worklets }) =>
             worklets && canOpenAudioFrame()
-              ? offlineContextInFrame(2, frames, rate)
+              ? offlineContextInFrame(2, frames, rate, { decodeWith: () => this.audioCtx })
               : new OfflineAudioContext(2, frames, rate),
         }
       ))

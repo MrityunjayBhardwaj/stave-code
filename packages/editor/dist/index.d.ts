@@ -2806,7 +2806,31 @@ declare const SONG_LEVEL_STEM_NAME = "song-level";
  * ⚠ A buffer rendered in the frame stays readable after `dispose()`, and is
  * freed once nothing holds it. Disposing while a render is still running stops
  * it; dispose once the work that needs the context is done.
+ *
+ * ⚠ DECODING MUST NOT HAPPEN ON THE FRAME. A `decodeAudioData` in flight when
+ * the frame is removed never settles, and one started afterwards rejects ("The
+ * document is no longer active"), both measured. A caller that caches decodes
+ * page-wide by URL (superdough's `loadBuffer` does, and decodes on whichever
+ * context is current, which during a render is the frame's) would keep that
+ * dead promise, and the sample would never play again in the page. It picks
+ * the context when a load STARTS and decodes only after the fetch, so waiting
+ * for pending decodes before removing the frame is not enough. Pass
+ * `decodeWith`: the frame's own `decodeAudioData` then decodes on that context
+ * instead, before and after `dispose()`. A decoded buffer belongs to no
+ * context, so the frame plays it as usual.
  */
+/** How to open an audio frame. */
+interface AudioFrameOptions {
+    /** The document to put the frame in. Defaults to the page's. */
+    readonly doc?: Document;
+    /**
+     * The context that decodes audio for this frame's contexts: one that outlives
+     * the frame, normally the page's live context (which also decodes at the rate
+     * live playback needs). Read on every decode. When it gives nothing, the
+     * frame's context decodes for itself.
+     */
+    readonly decodeWith?: () => BaseAudioContext | null | undefined;
+}
 /** A hidden frame whose audio objects are freed when it is disposed. */
 interface AudioFrame {
     /** The frame's own constructor. A context built with it belongs to the frame. */
@@ -2846,19 +2870,19 @@ declare function bridgeAudioExtensions(page: object, frame: object): number;
  * Throws when there is no document to put the frame in (check
  * `canOpenAudioFrame` first where that can happen).
  */
-declare function openAudioFrame(doc?: Document): AudioFrame;
+declare function openAudioFrame(options?: AudioFrameOptions): AudioFrame;
 /**
  * Run `work` with a fresh audio frame, and dispose the frame when it ends,
  * however it ends. The value `work` returns (a rendered buffer, say) stays
  * usable afterwards.
  */
-declare function withAudioFrame<T>(work: (frame: AudioFrame) => T | Promise<T>, doc?: Document): Promise<T>;
+declare function withAudioFrame<T>(work: (frame: AudioFrame) => T | Promise<T>, options?: AudioFrameOptions): Promise<T>;
 /**
  * An offline context in a frame of its own, whose `dispose()` removes that frame.
  * For a caller that holds one context and wants it freed when done, without
  * managing the frame.
  */
-declare function offlineContextInFrame(channels: number, length: number, sampleRate: number, doc?: Document): OfflineAudioContext & {
+declare function offlineContextInFrame(channels: number, length: number, sampleRate: number, options?: AudioFrameOptions): OfflineAudioContext & {
     dispose(): void;
 };
 

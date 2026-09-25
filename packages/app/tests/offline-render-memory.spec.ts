@@ -208,6 +208,11 @@ test('a render built in a frame keeps its modulation, reverb, vowel and delay (#
     if (!out.ok || !out.wav) throw new Error(`bounce failed: ${out.error}`)
     return out.wav
   }
+  // First, on a fresh page: drums whose samples have never been decoded, in a
+  // render that needs worklets (`.shape`). The frame's decodes go to the live
+  // context (a decode left on a removed frame never settles), and the decoded
+  // buffers then play inside the frame's render.
+  const drums = loudness(await bounceOf('setcps(0.5)\ns("bd*4, hh*8, sd*2").shape(0.4).gain(0.5)'))
   const lfo = loudness(await bounceOf('setcps(0.5)\nnote("c2*8").s("supersaw").lpf(400).lfo({ c: "lpf", r: 1, depth: 4 }).gain(0.4)'))
   const still = loudness(await bounceOf('setcps(0.5)\nnote("c2*8").s("supersaw").lpf(400).gain(0.4)'))
   const effects: Record<string, number[]> = {
@@ -218,11 +223,11 @@ test('a render built in a frame keeps its modulation, reverb, vowel and delay (#
   const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length)
   const lfoEffect = curveDifference(lfo, still)
   console.log(
-    `[#1758 sound] lfo vs no lfo ${lfoEffect.toFixed(3)} · mean loudness room ${mean(effects.room).toFixed(4)} ` +
+    `[#1758 sound] lfo vs no lfo ${lfoEffect.toFixed(3)} · mean loudness drums ${mean(drums).toFixed(4)} room ${mean(effects.room).toFixed(4)} ` +
       `vowel ${mean(effects.vowel).toFixed(4)} delay ${mean(effects.delay).toFixed(4)}`,
   )
   // Dropped modulation made the LFO bounce the same as the one without it.
   expect(lfoEffect).toBeGreaterThan(0.05)
-  for (const curve of Object.values(effects)) expect(mean(curve)).toBeGreaterThan(0.005)
+  for (const curve of [drums, ...Object.values(effects)]) expect(mean(curve)).toBeGreaterThan(0.005)
   await expectNoUncaught(page)
 })

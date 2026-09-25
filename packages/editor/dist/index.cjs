@@ -6388,7 +6388,23 @@ function bridgeAudioExtensions(page, frame) {
   return copied;
 }
 __name(bridgeAudioExtensions, "bridgeAudioExtensions");
-function openAudioFrame(doc = globalThis.document) {
+function decodeElsewhere(win, decodeWith) {
+  const proto = win.BaseAudioContext?.prototype;
+  if (proto == null) return;
+  const own = proto.decodeAudioData;
+  Object.defineProperty(proto, "decodeAudioData", {
+    configurable: true,
+    writable: true,
+    value: /* @__PURE__ */ __name(function decodeAudioData(data, onDecoded, onError) {
+      const target = decodeWith();
+      if (target == null || target === this) return own.call(this, data, onDecoded, onError);
+      return target.decodeAudioData(data, onDecoded, onError);
+    }, "decodeAudioData")
+  });
+}
+__name(decodeElsewhere, "decodeElsewhere");
+function openAudioFrame(options = {}) {
+  const doc = options.doc ?? globalThis.document;
   if (doc?.body == null) throw new Error("openAudioFrame needs a document with a body");
   const element = doc.createElement("iframe");
   element.style.display = "none";
@@ -6402,6 +6418,7 @@ function openAudioFrame(doc = globalThis.document) {
     throw new Error("openAudioFrame could not reach the frame it opened");
   }
   bridgeAudioExtensions(doc.defaultView ?? globalThis, win);
+  if (options.decodeWith) decodeElsewhere(win, options.decodeWith);
   let disposed = false;
   const live = /* @__PURE__ */ __name((value) => {
     if (disposed) throw new Error("This audio frame has been disposed");
@@ -6428,8 +6445,8 @@ function openAudioFrame(doc = globalThis.document) {
   };
 }
 __name(openAudioFrame, "openAudioFrame");
-async function withAudioFrame(work, doc) {
-  const frame = openAudioFrame(doc);
+async function withAudioFrame(work, options) {
+  const frame = openAudioFrame(options);
   try {
     return await work(frame);
   } finally {
@@ -6437,8 +6454,8 @@ async function withAudioFrame(work, doc) {
   }
 }
 __name(withAudioFrame, "withAudioFrame");
-function offlineContextInFrame(channels, length, sampleRate, doc) {
-  const frame = openAudioFrame(doc);
+function offlineContextInFrame(channels, length, sampleRate, options) {
+  const frame = openAudioFrame(options);
   try {
     const ctx = frame.offlineContext(channels, length, sampleRate);
     ctx.dispose = () => frame.dispose();
@@ -10659,7 +10676,9 @@ var _StrudelEngine = class _StrudelEngine {
           settle: wa.reverbsReady,
           // #1758 — a render that loads worklets is built in a frame of its own,
           // so disposing it frees the context; Chromium never frees it otherwise.
-          createContext: /* @__PURE__ */ __name((frames, rate, { worklets }) => worklets && canOpenAudioFrame() ? offlineContextInFrame(2, frames, rate) : new OfflineAudioContext(2, frames, rate), "createContext")
+          // Samples it loads are decoded on the LIVE context: superdough caches a
+          // load page-wide, and a decode left on a removed frame never settles.
+          createContext: /* @__PURE__ */ __name((frames, rate, { worklets }) => worklets && canOpenAudioFrame() ? offlineContextInFrame(2, frames, rate, { decodeWith: /* @__PURE__ */ __name(() => this.audioCtx, "decodeWith") }) : new OfflineAudioContext(2, frames, rate), "createContext")
         }
       ));
     });

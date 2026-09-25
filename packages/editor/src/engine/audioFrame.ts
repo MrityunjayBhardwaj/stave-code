@@ -31,10 +31,35 @@
  * ⚠ A buffer rendered in the frame stays readable after `dispose()`, and is
  * freed once nothing holds it. Disposing while a render is still running stops
  * it; dispose once the work that needs the context is done.
+ *
+ * ⚠ DECODING MUST NOT HAPPEN ON THE FRAME. A `decodeAudioData` in flight when
+ * the frame is removed never settles, and one started afterwards rejects ("The
+ * document is no longer active"), both measured. A caller that caches decodes
+ * page-wide by URL (superdough's `loadBuffer` does, and decodes on whichever
+ * context is current, which during a render is the frame's) would keep that
+ * dead promise, and the sample would never play again in the page. It picks
+ * the context when a load STARTS and decodes only after the fetch, so waiting
+ * for pending decodes before removing the frame is not enough. Pass
+ * `decodeWith`: the frame's own `decodeAudioData` then decodes on that context
+ * instead, before and after `dispose()`. A decoded buffer belongs to no
+ * context, so the frame plays it as usual.
  */
 
 /** The audio classes a library might extend on this page, and so on a frame. */
 const EXTENDED_AUDIO_CLASSES = ['BaseAudioContext', 'AudioContext', 'OfflineAudioContext', 'AudioNode', 'AudioParam'] as const
+
+/** How to open an audio frame. */
+export interface AudioFrameOptions {
+  /** The document to put the frame in. Defaults to the page's. */
+  readonly doc?: Document
+  /**
+   * The context that decodes audio for this frame's contexts: one that outlives
+   * the frame, normally the page's live context (which also decodes at the rate
+   * live playback needs). Read on every decode. When it gives nothing, the
+   * frame's context decodes for itself.
+   */
+  readonly decodeWith?: () => BaseAudioContext | null | undefined
+}
 
 /** A hidden frame whose audio objects are freed when it is disposed. */
 export interface AudioFrame {
@@ -90,12 +115,39 @@ export function bridgeAudioExtensions(page: object, frame: object): number {
 }
 
 /**
+ * Point the frame's `decodeAudioData` at another context. The frame's
+ * prototype is its own, so nothing outside the frame changes. The target is
+ * read on each call; with none, or the calling context itself, the frame's
+ * context decodes as usual.
+ */
+function decodeElsewhere(win: Window & typeof globalThis, decodeWith: () => BaseAudioContext | null | undefined): void {
+  const proto = win.BaseAudioContext?.prototype
+  if (proto == null) return
+  const own = proto.decodeAudioData
+  Object.defineProperty(proto, 'decodeAudioData', {
+    configurable: true,
+    writable: true,
+    value: function decodeAudioData(
+      this: BaseAudioContext,
+      data: ArrayBuffer,
+      onDecoded?: DecodeSuccessCallback | null,
+      onError?: DecodeErrorCallback | null,
+    ) {
+      const target = decodeWith()
+      if (target == null || target === this) return own.call(this, data, onDecoded, onError)
+      return target.decodeAudioData(data, onDecoded, onError)
+    },
+  })
+}
+
+/**
  * Open a hidden frame to build audio objects in, and free them with `dispose()`.
  *
  * Throws when there is no document to put the frame in (check
  * `canOpenAudioFrame` first where that can happen).
  */
-export function openAudioFrame(doc: Document = globalThis.document): AudioFrame {
+export function openAudioFrame(options: AudioFrameOptions = {}): AudioFrame {
+  const doc = options.doc ?? globalThis.document
   if (doc?.body == null) throw new Error('openAudioFrame needs a document with a body')
   const element = doc.createElement('iframe')
   element.style.display = 'none'
@@ -109,6 +161,7 @@ export function openAudioFrame(doc: Document = globalThis.document): AudioFrame 
     throw new Error('openAudioFrame could not reach the frame it opened')
   }
   bridgeAudioExtensions(doc.defaultView ?? globalThis, win)
+  if (options.decodeWith) decodeElsewhere(win, options.decodeWith)
 
   let disposed = false
   const live = <T>(value: T): T => {
@@ -141,8 +194,11 @@ export function openAudioFrame(doc: Document = globalThis.document): AudioFrame 
  * however it ends. The value `work` returns (a rendered buffer, say) stays
  * usable afterwards.
  */
-export async function withAudioFrame<T>(work: (frame: AudioFrame) => T | Promise<T>, doc?: Document): Promise<T> {
-  const frame = openAudioFrame(doc)
+export async function withAudioFrame<T>(
+  work: (frame: AudioFrame) => T | Promise<T>,
+  options?: AudioFrameOptions,
+): Promise<T> {
+  const frame = openAudioFrame(options)
   try {
     return await work(frame)
   } finally {
@@ -159,9 +215,9 @@ export function offlineContextInFrame(
   channels: number,
   length: number,
   sampleRate: number,
-  doc?: Document,
+  options?: AudioFrameOptions,
 ): OfflineAudioContext & { dispose(): void } {
-  const frame = openAudioFrame(doc)
+  const frame = openAudioFrame(options)
   try {
     const ctx = frame.offlineContext(channels, length, sampleRate) as OfflineAudioContext & { dispose(): void }
     ctx.dispose = () => frame.dispose()

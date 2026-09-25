@@ -30,6 +30,48 @@ function fakeAudioOnLastFrame() {
   return { win, built }
 }
 
+/**
+ * Give every frame opened inside `fn` fake audio classes BEFORE the module
+ * touches them: a BaseAudioContext whose native-style `decodeAudioData`
+ * records the context it ran on, and an OfflineAudioContext inheriting it.
+ */
+async function withFakeFrameAudio<T>(fn: (decodedOn: string[]) => T | Promise<T>): Promise<T> {
+  const decodedOn: string[] = []
+  const getter = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow')!
+  Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
+    configurable: true,
+    get() {
+      const win = getter.get!.call(this) as Record<string, unknown>
+      if (win && !win.BaseAudioContext) {
+        class BaseAudioContext {
+          decodeAudioData(_data: ArrayBuffer) {
+            decodedOn.push('frame')
+            return Promise.resolve('decoded on the frame')
+          }
+        }
+        win.BaseAudioContext = BaseAudioContext
+        win.OfflineAudioContext = class extends BaseAudioContext {}
+      }
+      return win
+    },
+  })
+  try {
+    return await fn(decodedOn)
+  } finally {
+    Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', getter)
+  }
+}
+
+/** A context that outlives the frame: records that it decoded. */
+function liveDecoder(decodedOn: string[]) {
+  return {
+    decodeAudioData: (_data: ArrayBuffer) => {
+      decodedOn.push('live')
+      return Promise.resolve('decoded on the live context')
+    },
+  } as unknown as BaseAudioContext
+}
+
 afterEach(() => {
   for (const f of frames()) f.remove()
 })
@@ -134,32 +176,48 @@ describe('withAudioFrame', () => {
 })
 
 describe('offlineContextInFrame', () => {
-  it("returns a context whose dispose() removes the frame it was built in", () => {
-    // The fake has to be on the frame before the context is built, so patch the
-    // iframe prototype's getter for this one call.
-    const getter = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow')!
-    Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
-      configurable: true,
-      get() {
-        const win = getter.get!.call(this) as Record<string, unknown>
-        win.OfflineAudioContext ??= class {}
-        return win
-      },
-    })
-    try {
+  it("returns a context whose dispose() removes the frame it was built in", async () => {
+    await withFakeFrameAudio(() => {
       const ctx = offlineContextInFrame(2, 480, 48000)
       expect(frames()).toHaveLength(1)
       ctx.dispose()
       expect(frames()).toHaveLength(0)
-    } finally {
-      Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', getter)
-    }
+    })
   })
 
   it('removes the frame again when the context cannot be built', () => {
     // jsdom's frame has no OfflineAudioContext, so building one throws.
     expect(() => offlineContextInFrame(2, 480, 48000)).toThrow()
     expect(frames()).toHaveLength(0)
+  })
+})
+
+describe('decodeWith — decoding never lands on the frame', () => {
+  it("sends the frame's decodes to the given context, before and after dispose", async () => {
+    await withFakeFrameAudio(async (decodedOn) => {
+      const ctx = offlineContextInFrame(2, 480, 48000, { decodeWith: () => liveDecoder(decodedOn) })
+      expect(await ctx.decodeAudioData(new ArrayBuffer(8))).toBe('decoded on the live context')
+      ctx.dispose()
+      // superdough decodes after its fetch, which can finish after the render.
+      expect(await ctx.decodeAudioData(new ArrayBuffer(8))).toBe('decoded on the live context')
+      expect(decodedOn).toEqual(['live', 'live'])
+    })
+  })
+
+  it('lets the frame decode for itself when there is no context to send it to', async () => {
+    await withFakeFrameAudio(async (decodedOn) => {
+      const ctx = offlineContextInFrame(2, 480, 48000, { decodeWith: () => null })
+      expect(await ctx.decodeAudioData(new ArrayBuffer(8))).toBe('decoded on the frame')
+      expect(decodedOn).toEqual(['frame'])
+    })
+  })
+
+  it('CONTROL — without decodeWith the frame decodes for itself', async () => {
+    await withFakeFrameAudio(async (decodedOn) => {
+      const ctx = offlineContextInFrame(2, 480, 48000)
+      await ctx.decodeAudioData(new ArrayBuffer(8))
+      expect(decodedOn).toEqual(['frame'])
+    })
   })
 })
 
