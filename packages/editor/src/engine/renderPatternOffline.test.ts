@@ -731,3 +731,54 @@ describe('renderPatternOffline — worklets only for a render that plays one (#1
     expect(isMissingWorkletError(new Error('sound nosuchsound not found! Is it loaded?'))).toBe(false)
   })
 })
+
+describe('renderPatternOffline — a render that starts partway into the song (#1771)', () => {
+  const W = RENDER_WINDOW_SECONDS
+  const L = RENDER_WINDOW_LEAD_SECONDS
+  /** A pattern that answers only the span it is asked for, and records the ask. */
+  function rangedPattern(haps: ReturnType<typeof hap>[]) {
+    const asked: Array<[number, number]> = []
+    return {
+      asked,
+      queryArc: (b: number, e: number) => {
+        asked.push([b, e])
+        return haps.filter((h) => h.whole.begin >= b && h.whole.begin < e)
+      },
+    }
+  }
+
+  it('asks for the span from `start`, places notes from there, and hands superdough the SONG cycle', async () => {
+    const h = harness()
+    // cps 0.5: song seconds 10–14 are cycles 5–7
+    const p = rangedPattern([hap(4.5, { s: 'before' }), hap(6, { s: 'in' }), hap(7, { s: 'after' })])
+    await renderPatternOffline(p, { cps: 0.5, duration: 4, sampleRate: 48000, start: 10 }, h.deps)
+    expect(p.asked).toEqual([[5, 7]])
+    expect(h.calls.map((c) => [c.value.s, c.t, c.cycle])).toEqual([['in', 2, 6]])
+    expect(h.state.framesAsked).toBe(4 * 48000)
+  })
+
+  it('CONTROL — without `start` it asks from 0 and places notes at their song time', async () => {
+    const h = harness()
+    const p = rangedPattern([hap(1, { s: 'a' })])
+    await renderPatternOffline(p, { cps: 0.5, duration: 4, sampleRate: 48000 }, h.deps)
+    expect(p.asked).toEqual([[0, 2]])
+    expect(h.calls.map((c) => [c.value.s, c.t, c.cycle])).toEqual([['a', 2, 1]])
+  })
+
+  it('with pauses, its windows and room changes are counted from `start`', async () => {
+    const h = pausingHarness()
+    const S = 2 * W
+    const p = rangedPattern([
+      hap(S + 0.5, { s: 'w0', room: 0.8, roomsize: 1 }),
+      hap(S + W + 1, { s: 'w1' }),
+      hap(S + W + 2, { s: 'room', room: 0.8, roomsize: 4 }),
+    ])
+    await renderPatternOffline(p, { cps: 1, duration: 2 * W, sampleRate: 48000, start: S }, h.deps)
+    expect(h.pauses).toEqual([W - L, W + 2 - L])
+    expect(h.calls.map((c) => [c.s, c.t, c.now])).toEqual([
+      ['w0', 0.5, 0],
+      ['w1', W + 1, W - L],
+      ['room', W + 2, W + 2 - L],
+    ])
+  })
+})

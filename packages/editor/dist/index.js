@@ -5620,8 +5620,8 @@ async function renderPatternOffline(pattern, options, deps) {
   }
 }
 __name(renderPatternOffline, "renderPatternOffline");
-async function renderOnce(pattern, { cps, duration, sampleRate, signal, onProgress }, deps, worklets) {
-  const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
+async function renderOnce(pattern, { cps, duration, sampleRate, signal, onProgress, start = 0 }, deps, worklets) {
+  const haps = pattern.queryArc(start * cps, (start + duration) * cps, { _cps: cps }).filter((h) => h.hasOnset()).sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
   const liveCtx = deps.getAudioContext();
   const liveController = deps.getSuperdoughAudioController();
   const ctx = deps.createContext(Math.ceil(duration * sampleRate), sampleRate, { worklets });
@@ -5636,7 +5636,7 @@ async function renderOnce(pattern, { cps, duration, sampleRate, signal, onProgre
       try {
         await deps.superdough(
           hap.value,
-          begin / cps,
+          begin / cps - start,
           hap.duration.valueOf() / cps,
           cps,
           begin
@@ -5656,7 +5656,7 @@ async function renderOnce(pattern, { cps, duration, sampleRate, signal, onProgre
     deps.setAudioContext(ctx);
     deps.setSuperdoughAudioController(null);
     await deps.initAudio({ disableWorklets: !worklets });
-    const windows = ctx.suspend && ctx.resume ? windowsOf(haps, cps, roomChangeTimes(haps, cps), sampleRate) : [{ start: 0, haps }];
+    const windows = ctx.suspend && ctx.resume ? windowsOf(haps, cps, roomChangeTimes(haps, cps).map((t) => t - start), sampleRate, start) : [{ start: 0, haps }];
     await schedule(windows[0]?.haps ?? []);
     if (needsWorklets) throw new WorkletsNeeded();
     await deps.settle?.();
@@ -5696,8 +5696,8 @@ async function renderOnce(pattern, { cps, duration, sampleRate, signal, onProgre
   }
 }
 __name(renderOnce, "renderOnce");
-function windowsOf(haps, cps, extraStarts, sampleRate) {
-  const last = haps.length ? haps[haps.length - 1].whole.begin.valueOf() / cps : 0;
+function windowsOf(haps, cps, extraStarts, sampleRate, offset) {
+  const last = haps.length ? haps[haps.length - 1].whole.begin.valueOf() / cps - offset : 0;
   const gridEnd = Math.floor(last / RENDER_WINDOW_SECONDS);
   const grid = Array.from({ length: gridEnd }, (_, k2) => (k2 + 1) * RENDER_WINDOW_SECONDS);
   const minGap = 2 * RENDER_BLOCK_FRAMES / sampleRate;
@@ -5710,7 +5710,7 @@ function windowsOf(haps, cps, extraStarts, sampleRate) {
   const windows = starts.map((start) => ({ start, haps: [] }));
   let k = 0;
   for (const hap of haps) {
-    const at = hap.whole.begin.valueOf() / cps;
+    const at = hap.whole.begin.valueOf() / cps - offset;
     while (k + 1 < windows.length && windows[k + 1].start <= at) k++;
     windows[k].haps.push(hap);
   }
@@ -5751,6 +5751,43 @@ function describeSkipped(skipped) {
   return skipped.map((s) => `${s.count} \xD7 ${s.reason}`).join("; ");
 }
 __name(describeSkipped, "describeSkipped");
+
+// src/engine/pieceRender.ts
+function piecesOf(duration, pieceSeconds, leadSeconds) {
+  if (!(duration > 0) || !(pieceSeconds > 0)) return [];
+  const pieces = [];
+  for (let keepFrom = 0; keepFrom < duration; keepFrom += pieceSeconds) {
+    pieces.push({
+      from: Math.max(0, keepFrom - Math.max(0, leadSeconds)),
+      keepFrom,
+      to: Math.min(duration, keepFrom + pieceSeconds)
+    });
+  }
+  return pieces;
+}
+__name(piecesOf, "piecesOf");
+async function renderInPieces(duration, sampleRate, pieces, render, signal, aborted = () => new Error("The render was cancelled.")) {
+  const frames = Math.ceil(duration * sampleRate);
+  const out = [];
+  for (const piece of pieces) {
+    if (signal?.aborted) throw aborted();
+    const channels = await render(piece.from, piece.to - piece.from);
+    while (out.length < channels.length) out.push(new Float32Array(frames));
+    const at = Math.round(piece.keepFrom * sampleRate);
+    const end = Math.min(frames, Math.round(piece.to * sampleRate));
+    const skip = at - Math.round(piece.from * sampleRate);
+    channels.forEach((ch, c) => {
+      out[c].set(ch.subarray(skip, Math.min(ch.length, skip + (end - at))), at);
+    });
+  }
+  return out;
+}
+__name(renderInPieces, "renderInPieces");
+function canPauseOfflineRender(scope = globalThis) {
+  const ctor = scope.OfflineAudioContext;
+  return typeof ctor?.prototype?.suspend === "function";
+}
+__name(canPauseOfflineRender, "canPauseOfflineRender");
 
 // src/engine/renderStemsInOrder.ts
 async function renderStemsInOrder(stems, render, onProgress, cancel) {
@@ -9415,6 +9452,8 @@ __name(createOptionalStep, "createOptionalStep");
 var TRACK_ENVELOPE_DEBOUNCE_MS = 700;
 var TRACK_ENVELOPE_CAP_SECONDS = 1200;
 var TRACK_ENVELOPE_COLUMNS_PER_SECOND = 100;
+var DISPLAY_PIECE_SECONDS = 8;
+var DISPLAY_PIECE_LEAD_SECONDS = 4;
 var _StrudelEngine = class _StrudelEngine {
   constructor() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -10632,29 +10671,62 @@ var _StrudelEngine = class _StrudelEngine {
     };
     return withOfflineGraph(() => {
       if (signal?.aborted) return Promise.reject(new RenderCancelledError());
-      return this.transportHold.hold(() => renderPatternOffline(
-        pattern,
-        options,
-        {
-          getAudioContext: wa.getAudioContext,
-          setAudioContext: wa.setAudioContext,
-          getSuperdoughAudioController: wa.getSuperdoughAudioController,
-          setSuperdoughAudioController: wa.setSuperdoughAudioController,
-          initAudio: wa.initAudio,
-          // #1635 — the alias step live playback applies in `wrappedOutput`. The
-          // render calls superdough directly, so without this `kick` was "not
-          // found" in a bounce while it played live.
-          superdough: /* @__PURE__ */ __name((value, t, hapDuration, cps, cycle) => wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? void 0).value, t, hapDuration, cps, cycle), "superdough"),
-          // #1675 — a reverb's impulse response lands asynchronously; the render
-          // waits for it at each window instead of rendering the room silent.
-          settle: wa.reverbsReady,
-          // #1758 — a render that loads worklets is built in a frame of its own,
-          // so disposing it frees the context; Chromium never frees it otherwise.
-          // Samples it loads are decoded on the LIVE context: superdough caches a
-          // load page-wide, and a decode left on a removed frame never settles.
-          createContext: /* @__PURE__ */ __name((frames, rate, { worklets }) => worklets && canOpenAudioFrame() ? offlineContextInFrame(2, frames, rate, { decodeWith: /* @__PURE__ */ __name(() => this.audioCtx, "decodeWith") }) : new OfflineAudioContext(2, frames, rate), "createContext")
-        }
-      ));
+      return this.transportHold.hold(() => renderPatternOffline(pattern, options, this.offlineGraphDeps(wa)));
+    });
+  }
+  /**
+   * What an offline render borrows from the engine: superdough's module globals,
+   * the alias step, the reverb wait and where its context is built.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  offlineGraphDeps(wa) {
+    return {
+      getAudioContext: wa.getAudioContext,
+      setAudioContext: wa.setAudioContext,
+      getSuperdoughAudioController: wa.getSuperdoughAudioController,
+      setSuperdoughAudioController: wa.setSuperdoughAudioController,
+      initAudio: wa.initAudio,
+      // #1635 — the alias step live playback applies in `wrappedOutput`. The
+      // render calls superdough directly, so without this `kick` was "not
+      // found" in a bounce while it played live.
+      superdough: /* @__PURE__ */ __name((value, t, hapDuration, cps, cycle) => wa.superdough(aliasSoundValue(value, this.soundMapRef?.get?.() ?? void 0).value, t, hapDuration, cps, cycle), "superdough"),
+      // #1675 — a reverb's impulse response lands asynchronously; the render
+      // waits for it at each window instead of rendering the room silent.
+      settle: wa.reverbsReady,
+      // #1758 — a render that loads worklets is built in a frame of its own,
+      // so disposing it frees the context; Chromium never frees it otherwise.
+      // Samples it loads are decoded on the LIVE context: superdough caches a
+      // load page-wide, and a decode left on a removed frame never settles.
+      createContext: /* @__PURE__ */ __name((frames, rate, { worklets }) => worklets && canOpenAudioFrame() ? offlineContextInFrame(2, frames, rate, { decodeWith: /* @__PURE__ */ __name(() => this.audioCtx, "decodeWith") }) : new OfflineAudioContext(2, frames, rate), "createContext")
+    };
+  }
+  /**
+   * #1771 — `renderPatternRaw` for a browser whose offline context cannot pause:
+   * the song rendered as short pieces and joined (`pieceRender.ts`), so its cost
+   * grows with the length rather than its square. Display renders only: a join
+   * cuts whatever rings past the lead-in. Holds the graph and the transport once
+   * for every piece, so no Play starts between two of them.
+   */
+  async renderPatternInPieces(pattern, duration, sampleRate, signal) {
+    const wa = await import('@strudel/webaudio');
+    const deps = this.offlineGraphDeps(wa);
+    const cps = this.getCps() ?? 0.5;
+    const pieces = piecesOf(duration, DISPLAY_PIECE_SECONDS, DISPLAY_PIECE_LEAD_SECONDS);
+    return withOfflineGraph(() => {
+      if (signal.aborted) return Promise.reject(new RenderCancelledError());
+      return this.transportHold.hold(
+        () => renderInPieces(
+          duration,
+          sampleRate,
+          pieces,
+          async (start, seconds) => {
+            const { buffer } = await renderPatternOffline(pattern, { signal, cps, duration: seconds, sampleRate, start }, deps);
+            return Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
+          },
+          signal,
+          () => new RenderCancelledError()
+        )
+      );
     });
   }
   /**
@@ -10699,15 +10771,26 @@ var _StrudelEngine = class _StrudelEngine {
    * so a low-rate render that loaded one first would leave live playback a
    * low-rate copy. The rate is decided in `trackFingerprint`, from the events
    * this render plays.
+   *
+   * ⚠ IN PIECES WHERE A RENDER CANNOT PAUSE (#1771, Firefox): 8 s pieces joined,
+   * each with a 4 s lead-in (`renderPatternInPieces`). What rings longer than
+   * the lead-in is cut at a join, and a supersaw's voices take their phase from
+   * the note's time on the piece's clock, so its fine beating differs from a
+   * single render's: an equally valid draw, as live playback is another.
    */
   async renderTrackEnvelope(trackId, cycles, signal) {
     const pattern = this.songPatterns.get(trackId);
     if (!pattern || !this.audioCtx) return null;
     const duration = cycles / (this.getCps() ?? 0.5);
     const rate = this.displayRates.get(trackId) ?? this.audioCtx.sampleRate;
-    const { buffer } = await this.renderPatternRaw(pattern, duration, rate, signal);
-    const channels = [];
-    for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c));
+    let channels;
+    if (canPauseOfflineRender()) {
+      const { buffer } = await this.renderPatternRaw(pattern, duration, rate, signal);
+      channels = [];
+      for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c));
+    } else {
+      channels = await this.renderPatternInPieces(pattern, duration, rate, signal);
+    }
     const env = envelopeFromChannels(channels, Math.max(1, Math.ceil(duration * TRACK_ENVELOPE_COLUMNS_PER_SECOND)));
     return env ? { ...env, cycles } : null;
   }
