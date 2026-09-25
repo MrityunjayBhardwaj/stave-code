@@ -70,12 +70,29 @@ test('a long song of oscillator tracks draws every one, from 24 kHz renders (#17
 
 /**
  * #1760 — the budget is spent on the lanes on screen first. Twelve 374 s
- * oscillator tracks cost 187 s each (#1759), so six fit the 1,200 s budget. In
- * a short drawer the top lanes draw; scrolled to the bottom, the lanes then on
- * screen draw too, and none already drawn is rendered again.
+ * oscillator tracks each render at 24 kHz and cost 374 × 24,000 / live seconds
+ * against the 1,200 s budget (#1759): 187 s at 48 kHz, so six fit; about 204 s
+ * at 44.1 kHz, so five. In a short drawer the top lanes draw; scrolled to the
+ * bottom, the lanes then on screen draw too, as many as fit, and none already
+ * drawn is rendered again.
  */
-test('scrolling a long song brings the lanes on screen into the budget, re-rendering none (#1760)', async ({ page }) => {
+const BUDGET_SECONDS = 1200
+const DISPLAY_RATE = 24000
+const TRACK_SECONDS = 374
+// #1769 — run at both common device rates, whatever this machine's output is set
+// to: the live rate decides how much each lane costs, so a count that holds at
+// one rate is wrong at the other.
+for (const liveRate of [44100, 48000]) test(`scrolling a long song brings the lanes on screen into the budget, re-rendering none, live at ${liveRate} Hz (#1760)`, async ({ page }) => {
   test.setTimeout(240_000)
+  await page.addInitScript((rate) => {
+    // The engine's live context is a bare `new AudioContext()`; give it this rate.
+    const Native = window.AudioContext
+    window.AudioContext = class extends Native {
+      constructor(options?: AudioContextOptions) {
+        super({ sampleRate: rate, ...options })
+      }
+    }
+  }, liveRate)
   await page.addInitScript(() => {
     // Init scripts also run in every frame, and #1758 renders in a throwaway
     // frame: each copy records into the TOP window, and only the top resets it.
@@ -88,6 +105,7 @@ test('scrolling a long song brings the lanes on screen into the budget, re-rende
     }
   })
   await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 220 } })
+  expect(await page.evaluate(() => new AudioContext().sampleRate)).toBe(liveRate)
   const names = Array.from({ length: 12 }, (_, i) => `t${String(i + 1).padStart(2, '0')}`)
   await seedCode(page, ['setcps(0.5)', ...names.map((n) => osc(n, 'sawtooth'))].join('\n'))
 
@@ -104,12 +122,14 @@ test('scrolling a long song brings the lanes on screen into the budget, re-rende
     })
   const settled = () => expect.poll(() => attr(page, 'data-full-song-envelope-rendering'), { timeout: 60_000 }).toBe('')
 
-  await expect.poll(async () => (await fresh()).length, { timeout: 120_000 }).toBe(6)
+  // #1769 — how many lanes the budget holds at this live rate.
+  const fit = Math.floor(BUDGET_SECONDS / ((TRACK_SECONDS * Math.min(liveRate, DISPLAY_RATE)) / liveRate))
+  await expect.poll(async () => (await fresh()).length, { timeout: 120_000 }).toBe(fit)
   await settled()
   const before = await fresh()
   const renders = async () => (await page.evaluate(() => (window as unknown as { __renders: string[] }).__renders)).length
   const rendersBefore = await renders()
-  expect(before).toEqual(names.slice(0, 6))
+  expect(before).toEqual(names.slice(0, fit))
 
   await page.evaluate(() => {
     const grid = document.querySelector('[data-full-song="grid"]') as HTMLElement
@@ -119,13 +139,18 @@ test('scrolling a long song brings the lanes on screen into the budget, re-rende
   await expect.poll(inView, { timeout: 5_000 }).toContain('t12')
   const shown = await inView()
   expect(shown).not.toContain('t01')
-  await expect.poll(async () => (await fresh()).filter((n) => shown.includes(n)).length, { timeout: 120_000 }).toBe(shown.length)
+  // As many of the lanes on screen as the budget holds draw.
+  const drawnInView = Math.min(shown.length, fit)
+  await expect.poll(async () => (await fresh()).filter((n) => shown.includes(n)).length, { timeout: 120_000 }).toBe(drawnInView)
   await settled()
   const after = await fresh()
   const newRenders = (await renders()) - rendersBefore
-  console.log(`[#1760] in view after scroll: ${shown.join(',')} · drawn before: ${before.join(',')} · after: ${after.join(',')} · new renders: ${newRenders}`)
+  console.log(
+    `[#1760] live ${liveRate} Hz, ${fit} fit · in view after scroll: ${shown.join(',')} · drawn before: ${before.join(',')} · ` +
+      `after: ${after.join(',')} · new renders: ${newRenders}`,
+  )
   // Every lane drawn before still draws: nothing kept was thrown away …
   for (const n of before) expect(after, n).toContain(n)
   // … and only the lanes that had no render were rendered.
-  expect(newRenders).toBe(shown.filter((n) => !before.includes(n)).length)
+  expect(newRenders).toBe(after.filter((n) => shown.includes(n) && !before.includes(n)).length)
 })
