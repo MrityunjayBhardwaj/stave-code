@@ -7,9 +7,16 @@
 import { describe, it, expect } from 'vitest'
 import { laneMarkBands, markRect } from '../drawTimeline'
 import { computeLaneLayout } from '../laneLayout'
+import type { SampleRef } from '@stave/editor'
 import { markAudioLanes, markBarsLanes, NO_VOICE, type TimelineScene, type SceneNote } from '../timelineScene'
 
-function sceneOf(notes: SceneNote[], pitchMin: number | null = null, pitchMax: number | null = null): TimelineScene {
+/** A named mark plays the file of that name unless it says otherwise — what
+ *  `timelineMarks` builds for a plain `s` with no bank or number (#1764). */
+const withSample = (n: SceneNote): SceneNote =>
+  n.sample !== undefined || n.voice == null || n.voice === NO_VOICE ? n : { ...n, sample: { s: n.voice } }
+
+function sceneOf(raw: SceneNote[], pitchMin: number | null = null, pitchMax: number | null = null): TimelineScene {
+  const notes = raw.map(withSample)
   return {
     lanes: [
       {
@@ -39,7 +46,7 @@ function sceneOf(notes: SceneNote[], pitchMin: number | null = null, pitchMax: n
 }
 
 /** The registry, as a set of names that are files. */
-const files = (...names: string[]) => (voice: string) => names.includes(voice)
+const files = (...names: string[]) => (sample: SampleRef) => names.includes(sample.s)
 
 describe('markAudioLanes — which lanes are audio tracks (#1730)', () => {
   it('a lane whose every mark plays a file is an audio lane', () => {
@@ -61,6 +68,14 @@ describe('markAudioLanes — which lanes are audio tracks (#1730)', () => {
   it('a note with no sound name is not a file', () => {
     const scene = sceneOf([{ cycle: 0, end: 1, pitch: 60, gain: 1, voice: NO_VOICE }])
     expect(markAudioLanes(scene, () => true).lanes[0].audio ?? false).toBe(false)
+  })
+
+  it('asks about the file the mark PLAYS, not the name on its row (#1764)', () => {
+    // `s("bd").bank("RolandTR909")`: the row says bd, the engine plays RolandTR909_bd.
+    const banked = sceneOf([{ cycle: 0, end: 1, pitch: null, gain: 1, voice: 'bd', sample: { s: 'RolandTR909_bd' } }])
+    expect(markAudioLanes(banked, files('RolandTR909_bd')).lanes[0].audio).toBe(true)
+    // CONTROL — a registry that knows only the plain name does not make it one.
+    expect(markAudioLanes(banked, files('bd')).lanes[0].audio ?? false).toBe(false)
   })
 
   it('a lane with no marks is not an audio lane', () => {

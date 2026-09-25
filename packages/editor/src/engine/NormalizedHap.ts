@@ -169,6 +169,8 @@ export function normalizeStrudelHap(
     velocity: value?.velocity ?? 1,
     color: value?.color ?? null,
   }
+  // #1764 — kept beside the fold into `note`, which a sample cannot read back.
+  if (value?.n != null) event.n = value.n
   const extracted = extractLoc(hap)
   const loc = extracted && declaredLocations ? declaredOnly(extracted, declaredLocations) : extracted
   if (loc) event.loc = loc

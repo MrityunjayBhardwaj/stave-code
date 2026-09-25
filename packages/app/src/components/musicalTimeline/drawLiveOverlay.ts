@@ -210,10 +210,10 @@ function markHasWaveform(
   pxPerCycle: number,
 ): boolean {
   if (waveforms == null) return false
-  // A null-`s` mark is a synth note: a pitch and no sample, so no file shape.
-  const voice = note.voice
-  if (voice == null || voice === NO_VOICE) return false
-  const peaks = waveforms.peaksFor(voice, note.pitch ?? null)
+  // A mark with no sound name has no file shape (#1764: `sample`, not `voice`).
+  const sample = note.sample
+  if (sample == null) return false
+  const peaks = waveforms.peaksFor(sample)
   if (peaks == null) return false
   return waveformFit(peaks.duration, waveforms.cps, r.w, r.h, pxPerCycle, note.region) != null
 }

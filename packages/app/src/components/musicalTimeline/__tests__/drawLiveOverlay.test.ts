@@ -65,8 +65,8 @@ function waveformsFor(
 ): WaveformSource {
   return {
     cps,
-    peaksFor: (v: string) =>
-      v === voice ? { data: new Float32Array([-1, 1]), columns: 1, duration } : null,
+    peaksFor: (sample) =>
+      sample.s === voice ? { data: new Float32Array([-1, 1]), columns: 1, duration } : null,
   }
 }
 
@@ -74,9 +74,10 @@ const THEME: LiveOverlayTheme = { lit: '#fff', litGlow: '#88f' }
 
 /** One lane, one melodic voice with two pitched notes. */
 function sceneFixture(): TimelineScene {
+  // Each mark names the file it plays, as `timelineMarks` builds it (#1764).
   const notes: SceneNote[] = [
-    { cycle: 1, end: 1.5, pitch: 60, gain: 1, voice: 'saw' },
-    { cycle: 2, end: 2.5, pitch: 67, gain: 0.5, voice: 'saw' },
+    { cycle: 1, end: 1.5, pitch: 60, gain: 1, voice: 'saw', sample: { s: 'saw', note: 60 } },
+    { cycle: 2, end: 2.5, pitch: 67, gain: 0.5, voice: 'saw', sample: { s: 'saw', note: 67 } },
   ]
   return {
     lanes: [

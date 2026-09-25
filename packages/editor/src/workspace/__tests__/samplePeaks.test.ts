@@ -8,6 +8,7 @@ import {
   computePeaks,
   peaksForSample,
   resolveSampleUrl,
+  sampleRefOf,
   warmSamplePeaks,
   type SamplePeaksDeps,
 } from '../samplePeaks'
@@ -169,6 +170,43 @@ describe('resolveSampleUrl', () => {
     })
     expect(() => resolveSampleUrl({ s: 'take_1' }, throwing)).not.toThrow()
     expect(resolveSampleUrl({ s: 'take_1' }, throwing)).toBeNull()
+  })
+})
+
+describe('sampleRefOf (#1764)', () => {
+  const ev = (over: Partial<Parameters<typeof sampleRefOf>[0]> = {}) => sampleRefOf({ s: 'bd', note: null, freq: null, ...over })
+
+  it('names the banked sound the way superdough plays it', () => {
+    // superdough.mjs:538-539 — `s = \`${bank}_${s}\``.
+    expect(ev({ params: { bank: 'RolandTR909' } })).toEqual({ s: 'RolandTR909_bd', n: null, note: null, freq: null })
+  })
+
+  it('keeps n as the sample number, not as a note', () => {
+    // `s("bd:3")` normalises to note 3 AND n 3: the note is only the fold.
+    expect(ev({ n: 3, note: 3 })).toEqual({ s: 'bd', n: 3, note: null, freq: null })
+  })
+
+  it('keeps a note and an n that differ — a pitched bank reads both', () => {
+    expect(ev({ s: 'piano', note: 'c4', n: 2 })).toEqual({ s: 'piano', n: 2, note: 'c4', freq: null })
+    expect(ev({ s: 'piano', note: 72, freq: 523.25 })).toEqual({ s: 'piano', n: null, note: 72, freq: 523.25 })
+  })
+
+  it('is null for an event with no sound name, and ignores an empty bank', () => {
+    expect(ev({ s: null })).toBeNull()
+    expect(ev({ params: { bank: '' } })?.s).toBe('bd')
+  })
+
+  it('hands resolveSampleUrl the fields getSampleInfo reads', () => {
+    const seen: Record<string, unknown>[] = []
+    const spying = deps({
+      getSampleInfo: (hapValue) => {
+        seen.push(hapValue)
+        return { transpose: 0, url: 'u', index: 0, midi: 36, label: 'l', playbackRate: 1 }
+      },
+    })
+    resolveSampleUrl(ev({ params: { bank: 'RolandTR909' }, n: 3, note: 3 })!, spying)
+    resolveSampleUrl(ev({ s: 'piano', freq: 440 })!, spying)
+    expect(seen).toEqual([{ s: 'RolandTR909_bd', n: 3 }, { s: 'piano', freq: 440 }])
   })
 })
 

@@ -50,17 +50,12 @@ describe('createWaveformSource', () => {
     expect(seen).toHaveLength(2)
   })
 
-  it('asks for the sample by voice AND note, because that picks the file', () => {
+  it('asks for the file the mark plays, every field that chooses it untouched (#1764)', () => {
     peaksForSample.mockReturnValue(null)
     const source = createWaveformSource(() => 0.5)
-    source.peaksFor('piano', 72)
-    expect(peaksForSample).toHaveBeenCalledWith({ s: 'piano', note: 72 })
-  })
-
-  it('passes a missing pitch straight through rather than inventing one', () => {
-    peaksForSample.mockReturnValue(null)
-    const source = createWaveformSource(() => 0.5)
-    source.peaksFor('take_1', null)
-    expect(peaksForSample).toHaveBeenCalledWith({ s: 'take_1', note: null })
+    source.peaksFor({ s: 'RolandTR909_bd', n: 3, note: null, freq: null })
+    expect(peaksForSample).toHaveBeenCalledWith({ s: 'RolandTR909_bd', n: 3, note: null, freq: null })
+    source.peaksFor({ s: 'piano', n: null, note: 72, freq: null })
+    expect(peaksForSample).toHaveBeenLastCalledWith({ s: 'piano', n: null, note: 72, freq: null })
   })
 })

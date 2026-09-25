@@ -47,9 +47,13 @@ import type { IREvent } from './IREvent'
  * mirroring the fields `normalizeStrudelHap` lifts out of `hap.value`.
  *
  * Kept in step with `KNOWN_VALUE_FIELDS` by `eventValueKey.test.ts`, which
- * fails if the two drift. The one deliberate difference is `n`: it is an ALIAS
- * the normaliser folds into `note` (`note: value?.note ?? value?.n`), not a
- * slot of its own, so a key that also read `n` would be reading nothing.
+ * fails if the two drift. The one deliberate difference is `n`. The normaliser
+ * folds it into `note` (`note: value?.note ?? value?.n`), and that fold is what
+ * this key reads. Since #1764 an event also keeps `n` in its own slot, for the
+ * sample lookup, and this key does NOT read it, on purpose: reading it moved a
+ * real corpus song's period from 96 to 12 cycles (`song-period-sweep`). There
+ * the `n` rides on synth notes that also carry a `note`, and whether it changes
+ * what you hear is unmeasured, so whether it should count is its own question.
  *
  * `type` has a declared slot on `IREvent` that no producer currently writes.
  * It is read anyway — an absent field contributes a constant and costs nothing,

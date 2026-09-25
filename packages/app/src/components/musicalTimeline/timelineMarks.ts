@@ -13,7 +13,7 @@ import type { IREvent, PatternIR } from '@stave/editor'
 
 import type { SampleRegion } from './waveformLane'
 import { positionalSectionName } from './sectionLabel'
-import { structuralWalk, wholeWalkWindow, rootStackArms, armSourceSpan } from '@stave/editor'
+import { structuralWalk, wholeWalkWindow, rootStackArms, armSourceSpan, sampleRefOf } from '@stave/editor'
 import { extractPitch } from './pitch'
 import { containingAnchor } from './laneIdentity'
 import { captureLaneOrder } from './trackOrder'
@@ -561,6 +561,7 @@ function collectHapMarks(
       pitch: extractPitch(ev)?.midi ?? null,
       gain: clamp01(ev.gain ?? 1),
       voice: ev.s ?? null,
+      sample: sampleRefOf(ev),
       ...(region ? { region } : {}),
     })
   }

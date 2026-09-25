@@ -26,7 +26,7 @@ import * as React from 'react'
 
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { SongAnalysis, PatternIR, HapStream, IREvent, OffsetEdit, SignalAutomation, SignalKind, TrackEnvelopeAccess } from '@stave/editor'
+import type { SongAnalysis, PatternIR, HapStream, IREvent, OffsetEdit, SampleRef, SignalAutomation, SignalKind, TrackEnvelopeAccess } from '@stave/editor'
 import {
   captionRows,
   captionHit,
@@ -81,7 +81,7 @@ import {
 import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
 import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
 import { rowHeightForEdge } from './musicalTimeline/rowEdgeResize'
-import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeNotices, envelopeTrackIds, markAudioLanes, markBarsLanes, type SceneActivity } from './musicalTimeline/timelineScene'
+import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeNotices, envelopeTrackIds, markAudioLanes, markBarsLanes, sampleKey, type SceneActivity } from './musicalTimeline/timelineScene'
 import {
   nextWindowOriginFor,
   clampSeekToWindow,
@@ -1376,17 +1376,17 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   const [decodeTick, setDecodeTick] = useState(0)
   useEffect(() => {
     if (waveforms == null) return
-    const keys = new Map<string, { voice: string; pitch: number | null }>()
+    // #1764 — keyed by the file each mark plays, the same key the draw reads:
+    // a banked kit still loading must count as missing even when the plain
+    // sound of the same name has loaded.
+    const keys = new Map<string, SampleRef>()
     for (const lane of audioScene.lanes) {
       if (lane.audio !== true) continue
-      for (const n of lane.notes) {
-        if (n.voice == null) continue
-        keys.set(`${n.voice}\u0000${n.pitch ?? ''}`, { voice: n.voice, pitch: n.pitch ?? null })
-      }
+      for (const n of lane.notes) if (n.sample != null) keys.set(sampleKey(n.sample), n.sample)
     }
     const missing = () => {
       let count = 0
-      for (const { voice, pitch } of keys.values()) if (waveforms.peaksFor(voice, pitch) == null) count++
+      for (const sample of keys.values()) if (waveforms.peaksFor(sample) == null) count++
       return count
     }
     let last = missing()

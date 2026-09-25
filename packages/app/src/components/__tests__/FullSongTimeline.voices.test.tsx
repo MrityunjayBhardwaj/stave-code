@@ -24,7 +24,7 @@ const DRUM_EVENTS = [
 vi.mock('@stave/editor', async () => {
   // #974 — lane STRUCTURE comes from `structuralWalk` now; the per-voice sub-rows still come
   // from the collect marks (DRUM_EVENTS). Reduce the SAME events through the REAL reducer (PV192).
-  const { skeletonsFromEvents, wholeWalkWindow } = await import(
+  const { skeletonsFromEvents, wholeWalkWindow, sampleRefOf } = await import(
     '../musicalTimeline/__tests__/structuralWalkTestStub'
   )
   // #1489 moved this reader into the editor, so the barrel mock has to carry it
@@ -60,6 +60,8 @@ vi.mock('@stave/editor', async () => {
     structuralWalk: (_ir: unknown, window: { originCycle: number; spanCycles: number }) =>
       skeletonsFromEvents(DRUM_EVENTS, window),
     wholeWalkWindow,
+    // #1764 — every mark names its file through the real one, from source.
+    sampleRefOf,
     laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
     // #459 — Song view reads the shared timeline row-height setting; mock to 22
     // (the SUB_ROW_HEIGHT these sub-row layout assertions were written for).

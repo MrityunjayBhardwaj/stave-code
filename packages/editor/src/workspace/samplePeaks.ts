@@ -33,6 +33,7 @@
  */
 
 import { getAudioContext, getCachedBuffer, getSampleInfo, getSound, loadBuffer } from '@strudel/webaudio'
+import type { SampleRef } from './sampleRef'
 
 /**
  * Envelope resolution held per sample, independent of zoom — the FLOOR.
@@ -161,22 +162,8 @@ function channelsOf(buffer: AudioBuffer): Float32Array[] {
  */
 const peakCache = new Map<string, SamplePeaks>()
 
-/** The shape `getSampleInfo` needs — the subset of a hap the timeline can supply. */
-export interface SampleRef {
-  /** Sound name, i.e. the `s` of the event. */
-  readonly s: string
-  /**
-   * MIDI note, when the mark carries one.
-   *
-   * Load-bearing for multi-sample instruments: an object-format bank picks its
-   * file by nearest note (`superdough/util.mjs:97-107`), so a piano's low C and
-   * high C are different files with different shapes. Percussive marks have no
-   * pitch and pass nothing.
-   */
-  readonly note?: number | null
-  /** Sample index within the bank (`n`); defaults to superdough's own 0. */
-  readonly n?: number | null
-}
+export type { SampleRef } from './sampleRef'
+export { sampleRefOf } from './sampleRef'
 
 /** The engine reads this module performs, isolated so tests can drive it. */
 export interface SamplePeaksDeps {
@@ -204,6 +191,7 @@ export function resolveSampleUrl(ref: SampleRef, deps: SamplePeaksDeps = liveDep
   try {
     const hapValue: Record<string, unknown> = { s: ref.s }
     if (ref.note != null) hapValue.note = ref.note
+    if (ref.freq != null) hapValue.freq = ref.freq
     if (ref.n != null) hapValue.n = ref.n
     const { url } = deps.getSampleInfo(hapValue, bank as never)
     return typeof url === 'string' && url.length > 0 ? url : null

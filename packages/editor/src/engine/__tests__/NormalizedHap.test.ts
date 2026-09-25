@@ -44,6 +44,13 @@ describe('normalizeStrudelHap', () => {
     expect(n.note).toBe(60)
   })
 
+  it('keeps n in its own slot too, where the fold into note loses it (#1764)', () => {
+    // A sample's n picks its FILE; with a note present the fold keeps only the note.
+    expect(normalizeStrudelHap({ value: { s: 'piano', note: 'c4', n: 2 } })).toMatchObject({ note: 'c4', n: 2 })
+    expect(normalizeStrudelHap({ value: { s: 'bd', n: 3 } })).toMatchObject({ note: 3, n: 3 })
+    expect('n' in normalizeStrudelHap({ value: { s: 'bd' } })).toBe(false)
+  })
+
   it('handles plain number begin/end (no Fraction)', () => {
     const hap = {
       whole: { begin: 2, end: 3 },

@@ -62,7 +62,7 @@ vi.mock('@stave/editor', async () => {
   // source, no gifenc), so structure + marks stay in sync and the stub can't drift (PV192).
   // Only vi.hoisted values (the fixtures) are safe to reference here — the factory is hoisted
   // above every top-level const, so `eventsForIr` lives inside it.
-  const { skeletonsFromEvents, wholeWalkWindow } = await import(
+  const { skeletonsFromEvents, wholeWalkWindow, sampleRefOf } = await import(
     '../musicalTimeline/__tests__/structuralWalkTestStub'
   )
   // #1489 moved this reader into the editor, so the barrel mock has to carry it
@@ -108,6 +108,8 @@ vi.mock('@stave/editor', async () => {
     // hands the component `undefined` — invisible to tsc, because a vi.mock
     // factory is untyped.
     wholeWalkWindow,
+    // #1764 — every mark names its file through the real one, from source.
+    sampleRefOf,
     laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
     // #459 — Song view now reads the shared timeline row-height setting. Mock it
     // to 22 (the height these layout assertions were written for) + a no-op
