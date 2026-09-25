@@ -43,7 +43,11 @@
  *    300 s in 438 s, slower than playing it. Here the render pauses at each
  *    window boundary (`OfflineAudioContext.suspend`), schedules only that
  *    window's notes, and resumes, so the live node count stays near one
- *    window's worth. A context without `suspend` gets the upfront schedule.
+ *    window's worth. A context without `suspend` gets the upfront schedule,
+ *    and with it the squared cost. That is every context in Firefox, which has
+ *    no `OfflineAudioContext.suspend` (#1771): a 512 s track took 83 s there
+ *    against 6.3 s in Chromium. A caller that can live with a seam splits the
+ *    song itself (`start`, `pieceRender.ts`).
  *
  * 5. ⚠ A CANCEL TAKES EFFECT AT THE NEXT PAUSE (#1655). A render cannot be
  *    stopped halfway, but it can stop being fed: once `signal` aborts, no
@@ -190,6 +194,15 @@ export interface OfflineGraphOptions {
   cps: number
   /** Seconds. */
   duration: number
+  /**
+   * Song second the render starts at; 0 when absent (#1771). The buffer's first
+   * sample is this second of the song, and only notes whose onset falls in
+   * `[start, start + duration)` are played. Each note still hands superdough its
+   * song cycle, which is what an LFO's phase is taken from (`superdough.mjs`
+   * tremolo, `helpers.mjs` `createFilter`), so a piece sounds as that stretch of
+   * the whole song does, less whatever was still ringing from before `start`.
+   */
+  start?: number
   sampleRate: number
   /** Stops scheduling at the next pause; the render then rejects (#1655). */
   signal?: AbortSignal
@@ -248,14 +261,14 @@ export async function renderPatternOffline(
 
 async function renderOnce(
   pattern: QueryablePattern,
-  { cps, duration, sampleRate, signal, onProgress }: OfflineGraphOptions,
+  { cps, duration, sampleRate, signal, onProgress, start = 0 }: OfflineGraphOptions,
   deps: OfflineGraphDeps,
   worklets: boolean,
 ): Promise<OfflineGraphResult> {
   // Ascending onset order matters for controls that depend on graph state,
   // such as `cut` (`webaudio.mjs:61-65`).
   const haps = pattern
-    .queryArc(0, duration * cps, { _cps: cps })
+    .queryArc(start * cps, (start + duration) * cps, { _cps: cps })
     .filter((h) => h.hasOnset())
     .sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf())
 
@@ -276,7 +289,7 @@ async function renderOnce(
       try {
         await deps.superdough(
           hap.value as Record<string, unknown>,
-          begin / cps,
+          begin / cps - start,
           hap.duration.valueOf() / cps,
           cps,
           begin
@@ -300,7 +313,7 @@ async function renderOnce(
 
     const windows =
       ctx.suspend && ctx.resume
-        ? windowsOf(haps, cps, roomChangeTimes(haps, cps), sampleRate)
+        ? windowsOf(haps, cps, roomChangeTimes(haps, cps).map((t) => t - start), sampleRate, start)
         : [{ start: 0, haps }]
     await schedule(windows[0]?.haps ?? [])
     // Found before rendering starts: this context is dropped unrendered.
@@ -358,14 +371,18 @@ async function renderOnce(
  * a start too early to pause ahead of (its notes go in the window before, which
  * is the upfront schedule for the first window). An empty window stays in the
  * list and simply gets no pause.
+ *
+ * Times are render seconds: `offset` is the song second the render starts at,
+ * and `extraStarts` are already in render seconds.
  */
 function windowsOf<H extends RenderableHap>(
   haps: readonly H[],
   cps: number,
   extraStarts: readonly number[],
   sampleRate: number,
+  offset: number,
 ): Array<{ start: number; haps: H[] }> {
-  const last = haps.length ? haps[haps.length - 1].whole.begin.valueOf() / cps : 0
+  const last = haps.length ? haps[haps.length - 1].whole.begin.valueOf() / cps - offset : 0
   const gridEnd = Math.floor(last / RENDER_WINDOW_SECONDS)
   const grid = Array.from({ length: gridEnd }, (_, k) => (k + 1) * RENDER_WINDOW_SECONDS)
   const minGap = (2 * RENDER_BLOCK_FRAMES) / sampleRate
@@ -378,7 +395,7 @@ function windowsOf<H extends RenderableHap>(
   const windows = starts.map((start) => ({ start, haps: [] as H[] }))
   let k = 0
   for (const hap of haps) {
-    const at = hap.whole.begin.valueOf() / cps
+    const at = hap.whole.begin.valueOf() / cps - offset
     while (k + 1 < windows.length && windows[k + 1].start <= at) k++
     windows[k].haps.push(hap)
   }

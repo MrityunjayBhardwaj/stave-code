@@ -2251,6 +2251,19 @@ declare class StrudelEngine implements LiveCodingEngine {
      */
     private renderPatternRaw;
     /**
+     * What an offline render borrows from the engine: superdough's module globals,
+     * the alias step, the reverb wait and where its context is built.
+     */
+    private offlineGraphDeps;
+    /**
+     * #1771 — `renderPatternRaw` for a browser whose offline context cannot pause:
+     * the song rendered as short pieces and joined (`pieceRender.ts`), so its cost
+     * grows with the length rather than its square. Display renders only: a join
+     * cuts whatever rings past the lead-in. Holds the graph and the transport once
+     * for every piece, so no Play starts between two of them.
+     */
+    private renderPatternInPieces;
+    /**
      * #1731 — the Song timeline's handle on the synth-track renders: which tracks
      * it wants, their envelopes, and a change signal. Renders run only while the
      * transport is stopped, one track at a time, and only for tracks whose events
@@ -2281,6 +2294,12 @@ declare class StrudelEngine implements LiveCodingEngine {
      * so a low-rate render that loaded one first would leave live playback a
      * low-rate copy. The rate is decided in `trackFingerprint`, from the events
      * this render plays.
+     *
+     * ⚠ IN PIECES WHERE A RENDER CANNOT PAUSE (#1771, Firefox): 8 s pieces joined,
+     * each with a 4 s lead-in (`renderPatternInPieces`). What rings longer than
+     * the lead-in is cut at a join, and a supersaw's voices take their phase from
+     * the note's time on the piece's clock, so its fine beating differs from a
+     * single render's: an equally valid draw, as live playback is another.
      */
     private renderTrackEnvelope;
     /**
