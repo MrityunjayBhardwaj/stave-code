@@ -8708,11 +8708,6 @@ declare function dropLegacyBackgroundCrop(id: string): Promise<void>;
 /** Rename a project. */
 declare function renameProject(id: string, name: string): Promise<void>;
 /**
- * Delete a project's metadata. Also deletes the y-indexeddb database
- * for the project's Y.Doc content.
- */
-declare function deleteProject(id: string): Promise<void>;
-/**
  * Duplicate a project. Creates a new metadata entry with a new id.
  * NOTE: does NOT duplicate the Y.Doc content — that requires loading
  * the source doc and creating a snapshot. For PM Phase 2, duplicate
@@ -8728,6 +8723,27 @@ declare function duplicateProject(id: string): Promise<ProjectMeta | undefined>;
  */
 declare const EPHEMERAL_ID_PREFIX = "ephemeral-";
 declare function isEphemeralProjectId(id: string): boolean;
+
+/**
+ * projectDeletion — everything a project leaves on disk goes when it does
+ * (#1784, part of #1780).
+ *
+ * A project lives in several places: its registry row (`stave-projects`), its
+ * document (`stave-<id>`, written by y-indexeddb), and its history
+ * (`stave-snapshots`). Deleting it used to drop the first two and leave the
+ * history, which nothing could open again and which still counted toward the
+ * quota. Like the ephemeral prune, the set is listed in ONE place, so a store
+ * added later is added here once rather than at every caller.
+ */
+/**
+ * Delete a project: its registry row first, so it leaves every list at once,
+ * then its document and its history.
+ *
+ * The last two are independent, so both are attempted even when one fails;
+ * the first failure is then rethrown, so a caller is never told a delete
+ * finished that did not.
+ */
+declare function deleteProject(id: string): Promise<void>;
 
 /**
  * Ephemeral-session cleanup (#688).
