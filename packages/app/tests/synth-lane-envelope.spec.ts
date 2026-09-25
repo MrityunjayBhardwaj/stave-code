@@ -129,6 +129,35 @@ async function waitForEnvelopes(page: Page, want: string, timeout = 20_000): Pro
   await expect.poll(() => envelopes(page), { timeout }).toBe(want)
 }
 
+/** Evaluate-and-play while a display render is in flight starts about as fast as with none. */
+async function playsAtOnceDuringRender(page: Page, tag: string): Promise<void> {
+  // One long, dense track, so a render is seconds of work and certainly in
+  // flight when Play is pressed.
+  const code = 'setcps(0.5)\n$: arrange([256, note("c3*8 e3*8").s("sawtooth").lpf(1200)])'
+  await seedCode(page, code)
+  await waitForEnvelopes(page, 'd1:fresh', 60_000)
+
+  // Baseline: evaluate-and-play with no render running.
+  const playLatency = async (): Promise<number> => {
+    await page.locator('.monaco-editor').first().click()
+    const t0 = Date.now()
+    await page.keyboard.press(`${MOD}+Enter`)
+    await page.locator('[data-full-song="playhead"]').waitFor({ timeout: 30_000 })
+    return Date.now() - t0
+  }
+  const idle = await playLatency()
+  await page.keyboard.press(`${MOD}+Period`)
+  await page.locator('[data-full-song="playhead"]').waitFor({ state: 'detached', timeout: 10_000 })
+
+  // A new document to render, then Play the moment the render starts.
+  await seedCode(page, code.replace('lpf(1200)', 'lpf(900)'))
+  await expect.poll(() => rendering(page), { timeout: 30_000, intervals: [20] }).not.toBe('')
+  const during = await playLatency()
+  console.log(`[${tag}] evaluate-and-play: idle ${idle} ms, during a render ${during} ms`)
+  expect(during - idle).toBeLessThan(400)
+  await page.keyboard.press(`${MOD}+Period`)
+}
+
 test.describe('synth lane envelope (#1731)', () => {
   test.beforeEach(async ({ page }) => {
     await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 360 } })
@@ -173,31 +202,7 @@ test.describe('synth lane envelope (#1731)', () => {
   })
 
   test('Play pressed during a render starts at once instead of waiting for it', async ({ page }) => {
-    // One long, dense track, so a render is seconds of work and certainly in
-    // flight when Play is pressed.
-    const code = 'setcps(0.5)\n$: arrange([256, note("c3*8 e3*8").s("sawtooth").lpf(1200)])'
-    await seedCode(page, code)
-    await waitForEnvelopes(page, 'd1:fresh', 60_000)
-
-    // Baseline: evaluate-and-play with no render running.
-    const playLatency = async (): Promise<number> => {
-      await page.locator('.monaco-editor').first().click()
-      const t0 = Date.now()
-      await page.keyboard.press(`${MOD}+Enter`)
-      await page.locator('[data-full-song="playhead"]').waitFor({ timeout: 30_000 })
-      return Date.now() - t0
-    }
-    const idle = await playLatency()
-    await page.keyboard.press(`${MOD}+Period`)
-    await page.locator('[data-full-song="playhead"]').waitFor({ state: 'detached', timeout: 10_000 })
-
-    // A new document to render, then Play the moment the render starts.
-    await seedCode(page, code.replace('lpf(1200)', 'lpf(900)'))
-    await expect.poll(() => rendering(page), { timeout: 30_000, intervals: [20] }).not.toBe('')
-    const during = await playLatency()
-    console.log(`[#1731] evaluate-and-play: idle ${idle} ms, during a render ${during} ms`)
-    expect(during - idle).toBeLessThan(400)
-    await page.keyboard.press(`${MOD}+Period`)
+    await playsAtOnceDuringRender(page, '#1731')
   })
 
   test('an audition during a render plays through the live graph, not into the render (#1733)', async ({ page }) => {
@@ -444,6 +449,12 @@ test.describe('synth lane envelope where a render cannot pause (#1771)', () => {
     expect(count).toBeGreaterThanOrEqual(2)
     expect(quiet).toBeGreaterThanOrEqual(0)
     expect(loud - quiet).toBeGreaterThanOrEqual(4)
+  })
+
+  test('without suspend: Play pressed during a render starts at once instead of waiting for it', async ({ page }) => {
+    await page.addInitScript(countRenders, true)
+    await bootApp(page, { drawer: { tabId: 'musical-timeline', height: 360 } })
+    await playsAtOnceDuringRender(page, '#1771')
   })
 
   test('CONTROL — with suspend, the same lane is one render', async ({ page }) => {
