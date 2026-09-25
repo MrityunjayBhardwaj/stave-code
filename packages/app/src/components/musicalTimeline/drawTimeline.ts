@@ -149,6 +149,13 @@ export interface WaveformSource {
    * jump under the reader. Absent means no lane is treated as an audio lane.
    */
   readonly isFileBacked?: (sample: SampleRef) => boolean
+  /**
+   * The name the engine PLAYS for a written sound name (#1767): `kick` plays as
+   * `bd`, and the live stream reports the played name. The live overlay keys a
+   * mark by this so a hit named `bd` lights the `kick` mark it came from. Absent
+   * means the written name is the played one.
+   */
+  readonly playedName?: (voice: string) => string
 }
 
 /**

@@ -98,7 +98,7 @@ export interface SceneNote {
 
 /** One string per distinct file lookup, for memoising `SampleRef` reads (#1764). */
 export function sampleKey(ref: SampleRef): string {
-  return `${ref.s}\u0000${ref.n ?? ''}\u0000${ref.note ?? ''}\u0000${ref.freq ?? ''}`
+  return `${ref.s}\u0000${ref.bank ?? ''}\u0000${ref.n ?? ''}\u0000${ref.note ?? ''}\u0000${ref.freq ?? ''}`
 }
 
 /**

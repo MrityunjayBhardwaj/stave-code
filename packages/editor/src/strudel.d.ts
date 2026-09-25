@@ -79,6 +79,14 @@ declare module '@strudel/webaudio' {
     | undefined
 
   /**
+   * The sound registry: a nanostores map from lowercased sound name to its
+   * registration (`superdough.mjs:58` `export const soundMap = map()`;
+   * `getSound` reads `soundMap.get()[s.toLowerCase()]`, `:160-165`). The engine
+   * hands `.get()` to the alias step, so a name the user registered wins (#1767).
+   */
+  export const soundMap: { get(): Record<string, unknown> }
+
+  /**
    * Which file (and at what playback rate) a hap value resolves to within a bank
    * (`superdough/sampler.mjs:33`). The bank comes from `getSound(s).data.samples`.
    *

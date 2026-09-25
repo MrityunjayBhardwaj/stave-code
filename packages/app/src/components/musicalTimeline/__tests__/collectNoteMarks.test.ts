@@ -161,18 +161,19 @@ describe('collectNoteMarks — the file a mark plays (#1764)', () => {
     return lane![0]
   }
 
-  it('names the banked sound, while the row keeps the name it was written with', () => {
+  it('carries the bank beside the written name, while the row keeps the name it was written with', () => {
+    // The resolver joins them AFTER the engine's alias step (#1767).
     const mark = markFor({ params: { bank: 'RolandTR909' } })
-    expect(mark.sample).toEqual({ s: 'RolandTR909_bd', n: null, note: null, freq: null })
+    expect(mark.sample).toEqual({ s: 'bd', bank: 'RolandTR909', n: null, note: null, freq: null })
     expect(mark.voice).toBe('bd')
   })
 
   it('carries the sample number as n, not as a note — `s("bd:3")`', () => {
-    expect(markFor({ note: 3, n: 3 }).sample).toEqual({ s: 'bd', n: 3, note: null, freq: null })
+    expect(markFor({ note: 3, n: 3 }).sample).toEqual({ s: 'bd', bank: null, n: 3, note: null, freq: null })
   })
 
   it('CONTROL — a plain `bd` names plain bd', () => {
-    expect(markFor({}).sample).toEqual({ s: 'bd', n: null, note: null, freq: null })
+    expect(markFor({}).sample).toEqual({ s: 'bd', bank: null, n: null, note: null, freq: null })
   })
 })
 

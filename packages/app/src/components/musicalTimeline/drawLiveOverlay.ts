@@ -93,12 +93,15 @@ export function pickLitNotes(
   notes: readonly SceneNote[],
   playheadCycle: number,
   activeSigs: ReadonlySet<string>,
+  playedName?: (voice: string) => string,
 ): ReadonlySet<SceneNote> {
   if (!Number.isFinite(playheadCycle) || activeSigs.size === 0) return EMPTY_LIT
   // Best (min-distance) occurrence per active sig.
   const best = new Map<string, { note: SceneNote; dist: number }>()
   for (const n of notes) {
-    const sig = markSig(n.voice, n.pitch)
+    // A played hit carries the engine's name for the sound (`kick` → `bd`,
+    // #1767), so the mark is keyed by that name, not the one on the row.
+    const sig = markSig(n.voice != null && playedName ? playedName(n.voice) : n.voice, n.pitch)
     if (!activeSigs.has(sig)) continue
     const dist = cycleDistance(n, playheadCycle)
     if (dist > MAX_LIT_DISTANCE_CYCLES) continue
@@ -155,7 +158,7 @@ export function drawLiveOverlay(
     if (laneRenderMode(pxPerCycle, lane.notes.length > 0, box.expanded) !== 'marks') return
     for (const band of laneMarkBands(lane, box)) {
       // Per band (one voice), light the nearest active-sig occurrence (#507).
-      const lit = pickLitNotes(band.notes, playheadCycle, activeSigs)
+      const lit = pickLitNotes(band.notes, playheadCycle, activeSigs, waveforms?.playedName)
       if (lit.size === 0) continue
       for (const n of band.notes) {
         if (!lit.has(n)) continue

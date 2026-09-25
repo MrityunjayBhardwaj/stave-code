@@ -46,7 +46,9 @@ function sceneOf(raw: SceneNote[], pitchMin: number | null = null, pitchMax: num
 }
 
 /** The registry, as a set of names that are files. */
-const files = (...names: string[]) => (sample: SampleRef) => names.includes(sample.s)
+/** A fake registry of file names, joined the way the resolver joins a bank (no aliases here). */
+const files = (...names: string[]) => (sample: SampleRef) =>
+  names.includes(sample.bank ? `${sample.bank}_${sample.s}` : sample.s)
 
 describe('markAudioLanes — which lanes are audio tracks (#1730)', () => {
   it('a lane whose every mark plays a file is an audio lane', () => {
@@ -71,8 +73,10 @@ describe('markAudioLanes — which lanes are audio tracks (#1730)', () => {
   })
 
   it('asks about the file the mark PLAYS, not the name on its row (#1764)', () => {
-    // `s("bd").bank("RolandTR909")`: the row says bd, the engine plays RolandTR909_bd.
-    const banked = sceneOf([{ cycle: 0, end: 1, pitch: null, gain: 1, voice: 'bd', sample: { s: 'RolandTR909_bd' } }])
+    // `s("bd").bank("RolandTR909")`: the row says bd, the mark's sample carries the
+    // bank, and the resolver asks for RolandTR909_bd (#1767). The fake registry
+    // below stands in for that resolver, so it keys on the bank the mark carries.
+    const banked = sceneOf([{ cycle: 0, end: 1, pitch: null, gain: 1, voice: 'bd', sample: { s: 'bd', bank: 'RolandTR909' } }])
     expect(markAudioLanes(banked, files('RolandTR909_bd')).lanes[0].audio).toBe(true)
     // CONTROL — a registry that knows only the plain name does not make it one.
     expect(markAudioLanes(banked, files('bd')).lanes[0].audio ?? false).toBe(false)
