@@ -284,3 +284,93 @@ test('#1778 once room is freed, retrying saves the edits a full disk refused', a
   await page.evaluate(() => (window as unknown as ProbeWindow).__staveAssetProbe!.retryDocSave())
   expect((await reloadAndRead(page)).startsWith(marker)).toBe(true)
 })
+
+// ---------------------------------------------------------------------------
+// #1779 — what the user is told, and what they can do about it
+// ---------------------------------------------------------------------------
+
+const notice = (page: Page) => page.locator('[data-storage-full]')
+
+test('#1779 with room left, no storage notice is shown', async ({ page }) => {
+  await boot(page)
+  await editCode(page)
+  expect(await notice(page).count()).toBe(0)
+})
+
+test('#1779 an edit the disk refused shows the notice naming unsaved changes', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  await editCode(page)
+  await expect(notice(page)).toContainText(/Storage is full — changes since \d{1,2}:\d\d( ?[AP]M)? are not saved/, {
+    timeout: 10_000,
+  })
+})
+
+test('#1779 adding a sound that does not fit says storage is full', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  expect(await addAudio(page)).toBe('Could not add “big.wav” — storage is full')
+})
+
+test('#1779 a sound the disk refused also raises the notice — any door, one state', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  await addAudio(page)
+  await expect(notice(page)).toContainText('Storage is full', { timeout: 10_000 })
+})
+
+test('#1779 a refusal the user did not cause is not blamed on something they added', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  // Boot's last-opened stamp is refused; the user has added nothing.
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await waitForEditorLoaded(page)
+  await expect(notice(page)).toContainText("Storage is full — Stave can't save anything new right now", {
+    timeout: 10_000,
+  })
+})
+
+test('#1779 Try again while still full keeps the notice and says so', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  await editCode(page)
+  await page.locator('[data-storage-full-retry]').click()
+  await expect(page.locator('[data-storage-full-still]')).toBeVisible({ timeout: 10_000 })
+})
+
+test('#1779 Try again after freeing room clears the notice', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  await editCode(page)
+  await notice(page).waitFor({ timeout: 10_000 })
+  await freeStorage(page)
+  await page.locator('[data-storage-full-retry]').click()
+  await expect(notice(page)).toHaveCount(0, { timeout: 10_000 })
+})
+
+test('#1779 Export project downloads a zip even while storage is full', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  await editCode(page)
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 15_000 }),
+    page.locator('[data-storage-full-export]').click(),
+  ])
+  expect(download.suggestedFilename()).toMatch(/\.zip$/)
+})
+
+test('#1779 a take the disk refused is kept and offered as a download', async ({ page }) => {
+  await boot(page)
+  await openLibrary(page)
+  await fillStorage(page)
+  const button = page.locator('[data-record-take]')
+  await button.click()
+  await expect(button).toHaveAttribute('data-recording', 'true', { timeout: 15_000 })
+  await page.waitForTimeout(1500)
+  await button.click()
+  const link = page.locator('[data-record-kept-download]')
+  await link.waitFor({ timeout: 20_000 })
+  const [download] = await Promise.all([page.waitForEvent('download'), link.click()])
+  const file = await download.path()
+  expect(fs.statSync(file).size).toBeGreaterThan(1000)
+})

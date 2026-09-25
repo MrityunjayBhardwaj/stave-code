@@ -17,6 +17,8 @@
  * and degrade gracefully (empty list / no-op) — see each store's public API.
  */
 
+import { noteStorageRefused } from './storageStatus'
+
 /** Default open budget. Matches `projectDoc`'s `IDB_SYNC_TIMEOUT_MS`. */
 export const IDB_OPEN_TIMEOUT_MS = 8_000
 
@@ -134,9 +136,21 @@ export function isQuotaError(err: unknown): boolean {
   )
 }
 
+/**
+ * Give a failure its name, and REPORT a refusal for space (#1779).
+ *
+ * Reporting here rather than at each caller is what makes "storage is full"
+ * one state the app can show: every store's writes pass through this, so no
+ * door can refuse for space without the notice hearing about it — including
+ * the doors that swallow the error on purpose (`touchProject`, the history
+ * seed).
+ */
 function named(err: unknown, fallback: string): unknown {
   if (err instanceof StorageFullError) return err
-  if (isQuotaError(err)) return new StorageFullError(err)
+  if (isQuotaError(err)) {
+    noteStorageRefused()
+    return new StorageFullError(err)
+  }
   return err ?? new Error(fallback)
 }
 

@@ -25,7 +25,7 @@ function nameList(names: readonly string[]): string {
  * sends them the wrong way entirely.
  */
 export function summarize(summary: ImportSummary): string | null {
-  const { saved, rejected, failed } = summary;
+  const { saved, rejected, full, failed } = summary;
   const parts: string[] = [];
   if (saved.length === 1) parts.push(`Added ${saved[0].record.name}`);
   else if (saved.length > 1) parts.push(`Added ${saved.length} sounds`);
@@ -35,6 +35,7 @@ export function summarize(summary: ImportSummary): string | null {
   if (rejected.length > 0) {
     parts.push(`skipped ${nameList(rejected)} — not audio this browser can read`);
   }
+  if (full.length > 0) parts.push(`could not add ${nameList(full)} — storage is full`);
   if (failed.length > 0) parts.push(`could not save ${nameList(failed)}`);
 
   if (parts.length === 0) return null;

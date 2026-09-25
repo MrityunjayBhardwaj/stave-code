@@ -8,6 +8,7 @@ import {
   renameProject,
   deleteProject,
   touchProject,
+  getStorageStatus,
   switchProject,
   resetFileStore,
   setActiveHistoryFile,
@@ -30,6 +31,7 @@ import {
 import { createTrackEnvelopeRelay } from "../audio/trackEnvelopeRelay";
 import { seedProjectFromTemplate } from "../templates";
 import { exportProjectAsZip } from "../exportProject";
+import { StorageFullNotice } from "./StorageFullNotice";
 import { buildStemsArchive, stemDisplayName } from "../stemsArchive";
 import { importProjectFromZip } from "../importProject";
 import {
@@ -339,13 +341,44 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     [],
   );
 
+  const handleExportProject = useCallback(() => {
+    exportProjectAsZip(activeProject).catch((err) => {
+      console.error("[stave] export failed:", err);
+      showToast("Export failed — see console for details.", "error");
+    });
+  }, [activeProject]);
+
+  /**
+   * #1779 — opening another project discards the open one's in-memory
+   * document, and while storage is full that is the ONLY copy of the edits the
+   * disk refused. Refuse the switch and say why, rather than lose them.
+   */
+  const unsavedBlocksLeaving = useCallback((): boolean => {
+    if (!getStorageStatus().documentUnsaved) return false;
+    showToast(
+      "Storage is full and this project has unsaved changes — export it or free space and Try again first.",
+      "error",
+      6000,
+    );
+    return true;
+  }, []);
+
   const handleImportZip = useCallback(async (file: File) => {
+    if (unsavedBlocksLeaving()) return;
     try {
       const meta = await importProjectFromZip(file);
       const list = await listProjects();
       setProjects(list);
       setActiveProject(meta);
-      showToast(`Imported ${meta.name}`, "info");
+      // A sound the disk had no room for is skipped inside the import, which
+      // otherwise read "Imported" over a project missing parts (#1779).
+      const full = getStorageStatus().fullSince !== null;
+      showToast(
+        full
+          ? `Imported ${meta.name} — but storage is full, so parts of it were not saved`
+          : `Imported ${meta.name}`,
+        full ? "error" : "info",
+      );
     } catch (err) {
       console.error("[stave] import failed:", err);
       showToast(
@@ -393,6 +426,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         });
         clearShareFragment();
         if (!ok) return;
+        if (unsavedBlocksLeaving()) return;
         const meta = await applyShareManifest(manifest);
         const list = await listProjects();
         setProjects(list);
@@ -1325,6 +1359,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   const doSwitchProject = useCallback(async (id: string) => {
     if (id === activeProject.id || switching) return;
+    if (unsavedBlocksLeaving()) return;
     setSwitching(true);
     try {
       resetFileStore();
@@ -1349,6 +1384,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   const handleCreateProject = useCallback(async (name: string, templateId: string) => {
     setTemplateModalOpen(false);
+    if (unsavedBlocksLeaving()) return;
     setSwitching(true);
     try {
       const meta = await createProject(name);
@@ -1400,6 +1436,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   const handleDeleteProjectFromSwitcher = useCallback(async (id: string) => {
     if (projects.length <= 1) return;
+    // Deleting the OPEN project opens another one, which drops the only copy
+    // of any edits the disk refused (#1779).
+    if (id === activeProject.id && unsavedBlocksLeaving()) return;
     await deleteProject(id);
     if (id === activeProject.id) {
       const remaining = projects.filter((p) => p.id !== id);
@@ -1412,7 +1451,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       }
     }
     await refreshProjects();
-  }, [activeProject.id, projects, refreshProjects]);
+  }, [activeProject.id, projects, refreshProjects, unsavedBlocksLeaving]);
 
   // ── Tab ↔ Tree sync ─────────────────────────────────────────────────
 
@@ -1469,12 +1508,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       id: "stave.project.export",
       title: "Export Project as .zip",
       category: "File",
-      run: () => {
-        exportProjectAsZip(activeProject).catch((err) => {
-          console.error("[stave] export failed:", err);
-          showToast("Export failed — see console for details.", "error");
-        });
-      },
+      run: () => handleExportProject(),
     }));
     unregs.push(registerCommand({
       id: "stave.audio.bounce",
@@ -1662,7 +1696,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     //   render: () => null,
     // }));
     return () => { for (const u of unregs) u(); };
-  }, [activeProject, handleRenameActiveProject, openSnapshotPanel, handleShareProject]);
+  }, [activeProject, handleRenameActiveProject, openSnapshotPanel, handleShareProject, handleExportProject]);
 
   // Build file rows for QuickOpen — memoised so mount of the palette
   // has a stable array. Rebuilt when the file list changes.
@@ -1971,6 +2005,8 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onRename={handleRenameProjectFromSwitcher}
         onDelete={handleDeleteProjectFromSwitcher}
       />
+
+      <StorageFullNotice onExport={handleExportProject} />
 
       <input
         ref={importInputRef}

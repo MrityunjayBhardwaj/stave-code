@@ -3,6 +3,7 @@ import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { StorageFullError, committed, isQuotaError, transactionDone } from '../idb'
+import { __resetStorageStatusForTests, getStorageStatus } from '../storageStatus'
 
 /**
  * #1777 — a write is saved when its TRANSACTION commits, not when its request
@@ -75,6 +76,16 @@ describe('committed', () => {
     req.onerror?.()
     tx.abort(quota())
     await expect(p).rejects.toBeInstanceOf(StorageFullError)
+  })
+
+  it('a refusal for space is reported to the storage status (#1779)', async () => {
+    __resetStorageStatusForTests()
+    const { req, tx } = fakeWrite()
+    const p = committed(asReq(req))
+    req.onsuccess?.()
+    tx.abort(quota())
+    await p.catch(() => {})
+    expect(getStorageStatus().fullSince).not.toBeNull()
   })
 
   it('an abort for any other reason is not called "full"', async () => {
