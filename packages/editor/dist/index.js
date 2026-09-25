@@ -11415,9 +11415,9 @@ var _SignalBus = class _SignalBus {
   }
   /** Find the first active IREvent (combined feed) whose `s` is in `sounds`. */
   activeEventForSounds(sounds) {
-    const set = new Set(sounds);
+    const set2 = new Set(sounds);
     for (const ev of this.activeEvents) {
-      if (ev.s != null && set.has(ev.s)) return ev;
+      if (ev.s != null && set2.has(ev.s)) return ev;
     }
     return void 0;
   }
@@ -18841,13 +18841,170 @@ function defineStrudelMonacoTheme(monaco) {
   });
 }
 __name(defineStrudelMonacoTheme, "defineStrudelMonacoTheme");
+
+// src/idb.ts
+var IDB_OPEN_TIMEOUT_MS = 8e3;
+function openIdbWithTimeout(name, version, upgrade, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const req = indexedDB.open(name, version);
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      req.onsuccess = () => {
+        try {
+          req.result.close();
+        } catch {
+        }
+      };
+      reject(new Error(`idb-open-timeout:${name}`));
+    }, timeoutMs);
+    req.onupgradeneeded = () => upgrade(req.result);
+    req.onsuccess = () => {
+      if (settled) {
+        try {
+          req.result.close();
+        } catch {
+        }
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(req.result);
+    };
+    req.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(req.error ?? new Error(`idb-open-error:${name}`));
+    };
+    req.onblocked = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error(`idb-open-blocked:${name}`));
+    };
+  });
+}
+__name(openIdbWithTimeout, "openIdbWithTimeout");
+var _StorageFullError = class _StorageFullError extends Error {
+  constructor(cause) {
+    super("storage is full");
+    this.cause = cause;
+    this.name = "StorageFullError";
+  }
+};
+__name(_StorageFullError, "StorageFullError");
+var StorageFullError = _StorageFullError;
+function isQuotaError(err) {
+  return err instanceof StorageFullError || typeof err === "object" && err !== null && err.name === "QuotaExceededError";
+}
+__name(isQuotaError, "isQuotaError");
+function named(err, fallback) {
+  if (err instanceof StorageFullError) return err;
+  if (isQuotaError(err)) return new StorageFullError(err);
+  return err ?? new Error(fallback);
+}
+__name(named, "named");
+function requestResult(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(named(req.error, "idb-request-error"));
+  });
+}
+__name(requestResult, "requestResult");
+function transactionDone(tx3) {
+  return new Promise((resolve, reject) => {
+    tx3.addEventListener("complete", () => resolve());
+    tx3.addEventListener("abort", () => reject(named(tx3.error, "idb-transaction-aborted")));
+  });
+}
+__name(transactionDone, "transactionDone");
+async function committed(req) {
+  const tx3 = req.transaction;
+  if (!tx3) return requestResult(req);
+  const [result] = await Promise.all([requestResult(req), transactionDone(tx3)]);
+  return result;
+}
+__name(committed, "committed");
+
+// src/storageStatus.ts
+var CLEAR = { fullSince: null, documentUnsaved: false };
+var status = CLEAR;
+var listeners2 = /* @__PURE__ */ new Set();
+function set(next) {
+  if (next.fullSince === status.fullSince && next.documentUnsaved === status.documentUnsaved) return;
+  status = next;
+  for (const fn of listeners2) fn();
+}
+__name(set, "set");
+function getStorageStatus() {
+  return status;
+}
+__name(getStorageStatus, "getStorageStatus");
+function subscribeStorageStatus(fn) {
+  listeners2.add(fn);
+  return () => {
+    listeners2.delete(fn);
+  };
+}
+__name(subscribeStorageStatus, "subscribeStorageStatus");
+function noteStorageRefused(opts = {}) {
+  set({
+    fullSince: status.fullSince ?? Date.now(),
+    documentUnsaved: status.documentUnsaved || Boolean(opts.document)
+  });
+}
+__name(noteStorageRefused, "noteStorageRefused");
+function noteDocumentSaved() {
+  set(CLEAR);
+}
+__name(noteDocumentSaved, "noteDocumentSaved");
+function noteDocumentReplaced() {
+  set({ fullSince: status.fullSince, documentUnsaved: false });
+}
+__name(noteDocumentReplaced, "noteDocumentReplaced");
+
+// src/workspace/projectDoc.ts
 var activeDoc = null;
 var activeProvider = null;
 var activeProjectId = null;
 var docReady = false;
+var unwatchDocWrites = null;
+var changedSinceSave = false;
+var UPDATES_STORE = "updates";
+function watchDocWrites(provider, doc) {
+  unwatchDocWrites?.();
+  unwatchDocWrites = null;
+  changedSinceSave = false;
+  const db = provider.db;
+  if (!db) return;
+  const onUpdate = /* @__PURE__ */ __name((_update, origin) => {
+    if (origin !== provider) changedSinceSave = true;
+  }, "onUpdate");
+  const onAbort = /* @__PURE__ */ __name((event) => {
+    const tx3 = event.target;
+    if (isQuotaError(tx3?.error)) noteStorageRefused({ document: changedSinceSave });
+  }, "onAbort");
+  doc.on("update", onUpdate);
+  db.addEventListener("abort", onAbort);
+  unwatchDocWrites = /* @__PURE__ */ __name(() => {
+    doc.off("update", onUpdate);
+    db.removeEventListener("abort", onAbort);
+  }, "unwatchDocWrites");
+}
+__name(watchDocWrites, "watchDocWrites");
+function unwatch() {
+  unwatchDocWrites?.();
+  unwatchDocWrites = null;
+}
+__name(unwatch, "unwatch");
 var IDB_SYNC_TIMEOUT_MS = 8e3;
 async function initProjectDoc(projectId, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? IDB_SYNC_TIMEOUT_MS;
+  unwatch();
+  noteDocumentReplaced();
   if (activeProvider) {
     activeProvider.destroy();
     activeProvider = null;
@@ -18891,12 +19048,33 @@ async function initProjectDoc(projectId, opts = {}) {
   } finally {
     if (timer) clearTimeout(timer);
   }
+  watchDocWrites(provider, activeDoc);
   activeProjectId = projectId;
   docReady = true;
   return { persisted: true };
 }
 __name(initProjectDoc, "initProjectDoc");
+async function retryDocSave() {
+  const provider = activeProvider;
+  const doc = activeDoc;
+  const db = provider?.db;
+  if (!db || !doc) return false;
+  const tx3 = db.transaction(UPDATES_STORE, "readwrite");
+  tx3.objectStore(UPDATES_STORE).add(Y3.encodeStateAsUpdate(doc));
+  try {
+    await transactionDone(tx3);
+  } catch (err) {
+    if (isQuotaError(err)) return false;
+    throw err;
+  }
+  changedSinceSave = false;
+  noteDocumentSaved();
+  return true;
+}
+__name(retryDocSave, "retryDocSave");
 function initProjectDocSync() {
+  unwatch();
+  noteDocumentReplaced();
   if (activeProvider) {
     activeProvider.destroy();
     activeProvider = null;
@@ -18981,9 +19159,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners13 = /* @__PURE__ */ new Set();
+  const listeners14 = /* @__PURE__ */ new Set();
   const notify6 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners13) l();
+    for (const l of listeners14) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify6(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify6(), "onStackItemPopped");
@@ -18993,7 +19171,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners13,
+    listeners: listeners14,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -19036,10 +19214,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners13 = active.listeners;
-  listeners13.add(cb);
+  const listeners14 = active.listeners;
+  listeners14.add(cb);
   return () => {
-    listeners13.delete(cb);
+    listeners14.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -19216,12 +19394,12 @@ function setContent(id, newContent) {
 }
 __name(setContent, "setContent");
 function subscribe(id, cb) {
-  let set = subscribersByFile.get(id);
-  if (!set) {
-    set = /* @__PURE__ */ new Set();
-    subscribersByFile.set(id, set);
+  let set2 = subscribersByFile.get(id);
+  if (!set2) {
+    set2 = /* @__PURE__ */ new Set();
+    subscribersByFile.set(id, set2);
   }
-  set.add(cb);
+  set2.add(cb);
   return () => {
     const current4 = subscribersByFile.get(id);
     if (!current4) return;
@@ -19357,9 +19535,9 @@ function setChildOrder(parentPath, entries3) {
 }
 __name(setChildOrder, "setChildOrder");
 function notify2(id) {
-  const set = subscribersByFile.get(id);
-  if (!set) return;
-  const snapshot = Array.from(set);
+  const set2 = subscribersByFile.get(id);
+  if (!set2) return;
+  const snapshot = Array.from(set2);
   for (const cb of snapshot) cb();
 }
 __name(notify2, "notify");
@@ -19467,15 +19645,15 @@ __name(pruneZoneOverrides, "pruneZoneOverrides");
 function subscribeToZoneOverrides(fileId, cb) {
   ensureDoc();
   ensureZoneOverridesMap(fileId);
-  let set = zoneOverrideSubscribers.get(fileId);
-  if (!set) {
-    set = /* @__PURE__ */ new Set();
-    zoneOverrideSubscribers.set(fileId, set);
+  let set2 = zoneOverrideSubscribers.get(fileId);
+  if (!set2) {
+    set2 = /* @__PURE__ */ new Set();
+    zoneOverrideSubscribers.set(fileId, set2);
   }
-  set.add(cb);
+  set2.add(cb);
   return () => {
-    set.delete(cb);
-    if (set.size === 0) zoneOverrideSubscribers.delete(fileId);
+    set2.delete(cb);
+    if (set2.size === 0) zoneOverrideSubscribers.delete(fileId);
   };
 }
 __name(subscribeToZoneOverrides, "subscribeToZoneOverrides");
@@ -19584,15 +19762,15 @@ __name(pruneTrackMeta, "pruneTrackMeta");
 function subscribeToTrackMeta(fileId, cb) {
   ensureDoc();
   getTrackMetaMap(fileId);
-  let set = trackMetaSubscribers.get(fileId);
-  if (!set) {
-    set = /* @__PURE__ */ new Set();
-    trackMetaSubscribers.set(fileId, set);
+  let set2 = trackMetaSubscribers.get(fileId);
+  if (!set2) {
+    set2 = /* @__PURE__ */ new Set();
+    trackMetaSubscribers.set(fileId, set2);
   }
-  set.add(cb);
+  set2.add(cb);
   return () => {
-    set.delete(cb);
-    if (set.size === 0) trackMetaSubscribers.delete(fileId);
+    set2.delete(cb);
+    if (set2.size === 0) trackMetaSubscribers.delete(fileId);
   };
 }
 __name(subscribeToTrackMeta, "subscribeToTrackMeta");
@@ -24379,9 +24557,9 @@ function notifySourcesChanged() {
 }
 __name(notifySourcesChanged, "notifySourcesChanged");
 function notifyPinned(sourceId, payload) {
-  const set = pinnedSubscribers.get(sourceId);
-  if (!set || set.size === 0) return;
-  const snapshot = Array.from(set);
+  const set2 = pinnedSubscribers.get(sourceId);
+  if (!set2 || set2.size === 0) return;
+  const snapshot = Array.from(set2);
   for (const cb of snapshot) cb(payload);
 }
 __name(notifyPinned, "notifyPinned");
@@ -24439,12 +24617,12 @@ function subscribe2(ref, cb) {
     };
   }
   const fileId = ref.fileId;
-  let set = pinnedSubscribers.get(fileId);
-  if (!set) {
-    set = /* @__PURE__ */ new Set();
-    pinnedSubscribers.set(fileId, set);
+  let set2 = pinnedSubscribers.get(fileId);
+  if (!set2) {
+    set2 = /* @__PURE__ */ new Set();
+    pinnedSubscribers.set(fileId, set2);
   }
-  set.add(cb);
+  set2.add(cb);
   let unsubscribed = false;
   return () => {
     if (unsubscribed) return;
@@ -25103,17 +25281,17 @@ __name(ensureWorkspaceLanguages, "ensureWorkspaceLanguages");
 var PROVIDERS_GUARD_KEY = "__staveProvidersRegistered";
 function registeredProviderKeys(monaco) {
   const holder = monaco;
-  let set = holder[PROVIDERS_GUARD_KEY];
-  if (!set) {
-    set = /* @__PURE__ */ new Set();
+  let set2 = holder[PROVIDERS_GUARD_KEY];
+  if (!set2) {
+    set2 = /* @__PURE__ */ new Set();
     Object.defineProperty(monaco, PROVIDERS_GUARD_KEY, {
-      value: set,
+      value: set2,
       enumerable: false,
       configurable: true,
       writable: false
     });
   }
-  return set;
+  return set2;
 }
 __name(registeredProviderKeys, "registeredProviderKeys");
 function ensureProviders(key2, monaco, register) {
@@ -25342,9 +25520,9 @@ __name(useHighlighting, "useHighlighting");
 var DEFAULT_CAPACITY = 30;
 var entries = [];
 var capacity = DEFAULT_CAPACITY;
-var listeners2 = /* @__PURE__ */ new Set();
+var listeners3 = /* @__PURE__ */ new Set();
 function fanOut() {
-  for (const l of listeners2) {
+  for (const l of listeners3) {
     try {
       l();
     } catch {
@@ -25375,9 +25553,9 @@ function getCaptureBuffer() {
 }
 __name(getCaptureBuffer, "getCaptureBuffer");
 function subscribeCapture(l) {
-  listeners2.add(l);
+  listeners3.add(l);
   return () => {
-    listeners2.delete(l);
+    listeners3.delete(l);
   };
 }
 __name(subscribeCapture, "subscribeCapture");
@@ -25402,7 +25580,7 @@ __name(setCaptureCapacity, "setCaptureCapacity");
 
 // src/engine/irInspector.ts
 var current = null;
-var listeners3 = /* @__PURE__ */ new Set();
+var listeners4 = /* @__PURE__ */ new Set();
 function enrichWithLookups(snap) {
   const idLookup = /* @__PURE__ */ new Map();
   const locLookup = /* @__PURE__ */ new Map();
@@ -25448,7 +25626,7 @@ function publishIRSnapshot(snap, meta) {
     ts: enriched.ts,
     cycleCount: meta?.cycleCount ?? null
   });
-  for (const l of listeners3) {
+  for (const l of listeners4) {
     try {
       l(enriched);
     } catch {
@@ -25458,7 +25636,7 @@ function publishIRSnapshot(snap, meta) {
 __name(publishIRSnapshot, "publishIRSnapshot");
 function clearIRSnapshot() {
   current = null;
-  for (const l of listeners3) {
+  for (const l of listeners4) {
     try {
       l(null);
     } catch {
@@ -25471,8 +25649,8 @@ function getIRSnapshot() {
 }
 __name(getIRSnapshot, "getIRSnapshot");
 function subscribeIRSnapshot(fn) {
-  listeners3.add(fn);
-  return () => listeners3.delete(fn);
+  listeners4.add(fn);
+  return () => listeners4.delete(fn);
 }
 __name(subscribeIRSnapshot, "subscribeIRSnapshot");
 
@@ -25615,7 +25793,7 @@ __name(useBreakpoints, "useBreakpoints");
 // src/visualizers/namedVizRegistry.ts
 var registry = /* @__PURE__ */ new Map();
 var normIndex = /* @__PURE__ */ new Map();
-var listeners4 = /* @__PURE__ */ new Set();
+var listeners5 = /* @__PURE__ */ new Set();
 function normalizeVizName(name) {
   return name.toLowerCase().replace(/[\s\-_]/g, "");
 }
@@ -25654,18 +25832,18 @@ function listNamedVizEntries() {
 }
 __name(listNamedVizEntries, "listNamedVizEntries");
 function onNamedVizChanged(cb) {
-  listeners4.add(cb);
+  listeners5.add(cb);
   let unsubscribed = false;
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
-    listeners4.delete(cb);
+    listeners5.delete(cb);
   };
 }
 __name(onNamedVizChanged, "onNamedVizChanged");
 function notifyListeners() {
-  if (listeners4.size === 0) return;
-  const snapshot = Array.from(listeners4);
+  if (listeners5.size === 0) return;
+  const snapshot = Array.from(listeners5);
   for (const cb of snapshot) {
     try {
       cb();
@@ -25859,93 +26037,6 @@ var _BufferedScheduler = class _BufferedScheduler {
 };
 __name(_BufferedScheduler, "BufferedScheduler");
 var BufferedScheduler = _BufferedScheduler;
-
-// src/idb.ts
-var IDB_OPEN_TIMEOUT_MS = 8e3;
-function openIdbWithTimeout(name, version, upgrade, opts = {}) {
-  const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS;
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const req = indexedDB.open(name, version);
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      req.onsuccess = () => {
-        try {
-          req.result.close();
-        } catch {
-        }
-      };
-      reject(new Error(`idb-open-timeout:${name}`));
-    }, timeoutMs);
-    req.onupgradeneeded = () => upgrade(req.result);
-    req.onsuccess = () => {
-      if (settled) {
-        try {
-          req.result.close();
-        } catch {
-        }
-        return;
-      }
-      settled = true;
-      clearTimeout(timer);
-      resolve(req.result);
-    };
-    req.onerror = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(req.error ?? new Error(`idb-open-error:${name}`));
-    };
-    req.onblocked = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(new Error(`idb-open-blocked:${name}`));
-    };
-  });
-}
-__name(openIdbWithTimeout, "openIdbWithTimeout");
-var _StorageFullError = class _StorageFullError extends Error {
-  constructor(cause) {
-    super("storage is full");
-    this.cause = cause;
-    this.name = "StorageFullError";
-  }
-};
-__name(_StorageFullError, "StorageFullError");
-var StorageFullError = _StorageFullError;
-function isQuotaError(err) {
-  return err instanceof StorageFullError || typeof err === "object" && err !== null && err.name === "QuotaExceededError";
-}
-__name(isQuotaError, "isQuotaError");
-function named(err, fallback) {
-  if (err instanceof StorageFullError) return err;
-  if (isQuotaError(err)) return new StorageFullError(err);
-  return err ?? new Error(fallback);
-}
-__name(named, "named");
-function requestResult(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(named(req.error, "idb-request-error"));
-  });
-}
-__name(requestResult, "requestResult");
-function transactionDone(tx3) {
-  return new Promise((resolve, reject) => {
-    tx3.addEventListener("complete", () => resolve());
-    tx3.addEventListener("abort", () => reject(named(tx3.error, "idb-transaction-aborted")));
-  });
-}
-__name(transactionDone, "transactionDone");
-async function committed(req) {
-  const tx3 = req.transaction;
-  if (!tx3) return requestResult(req);
-  const [result] = await Promise.all([requestResult(req), transactionDone(tx3)]);
-  return result;
-}
-__name(committed, "committed");
 
 // src/visualizers/vizPreset.ts
 var DB_NAME = "stave-viz-presets";
@@ -26672,9 +26763,9 @@ __name(addInlineViewZones, "addInlineViewZones");
 
 // src/workspace/history/historyViewing.ts
 var state = null;
-var listeners5 = /* @__PURE__ */ new Set();
+var listeners6 = /* @__PURE__ */ new Set();
 function notify3() {
-  for (const l of listeners5) {
+  for (const l of listeners6) {
     try {
       l();
     } catch {
@@ -26711,8 +26802,8 @@ function getViewedFileIds() {
 }
 __name(getViewedFileIds, "getViewedFileIds");
 function subscribeToRuntimeView(cb) {
-  listeners5.add(cb);
-  return () => listeners5.delete(cb);
+  listeners6.add(cb);
+  return () => listeners6.delete(cb);
 }
 __name(subscribeToRuntimeView, "subscribeToRuntimeView");
 
@@ -27293,12 +27384,12 @@ function withLock(fn) {
   return run;
 }
 __name(withLock, "withLock");
-var listeners6 = /* @__PURE__ */ new Set();
+var listeners7 = /* @__PURE__ */ new Set();
 var lastNotified = null;
 function notifyIfChanged() {
   if (current2 === lastNotified) return;
   lastNotified = current2;
-  for (const l of listeners6) {
+  for (const l of listeners7) {
     try {
       l();
     } catch {
@@ -27307,12 +27398,12 @@ function notifyIfChanged() {
 }
 __name(notifyIfChanged, "notifyIfChanged");
 function subscribeToHistory(cb) {
-  listeners6.add(cb);
-  return () => listeners6.delete(cb);
+  listeners7.add(cb);
+  return () => listeners7.delete(cb);
 }
 __name(subscribeToHistory, "subscribeToHistory");
 function notifyAll() {
-  for (const l of listeners6) {
+  for (const l of listeners7) {
     try {
       l();
     } catch {
@@ -27931,7 +28022,7 @@ function safeLocalStorage3() {
 }
 __name(safeLocalStorage3, "safeLocalStorage");
 var values = /* @__PURE__ */ new Map();
-var listeners7 = /* @__PURE__ */ new Map();
+var listeners8 = /* @__PURE__ */ new Map();
 function keyFor(fileId) {
   return `${STORAGE_PREFIX2}${fileId}`;
 }
@@ -27951,8 +28042,8 @@ function setVizLive(fileId, on) {
   if (prev === on) return;
   values.set(fileId, on);
   safeLocalStorage3()?.setItem(keyFor(fileId), on ? "1" : "0");
-  const set = listeners7.get(fileId);
-  if (set) for (const cb of Array.from(set)) cb(on);
+  const set2 = listeners8.get(fileId);
+  if (set2) for (const cb of Array.from(set2)) cb(on);
 }
 __name(setVizLive, "setVizLive");
 function toggleVizLive(fileId) {
@@ -27960,15 +28051,15 @@ function toggleVizLive(fileId) {
 }
 __name(toggleVizLive, "toggleVizLive");
 function onVizLiveChange(fileId, cb) {
-  let set = listeners7.get(fileId);
-  if (!set) {
-    set = /* @__PURE__ */ new Set();
-    listeners7.set(fileId, set);
+  let set2 = listeners8.get(fileId);
+  if (!set2) {
+    set2 = /* @__PURE__ */ new Set();
+    listeners8.set(fileId, set2);
   }
-  set.add(cb);
+  set2.add(cb);
   return () => {
-    set.delete(cb);
-    if (set.size === 0) listeners7.delete(fileId);
+    set2.delete(cb);
+    if (set2.size === 0) listeners8.delete(fileId);
   };
 }
 __name(onVizLiveChange, "onVizLiveChange");
@@ -29323,9 +29414,9 @@ __name(findBuiltinExampleSource, "findBuiltinExampleSource");
 
 // src/workspace/bottomPanel/bottomPanelRegistry.ts
 var tabs = /* @__PURE__ */ new Map();
-var listeners8 = /* @__PURE__ */ new Set();
+var listeners9 = /* @__PURE__ */ new Set();
 function notify4() {
-  for (const l of listeners8) {
+  for (const l of listeners9) {
     try {
       l();
     } catch {
@@ -29359,9 +29450,9 @@ function getBottomPanelTab(id) {
 }
 __name(getBottomPanelTab, "getBottomPanelTab");
 function subscribeToBottomPanelTabs(cb) {
-  listeners8.add(cb);
+  listeners9.add(cb);
   return () => {
-    listeners8.delete(cb);
+    listeners9.delete(cb);
   };
 }
 __name(subscribeToBottomPanelTabs, "subscribeToBottomPanelTabs");
@@ -33242,7 +33333,7 @@ function readStored() {
 }
 __name(readStored, "readStored");
 var current3 = readStored();
-var listeners9 = /* @__PURE__ */ new Set();
+var listeners10 = /* @__PURE__ */ new Set();
 function setMode(mode) {
   if (mode === current3) return;
   current3 = mode;
@@ -33250,12 +33341,12 @@ function setMode(mode) {
     window.localStorage.setItem(NOTE_COLOR_MODE_KEY, mode);
   } catch {
   }
-  listeners9.forEach((l) => l());
+  listeners10.forEach((l) => l());
 }
 __name(setMode, "setMode");
 function subscribe3(listener) {
-  listeners9.add(listener);
-  return () => listeners9.delete(listener);
+  listeners10.add(listener);
+  return () => listeners10.delete(listener);
 }
 __name(subscribe3, "subscribe");
 function useNoteColorMode() {
@@ -37793,7 +37884,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners13 = /* @__PURE__ */ new Set();
+  const listeners14 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -37808,16 +37899,16 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners13.forEach((l) => l());
+    listeners14.forEach((l) => l());
   }, "setAccessor");
   const notify6 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners13.forEach((l) => l());
+    listeners14.forEach((l) => l());
   }, "notify");
   const read5 = /* @__PURE__ */ __name(() => cached2, "read");
   const subscribe7 = /* @__PURE__ */ __name((listener) => {
-    listeners13.add(listener);
-    return () => listeners13.delete(listener);
+    listeners14.add(listener);
+    return () => listeners14.delete(listener);
   }, "subscribe");
   const useCatalog = /* @__PURE__ */ __name(() => React36.useSyncExternalStore(subscribe7, read5, () => null), "useCatalog");
   return { setAccessor, notify: notify6, read: read5, useCatalog };
@@ -38422,7 +38513,7 @@ __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners10 = /* @__PURE__ */ new Set();
+var listeners11 = /* @__PURE__ */ new Set();
 function read2(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -38434,7 +38525,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners10.forEach((l) => l());
+  listeners11.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -38449,9 +38540,9 @@ function setPreSoloMutes(fileId, snapshot) {
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
 function subscribe4(listener) {
-  listeners10.add(listener);
+  listeners11.add(listener);
   return () => {
-    listeners10.delete(listener);
+    listeners11.delete(listener);
   };
 }
 __name(subscribe4, "subscribe");
@@ -39333,7 +39424,7 @@ function safeLocalStorage5() {
 }
 __name(safeLocalStorage5, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners11 = /* @__PURE__ */ new Set();
+var listeners12 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -39356,19 +39447,19 @@ function load(fileId) {
 __name(load, "load");
 function read3(fileId) {
   if (!fileId) return EMPTY2;
-  let set = cache2.get(fileId);
-  if (!set) {
-    set = load(fileId);
-    cache2.set(fileId, set);
+  let set2 = cache2.get(fileId);
+  if (!set2) {
+    set2 = load(fileId);
+    cache2.set(fileId, set2);
   }
-  return set;
+  return set2;
 }
 __name(read3, "read");
-function persist(fileId, set) {
+function persist(fileId, set2) {
   const ls = safeLocalStorage5();
   if (!ls) return;
   try {
-    ls.setItem(key(fileId), JSON.stringify([...set]));
+    ls.setItem(key(fileId), JSON.stringify([...set2]));
   } catch {
   }
 }
@@ -39379,13 +39470,13 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners11.forEach((l) => l());
+  listeners12.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
 function subscribe5(listener) {
-  listeners11.add(listener);
+  listeners12.add(listener);
   return () => {
-    listeners11.delete(listener);
+    listeners12.delete(listener);
   };
 }
 __name(subscribe5, "subscribe");
@@ -39446,7 +39537,7 @@ function safeLocalStorage6() {
 }
 __name(safeLocalStorage6, "safeLocalStorage");
 var cached = null;
-var listeners12 = /* @__PURE__ */ new Set();
+var listeners13 = /* @__PURE__ */ new Set();
 function read4() {
   if (cached == null) {
     const ls = safeLocalStorage6();
@@ -39469,7 +39560,7 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners12.forEach((l) => l());
+  listeners13.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
@@ -39477,9 +39568,9 @@ function nudgeMixerZoom(dir) {
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
 function subscribe6(listener) {
-  listeners12.add(listener);
+  listeners13.add(listener);
   return () => {
-    listeners12.delete(listener);
+    listeners13.delete(listener);
   };
 }
 __name(subscribe6, "subscribe");
@@ -49219,6 +49310,6 @@ function isPersistableTab(t) {
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionControlEdit, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionControlEdit, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

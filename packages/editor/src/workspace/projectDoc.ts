@@ -17,6 +17,13 @@
 
 import * as Y from 'yjs'
 
+import { isQuotaError, transactionDone } from '../idb'
+import {
+  noteDocumentReplaced,
+  noteDocumentSaved,
+  noteStorageRefused,
+} from '../storageStatus'
+
 // Dynamic import for y-indexeddb so tests in jsdom (no IDB) don't crash
 // at import time. The import is only executed inside initProjectDoc().
 type IndexeddbPersistenceType = import('y-indexeddb').IndexeddbPersistence
@@ -25,6 +32,65 @@ let activeDoc: Y.Doc | null = null
 let activeProvider: IndexeddbPersistenceType | null = null
 let activeProjectId: string | null = null
 let docReady = false
+/** Removes the refused-write listener from the provider's connection. */
+let unwatchDocWrites: (() => void) | null = null
+/**
+ * Whether the document has changed since it loaded (or since the last full
+ * save). A refused write only leaves the saved copy BEHIND when there was
+ * something new to write; see `watchDocWrites`.
+ */
+let changedSinceSave = false
+
+/** y-indexeddb's object store for document updates (`y-indexeddb.js`). */
+const UPDATES_STORE = 'updates'
+
+/**
+ * Hear the project document's writes being refused for space (#1778).
+ *
+ * y-indexeddb writes every update with `idb.addAutoKey` and never waits for
+ * the transaction, so a refused write is invisible from its API — typing
+ * carried on and the edits were gone on reload, with nothing shown (measured
+ * 2026-09-25). But an `abort` event fired at a transaction BUBBLES to its
+ * connection, and the provider exposes that connection as `db` once open. So
+ * listening there hears every refusal without changing y-indexeddb.
+ *
+ * ## Why a refusal alone does not mean "behind"
+ *
+ * Not every write y-indexeddb makes carries anything new. On load it writes
+ * the whole state it just read back as one compacted row (`fetchUpdates`); on
+ * a full disk that write is refused, and the notice claimed "changes since …
+ * are not saved" on a reload where nobody had typed (observed). A refused
+ * compaction loses nothing: the rows it would have replaced are still there.
+ * So a refusal marks the document behind only when the document CHANGED since
+ * it loaded or was last fully saved — every such change goes to y-indexeddb
+ * as a write of its own. Either way the disk is reported full.
+ */
+function watchDocWrites(provider: IndexeddbPersistenceType, doc: Y.Doc): void {
+  unwatchDocWrites?.()
+  unwatchDocWrites = null
+  changedSinceSave = false
+  const db = provider.db
+  if (!db) return
+  const onUpdate = (_update: Uint8Array, origin: unknown) => {
+    // The provider's own replays are not changes (`y-indexeddb` skips them too).
+    if (origin !== provider) changedSinceSave = true
+  }
+  const onAbort = (event: Event) => {
+    const tx = event.target as IDBTransaction | null
+    if (isQuotaError(tx?.error)) noteStorageRefused({ document: changedSinceSave })
+  }
+  doc.on('update', onUpdate)
+  db.addEventListener('abort', onAbort)
+  unwatchDocWrites = () => {
+    doc.off('update', onUpdate)
+    db.removeEventListener('abort', onAbort)
+  }
+}
+
+function unwatch(): void {
+  unwatchDocWrites?.()
+  unwatchDocWrites = null
+}
 
 /** Default budget for the IndexedDB initial sync before we degrade to memory. */
 export const IDB_SYNC_TIMEOUT_MS = 8000
@@ -62,6 +128,9 @@ export async function initProjectDoc(
   const timeoutMs = opts.timeoutMs ?? IDB_SYNC_TIMEOUT_MS
 
   // Clean up previous doc if switching projects
+  unwatch()
+  // Whatever loads next is exactly what its saved copy holds.
+  noteDocumentReplaced()
   if (activeProvider) {
     activeProvider.destroy()
     activeProvider = null
@@ -116,9 +185,40 @@ export async function initProjectDoc(
     if (timer) clearTimeout(timer)
   }
 
+  watchDocWrites(provider, activeDoc)
   activeProjectId = projectId
   docReady = true
   return { persisted: true }
+}
+
+/**
+ * Write the whole document to its saved copy, once (#1778).
+ *
+ * The recovery after storage was full: every update y-indexeddb failed to
+ * write is still in the in-memory doc, and one full-state write brings the
+ * saved copy level with it. Resolves true only when that write COMMITTED —
+ * the one moment the saved copy is known to be complete again — and false when
+ * the disk is still full. Any other failure rejects.
+ *
+ * Resolves false with no write when there is no persisted document (the
+ * in-memory sessions have no saved copy to bring level).
+ */
+export async function retryDocSave(): Promise<boolean> {
+  const provider = activeProvider
+  const doc = activeDoc
+  const db = provider?.db
+  if (!db || !doc) return false
+  const tx = db.transaction(UPDATES_STORE, 'readwrite')
+  tx.objectStore(UPDATES_STORE).add(Y.encodeStateAsUpdate(doc))
+  try {
+    await transactionDone(tx)
+  } catch (err) {
+    if (isQuotaError(err)) return false
+    throw err
+  }
+  changedSinceSave = false
+  noteDocumentSaved()
+  return true
 }
 
 /**
@@ -126,6 +226,8 @@ export async function initProjectDoc(
  * The Y.Doc lives only in memory — lost on refresh.
  */
 export function initProjectDocSync(): void {
+  unwatch()
+  noteDocumentReplaced()
   if (activeProvider) {
     activeProvider.destroy()
     activeProvider = null
@@ -219,6 +321,7 @@ export function subscribeToDocUpdate(
  * Destroy the active doc and provider. Used by tests and project switching.
  */
 export function destroyProjectDoc(): void {
+  unwatch()
   if (activeProvider) {
     activeProvider.destroy()
     activeProvider = null
