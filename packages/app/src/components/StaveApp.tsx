@@ -426,6 +426,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         });
         clearShareFragment();
         if (!ok) return;
+        if (unsavedBlocksLeaving()) return;
         const meta = await applyShareManifest(manifest);
         const list = await listProjects();
         setProjects(list);
@@ -1435,6 +1436,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
 
   const handleDeleteProjectFromSwitcher = useCallback(async (id: string) => {
     if (projects.length <= 1) return;
+    // Deleting the OPEN project opens another one, which drops the only copy
+    // of any edits the disk refused (#1779).
+    if (id === activeProject.id && unsavedBlocksLeaving()) return;
     await deleteProject(id);
     if (id === activeProject.id) {
       const remaining = projects.filter((p) => p.id !== id);
@@ -1447,7 +1451,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       }
     }
     await refreshProjects();
-  }, [activeProject.id, projects, refreshProjects]);
+  }, [activeProject.id, projects, refreshProjects, unsavedBlocksLeaving]);
 
   // ── Tab ↔ Tree sync ─────────────────────────────────────────────────
 

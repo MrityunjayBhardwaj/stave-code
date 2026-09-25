@@ -308,6 +308,17 @@ test('#1779 a sound the disk refused also raises the notice — any door, one st
   await expect(notice(page)).toContainText('Storage is full', { timeout: 10_000 })
 })
 
+test('#1779 a refusal the user did not cause is not blamed on something they added', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  // Boot's last-opened stamp is refused; the user has added nothing.
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await waitForEditorLoaded(page)
+  await expect(notice(page)).toContainText("Storage is full — Stave can't save anything new right now", {
+    timeout: 10_000,
+  })
+})
+
 test('#1779 Try again while still full keeps the notice and says so', async ({ page }) => {
   await boot(page)
   await fillStorage(page)

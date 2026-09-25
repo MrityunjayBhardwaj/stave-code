@@ -49,8 +49,19 @@ const MESSAGES: Record<RecordStartFailure, string> = {
  */
 let keptTake: { url: string; filename: string } | null = null;
 
+/**
+ * Leaving the page loses a kept take for good, so the browser asks first —
+ * until the user has downloaded it. Registered at module scope for the same
+ * reason the take is: a closed panel must not drop the guard.
+ */
+function warnWhileKept(e: BeforeUnloadEvent): void {
+  e.preventDefault();
+  e.returnValue = "";
+}
+
 function keepTake(blob: Blob): { url: string; filename: string } {
   if (keptTake) URL.revokeObjectURL(keptTake.url);
+  window.addEventListener("beforeunload", warnWhileKept);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   keptTake = { url: URL.createObjectURL(blob), filename: `stave-take-${stamp}.webm` };
   return keptTake;
@@ -163,6 +174,7 @@ export function RecordTakeButton(): React.JSX.Element {
           download={kept.filename}
           style={{ ...styles.message, display: "block", color: "var(--accent-strong, #6ab)" }}
           data-record-kept-download
+          onClick={() => window.removeEventListener("beforeunload", warnWhileKept)}
         >
           Download take ({kept.filename})
         </a>

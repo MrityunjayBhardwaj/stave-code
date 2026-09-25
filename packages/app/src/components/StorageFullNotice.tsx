@@ -78,7 +78,10 @@ export function StorageFullNotice({ onExport }: { onExport: () => void }) {
   });
   const what = status.documentUnsaved
     ? `changes since ${since} are not saved`
-    : "the last thing you added was not saved";
+    // Not "what you added": the refused write may be one the user never made
+    // (boot's last-opened stamp is refused on a full disk too), so the notice
+    // says what is TRUE whichever door refused.
+    : "Stave can't save anything new right now";
 
   return (
     <div
