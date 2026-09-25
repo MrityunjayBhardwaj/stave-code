@@ -284,7 +284,9 @@ export {
 export type { TrackMeta, TrackDisplay } from './workspace/WorkspaceFile'
 // Phase 20-12 α-3 — React hook for trackMeta; Phase D (#581) adds the map hook
 export { useTrackMetaMap } from './workspace/useTrackMeta'
-export { initProjectDoc, initProjectDocSync, switchProject, getActiveProjectId, isDocReady, subscribeToDocUpdate, IDB_SYNC_TIMEOUT_MS } from './workspace/projectDoc'
+export { initProjectDoc, initProjectDocSync, switchProject, getActiveProjectId, isDocReady, subscribeToDocUpdate, retryDocSave, IDB_SYNC_TIMEOUT_MS } from './workspace/projectDoc'
+export { getStorageStatus, subscribeStorageStatus } from './storageStatus'
+export type { StorageStatus } from './storageStatus'
 export type { ProjectDocInitResult } from './workspace/projectDoc'
 export { warmMonaco } from './workspace/warmMonaco'
 export {

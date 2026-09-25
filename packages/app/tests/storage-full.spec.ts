@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { waitForEditorLoaded } from './_appBoot'
+import { editorValue, seedCode, waitForEditorLoaded } from './_appBoot'
 
 /**
  * The instrument for E2E-6 (#1704): what the user is told when storage is FULL.
@@ -53,6 +53,8 @@ interface Probe {
   put(base64: string, mime: string): Promise<{ hash: string; written: boolean }>
   list(): Promise<Array<{ hash: string }>>
   docList(): Promise<Array<{ name: string }>>
+  storageStatus(): Promise<{ fullSince: number | null; documentUnsaved: boolean }>
+  retryDocSave(): Promise<boolean>
 }
 
 /** The page's asset probe. Cast locally: several specs declare it globally with
@@ -198,4 +200,76 @@ test('#1777 a full disk still lets the app open — boot does not wait on a time
     () => 'did not open',
   )
   expect(opened).toBe('opened')
+})
+
+// ---------------------------------------------------------------------------
+// #1778 — code edits when the disk is full
+// ---------------------------------------------------------------------------
+
+/** Free the room the fill took, the way deleting files would. */
+async function freeStorage(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((res, rej) => {
+        const q = indexedDB.deleteDatabase('stave-e2e-filler')
+        q.onsuccess = () => res()
+        q.onerror = () => rej(q.error)
+      }),
+  )
+}
+
+const status = (page: Page) =>
+  page.evaluate(() => (window as unknown as ProbeWindow).__staveAssetProbe!.storageStatus())
+
+/** Add a marker line to the code and give y-indexeddb time to try its write. */
+async function editCode(page: Page): Promise<string> {
+  const marker = `// storage-full ${Date.now()}`
+  await seedCode(page, `${marker}\n${await editorValue(page)}`)
+  await page.waitForTimeout(1500)
+  return marker
+}
+
+async function reloadAndRead(page: Page): Promise<string> {
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await waitForEditorLoaded(page)
+  return editorValue(page)
+}
+
+test('#1778 control: with room, an edit survives a reload', async ({ page }) => {
+  await boot(page)
+  const marker = await editCode(page)
+  expect((await reloadAndRead(page)).startsWith(marker)).toBe(true)
+})
+
+test('#1778 an edit the disk refused marks the document as not saved', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  await editCode(page)
+  expect((await status(page)).documentUnsaved).toBe(true)
+})
+
+test('#1778 with room left, an edit does not mark the document unsaved', async ({ page }) => {
+  await boot(page)
+  await editCode(page)
+  expect(await status(page)).toEqual({ fullSince: null, documentUnsaved: false })
+})
+
+test('#1778 retrying while still full says so and leaves the document unsaved', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  await editCode(page)
+  const saved = await page.evaluate(() =>
+    (window as unknown as ProbeWindow).__staveAssetProbe!.retryDocSave(),
+  )
+  const s = await status(page)
+  expect({ saved, unsaved: s.documentUnsaved }).toEqual({ saved: false, unsaved: true })
+})
+
+test('#1778 once room is freed, retrying saves the edits a full disk refused', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  const marker = await editCode(page)
+  await freeStorage(page)
+  await page.evaluate(() => (window as unknown as ProbeWindow).__staveAssetProbe!.retryDocSave())
+  expect((await reloadAndRead(page)).startsWith(marker)).toBe(true)
 })

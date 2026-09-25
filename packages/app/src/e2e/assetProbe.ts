@@ -94,6 +94,10 @@ export interface AssetProbe {
     hash: string,
     n: number,
   ): Promise<{ urls: (string | null)[]; opens: number }>;
+  /** #1778 — whether storage refused a write, and whether the document is behind. */
+  storageStatus(): Promise<{ fullSince: number | null; documentUnsaved: boolean }>;
+  /** #1778 — write the whole document once; true only when it committed. */
+  retryDocSave(): Promise<boolean>;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -244,6 +248,16 @@ export function installAssetProbe(): () => void {
     async docList() {
       const m = await editor();
       return m.listAssetRecords();
+    },
+
+    async storageStatus() {
+      const m = await editor();
+      return { ...m.getStorageStatus() };
+    },
+
+    async retryDocSave() {
+      const m = await editor();
+      return m.retryDocSave();
     },
 
     async docAdd(record) {
