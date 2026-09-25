@@ -196,3 +196,14 @@ export function laneAtY(layout: LaneLayout, y: number): string | null {
   }
   return null
 }
+
+/**
+ * #1760 — the lanes any part of which shows in the grid's visible band
+ * `[top, top + height)`, in lane order. A height of 0 (not measured yet) shows
+ * nothing, so nothing is put first.
+ */
+export function lanesInView(layout: LaneLayout, top: number, height: number): string[] {
+  if (!(height > 0)) return []
+  const bottom = top + height
+  return layout.boxes.filter((b) => b.height > 0 && b.top < bottom && b.top + b.height > top).map((b) => b.laneKey)
+}

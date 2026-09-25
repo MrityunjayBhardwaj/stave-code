@@ -76,6 +76,22 @@
  *    render also pauses just before each note that would rebuild its orbit's
  *    room (`roomChangeTimes`), and schedules from there.
  *
+ * 9. ⚠ AUDIO WORKLETS ARE LOADED ONLY INTO A RENDER THAT PLAYS ONE (#1755).
+ *    `initAudio` adds superdough's worklet modules to the context it is given,
+ *    and a context that has ever loaded a worklet module is never garbage
+ *    collected in Chromium: its worklet thread keeps it, and its whole rendered
+ *    buffer, alive for the life of the page. Measured in a bare page: the
+ *    module load alone pins the context (no worklet node made, or one whose
+ *    processor returns false, pins it too); a context built in an iframe that
+ *    is then removed is pinned too; a context that never loads one is
+ *    collected. So a render first runs WITHOUT worklets. A note that needs one
+ *    (supersaw, shape, crush, a ladder filter, an LFO, …) throws from
+ *    `new AudioWorkletNode` inside its `superdough()` call, where every worklet
+ *    in superdough 1.3.0 is built, and the render then starts over WITH them,
+ *    so a bounce still sounds like playback. No list of worklet sounds is kept
+ *    that an upgrade could outdate: the graph says when it needs one. A render
+ *    that does load them still leaks.
+ *
  * Deliberately free of imports so every step can be driven by fakes: the
  * accessors arrive as `deps`.
  */
@@ -145,6 +161,11 @@ export interface OfflineGraphResult {
   played: number
   /** Haps whose `superdough()` call threw, by reason, in first-seen order. */
   skipped: SkippedSounds[]
+  /**
+   * Whether the render loaded audio worklets because a note needed one (#1755).
+   * Such a render's context is never freed by the browser.
+   */
+  worklets: boolean
 }
 
 export interface OfflineGraphOptions {
@@ -157,6 +178,15 @@ export interface OfflineGraphOptions {
   /** Seconds of the song rendered so far, at each pause and at the end (#1650). */
   onProgress?: (renderedSeconds: number) => void
 }
+
+/** Did this error come from building a worklet node with no worklets loaded? */
+export function isMissingWorkletError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return /AudioWorklet/.test(message)
+}
+
+/** A render without worklets reached a note that needs one (#1755). */
+class WorkletsNeeded extends Error {}
 
 /** A render whose `signal` aborted. It carries no buffer: nothing was kept. */
 export class RenderCancelledError extends Error {
@@ -180,8 +210,29 @@ interface QueryablePattern {
 
 export async function renderPatternOffline(
   pattern: QueryablePattern,
-  { cps, duration, sampleRate, signal, onProgress }: OfflineGraphOptions,
+  options: OfflineGraphOptions,
   deps: OfflineGraphDeps
+): Promise<OfflineGraphResult> {
+  // Progress never runs backwards when the render starts over with worklets.
+  let reported = 0
+  const onProgress = options.onProgress && ((seconds: number) => {
+    if (seconds <= reported) return
+    reported = seconds
+    options.onProgress!(seconds)
+  })
+  try {
+    return await renderOnce(pattern, { ...options, onProgress }, deps, false)
+  } catch (err) {
+    if (!(err instanceof WorkletsNeeded)) throw err
+    return renderOnce(pattern, { ...options, onProgress }, deps, true)
+  }
+}
+
+async function renderOnce(
+  pattern: QueryablePattern,
+  { cps, duration, sampleRate, signal, onProgress }: OfflineGraphOptions,
+  deps: OfflineGraphDeps,
+  worklets: boolean,
 ): Promise<OfflineGraphResult> {
   // Ascending onset order matters for controls that depend on graph state,
   // such as `cut` (`webaudio.mjs:61-65`).
@@ -196,9 +247,12 @@ export async function renderPatternOffline(
 
   let played = 0
   const skipped = new Map<string, number>()
+  /** A note needed a worklet this render did not load; nothing more is scheduled. */
+  let needsWorklets = false
 
   const schedule = async (window: readonly RenderableHap[]): Promise<void> => {
     for (const hap of window) {
+      if (needsWorklets) return
       hap.ensureObjectValue?.()
       const begin = hap.whole.begin.valueOf()
       try {
@@ -211,6 +265,10 @@ export async function renderPatternOffline(
         )
         played++
       } catch (err) {
+        if (!worklets && isMissingWorkletError(err)) {
+          needsWorklets = true
+          return
+        }
         const reason = err instanceof Error ? err.message : String(err)
         skipped.set(reason, (skipped.get(reason) ?? 0) + 1)
       }
@@ -220,13 +278,15 @@ export async function renderPatternOffline(
   try {
     deps.setAudioContext(ctx)
     deps.setSuperdoughAudioController(null)
-    await deps.initAudio({})
+    await deps.initAudio({ disableWorklets: !worklets })
 
     const windows =
       ctx.suspend && ctx.resume
         ? windowsOf(haps, cps, roomChangeTimes(haps, cps), sampleRate)
         : [{ start: 0, haps }]
     await schedule(windows[0]?.haps ?? [])
+    // Found before rendering starts: this context is dropped unrendered.
+    if (needsWorklets) throw new WorkletsNeeded()
     await deps.settle?.()
 
     // Every later window is scheduled from a pause the render reaches on its
@@ -240,7 +300,7 @@ export async function renderPatternOffline(
       return ctx.suspend!(at).then(async () => {
         try {
           onProgress?.(Math.min(duration, window.start))
-          if (!signal?.aborted) await schedule(window.haps)
+          if (!signal?.aborted && !needsWorklets) await schedule(window.haps)
           await deps.settle?.()
         } catch (err) {
           failures.push(err)
@@ -254,12 +314,15 @@ export async function renderPatternOffline(
     await Promise.all(pauses)
     if (failures.length > 0) throw failures[0]
     if (signal?.aborted) throw new RenderCancelledError()
+    // Found at a pause: the rest rendered with nothing new in it, and is dropped.
+    if (needsWorklets) throw new WorkletsNeeded()
     onProgress?.(duration)
     return {
       buffer,
       haps: haps.length,
       played,
       skipped: [...skipped].map(([reason, count]) => ({ reason, count })),
+      worklets,
     }
   } finally {
     deps.setAudioContext(liveCtx)

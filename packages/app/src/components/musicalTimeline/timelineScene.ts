@@ -865,8 +865,11 @@ export function attachEnvelopes(
 
 /**
  * The engine tracks to render: the track behind every lane with marks that is
- * not an audio lane, each once. Waveform lanes first, in lane order, then Bars
- * lanes (#1748).
+ * not an audio lane, each once. Waveform lanes first, then Bars lanes (#1748);
+ * within each, the lanes in `inView` first (#1760), then the rest, in lane order.
+ *
+ * The engine spends its render budget in this order, so on a song too long to
+ * draw every track, the Waveform lanes on screen are the ones that draw.
  *
  * A Bars lane draws no envelope, but its track is still asked for, LAST: the
  * engine spends its budget in request order, so a Bars track only gets render
@@ -877,14 +880,18 @@ export function attachEnvelopes(
 export function envelopeTrackIds(
   scene: TimelineScene,
   trackIdByLane: ReadonlyMap<string, string> | undefined,
+  inView: ReadonlySet<string> = new Set(),
 ): string[] {
   if (trackIdByLane == null) return []
   const out: string[] = []
   for (const bars of [false, true]) {
-    for (const lane of scene.lanes) {
-      if (lane.audio === true || (lane.bars === true) !== bars || lane.notes.length === 0) continue
-      const id = trackIdByLane.get(lane.laneKey)
-      if (id != null && !out.includes(id)) out.push(id)
+    for (const visible of [true, false]) {
+      for (const lane of scene.lanes) {
+        if (lane.audio === true || (lane.bars === true) !== bars || lane.notes.length === 0) continue
+        if (inView.has(lane.laneKey) !== visible) continue
+        const id = trackIdByLane.get(lane.laneKey)
+        if (id != null && !out.includes(id)) out.push(id)
+      }
     }
   }
   return out

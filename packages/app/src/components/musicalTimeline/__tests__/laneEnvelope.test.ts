@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { ENVELOPE_ALPHA, ENVELOPE_STALE_ALPHA, drawTimeline, type DrawTheme, type DrawTransform } from '../drawTimeline'
-import { computeLaneLayout } from '../laneLayout'
+import { computeLaneLayout, lanesInView } from '../laneLayout'
 import { DEFAULT_METER } from '../../../lib/meter'
 import {
   attachEnvelopes,
@@ -138,6 +138,21 @@ describe('envelopeTrackIds — which tracks to render (#1731)', () => {
 
   it('asks for nothing without the lane→track join', () => {
     expect(envelopeTrackIds(sceneOf([lane('d1', synth)]), undefined)).toEqual([])
+  })
+
+  it('puts the Waveform lanes in view first, then the rest, and Bars lanes still last (#1760)', () => {
+    const scene = sceneOf([
+      lane('d1', synth),
+      lane('d2', synth, { bars: true }),
+      lane('d3', synth),
+      lane('d4', synth),
+      lane('d5', synth, { bars: true }),
+    ])
+    const byLane = new Map(['d1', 'd2', 'd3', 'd4', 'd5'].map((k, i) => [k, `$${i}`]))
+    // Scrolled to the bottom: d4 and d5 on screen.
+    expect(envelopeTrackIds(scene, byLane, new Set(['d4', 'd5']))).toEqual(['$3', '$0', '$2', '$4', '$1'])
+    // Nothing measured yet: lane order, as before.
+    expect(envelopeTrackIds(scene, byLane, new Set())).toEqual(['$0', '$2', '$3', '$1', '$4'])
   })
 })
 
@@ -412,5 +427,25 @@ describe('drawTimeline — a collapsed synth lane draws its envelope INSIDE its 
     const { ctx, rects } = mockCtx()
     drawTimeline(ctx, scene, transform, theme, layout)
     expect(columns(rects)).toHaveLength(0)
+  })
+})
+
+describe('lanesInView — which lanes show in the grid (#1760)', () => {
+  const layout = computeLaneLayout(
+    ['a', 'b', 'c', 'd'].map((laneKey) => ({ laneKey })),
+    new Set(),
+    20,
+    60,
+  )
+
+  it('names every lane any part of which is inside the visible band', () => {
+    expect(lanesInView(layout, 0, 40)).toEqual(['a', 'b'])
+    expect(lanesInView(layout, 30, 20)).toEqual(['b', 'c']) // b's lower half, c's upper half
+    expect(lanesInView(layout, 40, 1000)).toEqual(['c', 'd'])
+  })
+
+  it('a lane whose edge only touches the band is not in view, and an unmeasured grid shows none', () => {
+    expect(lanesInView(layout, 20, 20)).toEqual(['b'])
+    expect(lanesInView(layout, 0, 0)).toEqual([])
   })
 })

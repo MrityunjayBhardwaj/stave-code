@@ -5588,6 +5588,15 @@ __name(makeFixedKey, "makeFixedKey");
 // src/engine/renderPatternOffline.ts
 var RENDER_WINDOW_SECONDS = 4;
 var RENDER_WINDOW_LEAD_SECONDS = 0.05;
+function isMissingWorkletError(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  return /AudioWorklet/.test(message);
+}
+__name(isMissingWorkletError, "isMissingWorkletError");
+var _WorkletsNeeded = class _WorkletsNeeded extends Error {
+};
+__name(_WorkletsNeeded, "WorkletsNeeded");
+var WorkletsNeeded = _WorkletsNeeded;
 var _RenderCancelledError = class _RenderCancelledError extends Error {
   constructor() {
     super("The render was cancelled.");
@@ -5596,15 +5605,32 @@ var _RenderCancelledError = class _RenderCancelledError extends Error {
 };
 __name(_RenderCancelledError, "RenderCancelledError");
 var RenderCancelledError = _RenderCancelledError;
-async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal, onProgress }, deps) {
+async function renderPatternOffline(pattern, options, deps) {
+  let reported = 0;
+  const onProgress = options.onProgress && ((seconds) => {
+    if (seconds <= reported) return;
+    reported = seconds;
+    options.onProgress(seconds);
+  });
+  try {
+    return await renderOnce(pattern, { ...options, onProgress }, deps, false);
+  } catch (err) {
+    if (!(err instanceof WorkletsNeeded)) throw err;
+    return renderOnce(pattern, { ...options, onProgress }, deps, true);
+  }
+}
+__name(renderPatternOffline, "renderPatternOffline");
+async function renderOnce(pattern, { cps, duration, sampleRate, signal, onProgress }, deps, worklets) {
   const haps = pattern.queryArc(0, duration * cps, { _cps: cps }).filter((h) => h.hasOnset()).sort((a, b) => a.whole.begin.valueOf() - b.whole.begin.valueOf());
   const liveCtx = deps.getAudioContext();
   const liveController = deps.getSuperdoughAudioController();
   const ctx = deps.createContext(Math.ceil(duration * sampleRate), sampleRate);
   let played = 0;
   const skipped = /* @__PURE__ */ new Map();
+  let needsWorklets = false;
   const schedule = /* @__PURE__ */ __name(async (window2) => {
     for (const hap of window2) {
+      if (needsWorklets) return;
       hap.ensureObjectValue?.();
       const begin = hap.whole.begin.valueOf();
       try {
@@ -5617,6 +5643,10 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
         );
         played++;
       } catch (err) {
+        if (!worklets && isMissingWorkletError(err)) {
+          needsWorklets = true;
+          return;
+        }
         const reason = err instanceof Error ? err.message : String(err);
         skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
       }
@@ -5625,9 +5655,10 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
   try {
     deps.setAudioContext(ctx);
     deps.setSuperdoughAudioController(null);
-    await deps.initAudio({});
+    await deps.initAudio({ disableWorklets: !worklets });
     const windows = ctx.suspend && ctx.resume ? windowsOf(haps, cps, roomChangeTimes(haps, cps), sampleRate) : [{ start: 0, haps }];
     await schedule(windows[0]?.haps ?? []);
+    if (needsWorklets) throw new WorkletsNeeded();
     await deps.settle?.();
     const failures = [];
     const pauses = windows.slice(1).map((window2) => {
@@ -5636,7 +5667,7 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
       return ctx.suspend(at).then(async () => {
         try {
           onProgress?.(Math.min(duration, window2.start));
-          if (!signal?.aborted) await schedule(window2.haps);
+          if (!signal?.aborted && !needsWorklets) await schedule(window2.haps);
           await deps.settle?.();
         } catch (err) {
           failures.push(err);
@@ -5649,19 +5680,21 @@ async function renderPatternOffline(pattern, { cps, duration, sampleRate, signal
     await Promise.all(pauses);
     if (failures.length > 0) throw failures[0];
     if (signal?.aborted) throw new RenderCancelledError();
+    if (needsWorklets) throw new WorkletsNeeded();
     onProgress?.(duration);
     return {
       buffer,
       haps: haps.length,
       played,
-      skipped: [...skipped].map(([reason, count]) => ({ reason, count }))
+      skipped: [...skipped].map(([reason, count]) => ({ reason, count })),
+      worklets
     };
   } finally {
     deps.setAudioContext(liveCtx);
     deps.setSuperdoughAudioController(liveController);
   }
 }
-__name(renderPatternOffline, "renderPatternOffline");
+__name(renderOnce, "renderOnce");
 function windowsOf(haps, cps, extraStarts, sampleRate) {
   const last = haps.length ? haps[haps.length - 1].whole.begin.valueOf() / cps : 0;
   const gridEnd = Math.floor(last / RENDER_WINDOW_SECONDS);
@@ -5854,6 +5887,30 @@ function onLiveGraph(play) {
 }
 __name(onLiveGraph, "onLiveGraph");
 
+// src/engine/displayRate.ts
+var DISPLAY_RENDER_RATE = 24e3;
+var OSCILLATORS = /* @__PURE__ */ new Set(["sine", "triangle", "square", "sawtooth", "supersaw", "pulse"]);
+var NOISES = /* @__PURE__ */ new Set(["pink", "white", "brown", "crackle"]);
+function playsAtDisplayRate(value) {
+  if (value === null || typeof value !== "object") return false;
+  const v = value;
+  const s = v.s ?? "triangle";
+  if (typeof s !== "string" || !OSCILLATORS.has(s)) return false;
+  if (v.bank != null || v.ir != null || v.iresponse != null) return false;
+  if (v.noise != null && v.noise !== 0) return false;
+  for (const key2 in v) {
+    const x = v[key2];
+    if (typeof x === "string" && NOISES.has(x)) return false;
+  }
+  return true;
+}
+__name(playsAtDisplayRate, "playsAtDisplayRate");
+function displayRenderRate(values2, liveRate) {
+  for (const value of values2) if (!playsAtDisplayRate(value)) return liveRate;
+  return Math.min(liveRate, DISPLAY_RENDER_RATE);
+}
+__name(displayRenderRate, "displayRenderRate");
+
 // src/engine/trackEnvelopes.ts
 function createTrackEnvelopeScheduler(deps) {
   let wanted = [];
@@ -5918,12 +5975,14 @@ function createTrackEnvelopeScheduler(deps) {
     for (const id of wanted) {
       const fp = current4.get(id);
       if (fp == null) continue;
-      if (spent + seconds > deps.capSeconds) {
-        over.push(id);
+      const kept = envelopes.get(id)?.fingerprint === fp;
+      const cost = seconds * (deps.weight?.(id) ?? 1);
+      if (spent + cost > deps.capSeconds) {
+        if (!kept) over.push(id);
         continue;
       }
-      spent += seconds;
-      if (envelopes.get(id)?.fingerprint === fp) continue;
+      spent += cost;
+      if (kept) continue;
       if (refused2.get(id) === fp) continue;
       todo.push(id);
     }
@@ -5980,9 +6039,14 @@ function createTrackEnvelopeScheduler(deps) {
       const nextWanted = [...trackIds];
       const same = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id, i) => id === wanted[i]);
       if (same) return;
+      const reordered = span === cycles && nextWanted.length === wanted.length && nextWanted.every((id) => wanted.includes(id));
       if (span !== cycles) abortInFlight();
       wanted = nextWanted;
       cycles = span;
+      if (reordered) {
+        kick();
+        return;
+      }
       for (const id of [...current4.keys()]) if (!wanted.includes(id)) current4.delete(id);
       deps.onChange();
       refingerprint();
@@ -9307,8 +9371,15 @@ var _StrudelEngine = class _StrudelEngine {
         for (const listener of this.trackEnvelopeListeners) listener();
       }, "onChange"),
       debounceMs: TRACK_ENVELOPE_DEBOUNCE_MS,
-      capSeconds: TRACK_ENVELOPE_CAP_SECONDS
+      capSeconds: TRACK_ENVELOPE_CAP_SECONDS,
+      weight: /* @__PURE__ */ __name((trackId) => {
+        const live = this.audioCtx?.sampleRate;
+        const rate = this.displayRates.get(trackId);
+        return live && rate ? rate / live : 1;
+      }, "weight")
     });
+    /** #1759 — the rate each track's display render uses, decided with its fingerprint. */
+    this.displayRates = /* @__PURE__ */ new Map();
     /**
      * #1733 — an audition anywhere on the page interrupts this engine's display
      * render; #1735 — so does a user render in any file, for as long as it runs.
@@ -10490,15 +10561,19 @@ var _StrudelEngine = class _StrudelEngine {
     const pattern = this.songPatterns.get(trackId);
     if (!pattern) return null;
     let text = `${this.getCps() ?? 0.5}|${cycles}|`;
+    const values2 = [];
     try {
       for (const hap of pattern.queryArc(0, cycles)) {
         if (hap.whole == null) continue;
         if (typeof hap.hasOnset === "function" && !hap.hasOnset()) continue;
         text += `${Number(hap.whole.begin)},${Number(hap.whole.end)},${JSON.stringify(hap.value)};`;
+        values2.push(hap.value);
       }
     } catch {
+      this.displayRates.delete(trackId);
       return `unreadable:${this.evalEpoch}`;
     }
+    if (this.audioCtx) this.displayRates.set(trackId, displayRenderRate(values2, this.audioCtx.sampleRate));
     return digest(text);
   }
   /**
@@ -10511,18 +10586,19 @@ var _StrudelEngine = class _StrudelEngine {
    * lets it render after a seek or with a loop armed, where the loaded render
    * refuses: the capture predates both wraps.
    *
-   * ⚠ AT THE LIVE CONTEXT'S SAMPLE RATE, ALTHOUGH AN ENVELOPE NEEDS FAR LESS.
-   * superdough decodes a sample with whatever context is current when a note
-   * first asks for it, and caches the decoded buffer by URL for everyone
-   * (`superdough/sampler.mjs` `loadBuffer`, called with `getAudioContext()`).
-   * A render at a low rate would leave a low-rate copy of every sample it loads
-   * in that cache, and live playback would use it from then on.
+   * ⚠ AT 24 kHz ONLY FOR A TRACK OF PLAIN OSCILLATORS, ELSE THE LIVE RATE
+   * (#1759, `displayRate.ts`). superdough caches decoded samples, noise and
+   * soundfont zones page-wide by name, decoded on whatever context is current,
+   * so a low-rate render that loaded one first would leave live playback a
+   * low-rate copy. The rate is decided in `trackFingerprint`, from the events
+   * this render plays.
    */
   async renderTrackEnvelope(trackId, cycles, signal) {
     const pattern = this.songPatterns.get(trackId);
     if (!pattern || !this.audioCtx) return null;
     const duration = cycles / (this.getCps() ?? 0.5);
-    const { buffer } = await this.renderPatternRaw(pattern, duration, this.audioCtx.sampleRate, signal);
+    const rate = this.displayRates.get(trackId) ?? this.audioCtx.sampleRate;
+    const { buffer } = await this.renderPatternRaw(pattern, duration, rate, signal);
     const channels = [];
     for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c));
     const env = envelopeFromChannels(channels, Math.max(1, Math.ceil(duration * TRACK_ENVELOPE_COLUMNS_PER_SECOND)));
