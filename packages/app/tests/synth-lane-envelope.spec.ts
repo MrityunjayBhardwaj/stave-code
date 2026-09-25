@@ -202,9 +202,13 @@ test.describe('synth lane envelope (#1731)', () => {
 
   test('an audition during a render plays through the live graph, not into the render (#1733)', async ({ page }) => {
     await page.addInitScript(() => {
-      const w = window as unknown as { __osc: { live: number; offline: number }; __offlineActive: number }
-      w.__osc = { live: 0, offline: 0 }
-      w.__offlineActive = 0
+      // Init scripts also run in every frame, and #1758 renders in a throwaway
+      // frame: each copy records into the TOP window, and only the top resets it.
+      const w = (window.top ?? window) as unknown as { __osc: { live: number; offline: number }; __offlineActive: number }
+      if (window === window.top) {
+        w.__osc = { live: 0, offline: 0 }
+        w.__offlineActive = 0
+      }
       const create = BaseAudioContext.prototype.createOscillator
       BaseAudioContext.prototype.createOscillator = function (this: BaseAudioContext) {
         if (this instanceof OfflineAudioContext) w.__osc.offline++
