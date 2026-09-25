@@ -254,6 +254,17 @@ test('#1778 with room left, an edit does not mark the document unsaved', async (
   expect(await status(page)).toEqual({ fullSince: null, documentUnsaved: false })
 })
 
+test('#1778 reloading onto a full disk reports full but not unsaved — nothing new was refused', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await waitForEditorLoaded(page)
+  await page.waitForFunction(() => Boolean((window as unknown as ProbeWindow).__staveAssetProbe))
+  await page.waitForTimeout(1500)
+  const s = await status(page)
+  expect({ full: s.fullSince !== null, unsaved: s.documentUnsaved }).toEqual({ full: true, unsaved: false })
+})
+
 test('#1778 retrying while still full says so and leaves the document unsaved', async ({ page }) => {
   await boot(page)
   await fillStorage(page)

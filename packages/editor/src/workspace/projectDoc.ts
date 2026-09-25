@@ -34,6 +34,12 @@ let activeProjectId: string | null = null
 let docReady = false
 /** Removes the refused-write listener from the provider's connection. */
 let unwatchDocWrites: (() => void) | null = null
+/**
+ * Whether the document has changed since it loaded (or since the last full
+ * save). A refused write only leaves the saved copy BEHIND when there was
+ * something new to write; see `watchDocWrites`.
+ */
+let changedSinceSave = false
 
 /** y-indexeddb's object store for document updates (`y-indexeddb.js`). */
 const UPDATES_STORE = 'updates'
@@ -47,18 +53,38 @@ const UPDATES_STORE = 'updates'
  * 2026-09-25). But an `abort` event fired at a transaction BUBBLES to its
  * connection, and the provider exposes that connection as `db` once open. So
  * listening there hears every refusal without changing y-indexeddb.
+ *
+ * ## Why a refusal alone does not mean "behind"
+ *
+ * Not every write y-indexeddb makes carries anything new. On load it writes
+ * the whole state it just read back as one compacted row (`fetchUpdates`); on
+ * a full disk that write is refused, and the notice claimed "changes since …
+ * are not saved" on a reload where nobody had typed (observed). A refused
+ * compaction loses nothing: the rows it would have replaced are still there.
+ * So a refusal marks the document behind only when the document CHANGED since
+ * it loaded or was last fully saved — every such change goes to y-indexeddb
+ * as a write of its own. Either way the disk is reported full.
  */
-function watchDocWrites(provider: IndexeddbPersistenceType): void {
+function watchDocWrites(provider: IndexeddbPersistenceType, doc: Y.Doc): void {
   unwatchDocWrites?.()
   unwatchDocWrites = null
+  changedSinceSave = false
   const db = provider.db
   if (!db) return
+  const onUpdate = (_update: Uint8Array, origin: unknown) => {
+    // The provider's own replays are not changes (`y-indexeddb` skips them too).
+    if (origin !== provider) changedSinceSave = true
+  }
   const onAbort = (event: Event) => {
     const tx = event.target as IDBTransaction | null
-    if (isQuotaError(tx?.error)) noteStorageRefused({ document: true })
+    if (isQuotaError(tx?.error)) noteStorageRefused({ document: changedSinceSave })
   }
+  doc.on('update', onUpdate)
   db.addEventListener('abort', onAbort)
-  unwatchDocWrites = () => db.removeEventListener('abort', onAbort)
+  unwatchDocWrites = () => {
+    doc.off('update', onUpdate)
+    db.removeEventListener('abort', onAbort)
+  }
 }
 
 function unwatch(): void {
@@ -159,7 +185,7 @@ export async function initProjectDoc(
     if (timer) clearTimeout(timer)
   }
 
-  watchDocWrites(provider)
+  watchDocWrites(provider, activeDoc)
   activeProjectId = projectId
   docReady = true
   return { persisted: true }
@@ -190,6 +216,7 @@ export async function retryDocSave(): Promise<boolean> {
     if (isQuotaError(err)) return false
     throw err
   }
+  changedSinceSave = false
   noteDocumentSaved()
   return true
 }

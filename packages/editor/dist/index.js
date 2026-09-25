@@ -18889,18 +18889,27 @@ var activeProvider = null;
 var activeProjectId = null;
 var docReady = false;
 var unwatchDocWrites = null;
+var changedSinceSave = false;
 var UPDATES_STORE = "updates";
-function watchDocWrites(provider) {
+function watchDocWrites(provider, doc) {
   unwatchDocWrites?.();
   unwatchDocWrites = null;
+  changedSinceSave = false;
   const db = provider.db;
   if (!db) return;
+  const onUpdate = /* @__PURE__ */ __name((_update, origin) => {
+    if (origin !== provider) changedSinceSave = true;
+  }, "onUpdate");
   const onAbort = /* @__PURE__ */ __name((event) => {
     const tx3 = event.target;
-    if (isQuotaError(tx3?.error)) noteStorageRefused({ document: true });
+    if (isQuotaError(tx3?.error)) noteStorageRefused({ document: changedSinceSave });
   }, "onAbort");
+  doc.on("update", onUpdate);
   db.addEventListener("abort", onAbort);
-  unwatchDocWrites = /* @__PURE__ */ __name(() => db.removeEventListener("abort", onAbort), "unwatchDocWrites");
+  unwatchDocWrites = /* @__PURE__ */ __name(() => {
+    doc.off("update", onUpdate);
+    db.removeEventListener("abort", onAbort);
+  }, "unwatchDocWrites");
 }
 __name(watchDocWrites, "watchDocWrites");
 function unwatch() {
@@ -18956,7 +18965,7 @@ async function initProjectDoc(projectId, opts = {}) {
   } finally {
     if (timer) clearTimeout(timer);
   }
-  watchDocWrites(provider);
+  watchDocWrites(provider, activeDoc);
   activeProjectId = projectId;
   docReady = true;
   return { persisted: true };
@@ -18975,6 +18984,7 @@ async function retryDocSave() {
     if (isQuotaError(err)) return false;
     throw err;
   }
+  changedSinceSave = false;
   noteDocumentSaved();
   return true;
 }
