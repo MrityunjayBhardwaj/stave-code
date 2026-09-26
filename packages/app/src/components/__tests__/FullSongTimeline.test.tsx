@@ -2393,3 +2393,109 @@ describe('FullSongTimeline — the shape menu measures a swap against the song i
     })
   })
 })
+
+// ---------------------------------------------------------------------------
+// #1562 — the clip gestures are commands: listed, rebindable, palette-runnable
+// ---------------------------------------------------------------------------
+
+import { setKeybindingOverride, resetAllKeybindings, getKeybindingsFor } from '../../commands/keybindings'
+import { listCommands, listEnabledCommands, executeCommand } from '../../commands/registry'
+import { CLIP_GESTURE, CLIP_GESTURES, SONG_TIMELINE_SCOPE } from '../musicalTimeline/clipGestures'
+
+describe('FullSongTimeline — clip gestures are registered commands (#1562)', () => {
+  const settle = () => act(async () => { await Promise.resolve() })
+  function renderSelectable(props: Partial<React.ComponentProps<typeof FullSongTimeline>>) {
+    const utils = renderFull({ ir: {} as never, ...props })
+    const grid = utils.container.querySelector('[data-full-song="grid"]') as HTMLElement
+    grid.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 800, height: 48, right: 800, bottom: 48, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    const selectArm0 = () => {
+      fireEvent.pointerDown(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+      fireEvent.pointerUp(grid, { clientX: 200, clientY: 10, pointerId: 1 })
+    }
+    return { ...utils, grid, selectArm0 }
+  }
+  afterEach(() => resetAllKeybindings())
+
+  it('all seven are registered, scoped to the timeline, with the keys the grid always answered to', () => {
+    const byId = new Map(listCommands().map((c) => [c.id, c]))
+    const want: Record<string, string[]> = {
+      [CLIP_GESTURE.duplicate]: ['mod+d'],
+      [CLIP_GESTURE.split]: ['s'],
+      [CLIP_GESTURE.delete]: ['delete', 'backspace'],
+      [CLIP_GESTURE.rippleDelete]: ['mod+shift+backspace', 'mod+shift+delete'],
+      [CLIP_GESTURE.insert]: ['mod+i'],
+      [CLIP_GESTURE.rename]: ['f2', 'enter'],
+      [CLIP_GESTURE.pointAtPart]: ['p'],
+    }
+    expect(CLIP_GESTURES).toHaveLength(7)
+    for (const [id, chords] of Object.entries(want)) {
+      const cmd = byId.get(id)
+      expect(cmd, id).toBeDefined()
+      expect(cmd!.scope).toBe(SONG_TIMELINE_SCOPE)
+      expect(cmd!.category).toBe('Song timeline')
+      expect(getKeybindingsFor(cmd!)).toEqual(chords)
+    }
+  })
+
+  it('a rebind reaches the grid: the new chord duplicates and the old one no longer does', async () => {
+    const onDuplicateClip = vi.fn()
+    const { grid, selectArm0 } = renderSelectable({ onDuplicateClip })
+    await settle()
+    setKeybindingOverride(CLIP_GESTURE.duplicate, 'mod+j')
+    selectArm0()
+    fireEvent.keyDown(grid, { key: 'd', metaKey: true })
+    expect(onDuplicateClip, 'the old chord is released by the rebind').not.toHaveBeenCalled()
+    fireEvent.keyDown(grid, { key: 'j', metaKey: true })
+    expect(onDuplicateClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 0 })
+  })
+
+  it('a MODIFIED Backspace does not delete the section, while plain Backspace does', async () => {
+    // The old branch matched Delete/Backspace with any modifier, so ⌥⌫ (delete a
+    // word, by muscle memory) or ⌘⌫ removed the selected section.
+    const onDeleteClip = vi.fn()
+    const { grid, selectArm0 } = renderSelectable({ onDeleteClip })
+    await settle()
+    selectArm0()
+    fireEvent.keyDown(grid, { key: 'Backspace', altKey: true })
+    fireEvent.keyDown(grid, { key: 'Backspace', metaKey: true })
+    fireEvent.keyDown(grid, { key: 'Delete', ctrlKey: true })
+    expect(onDeleteClip, 'no modified delete may remove the section').not.toHaveBeenCalled()
+    fireEvent.keyDown(grid, { key: 'Backspace' })
+    expect(onDeleteClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 0 })
+  })
+
+  it('the palette offers a gesture only while it applies, and running it acts on the selection', async () => {
+    const onDuplicateClip = vi.fn()
+    const { selectArm0 } = renderSelectable({ onDuplicateClip })
+    await settle()
+    const offered = (id: string) => listEnabledCommands().some((c) => c.id === id)
+    expect(offered(CLIP_GESTURE.duplicate), 'nothing selected').toBe(false)
+    selectArm0()
+    expect(offered(CLIP_GESTURE.duplicate)).toBe(true)
+    // No split handler was given, so split is not offered even with a selection.
+    expect(offered(CLIP_GESTURE.split)).toBe(false)
+    act(() => {
+      expect(executeCommand(CLIP_GESTURE.duplicate)).toBe(true)
+    })
+    expect(onDuplicateClip).toHaveBeenCalledWith({ sourceOffset: 9, armIndex: 0 })
+  })
+
+  it('a keystroke the gesture acted on stops at the grid; one it declined travels on', async () => {
+    const onDuplicateClip = vi.fn()
+    const { grid, selectArm0 } = renderSelectable({ onDuplicateClip })
+    await settle()
+    const seen = vi.fn()
+    window.addEventListener('keydown', seen)
+    try {
+      selectArm0()
+      fireEvent.keyDown(grid, { key: 's' }) // no split handler → declined
+      expect(seen).toHaveBeenCalledTimes(1)
+      fireEvent.keyDown(grid, { key: 'd', metaKey: true }) // acted
+      expect(onDuplicateClip).toHaveBeenCalledTimes(1)
+      expect(seen, 'an acted-on chord must not also reach a global command').toHaveBeenCalledTimes(1)
+    } finally {
+      window.removeEventListener('keydown', seen)
+    }
+  })
+})

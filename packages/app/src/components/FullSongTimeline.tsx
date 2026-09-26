@@ -107,6 +107,9 @@ import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, 
 import type { FixedParameter, TrackDisplay } from '@stave/editor'
 import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepTravel, stepY, travelledPx, withFineDrag, withStepValue, type StepBand, type StepHit, type StepTravel } from './musicalTimeline/steppedLane'
 import { stepCountOptions, type StepCountGroup } from './musicalTimeline/stepCountMenu'
+import { CLIP_GESTURE, SONG_TIMELINE_SCOPE, isClipGestureId, offersAnyClipGesture, type ClipGestureId } from './musicalTimeline/clipGestures'
+import { matchScopedCommand } from '../commands/keybindings'
+import { setScopeHandler } from '../commands/registry'
 import { songLoopCycles } from './songLength'
 import { publishDrawnSongFrame } from '../state/drawnSongFrame'
 import type { SceneSignal, SceneStepped } from './musicalTimeline/timelineScene'
@@ -2419,6 +2422,18 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     trimRafRef.current = requestAnimationFrame(extendAutoScrollTick)
   }, [applyTrim, dragAwareContentWidth])
 
+  // Whether the host offers ANY keyed clip gesture (#1562) — one entry per
+  // command in `clipGestures.ts`, and the type makes the list complete.
+  const clipGestureOffered = offersAnyClipGesture({
+    [CLIP_GESTURE.duplicate]: onDuplicateClip,
+    [CLIP_GESTURE.split]: onSplitClip,
+    [CLIP_GESTURE.delete]: onDeleteClip,
+    [CLIP_GESTURE.rippleDelete]: onRippleDeleteClip,
+    [CLIP_GESTURE.insert]: onInsertSilenceClip,
+    [CLIP_GESTURE.rename]: onRenameSection,
+    [CLIP_GESTURE.pointAtPart]: onAssignSectionPart,
+  })
+
   const handleGridPointerDown = React.useCallback(
     (e: React.PointerEvent) => {
       // Take keyboard focus on any grid press so the clip-op shortcuts (S split,
@@ -2555,16 +2570,11 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         // at all, which looks exactly like a gesture that declined. Ripple delete,
         // insert silence and rename all shipped without being added (#1561), and
         // only the app passing every handler at once kept that invisible.
-        const interactive = !!(
-          onDeleteClip ||
-          onMoveClip ||
-          onDuplicateClip ||
-          onSplitClip ||
-          onRippleDeleteClip ||
-          onInsertSilenceClip ||
-          onRenameSection ||
-          onAssignSectionPart
-        )
+        //
+        // #1562 — the keyed gestures no longer appear here by name: the record
+        // below is keyed by `ClipGestureId`, so a gesture added to the command
+        // table without its handler here is a type error, not a silent gap.
+        const interactive = !!onMoveClip || clipGestureOffered
         // Include the bare clip: it's selectable (#489). It won't move — a bare
         // press has no reorder target (armSpansNow is empty) and the move commit
         // no-ops for armIndex < 0, so the gesture resolves to a select on pointer-up.
@@ -2622,7 +2632,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const cw = dragAwareContentWidth(areaRef.current!.getBoundingClientRect().width)
       setTrimEdgeX(songCycleToX(hit.clip.endCycle, songWindow, cw))
     },
-    [editableCaptionAt, shapeCaptionAt, onPreviewShape, analysis, stepAt, clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, jumpToLaneAtClientY, displayCycles, dragAwareContentWidth, onDeleteClip, onMoveClip, onDuplicateClip, onSplitClip, onRippleDeleteClip, onInsertSilenceClip, onRenameSection, onAssignSectionPart],
+    [editableCaptionAt, shapeCaptionAt, onPreviewShape, analysis, stepAt, clipEdgeAt, regionEdgeAtClient, applyRegionTrim, clipBodyAt, jumpToLaneAtClientY, displayCycles, dragAwareContentWidth, onMoveClip, clipGestureOffered],
   )
 
   const handleGridPointerMove = React.useCallback(
@@ -2900,169 +2910,194 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     [endStepDrag, endRegionDrag, endTrimDrag, endBodyDrag],
   )
 
-  // Delete/Backspace on the focused grid removes the selected clip. The grid is
-  // focusable (tabIndex) so a click-to-select leaves it ready for the keystroke.
-  const handleGridKeyDown = React.useCallback(
-    (e: React.KeyboardEvent) => {
-      if (!selected) return
+  // #1562 — the clip gestures, one per command in `clipGestures.ts`. WHICH key
+  // runs which gesture is no longer decided here: the grid's key handler asks the
+  // registry (`matchScopedCommand`), so the shortcuts list and a user's rebind
+  // are the truth, and the palette reaches the same code through the scope
+  // handler below. `dryRun` answers "would this act on the current selection?"
+  // without doing it — the palette's `when`. Returns whether it acted (would act).
+  //
+  // ⚠ The chord guards that used to live on each branch (`!e.shiftKey` on ⌘D and
+  // ⌘I, ripple tested before plain Delete, no ⌘/⌃/⌥ on S, P, F2 and Enter) are now
+  // ONE structural rule: a chord matches only its exact modifiers, so ⌘⇧D is not
+  // ⌘D (#1421) and ⌘⇧Backspace is not Backspace (#1460). It also closes a gap the
+  // per-branch guards left: plain Delete used to accept ANY modifier, so ⌥⌫ or
+  // ⌘⌫ deleted the selected section.
+  const runClipGesture = React.useCallback(
+    (id: ClipGestureId, dryRun: boolean): boolean => {
+      if (!selected) return false
       // A bare track's implicit clip (armIndex < 0) supports SPLIT and DELETE,
       // both of which materialize the combinator (#489). DUPLICATE stays out of
       // scope (cloning a uniform bar into arrange is audibly identical — a
       // no-op the user can reach by split-then-edit).
       const bareClip = selected.armIndex < 0
-      // ⌘/Ctrl-D duplicates the selected clip (insert a clone arm after it).
-      // ⚠ `!e.shiftKey` is load-bearing. `e.key` is the PRODUCED CHARACTER, so
-      // Shift+d is literally `'D'` — without the guard, ⌘⇧D fell through to
-      // here and duplicated (observed, #1421). Harmless in itself, but it was
-      // an undocumented binding that quietly edits the arrangement, and it sat
-      // on the chord an "add section" gesture would naturally want (#1347).
-      // ⚠ The bare-letter `S` check below deliberately does NOT get this guard:
-      // there, accepting `'S'` is capslock tolerance on an unmodified key,
-      // which is a different situation from widening a modifier chord.
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'd' || e.key === 'D')) {
-        if (!onDuplicateClip || bareClip) return
-        e.preventDefault()
-        onDuplicateClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
-        // A clone arm is inserted after the selection, shifting later indices —
-        // clear the held armIndex so a follow-up keystroke can't hit the wrong clip.
-        setSelected(null)
-        return
-      }
-      // ⚠ RIPPLE MUST BE TESTED BEFORE PLAIN DELETE, AND THIS ORDERING IS THE
-      // GUARD (#1460). The branch below matches `Delete`/`Backspace` with no
-      // modifier check at all, so Cmd+Shift+Delete would reach it and clear the
-      // clip in place — the same shape as the ⌘⇧D fall-through that duplicated
-      // silently (#1421), and worse here, because the two gestures differ in
-      // whether the SONG GETS SHORTER.
-      //
-      // Returning when the handler is absent is deliberate rather than lazy:
-      // falling through would leave the chord quietly bound to the other
-      // gesture, which is exactly the undocumented binding #1421 was about.
-      // F2 (and Enter) opens the section-rename editor over the selected clip
-      // (#1417 Stage 3). F2 is the platform's rename key and Enter is what people
-      // reach for on a selected thing; both are offered because neither alone is
-      // discoverable on a canvas that has no double-clickable node.
-      //
-      // ⚠ THIS IS WHAT MAKES THE SHIPPED PRIMITIVES REACHABLE AT ALL. The pick
-      // rename landed on trunk with zero callers, so a musician could not rename
-      // anything; a second primitive without a gesture would just have doubled
-      // the unreachable code.
-      // `P` opens the part chooser over the selected clip (#1560) — "which part
-      // does this section play". A bare letter like `S`, and unmodified, because
-      // the tracker order list this mirrors has no standard chord to borrow and
-      // inventing a modifier combination would only make it harder to find.
-      //
-      // ⚠ IT OPENS EVEN WHEN THERE IS NOTHING TO OFFER, and that is the point of
-      // asking for the list here rather than refusing on an empty one. A song
-      // with a single part has nowhere to point a section, and a chooser that
-      // says so is the difference between a gesture that declined and a gesture
-      // that appears not to exist.
-      if ((e.key === 'p' || e.key === 'P') && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (!onAssignSectionPart || !sectionParts || bareClip) return
+      const at = { sourceOffset: selected.sourceOffset, armIndex: selected.armIndex }
+      const selectedClip = () => {
         const lane = sceneRef.current.lanes.find((l) => l.laneKey === selected.laneKey)
-        const clip = lane?.clips.find((c) => c.armIndex === selected.armIndex)
-        if (!clip) return
-        e.preventDefault()
-        setChoosingPart({
-          laneKey: selected.laneKey,
-          armIndex: selected.armIndex,
-          sourceOffset: selected.sourceOffset,
-          current: clip.sectionName,
-          parts: sectionParts({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex }),
-        })
-        return
+        return lane?.clips.find((c) => c.armIndex === selected.armIndex)
       }
-      if ((e.key === 'F2' || e.key === 'Enter') && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (!onRenameSection || bareClip) return
-        const lane = sceneRef.current.lanes.find((l) => l.laneKey === selected.laneKey)
-        const clip = lane?.clips.find((c) => c.armIndex === selected.armIndex)
-        if (!clip) return
-        e.preventDefault()
-        sectionCommittedRef.current = false
-        setEditingSection({
-          laneKey: selected.laneKey,
-          armIndex: selected.armIndex,
-          sourceOffset: selected.sourceOffset,
-          name: clip.sectionName,
-          count:
-            sectionArmCount?.({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex }) ??
-            0,
-        })
-        return
-      }
-      // Cmd/Ctrl+I inserts an empty section after the selection (#1461) — the
-      // chord Ableton gives Insert Silence. Nothing else on this grid claims it:
-      // the worry recorded on the duplicate branch, that an add gesture would
-      // want ⌘D's chord, was retired by reading the manuals rather than guessing.
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'i' || e.key === 'I')) {
-        if (!onInsertSilenceClip || bareClip) return
-        e.preventDefault()
-        onInsertSilenceClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
-        // A new arm lands after the selection and shifts every later index — the
-        // held armIndex would address the wrong clip on the next keystroke.
-        setSelected(null)
-        return
-      }
-      if (
-        (e.metaKey || e.ctrlKey) &&
-        e.shiftKey &&
-        (e.key === 'Delete' || e.key === 'Backspace')
-      ) {
-        if (!onRippleDeleteClip || bareClip) return
-        e.preventDefault()
-        onRippleDeleteClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
-        // The arm is gone and every later index shifts down by one — the held
-        // armIndex now addresses a different clip, so a follow-up keystroke must
-        // not reach it. Same reason duplicate and split clear it.
-        setSelected(null)
-        return
-      }
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (!onDeleteClip) return
-        e.preventDefault()
-        if (bareClip) {
-          // #489 — silence the SELECTED bar of the bare loop (gap). Needs the
-          // clicked bar index + the loop's whole display span; the parent
-          // materializes arrange([…,pat],[1,silence],[…,pat]). Derive span from
-          // the live scene clip (its floored width, #489 D3).
-          const lane = sceneRef.current.lanes.find((l) => l.laneKey === selected.laneKey)
-          const clip = lane?.clips.find((c) => c.armIndex < 0)
-          if (!clip) return
-          onDeleteClip({
-            sourceOffset: selected.sourceOffset,
-            armIndex: selected.armIndex,
-            barIndex: selected.barCycle ?? clip.startCycle,
-            span: clip.endCycle - clip.startCycle,
-          })
-        } else {
-          onDeleteClip({ sourceOffset: selected.sourceOffset, armIndex: selected.armIndex })
+      switch (id) {
+        // Duplicate inserts a clone arm after the selection.
+        case CLIP_GESTURE.duplicate: {
+          if (!onDuplicateClip || bareClip) return false
+          if (dryRun) return true
+          onDuplicateClip(at)
+          // A clone arm is inserted after the selection, shifting later indices —
+          // clear the held armIndex so a follow-up keystroke can't hit the wrong clip.
+          setSelected(null)
+          return true
         }
-        setSelected(null)
-        return
-      }
-      // `S` splits the selected clip at its midpoint (whole-cycle boundary). Only
-      // a clip ≥ 2 cycles is splittable — derive the span from the live scene.
-      if ((e.key === 's' || e.key === 'S') && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (!onSplitClip) return
-        const lane = sceneRef.current.lanes.find((l) => l.laneKey === selected.laneKey)
-        const clip = lane?.clips.find((c) => c.armIndex === selected.armIndex)
-        if (!clip) return
-        const weight = clip.endCycle - clip.startCycle
-        if (weight < 2) return
-        e.preventDefault()
-        onSplitClip({
-          sourceOffset: selected.sourceOffset,
-          armIndex: selected.armIndex,
-          firstWeight: Math.floor(weight / 2),
-          // For a bare clip the span IS the whole-song width — the parent
-          // materializes `arrange([k, pat], [span−k, pat])` (#489).
-          span: weight,
-        })
-        // Split inserts a second arm, reindexing the list — clear the selection.
-        setSelected(null)
+        // `P` opens the part chooser over the selected clip (#1560) — "which part
+        // does this section play". A bare letter like `S`, and unmodified, because
+        // the tracker order list this mirrors has no standard chord to borrow and
+        // inventing a modifier combination would only make it harder to find.
+        //
+        // ⚠ IT OPENS EVEN WHEN THERE IS NOTHING TO OFFER, and that is the point of
+        // asking for the list here rather than refusing on an empty one. A song
+        // with a single part has nowhere to point a section, and a chooser that
+        // says so is the difference between a gesture that declined and a gesture
+        // that appears not to exist.
+        case CLIP_GESTURE.pointAtPart: {
+          if (!onAssignSectionPart || !sectionParts || bareClip) return false
+          const clip = selectedClip()
+          if (!clip) return false
+          if (dryRun) return true
+          setChoosingPart({
+            laneKey: selected.laneKey,
+            armIndex: selected.armIndex,
+            sourceOffset: selected.sourceOffset,
+            current: clip.sectionName,
+            parts: sectionParts(at),
+          })
+          return true
+        }
+        // F2 (and Enter) opens the section-rename editor over the selected clip
+        // (#1417 Stage 3). F2 is the platform's rename key and Enter is what people
+        // reach for on a selected thing; both are offered because neither alone is
+        // discoverable on a canvas that has no double-clickable node.
+        //
+        // ⚠ THIS IS WHAT MAKES THE SHIPPED PRIMITIVES REACHABLE AT ALL. The pick
+        // rename landed on trunk with zero callers, so a musician could not rename
+        // anything; a second primitive without a gesture would just have doubled
+        // the unreachable code.
+        case CLIP_GESTURE.rename: {
+          if (!onRenameSection || bareClip) return false
+          const clip = selectedClip()
+          if (!clip) return false
+          if (dryRun) return true
+          sectionCommittedRef.current = false
+          setEditingSection({
+            laneKey: selected.laneKey,
+            armIndex: selected.armIndex,
+            sourceOffset: selected.sourceOffset,
+            name: clip.sectionName,
+            count: sectionArmCount?.(at) ?? 0,
+          })
+          return true
+        }
+        // Insert an empty section after the selection (#1461) — ⌘I by default,
+        // the chord Ableton gives Insert Silence.
+        case CLIP_GESTURE.insert: {
+          if (!onInsertSilenceClip || bareClip) return false
+          if (dryRun) return true
+          onInsertSilenceClip(at)
+          // A new arm lands after the selection and shifts every later index — the
+          // held armIndex would address the wrong clip on the next keystroke.
+          setSelected(null)
+          return true
+        }
+        // Ripple delete: the arm is removed and the song gets shorter. Declining
+        // when the handler is absent is deliberate: a keystroke that falls through
+        // to plain delete instead would be the undocumented binding #1421 was about.
+        case CLIP_GESTURE.rippleDelete: {
+          if (!onRippleDeleteClip || bareClip) return false
+          if (dryRun) return true
+          onRippleDeleteClip(at)
+          // The arm is gone and every later index shifts down by one — the held
+          // armIndex now addresses a different clip, so a follow-up keystroke must
+          // not reach it. Same reason duplicate and split clear it.
+          setSelected(null)
+          return true
+        }
+        case CLIP_GESTURE.delete: {
+          if (!onDeleteClip) return false
+          if (bareClip) {
+            // #489 — silence the SELECTED bar of the bare loop (gap). Needs the
+            // clicked bar index + the loop's whole display span; the parent
+            // materializes arrange([…,pat],[1,silence],[…,pat]). Derive span from
+            // the live scene clip (its floored width, #489 D3).
+            const lane = sceneRef.current.lanes.find((l) => l.laneKey === selected.laneKey)
+            const clip = lane?.clips.find((c) => c.armIndex < 0)
+            if (!clip) return false
+            if (dryRun) return true
+            onDeleteClip({
+              ...at,
+              barIndex: selected.barCycle ?? clip.startCycle,
+              span: clip.endCycle - clip.startCycle,
+            })
+          } else {
+            if (dryRun) return true
+            onDeleteClip(at)
+          }
+          setSelected(null)
+          return true
+        }
+        // Split the selected clip at its midpoint (whole-cycle boundary). Only a
+        // clip ≥ 2 cycles is splittable — derive the span from the live scene.
+        case CLIP_GESTURE.split: {
+          if (!onSplitClip) return false
+          const clip = selectedClip()
+          if (!clip) return false
+          const weight = clip.endCycle - clip.startCycle
+          if (weight < 2) return false
+          if (dryRun) return true
+          onSplitClip({
+            ...at,
+            firstWeight: Math.floor(weight / 2),
+            // For a bare clip the span IS the whole-song width — the parent
+            // materializes `arrange([k, pat], [span−k, pat])` (#489).
+            span: weight,
+          })
+          // Split inserts a second arm, reindexing the list — clear the selection.
+          setSelected(null)
+          return true
+        }
+        default: {
+          // A gesture added to CLIP_GESTURE without a case here is a type error.
+          const unhandled: never = id
+          return unhandled
+        }
       }
     },
     [selected, onDeleteClip, onDuplicateClip, onSplitClip, onRippleDeleteClip, onInsertSilenceClip, onRenameSection, sectionArmCount, onAssignSectionPart, sectionParts],
+  )
+
+  // The palette runs a gesture through the registry's scope handler, installed
+  // once per mount; the ref keeps it reading the current selection and props.
+  const runClipGestureRef = useRef(runClipGesture)
+  runClipGestureRef.current = runClipGesture
+  useEffect(
+    () =>
+      setScopeHandler(SONG_TIMELINE_SCOPE, {
+        canRun: (id) => isClipGestureId(id) && runClipGestureRef.current(id, true),
+        run: (id) => isClipGestureId(id) && runClipGestureRef.current(id, false),
+      }),
+    [],
+  )
+
+  // A key on the focused grid runs the gesture it is BOUND to (#1562). The grid is
+  // focusable (tabIndex) so a click-to-select leaves it ready for the keystroke.
+  // When the gesture acts, the event stops here: a user may rebind a gesture onto
+  // a chord a global command also uses, and inside the timeline the gesture wins.
+  const handleGridKeyDown = React.useCallback(
+    (e: React.KeyboardEvent) => {
+      const cmd = matchScopedCommand(SONG_TIMELINE_SCOPE, e.nativeEvent)
+      if (!cmd || !isClipGestureId(cmd.id)) return
+      if (!runClipGesture(cmd.id, false)) return
+      e.preventDefault()
+      e.stopPropagation()
+    },
+    [runClipGesture],
   )
 
   // The selection highlight rect, derived from the LIVE scene + layout so it
