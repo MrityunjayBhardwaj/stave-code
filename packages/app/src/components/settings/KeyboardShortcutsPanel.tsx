@@ -5,6 +5,7 @@ import { listCommands, subscribeToCommands, type Command } from "../../commands/
 import {
   keybindingTokens,
   getKeybindingFor,
+  getKeybindingsFor,
   setKeybindingOverride,
   subscribeKeybindings,
   isKeybindingOverridden,
@@ -100,7 +101,10 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
 
   const renderChord = (r: Row): React.ReactNode => {
     const capturing = capturingId === r.cmd.id;
-    const tokens = r.binding ? keybindingTokens(r.binding) : [];
+    // Every chord the command answers to, not just the first (#1795): "Delete
+    // section" is Delete OR Backspace, and showing one would hide the key a Mac
+    // keyboard actually sends.
+    const chords = r.binding ? getKeybindingsFor(r.cmd) : [];
     return (
       <button
         className={`chord${capturing ? " capturing" : ""}${r.binding ? "" : " unbound"}`}
@@ -110,8 +114,13 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
       >
         {capturing ? (
           <kbd>Press keys…</kbd>
-        ) : tokens.length ? (
-          tokens.map((t, i) => <kbd key={i}>{t}</kbd>)
+        ) : chords.length ? (
+          chords.map((chord, c) => (
+            <React.Fragment key={chord}>
+              {c > 0 ? <span className="kb-or">or</span> : null}
+              {keybindingTokens(chord).map((t, i) => <kbd key={i}>{t}</kbd>)}
+            </React.Fragment>
+          ))
         ) : (
           <kbd>Add binding</kbd>
         )}
@@ -126,6 +135,10 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
       <div className="kb-row" key={r.cmd.id}>
         <div className="kb-cmd">
           <div className="kb-name">{r.cmd.title}</div>
+          {/* A scoped command only works inside its panel — say where (#1795). */}
+          {r.cmd.scope && r.cmd.description ? (
+            <div className="kb-when" data-testid={`when-${r.cmd.id}`}>{r.cmd.description}</div>
+          ) : null}
           {conflicts.length ? (
             <div className="conflict" data-testid={`conflict-${r.cmd.id}`}>
               <IconWarn /> Also bound to{" "}

@@ -29,6 +29,19 @@ export interface Command {
   readonly when?: () => boolean;
   /** Optional trailing description for the palette. */
   readonly description?: string;
+  /**
+   * Extra DEFAULT chords, beside `keybinding` (#1795). Delete on a Mac keyboard
+   * sends `Backspace`, so a "delete" gesture needs both out of the box. A user
+   * rebind replaces the whole set with the one chord they chose.
+   */
+  readonly alternateKeybindings?: readonly string[];
+  /**
+   * The panel this command belongs to (#1795). A scoped command is NEVER run by
+   * the global keybinding dispatcher: its panel matches its own keystrokes
+   * (`matchScopedCommand`) while it has focus, so `S` or `Delete` pressed
+   * anywhere else does nothing. Unscoped = global.
+   */
+  readonly scope?: string;
 }
 
 type Listener = () => void;
@@ -104,5 +117,61 @@ export function subscribeToCommands(cb: Listener): () => void {
   listeners.add(cb);
   return () => {
     listeners.delete(cb);
+  };
+}
+
+/**
+ * #1795 — what a mounted panel answers for its scope: whether a command applies
+ * right now (a section is selected, the gesture fits it), and running it.
+ * `run` returns whether it acted, so a key handler knows to claim the event.
+ */
+export interface ScopeHandler {
+  canRun(id: string): boolean;
+  run(id: string): boolean;
+}
+
+const scopeHandlers = new Map<string, ScopeHandler>();
+
+/**
+ * Install the handler for `scope` while a panel is mounted. Returns a release
+ * that only removes THIS handler, so a remount that installed a newer one
+ * before the old one's cleanup ran keeps the newer one.
+ */
+export function setScopeHandler(scope: string, handler: ScopeHandler): () => void {
+  scopeHandlers.set(scope, handler);
+  notify();
+  return () => {
+    if (scopeHandlers.get(scope) === handler) {
+      scopeHandlers.delete(scope);
+      notify();
+    }
+  };
+}
+
+/** Whether `scope`'s panel is mounted and says `id` applies now. */
+export function scopeCanRun(scope: string, id: string): boolean {
+  return scopeHandlers.get(scope)?.canRun(id) ?? false;
+}
+
+/** Run `id` in `scope`'s panel. False when no panel is mounted or it declined. */
+export function runInScope(scope: string, id: string): boolean {
+  return scopeHandlers.get(scope)?.run(id) ?? false;
+}
+
+/**
+ * Build a command that belongs to one panel. Its `run` and `when` go through the
+ * panel's scope handler, so the palette offers it only when it applies and a
+ * run from anywhere reaches the same code the panel's own key handler does.
+ */
+export function scopedCommand(
+  def: Omit<Command, "run" | "when" | "scope"> & { scope: string },
+): Command {
+  const { scope, id } = def;
+  return {
+    ...def,
+    run: () => {
+      runInScope(scope, id);
+    },
+    when: () => scopeCanRun(scope, id),
   };
 }

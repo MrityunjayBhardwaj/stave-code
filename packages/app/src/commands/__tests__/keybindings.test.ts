@@ -126,3 +126,126 @@ describe("subscribeKeybindings", () => {
     expect(cb).toHaveBeenCalledTimes(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #1795 — scoped commands and alternate default chords
+// ---------------------------------------------------------------------------
+
+import {
+  getKeybindingsFor,
+  matchScopedCommand,
+  installKeybindingDispatcher,
+} from "../keybindings";
+import { scopedCommand, setScopeHandler, listEnabledCommands, executeCommand } from "../registry";
+
+function key(init: KeyboardEventInit): KeyboardEvent {
+  return new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+}
+
+describe("#1795 scoped commands", () => {
+  let scoped: Array<() => void> = [];
+  beforeEach(() => {
+    scoped = [
+      registerCommand(
+        scopedCommand({
+          id: "test.clip.delete",
+          title: "Delete section",
+          category: "Song timeline",
+          keybinding: "delete",
+          alternateKeybindings: ["backspace"],
+          scope: "panelA",
+        }),
+      ),
+      registerCommand(
+        scopedCommand({ id: "test.clip.duplicate", title: "Duplicate section", keybinding: "mod+d", scope: "panelA" }),
+      ),
+      registerCommand(scopedCommand({ id: "test.other.delete", title: "Other delete", keybinding: "delete", scope: "panelB" })),
+      registerCommand({ id: "test.global.b", title: "Toggle", keybinding: "mod+b", run: () => {} }),
+    ];
+  });
+  afterEach(() => scoped.forEach((d) => d()));
+
+  it("a command answers to its default AND its alternates", () => {
+    const cmd = { id: "x", title: "x", keybinding: "delete", alternateKeybindings: ["backspace"], run: () => {} };
+    expect(getKeybindingsFor(cmd)).toEqual(["delete", "backspace"]);
+  });
+
+  it("a rebind REPLACES the alternates rather than adding to them", () => {
+    setKeybindingOverride("test.clip.delete", "x");
+    expect(matchScopedCommand("panelA", key({ key: "x" }))?.id).toBe("test.clip.delete");
+    expect(matchScopedCommand("panelA", key({ key: "Backspace" }))).toBeUndefined();
+    expect(matchScopedCommand("panelA", key({ key: "Delete" }))).toBeUndefined();
+  });
+
+  it("matches only its own scope, exactly — a modified chord is not the plain one", () => {
+    expect(matchScopedCommand("panelA", key({ key: "Backspace" }))?.id).toBe("test.clip.delete");
+    expect(matchScopedCommand("panelA", key({ key: "d", metaKey: true }))?.id).toBe("test.clip.duplicate");
+    // #1421: Shift+d IS 'D' — ⌘⇧D must not reach ⌘D.
+    expect(matchScopedCommand("panelA", key({ key: "D", metaKey: true, shiftKey: true }))).toBeUndefined();
+    // ⌘⇧Backspace (ripple) must not reach plain Backspace (#1460).
+    expect(matchScopedCommand("panelA", key({ key: "Backspace", metaKey: true, shiftKey: true }))).toBeUndefined();
+    expect(matchScopedCommand("panelB", key({ key: "Delete" }))?.id).toBe("test.other.delete");
+    expect(matchScopedCommand("panelC", key({ key: "Delete" }))).toBeUndefined();
+  });
+
+  it("the global dispatcher never runs a scoped command, and still runs a global one", () => {
+    const ran: string[] = [];
+    const handler = { canRun: () => true, run: (id: string) => (ran.push(id), true) };
+    const release = setScopeHandler("panelA", handler);
+    const uninstall = installKeybindingDispatcher();
+    const globalRan = vi.fn();
+    const g = registerCommand({ id: "test.global.b", title: "Toggle", keybinding: "mod+b", run: globalRan });
+    try {
+      document.body.dispatchEvent(key({ key: "Delete" }))
+      document.body.dispatchEvent(key({ key: "d", metaKey: true }))
+      expect(ran).toEqual([]);
+      document.body.dispatchEvent(key({ key: "b", metaKey: true }))
+      expect(globalRan).toHaveBeenCalledTimes(1);
+    } finally {
+      g();
+      uninstall();
+      release();
+    }
+  });
+
+  it("run and when go through the mounted panel's handler; nothing runs with no panel", () => {
+    const ran: string[] = [];
+    let applies = false;
+    expect(executeCommand("test.clip.duplicate")).toBe(false); // no handler → when() false
+    const release = setScopeHandler("panelA", {
+      canRun: () => applies,
+      run: (id) => (ran.push(id), true),
+    });
+    expect(listEnabledCommands().some((c) => c.id === "test.clip.duplicate")).toBe(false);
+    applies = true;
+    expect(listEnabledCommands().some((c) => c.id === "test.clip.duplicate")).toBe(true);
+    expect(executeCommand("test.clip.duplicate")).toBe(true);
+    expect(ran).toEqual(["test.clip.duplicate"]);
+    release();
+    expect(listEnabledCommands().some((c) => c.id === "test.clip.duplicate")).toBe(false);
+  });
+
+  it("a stale release does not remove a newer panel's handler", () => {
+    const a = { canRun: () => true, run: () => true };
+    const b = { canRun: () => true, run: () => true };
+    const releaseA = setScopeHandler("panelA", a);
+    const releaseB = setScopeHandler("panelA", b);
+    releaseA();
+    expect(listEnabledCommands().some((c) => c.id === "test.clip.duplicate")).toBe(true);
+    releaseB();
+  });
+
+  it("conflicts: scoped vs global collide, same scope collides, different panels do not", () => {
+    // Different panels, same key: no conflict.
+    expect(conflictsForCommand("test.clip.delete").map((c) => c.id)).not.toContain("test.other.delete");
+    // A panel chord rebound onto a global chord collides.
+    setKeybindingOverride("test.clip.duplicate", "mod+b");
+    expect(conflictsForCommand("test.clip.duplicate").map((c) => c.id)).toContain("test.global.b");
+    expect(conflictsForCommand("test.global.b").map((c) => c.id)).toContain("test.clip.duplicate");
+    // Same panel, same chord.
+    setKeybindingOverride("test.clip.duplicate", "backspace");
+    expect(conflictsForCommand("test.clip.duplicate").map((c) => c.id)).toContain("test.clip.delete");
+    // An ALTERNATE chord is checked too, not only the first.
+    expect(conflictsForCommand("test.clip.delete").map((c) => c.id)).toContain("test.clip.duplicate");
+  });
+});
