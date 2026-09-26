@@ -18907,10 +18907,20 @@ __name(noteDocumentReplaced, "noteDocumentReplaced");
 
 // src/idb.ts
 var IDB_OPEN_TIMEOUT_MS = 8e3;
+var _IdbMissingError = class _IdbMissingError extends Error {
+  constructor(dbName) {
+    super(`idb-missing:${dbName}`);
+    this.dbName = dbName;
+    this.name = "IdbMissingError";
+  }
+};
+__name(_IdbMissingError, "IdbMissingError");
+var IdbMissingError = _IdbMissingError;
 function openIdbWithTimeout(name, version, upgrade, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
     let settled = false;
+    let missing = false;
     const req = indexedDB.open(name, version);
     const timer = setTimeout(() => {
       if (settled) return;
@@ -18923,7 +18933,14 @@ function openIdbWithTimeout(name, version, upgrade, opts = {}) {
       };
       reject(new Error(`idb-open-timeout:${name}`));
     }, timeoutMs);
-    req.onupgradeneeded = () => upgrade(req.result);
+    req.onupgradeneeded = () => {
+      if (opts.mustExist) {
+        missing = true;
+        req.transaction?.abort();
+        return;
+      }
+      upgrade(req.result);
+    };
     req.onsuccess = () => {
       if (settled) {
         try {
@@ -18940,6 +18957,10 @@ function openIdbWithTimeout(name, version, upgrade, opts = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (missing) {
+        reject(new IdbMissingError(name));
+        return;
+      }
       reject(req.error ?? new Error(`idb-open-error:${name}`));
     };
     req.onblocked = () => {
@@ -46127,6 +46148,132 @@ function renameAssetRecord(id, name) {
   return unique;
 }
 __name(renameAssetRecord, "renameAssetRecord");
+var TAB_LOCK = "stave-tab";
+var SOUND_REFS_LOCK = "stave-sound-refs";
+var PROJECT_DB_PREFIX = "stave-";
+var UPDATES_STORE2 = "updates";
+var PROJECT_DB_VERSION = 1;
+var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+function projectDocDbNames(existing, registryIds) {
+  const names = /* @__PURE__ */ new Set();
+  const present = new Set(existing);
+  for (const id of registryIds) {
+    const name = PROJECT_DB_PREFIX + id;
+    if (present.has(name)) names.add(name);
+  }
+  for (const name of existing) {
+    if (name.startsWith(PROJECT_DB_PREFIX) && UUID.test(name.slice(PROJECT_DB_PREFIX.length))) {
+      names.add(name);
+    }
+  }
+  return Array.from(names).sort();
+}
+__name(projectDocDbNames, "projectDocDbNames");
+function hashesInDocUpdates(updates) {
+  const doc = new Y3__namespace.Doc();
+  try {
+    Y3__namespace.transact(doc, () => {
+      for (const update of updates) Y3__namespace.applyUpdate(doc, update);
+    });
+    return hashesInRecords(Array.from(doc.getMap("assets").values()));
+  } finally {
+    doc.destroy();
+  }
+}
+__name(hashesInDocUpdates, "hashesInDocUpdates");
+function hashesInRecords(records) {
+  const hashes = /* @__PURE__ */ new Set();
+  for (const record of records) {
+    if (typeof record?.blobHash === "string") hashes.add(record.blobHash);
+  }
+  return hashes;
+}
+__name(hashesInRecords, "hashesInRecords");
+function planSweep(blobs, marked) {
+  const unused = blobs.filter((b) => !marked.has(b.hash));
+  return { unused, bytes: unused.reduce((n, b) => n + b.size, 0) };
+}
+__name(planSweep, "planSweep");
+function otherTabCount(snapshot) {
+  const holders = [...snapshot.held ?? [], ...snapshot.pending ?? []].filter(
+    (l) => l.name === TAB_LOCK
+  ).length;
+  return Math.max(0, holders - 1);
+}
+__name(otherTabCount, "otherTabCount");
+var tabLockHeld = null;
+function holdTabPresence() {
+  if (tabLockHeld) return tabLockHeld;
+  const locks = typeof navigator !== "undefined" ? navigator.locks : void 0;
+  if (!locks) {
+    tabLockHeld = Promise.resolve(false);
+    return tabLockHeld;
+  }
+  tabLockHeld = new Promise((granted) => {
+    void locks.request(TAB_LOCK, { mode: "shared" }, () => {
+      granted(true);
+      return new Promise(() => {
+      });
+    });
+  });
+  return tabLockHeld;
+}
+__name(holdTabPresence, "holdTabPresence");
+async function withSoundRefsLock(fn) {
+  const locks = typeof navigator !== "undefined" ? navigator.locks : void 0;
+  if (!locks) return fn();
+  return locks.request(SOUND_REFS_LOCK, { mode: "exclusive" }, fn);
+}
+__name(withSoundRefsLock, "withSoundRefsLock");
+async function hashesInSavedDoc(dbName) {
+  let db;
+  try {
+    db = await openIdbWithTimeout(dbName, PROJECT_DB_VERSION, () => {
+    }, { mustExist: true });
+  } catch (err) {
+    if (err instanceof IdbMissingError) return /* @__PURE__ */ new Set();
+    throw err;
+  }
+  try {
+    const updates = await requestResult(
+      db.transaction(UPDATES_STORE2, "readonly").objectStore(UPDATES_STORE2).getAll()
+    );
+    return hashesInDocUpdates(updates);
+  } finally {
+    db.close();
+  }
+}
+__name(hashesInSavedDoc, "hashesInSavedDoc");
+async function collectUnusedSounds(deps = {}) {
+  const locks = typeof navigator !== "undefined" ? navigator.locks : void 0;
+  if (!locks) return { kind: "could-not-check", reason: "no-locks" };
+  if (typeof indexedDB === "undefined" || typeof indexedDB.databases !== "function") {
+    return { kind: "could-not-check", reason: "no-database-list" };
+  }
+  if (!await holdTabPresence()) return { kind: "could-not-check", reason: "no-locks" };
+  return locks.request(SOUND_REFS_LOCK, { mode: "exclusive" }, async () => {
+    if (otherTabCount(await locks.query()) > 0) {
+      return { kind: "could-not-check", reason: "other-tab" };
+    }
+    const marked = hashesInRecords((deps.openRecords ?? listAssetRecords)());
+    const existing = (await indexedDB.databases()).map((d) => d.name).filter((n) => typeof n === "string");
+    const registryIds = (await listProjects()).map((p) => p.id);
+    for (const dbName of projectDocDbNames(existing, registryIds)) {
+      let hashes;
+      try {
+        hashes = await hashesInSavedDoc(dbName);
+      } catch {
+        return { kind: "could-not-check", reason: "unreadable-project", detail: dbName };
+      }
+      for (const h of hashes) marked.add(h);
+    }
+    const { unused, bytes } = planSweep(await listAssets(), marked);
+    if (unused.length === 0) return { kind: "nothing-unused" };
+    for (const blob of unused) await deleteAsset(blob.hash);
+    return { kind: "freed", bytes, count: unused.length };
+  });
+}
+__name(collectUnusedSounds, "collectUnusedSounds");
 
 // src/workspace/sampleRef.ts
 function sampleRefOf(ev) {
@@ -46841,8 +46988,23 @@ async function deleteProject(id) {
   ]);
   const failed = results.find((r) => r.status === "rejected");
   if (failed) throw failed.reason;
+  void collectUnusedSounds().then(
+    (result) => console.info("[stave] after deleting a project:", describeCollect(result)),
+    (err) => console.warn("[stave] collecting unused sounds failed:", err)
+  );
 }
 __name(deleteProject, "deleteProject");
+function describeCollect(result) {
+  switch (result.kind) {
+    case "freed":
+      return `freed ${result.bytes} bytes (${result.count} unused sounds)`;
+    case "nothing-unused":
+      return "no unused sounds";
+    case "could-not-check":
+      return `could not check (${result.reason}${result.detail ? `: ${result.detail}` : ""})`;
+  }
+}
+__name(describeCollect, "describeCollect");
 
 // src/workspace/ephemeralPrune.ts
 async function pruneEphemeralArtifacts() {
@@ -49521,6 +49683,7 @@ exports.clearCapture = clearCapture;
 exports.clearIRSnapshot = clearIRSnapshot;
 exports.clearLog = clearLog;
 exports.clearShellState = clearShellState;
+exports.collectUnusedSounds = collectUnusedSounds;
 exports.commitWorkspace = commitWorkspace;
 exports.compilePreset = compilePreset;
 exports.computeSections = computeSections;
@@ -49642,6 +49805,7 @@ exports.gmFamily = gmFamily;
 exports.groupDrumKits = groupDrumKits;
 exports.groupSoundCatalog = groupSoundCatalog;
 exports.hasKnownKnobRange = hasKnownKnobRange;
+exports.holdTabPresence = holdTabPresence;
 exports.hydraKaleidoscope = hydraKaleidoscope;
 exports.hydraPianoroll = hydraPianoroll;
 exports.hydraScope = hydraScope;
@@ -49932,6 +50096,7 @@ exports.warmMonaco = warmMonaco;
 exports.warmSamplePeaks = warmSamplePeaks;
 exports.wholeWalkWindow = wholeWalkWindow;
 exports.withAudioFrame = withAudioFrame;
+exports.withSoundRefsLock = withSoundRefsLock;
 exports.withStructBatch = withStructBatch;
 exports.workspaceAudioBus = workspaceAudioBus;
 exports.workspaceFileIdForPreset = workspaceFileIdForPreset;

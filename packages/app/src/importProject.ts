@@ -10,6 +10,7 @@ import {
   withStructBatch,
   putAsset,
   addAssetRecord,
+  withSoundRefsLock,
   type AssetRecord,
   type ProjectMeta,
   type WorkspaceLanguage,
@@ -114,8 +115,12 @@ export async function importProjectFromZip(file: File): Promise<ProjectMeta> {
       // store the MIME the record remembers and stays testable. The bytes are
       // untouched either way, so the content hash is unaffected.
       const bytes = await entry.async("arraybuffer");
-      const { hash } = await putAsset(new Blob([bytes], { type: asset.mime }));
-      addAssetRecord({ ...asset, blobHash: hash });
+      // Bytes and record inside one lock, so no collection runs between them
+      // and deletes bytes that are about to be named (#1785).
+      await withSoundRefsLock(async () => {
+        const { hash } = await putAsset(new Blob([bytes], { type: asset.mime }));
+        addAssetRecord({ ...asset, blobHash: hash });
+      });
     } catch (err) {
       console.error(`[stave] import: skipped asset "${asset.name}":`, err);
     }

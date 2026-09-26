@@ -5,6 +5,7 @@ import {
   listAssetRecords,
   nextTakeName,
   registerAsset,
+  withSoundRefsLock,
   type AssetOrigin,
   type AssetRecord,
 } from "@stave/editor";
@@ -82,16 +83,20 @@ export async function storeAudio(
   origin: AssetOrigin,
   deps: SaveTakeDeps = {},
 ): Promise<SavedTake> {
-  const existing = listAssetRecords();
-  const { record } = await importAsset(
-    blob,
-    filename,
-    existing,
-    { measureDuration: deps.measureDuration },
-    origin,
-  );
-
-  addAssetRecord(record);
+  // Bytes and record inside one lock: between the two the bytes look unused,
+  // and a collection running there would delete them (#1785).
+  const record = await withSoundRefsLock(async () => {
+    const existing = listAssetRecords();
+    const imported = await importAsset(
+      blob,
+      filename,
+      existing,
+      { measureDuration: deps.measureDuration },
+      origin,
+    );
+    addAssetRecord(imported.record);
+    return imported.record;
+  });
   const playable = await registerAsset(record);
   return { record, playable };
 }

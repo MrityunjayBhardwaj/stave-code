@@ -31,6 +31,8 @@ vi.mock("@stave/editor", () => ({
     typeof err === "object" &&
     err !== null &&
     ["QuotaExceededError", "StorageFullError"].includes((err as { name?: string }).name ?? ""),
+  // #1785 — the lock only orders the door against a collection; none runs here.
+  withSoundRefsLock: <T>(fn: () => Promise<T>) => fn(),
   listAssetRecords: () => store.records,
   addAssetRecord: (r: AssetRecord) => {
     store.records.push(r);

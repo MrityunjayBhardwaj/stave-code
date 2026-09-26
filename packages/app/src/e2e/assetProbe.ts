@@ -1,4 +1,4 @@
-import type { AssetRecord, ImportAssetResult, StoredAssetMeta } from "@stave/editor";
+import type { AssetRecord, CollectResult, ImportAssetResult, StoredAssetMeta } from "@stave/editor";
 
 /**
  * E2E-only handle onto the binary asset store (#1500).
@@ -98,6 +98,14 @@ export interface AssetProbe {
   storageStatus(): Promise<{ fullSince: number | null; documentUnsaved: boolean }>;
   /** #1778 — write the whole document once; true only when it committed. */
   retryDocSave(): Promise<boolean>;
+  /** #1785 — run one collection of unused sound bytes; its own result. */
+  collect(): Promise<CollectResult>;
+  /**
+   * #1785 — add a sound through the app's real door (`storeAudio`), holding
+   * `holdMs` after the bytes are stored and before the record is written: the
+   * window a collection must not run in. Resolves with the record's hash.
+   */
+  storeAudioHeld(base64: string, mime: string, filename: string, holdMs: number): Promise<string>;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -258,6 +266,22 @@ export function installAssetProbe(): () => void {
     async retryDocSave() {
       const m = await editor();
       return m.retryDocSave();
+    },
+
+    async collect() {
+      const m = await editor();
+      return m.collectUnusedSounds();
+    },
+
+    async storeAudioHeld(base64, mime, filename, holdMs) {
+      // Lazy for the same reason `@stave/editor` is: a static import would drag
+      // the app's audio path into every unit test that loads this file.
+      const { storeAudio } = await import("../audio/saveTake");
+      const { record } = await storeAudio(blobOf(base64, mime), filename, "imported", {
+        // Called after the bytes are stored and before the record is written.
+        measureDuration: () => new Promise((done) => setTimeout(() => done(undefined), holdMs)),
+      });
+      return record.blobHash;
     },
 
     async docAdd(record) {

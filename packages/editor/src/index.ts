@@ -446,6 +446,13 @@ export {
   renameAssetRecord,
   subscribeToAssets,
 } from './workspace/assetDoc'
+// Free the bytes of sounds no project uses (#1785)
+export {
+  collectUnusedSounds,
+  holdTabPresence,
+  withSoundRefsLock,
+} from './workspace/soundCollector'
+export type { CollectResult, CouldNotCheckReason } from './workspace/soundCollector'
 export type {
   AssetDigest,
   StoredAsset,

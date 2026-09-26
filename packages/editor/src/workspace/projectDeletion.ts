@@ -12,6 +12,7 @@
 
 import { deleteProjectMeta } from './projectRegistry'
 import { deleteProjectHistory } from './history/historyStore'
+import { collectUnusedSounds } from './soundCollector'
 
 /** Delete y-indexeddb's database for a project's document. */
 function deleteProjectDocDb(id: string): Promise<void> {
@@ -42,4 +43,22 @@ export async function deleteProject(id: string): Promise<void> {
   ])
   const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
   if (failed) throw failed.reason
+  // The project's sounds are now named by nothing unless another project
+  // names them. Not awaited: a collection reads every project's document, and
+  // the delete is done whether or not it finds anything to free (#1785).
+  void collectUnusedSounds().then(
+    (result) => console.info('[stave] after deleting a project:', describeCollect(result)),
+    (err) => console.warn('[stave] collecting unused sounds failed:', err),
+  )
+}
+
+function describeCollect(result: Awaited<ReturnType<typeof collectUnusedSounds>>): string {
+  switch (result.kind) {
+    case 'freed':
+      return `freed ${result.bytes} bytes (${result.count} unused sounds)`
+    case 'nothing-unused':
+      return 'no unused sounds'
+    case 'could-not-check':
+      return `could not check (${result.reason}${result.detail ? `: ${result.detail}` : ''})`
+  }
 }

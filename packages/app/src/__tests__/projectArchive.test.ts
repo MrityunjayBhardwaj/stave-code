@@ -141,6 +141,8 @@ vi.mock("@stave/editor", () => ({
     store.subfolderOrder[p] = names;
   },
   withStructBatch: (fn: () => void) => fn(),
+  // #1785 — the lock only orders the door against a collection; none runs here.
+  withSoundRefsLock: <T>(fn: () => Promise<T>) => fn(),
 }));
 
 const { exportProjectAsZip } = await import("../exportProject");

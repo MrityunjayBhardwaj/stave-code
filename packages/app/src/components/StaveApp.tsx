@@ -116,6 +116,8 @@ import { SilentCaptureError, describeSkipped } from "@stave/editor";
 import { startAudition } from "@stave/editor";
 // #1504 — the project's asset records back the library's "sample" provider.
 import { listAssetRecords, subscribeToAssets } from "@stave/editor";
+// #1785 — this tab's presence, seen by another tab's sound collection.
+import { holdTabPresence } from "@stave/editor";
 import { gmFamily, soundfontGroupLabel } from "@stave/editor";
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
 import { mountVizPreview } from "@stave/editor";
@@ -230,6 +232,13 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // Idempotent — installs on first mount; no-op thereafter.
   useEffect(() => {
     installEngineLogMarkers();
+  }, []);
+
+  // Tell other tabs this one is open (#1785). A collection in another tab
+  // refuses to run while this lock is held: this tab's memory may name sounds
+  // its saved document does not yet.
+  useEffect(() => {
+    void holdTabPresence();
   }, []);
 
   // Global error floor — catches any throw / rejected promise that

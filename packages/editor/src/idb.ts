@@ -25,6 +25,21 @@ export const IDB_OPEN_TIMEOUT_MS = 8_000
 export interface OpenIdbOptions {
   /** Override the open budget in ms. */
   readonly timeoutMs?: number
+  /**
+   * Open only a database that already exists (#1785). A missing one is NOT
+   * created: the upgrade is aborted and the open rejects with
+   * {@link IdbMissingError}, so a reader can never leave an empty database
+   * behind under a name another module owns.
+   */
+  readonly mustExist?: boolean
+}
+
+/** The database asked for with `mustExist` does not exist. */
+export class IdbMissingError extends Error {
+  constructor(readonly dbName: string) {
+    super(`idb-missing:${dbName}`)
+    this.name = 'IdbMissingError'
+  }
 }
 
 /**
@@ -48,6 +63,7 @@ export function openIdbWithTimeout(
   const timeoutMs = opts.timeoutMs ?? IDB_OPEN_TIMEOUT_MS
   return new Promise<IDBDatabase>((resolve, reject) => {
     let settled = false
+    let missing = false
     const req = indexedDB.open(name, version)
 
     const timer = setTimeout(() => {
@@ -65,7 +81,16 @@ export function openIdbWithTimeout(
       reject(new Error(`idb-open-timeout:${name}`))
     }, timeoutMs)
 
-    req.onupgradeneeded = () => upgrade(req.result)
+    req.onupgradeneeded = () => {
+      if (opts.mustExist) {
+        // Aborting the version change undoes the creation; the open then fails
+        // with an AbortError, which the error handler below reports as missing.
+        missing = true
+        req.transaction?.abort()
+        return
+      }
+      upgrade(req.result)
+    }
 
     req.onsuccess = () => {
       if (settled) {
@@ -85,6 +110,10 @@ export function openIdbWithTimeout(
       if (settled) return
       settled = true
       clearTimeout(timer)
+      if (missing) {
+        reject(new IdbMissingError(name))
+        return
+      }
       reject(req.error ?? new Error(`idb-open-error:${name}`))
     }
 
