@@ -87,7 +87,17 @@ const SOURCE_LABELS: Record<AssetSource, string> = {
   community: "Community",
 };
 
-export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
+export function AssetLibraryPanel({
+  onClose,
+  initialType,
+}: {
+  onClose?: () => void;
+  /**
+   * #1787 — the type chip to open on, when present (the storage notice opens
+   * the Library on your own sounds, sizes shown). Otherwise the first type.
+   */
+  initialType?: AssetType;
+}) {
   // Re-render on any provider registration / catalog change.
   const [tick, setTick] = useState(0);
   useEffect(() => subscribeToAssetProviders(() => setTick((t) => t + 1)), []);
@@ -144,9 +154,9 @@ export function AssetLibraryPanel({ onClose }: { onClose?: () => void }) {
     if (didInitType.current) return;
     if (types.length > 1) {
       didInitType.current = true;
-      setType(types[0]);
+      setType(initialType && types.includes(initialType) ? initialType : types[0]);
     }
-  }, [types]);
+  }, [types, initialType]);
 
   // A type/source chip that filters to a value no longer present would strand
   // the list empty with no way back — drop the filter if its value vanished.

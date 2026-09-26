@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatBytes, removedMessage } from "../freeSpaceMessages";
+import { formatBytes, freeSpaceMessage, freedNotYetSavedMessage, removedMessage } from "../freeSpaceMessages";
 
 describe("formatBytes", () => {
   it.each([
@@ -50,3 +50,24 @@ describe("what a removal says, per collector outcome", () => {
     });
   });
 });
+
+describe("what Free space on the storage notice says (#1787)", () => {
+  it("each outcome has its own sentence: could-not-check and refused never read as nothing to free", () => {
+    const texts = [
+      freeSpaceMessage({ kind: "nothing-unused" }),
+      freeSpaceMessage({ kind: "refused", bytes: 0, count: 0 }),
+      freeSpaceMessage({ kind: "could-not-check", reason: "other-tab" }),
+    ];
+    expect({
+      distinct: new Set(texts).size,
+      onlyFirstSaysNoUnused: texts.map((t) => /No unused sounds/.test(t)),
+    }).toEqual({ distinct: 3, onlyFirstSaysNoUnused: [true, false, false] });
+  });
+
+  it("freed but not yet released names the bytes and what to do", () => {
+    expect(freedNotYetSavedMessage(1_500_000)).toBe(
+      "Freed 1.5 MB, but the browser hasn't released the room yet. Try again in a minute.",
+    );
+  });
+});
+

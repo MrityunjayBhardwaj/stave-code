@@ -55,6 +55,30 @@ export function removedMessage(name: string, result: CollectResult): string {
   }
 }
 
+/**
+ * What the storage notice says after "Free space" (#1787). `freed` is not a
+ * sentence here: the notice keeps trying to save, and says so itself.
+ */
+export function freeSpaceMessage(result: Exclude<CollectResult, { kind: "freed" }>): string {
+  switch (result.kind) {
+    case "nothing-unused":
+      return "No unused sounds to free. Remove sounds you don't need in the Library to make room.";
+    case "could-not-check":
+      return `Couldn't free space: ${WHY_NOT[result.reason]}.`;
+    case "refused":
+      return `Couldn't free space: ${REFUSED}`;
+  }
+}
+
+/**
+ * Freed, but the browser has not let a save through yet. Chromium removes a
+ * deleted blob's file lazily (measured 4–30 s, 2026-09-26), and the room does
+ * not count as free until it has.
+ */
+export function freedNotYetSavedMessage(bytes: number): string {
+  return `Freed ${formatBytes(bytes)}, but the browser hasn't released the room yet. Try again in a minute.`;
+}
+
 /** The sentence when the collection itself failed. */
 export function removedButFailedMessage(name: string): string {
   return `Removed "${name}", but freeing its space failed. See the console for details.`;
