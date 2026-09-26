@@ -33,6 +33,10 @@ export interface SamplesProviderDeps {
   startPreview: (name: string) => AssetPreviewHandle;
   /** Round-trip the sample into code at the cursor. */
   onInsert: (name: string) => void;
+  /** #1786 — the stored size of a blob, when known. */
+  sizeOf?: (blobHash: string) => number | undefined;
+  /** #1786 — remove this record from the project (asks first). */
+  onRemove?: (record: SampleRecord) => void | Promise<void>;
 }
 
 /**
@@ -66,7 +70,7 @@ function durationTag(seconds: number | undefined): string[] {
  */
 export function recordsToAssets(
   records: readonly SampleRecord[],
-  deps: Pick<SamplesProviderDeps, "startPreview" | "onInsert">,
+  deps: Pick<SamplesProviderDeps, "startPreview" | "onInsert" | "sizeOf" | "onRemove">,
 ): Asset[] {
   return records
     .map((record) => ({
@@ -84,6 +88,8 @@ export function recordsToAssets(
       group: "Your audio",
       preview: () => deps.startPreview(record.name),
       insert: () => deps.onInsert(record.name),
+      sizeBytes: deps.sizeOf?.(record.blobHash),
+      ...(deps.onRemove ? { remove: () => deps.onRemove!(record) } : {}),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -101,6 +107,8 @@ export function createSamplesProvider(deps: SamplesProviderDeps): AssetProvider 
       recordsToAssets(deps.readRecords(), {
         startPreview: deps.startPreview,
         onInsert: deps.onInsert,
+        sizeOf: deps.sizeOf,
+        onRemove: deps.onRemove,
       }),
   };
 }

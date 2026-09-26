@@ -435,6 +435,7 @@ export {
   releaseAllAssets,
   peekAssetUrl,
   registerAsset,
+  unregisterAsset,
   registerAssets,
   importAsset,
 } from './workspace/assetStore'

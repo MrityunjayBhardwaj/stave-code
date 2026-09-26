@@ -118,3 +118,28 @@ describe("recordsToAssets", () => {
     expect(onInsert).toHaveBeenCalledWith("chorus");
   });
 });
+
+describe("size and remove (#1786)", () => {
+  it("shows the stored size of the record's bytes, looked up by hash", () => {
+    const sizeOf = vi.fn((hash: string) => (hash === "aaaa" ? 1_500_000 : undefined));
+    const [asset] = recordsToAssets([record()], { ...deps, sizeOf });
+    expect(asset.sizeBytes).toBe(1_500_000);
+  });
+
+  it("no size when the store has not answered", () => {
+    const [asset] = recordsToAssets([record()], { ...deps, sizeOf: () => undefined });
+    expect(asset.sizeBytes).toBeUndefined();
+  });
+
+  it("remove hands the provider the RECORD, not the name", () => {
+    const onRemove = vi.fn();
+    const [asset] = recordsToAssets([record({ id: "r9", name: "chorus" })], { ...deps, onRemove });
+    void asset.remove?.();
+    expect(onRemove).toHaveBeenCalledWith(expect.objectContaining({ id: "r9", name: "chorus" }));
+  });
+
+  it("no remove affordance without a handler", () => {
+    const [asset] = recordsToAssets([record()], deps);
+    expect(asset.remove).toBeUndefined();
+  });
+});

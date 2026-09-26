@@ -84,7 +84,11 @@ declare module '@strudel/webaudio' {
    * `getSound` reads `soundMap.get()[s.toLowerCase()]`, `:160-165`). The engine
    * hands `.get()` to the alias step, so a name the user registered wins (#1767).
    */
-  export const soundMap: { get(): Record<string, unknown> }
+  export const soundMap: {
+    get(): Record<string, unknown>
+    /** nanostores `map.setKey`; `undefined` deletes the key (`map/index.js`). */
+    setKey(key: string, value: unknown): void
+  }
 
   /**
    * Which file (and at what playback rate) a hap value resolves to within a bank

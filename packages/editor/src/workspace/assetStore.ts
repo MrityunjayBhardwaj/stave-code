@@ -46,7 +46,7 @@
  * an extension, which is why a `blob:` URL with no extension decodes normally.
  */
 
-import { samples } from '@strudel/webaudio'
+import { samples, soundMap } from '@strudel/webaudio'
 
 import { committed, openIdbWithTimeout, requestResult as wrap } from '../idb'
 import type { AssetImportPlan, AssetOrigin, AssetRecord } from './assetNaming'
@@ -316,6 +316,23 @@ export async function registerAsset(record: AssetRecord): Promise<boolean> {
   // blob URL must not be prefixed (`sampler.mjs:159`).
   await samples({ [record.name]: url }, '')
   return true
+}
+
+/**
+ * Stop a name answering to `s(name)` (#1786). The opposite of
+ * {@link registerAsset}, for a sound the user removed from the project: the
+ * record is gone, so the name must go silent now, not at the next reload.
+ *
+ * The bytes' object URL is NOT released here. Another record in the project
+ * may hold the same bytes under a different name; the collector releases the
+ * URL when it deletes bytes nothing names (`deleteAsset`).
+ */
+export function unregisterAsset(name: string): void {
+  // The key `registerSound` stored it under (`superdough.mjs:62`); a raw name
+  // with any capital or space would miss it and leave the sound playing.
+  const key = name.toLowerCase().replace(/\s+/g, '_')
+  // `setKey(key, undefined)` deletes the key (nanostores `map/index.js`).
+  soundMap.setKey(key, undefined)
 }
 
 /**
