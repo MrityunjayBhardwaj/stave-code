@@ -91,27 +91,59 @@ export function getKeybindingFor(cmd: Command): string | undefined {
 }
 
 /**
- * Commands whose EFFECTIVE binding matches `chord`, excluding `excludeId`.
+ * Every chord a command answers to (#1795): the user's override alone, or the
+ * declared default plus its `alternateKeybindings`. An override REPLACES the
+ * alternates — a user who rebinds "Delete section" to X means X, not X as well
+ * as Backspace.
+ */
+export function getKeybindingsFor(cmd: Command): string[] {
+  const override = overrides.get(cmd.id);
+  if (override) return [override];
+  return [cmd.keybinding, ...(cmd.alternateKeybindings ?? [])].filter(
+    (c): c is string => !!c,
+  );
+}
+
+/**
+ * Two commands can collide only if one keystroke could reach both (#1795): a
+ * global command is reachable everywhere, a scoped one only inside its panel.
+ * So a scoped/global pair collides (inside that panel the panel wins, outside it
+ * the global one does), two commands of one scope collide, and two different
+ * panels' commands never do.
+ */
+function scopesOverlap(a: Command | undefined, b: Command): boolean {
+  if (!a?.scope || !b.scope) return true;
+  return a.scope === b.scope;
+}
+
+/**
+ * Commands whose EFFECTIVE bindings match `chord`, excluding `excludeId`.
  * Pure — used to flag conflicts when a user assigns a chord already in use.
- * Chord comparison is modifier-order-insensitive (see chordMatches).
+ * Chord comparison is modifier-order-insensitive (see chordMatches). When
+ * `excludeId` names a registered scoped command, commands of other panels are
+ * not conflicts (see scopesOverlap).
  */
 export function findConflicts(chord: string, excludeId: string): Command[] {
   if (!chord) return [];
+  const self = getCommand(excludeId);
   const hits: Command[] = [];
   for (const cmd of listCommands()) {
     if (cmd.id === excludeId) continue;
-    const binding = getKeybindingFor(cmd);
-    if (binding && chordMatches(chord, binding)) hits.push(cmd);
+    if (!scopesOverlap(self, cmd)) continue;
+    if (getKeybindingsFor(cmd).some((b) => chordMatches(chord, b))) hits.push(cmd);
   }
   return hits;
 }
 
-/** Conflicts for a command's own current binding (excludes itself). */
+/** Conflicts for every chord a command currently answers to (excludes itself). */
 export function conflictsForCommand(commandId: string): Command[] {
   const cmd = getCommand(commandId);
-  const binding = cmd && getKeybindingFor(cmd);
-  if (!binding) return [];
-  return findConflicts(binding, commandId);
+  if (!cmd) return [];
+  const hits = new Set<Command>();
+  for (const binding of getKeybindingsFor(cmd)) {
+    for (const other of findConflicts(binding, commandId)) hits.add(other);
+  }
+  return [...hits];
 }
 
 /** Display one chord part ('mod', 'shift', 'z') as a symbol / label. */
@@ -209,9 +241,11 @@ export function installKeybindingDispatcher(): () => void {
     const editable = isEditableContext(e);
     const chord = eventToChord(e);
     for (const cmd of listCommands()) {
-      const binding = getKeybindingFor(cmd);
-      if (!binding) continue;
-      if (!chordMatches(chord, binding)) continue;
+      // A scoped command belongs to its panel, which matches its own keys
+      // (matchScopedCommand). Running it from here would fire `S` or `Delete`
+      // wherever focus happens to be (#1795).
+      if (cmd.scope) continue;
+      if (!getKeybindingsFor(cmd).some((b) => chordMatches(chord, b))) continue;
       // Deferral rule: any command whose id starts with `stave.editor.`
       // is meant for editor-context commands that should NOT run when
       // the user is NOT in an editable context. All other commands run
@@ -234,4 +268,19 @@ export function installKeybindingDispatcher(): () => void {
   };
   window.addEventListener("keydown", onKey);
   return () => window.removeEventListener("keydown", onKey);
+}
+
+/**
+ * #1795 — the command of `scope` that this keystroke is bound to, if any. A
+ * panel calls this from its own key handler, so a rebind made in Settings
+ * reaches it. Matching is exact, modifiers included: ⌘⇧D is not ⌘D (#1421), and
+ * a plain `Backspace` binding is not reached by ⌘⇧Backspace.
+ */
+export function matchScopedCommand(scope: string, e: KeyboardEvent): Command | undefined {
+  const chord = eventToChord(e);
+  for (const cmd of listCommands()) {
+    if (cmd.scope !== scope) continue;
+    if (getKeybindingsFor(cmd).some((b) => chordMatches(chord, b))) return cmd;
+  }
+  return undefined;
 }

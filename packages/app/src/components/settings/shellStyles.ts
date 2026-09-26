@@ -243,6 +243,7 @@ export const SETTINGS_SHELL_CSS = `
   border:1px solid var(--s-border); border-bottom-width:2px; border-radius:5px; padding:4px 7px; min-width:22px; text-align:center;
 }
 .stave-settings .chord:hover kbd{ border-color:var(--s-accent); }
+.stave-settings .chord .kb-or{ font-size:11px; color:var(--s-text-3); padding:0 2px; }
 .stave-settings .chord.capturing kbd{
   color:var(--s-accent-2); border-color:var(--s-accent); border-style:dashed;
   animation:stave-settings-pulse 1.1s ease-in-out infinite;
