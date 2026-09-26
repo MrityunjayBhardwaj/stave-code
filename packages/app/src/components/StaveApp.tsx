@@ -1345,7 +1345,10 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       unregisterAsset(record.name);
       try {
         const result = await collectUnusedSounds();
-        showToast(removedMessage(record.name, result), result.kind === "could-not-check" ? "error" : "info");
+        showToast(
+          removedMessage(record.name, result),
+          result.kind === "could-not-check" || result.kind === "refused" ? "error" : "info",
+        );
       } catch (err) {
         console.error("[stave] freeing a removed sound's space failed:", err);
         showToast(removedButFailedMessage(record.name), "error");

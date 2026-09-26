@@ -32,6 +32,15 @@ const WHY_NOT: Record<CouldNotCheckReason, string> = {
   "no-database-list": "this browser can't list your other projects",
 };
 
+/**
+ * The browser would not delete (#1792): Firefox refuses every write, deletes
+ * included, once storage is completely full. Deleting a whole project is the
+ * one removal it still allows, so that is the way out this names.
+ */
+export const REFUSED =
+  "the browser won't delete anything while storage is completely full. " +
+  "Delete a project you don't need (File ▸ Open Project), then try again.";
+
 /** The sentence after a sound was removed and a collection ran. */
 export function removedMessage(name: string, result: CollectResult): string {
   switch (result.kind) {
@@ -41,6 +50,8 @@ export function removedMessage(name: string, result: CollectResult): string {
       return `Removed "${name}". Its audio is still used by another sound or project, so no space was freed.`;
     case "could-not-check":
       return `Removed "${name}", but its space wasn't freed: ${WHY_NOT[result.reason]}.`;
+    case "refused":
+      return `Removed "${name}", but ${REFUSED}`;
   }
 }
 

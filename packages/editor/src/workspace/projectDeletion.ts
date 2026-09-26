@@ -28,17 +28,23 @@ function deleteProjectDocDb(id: string): Promise<void> {
 }
 
 /**
- * Delete a project: its registry row first, so it leaves every list at once,
- * then its document and its history.
+ * Delete a project: its document database first, then its registry row and
+ * its history.
  *
- * The last two are independent, so both are attempted even when one fails;
- * the first failure is then rethrown, so a caller is never told a delete
- * finished that did not.
+ * The document goes FIRST because deleting a whole database is the one
+ * removal Firefox still allows once storage is at its limit: it refuses every
+ * read-write transaction, deletes included, and a registry row delete done
+ * first was refused before anything was freed (#1792, measured in Firefox
+ * 148). The database delete frees the room the two row deletes after it need.
+ *
+ * The row and the history are independent, so both are attempted even when
+ * one fails; the first failure is then rethrown, so a caller is never told a
+ * delete finished that did not.
  */
 export async function deleteProject(id: string): Promise<void> {
-  await deleteProjectMeta(id)
+  await deleteProjectDocDb(id)
   const results = await Promise.allSettled([
-    deleteProjectDocDb(id),
+    deleteProjectMeta(id),
     deleteProjectHistory(id),
   ])
   const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
@@ -58,6 +64,8 @@ function describeCollect(result: Awaited<ReturnType<typeof collectUnusedSounds>>
       return `freed ${result.bytes} bytes (${result.count} unused sounds)`
     case 'nothing-unused':
       return 'no unused sounds'
+    case 'refused':
+      return `the browser refused to delete (freed ${result.bytes} bytes first)`
     case 'could-not-check':
       return `could not check (${result.reason}${result.detail ? `: ${result.detail}` : ''})`
   }

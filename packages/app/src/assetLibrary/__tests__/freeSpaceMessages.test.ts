@@ -41,4 +41,12 @@ describe("what a removal says, per collector outcome", () => {
     const texts = reasons.map((reason) => removedMessage("k", { kind: "could-not-check", reason }));
     expect(new Set(texts).size).toBe(reasons.length);
   });
+
+  it("refused (#1792) names the one removal that still works, and never says freed", () => {
+    const text = removedMessage("kick", { kind: "refused", bytes: 0, count: 0 });
+    expect({ freed: /and freed/.test(text), way: /Delete a project you don't need/.test(text) }).toEqual({
+      freed: false,
+      way: true,
+    });
+  });
 });

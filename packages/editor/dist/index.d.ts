@@ -8257,6 +8257,17 @@ type CollectResult = {
 } | {
     readonly kind: 'nothing-unused';
 } | {
+    /**
+     * The browser refused to delete (#1792). Firefox refuses every
+     * read-write transaction, deletes included, once the origin is at its
+     * limit; only a whole-database delete still works. What was freed before
+     * the refusal is reported, and nothing is thrown: "refused" must never
+     * read as "nothing to free".
+     */
+    readonly kind: 'refused';
+    readonly bytes: number;
+    readonly count: number;
+} | {
     readonly kind: 'could-not-check';
     readonly reason: CouldNotCheckReason;
     /** The database that could not be read, for `unreadable-project`. */
@@ -8841,12 +8852,18 @@ declare function isEphemeralProjectId(id: string): boolean;
  * added later is added here once rather than at every caller.
  */
 /**
- * Delete a project: its registry row first, so it leaves every list at once,
- * then its document and its history.
+ * Delete a project: its document database first, then its registry row and
+ * its history.
  *
- * The last two are independent, so both are attempted even when one fails;
- * the first failure is then rethrown, so a caller is never told a delete
- * finished that did not.
+ * The document goes FIRST because deleting a whole database is the one
+ * removal Firefox still allows once storage is at its limit: it refuses every
+ * read-write transaction, deletes included, and a registry row delete done
+ * first was refused before anything was freed (#1792, measured in Firefox
+ * 148). The database delete frees the room the two row deletes after it need.
+ *
+ * The row and the history are independent, so both are attempted even when
+ * one fails; the first failure is then rethrown, so a caller is never told a
+ * delete finished that did not.
  */
 declare function deleteProject(id: string): Promise<void>;
 
