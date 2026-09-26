@@ -51,6 +51,8 @@ const test = base.extend<{ context: BrowserContext; page: Page }>({
 interface Probe {
   reset(): Promise<void>
   put(base64: string, mime: string): Promise<{ hash: string; written: boolean }>
+  import(base64: string, mime: string, filename: string, existing: unknown[]): Promise<{ record: unknown }>
+  docAdd(record: unknown): Promise<void>
   list(): Promise<Array<{ hash: string }>>
   docList(): Promise<Array<{ name: string }>>
   storageStatus(): Promise<{ fullSince: number | null; documentUnsaved: boolean }>
@@ -115,6 +117,19 @@ async function fillStorage(page: Page): Promise<number> {
     for (; n < 2000; n++) {
       const tx = db.transaction('rows', 'readwrite')
       tx.objectStore('rows').put(new Blob([new Uint8Array(16_000)]), n)
+      const kept = await new Promise<boolean>((res) => {
+        tx.oncomplete = () => res(true)
+        tx.onabort = () => res(false)
+      })
+      if (!kept) break
+    }
+    // Then 1 KB rows until one of those is refused too. A 16 KB refusal can
+    // leave up to 16 KB free, and an edit that fits there is not refused: seen
+    // once in five runs (usage 3,995,366 of 4,000,000) as a notice that never
+    // came. The count returned is still the 16 KB rows the control arm reads.
+    for (let m = 0; m < 64; m++) {
+      const tx = db.transaction('rows', 'readwrite')
+      tx.objectStore('rows').put(new Blob([new Uint8Array(1_000)]), 100_000 + m)
       const kept = await new Promise<boolean>((res) => {
         tx.oncomplete = () => res(true)
         tx.onabort = () => res(false)
@@ -374,3 +389,95 @@ test('#1779 a take the disk refused is kept and offered as a download', async ({
   const file = await download.path()
   expect(fs.statSync(file).size).toBeGreaterThan(1000)
 })
+
+// ---------------------------------------------------------------------------
+// #1787 — Free space on the notice
+// ---------------------------------------------------------------------------
+
+/** Store a sound's bytes that no project names: what Free space can delete. */
+async function putUnusedSound(page: Page): Promise<void> {
+  await page.evaluate(
+    (b64) => (window as unknown as ProbeWindow).__staveAssetProbe!.put(b64, 'audio/wav'),
+    wav(8).toString('base64'),
+  )
+}
+
+/** Give the open project a sound of its own, on disk. */
+async function addProjectSound(page: Page): Promise<void> {
+  await page.evaluate(async (b64) => {
+    const p = (window as unknown as ProbeWindow).__staveAssetProbe!
+    const r = await p.import(b64, 'audio/wav', 'kept.wav', await p.docList())
+    await p.docAdd(r.record)
+  }, wav(1).toString('base64'))
+  await page.waitForTimeout(1000)
+}
+
+const freeResult = (page: Page) => page.locator('[data-storage-full-free-result]')
+
+test('#1787 Free space deletes an unused sound, and once the browser releases it the notice clears', async ({ page }) => {
+  // The browser releases a deleted blob's room lazily (Chromium: 4–30 s
+  // measured), so the notice keeps trying to save for up to 90 s.
+  test.setTimeout(150_000)
+  await boot(page)
+  await putUnusedSound(page)
+  await fillStorage(page)
+  await editCode(page)
+  await notice(page).waitFor({ timeout: 10_000 })
+  await page.locator('[data-storage-full-free]').click()
+  await expect(notice(page)).toHaveCount(0, { timeout: 100_000 })
+})
+
+test('#1787 the edit the full disk refused survives a reload after Free space', async ({ page }) => {
+  test.setTimeout(150_000)
+  await boot(page)
+  await putUnusedSound(page)
+  await fillStorage(page)
+  const marker = await editCode(page)
+  await notice(page).waitFor({ timeout: 10_000 })
+  await page.locator('[data-storage-full-free]').click()
+  await notice(page).waitFor({ state: 'detached', timeout: 100_000 })
+  expect((await reloadAndRead(page)).startsWith(marker)).toBe(true)
+})
+
+test('#1787 with nothing unused, Free space says so and keeps the notice', async ({ page }) => {
+  await boot(page)
+  await fillStorage(page)
+  await editCode(page)
+  await notice(page).waitFor({ timeout: 10_000 })
+  await page.locator('[data-storage-full-free]').click()
+  await expect(freeResult(page)).toContainText('No unused sounds to free', { timeout: 15_000 })
+})
+
+test('#1787 Open Library shows your sounds with their sizes', async ({ page }) => {
+  await boot(page)
+  await addProjectSound(page)
+  await fillStorage(page)
+  await editCode(page)
+  await notice(page).waitFor({ timeout: 10_000 })
+  await page.locator('[data-storage-full-free]').click()
+  await page.locator('[data-storage-full-library]').click({ timeout: 15_000 })
+  await page.locator('[data-asset-library]').waitFor({ timeout: 10_000 })
+  const shown = {
+    onYourSounds: await page.locator('[data-filter="asset-type-filter"] [data-chip="sample"]').getAttribute('aria-pressed'),
+    size: await page.locator('[data-asset-row^="sample:"] [data-asset-size]').first().innerText({ timeout: 10_000 }),
+  }
+  expect({ onYourSounds: shown.onYourSounds, sized: /\d(\.\d)? (B|KB|MB)$/.test(shown.size) }).toEqual({
+    onYourSounds: 'true',
+    sized: true,
+  })
+})
+
+test('#1787 with another Stave tab open, Free space says why it could not check', async ({ page, context }) => {
+  await boot(page)
+  await putUnusedSound(page)
+  await fillStorage(page)
+  await editCode(page)
+  await notice(page).waitFor({ timeout: 10_000 })
+  const second = await context.newPage()
+  await second.goto('/', { waitUntil: 'domcontentloaded' })
+  await waitForEditorLoaded(second)
+  await page.bringToFront()
+  await page.locator('[data-storage-full-free]').click()
+  await expect(freeResult(page)).toContainText("Couldn't free space: another Stave tab is open", { timeout: 15_000 })
+})
+

@@ -208,6 +208,14 @@ export function StaveApp({ initialProject }: StaveAppProps) {
     });
   }, []);
   const [switching, setSwitching] = useState(false);
+  // #1787 — the storage notice opens the Library on your own sounds, where
+  // each shows its size. A counter, so each request remounts the panel onto
+  // that chip even when the Library is already open on another.
+  const [libraryOpenedFor, setLibraryOpenedFor] = useState(0);
+  const openLibraryAtYourSounds = useCallback(() => {
+    setLibraryOpenedFor((n) => n + 1);
+    setActivePanelId("library");
+  }, []);
 
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [switcherModalOpen, setSwitcherModalOpen] = useState(false);
@@ -1921,7 +1929,11 @@ export function StaveApp({ initialProject }: StaveAppProps) {
               </div>
             )}
             {activePanelId === "library" && (
-              <AssetLibraryPanel onClose={() => setActivePanelId(null)} />
+              <AssetLibraryPanel
+                key={libraryOpenedFor}
+                initialType={libraryOpenedFor > 0 ? "sample" : undefined}
+                onClose={() => setActivePanelId(null)}
+              />
             )}
             {activePanelId === "console" && <ConsolePanel />}
             {activePanelId === "ir-inspector" && (
@@ -2073,7 +2085,7 @@ export function StaveApp({ initialProject }: StaveAppProps) {
         onDelete={handleDeleteProjectFromSwitcher}
       />
 
-      <StorageFullNotice onExport={handleExportProject} />
+      <StorageFullNotice onExport={handleExportProject} onOpenLibrary={openLibraryAtYourSounds} />
 
       <input
         ref={importInputRef}

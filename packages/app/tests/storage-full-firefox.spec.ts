@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { waitForEditorLoaded } from './_appBoot'
+import { editorValue, seedCode, waitForEditorLoaded } from './_appBoot'
 
 /**
  * #1792 (part of #1780): in Firefox, a full disk refuses deletes too.
@@ -191,6 +191,23 @@ test.describe('#1792 — Firefox at its storage limit', () => {
       full: true,
       result: { kind: 'refused', bytes: 0, count: 0 },
       kept: true,
+    })
+  })
+  test('#1787 Free space at the limit says the browser refused, and names the way out', async ({ page }) => {
+    await boot(page)
+    await page.evaluate(
+      (b64) => (window as unknown as ProbeWindow).__staveAssetProbe!.put(b64, 'audio/wav'),
+      noise(1_500_000),
+    )
+    const full = await fillToLimit(page)
+    await seedCode(page, `// typed while full ${Date.now()}\n${await editorValue(page)}`)
+    await page.locator('[data-storage-full]').waitFor({ timeout: 10_000 })
+    await page.locator('[data-storage-full-free]').click()
+    const said = await page.locator('[data-storage-full-free-result]').innerText({ timeout: 15_000 })
+    expect({ full, refused: said.includes("won't delete anything"), way: said.includes('Delete a project') }).toEqual({
+      full: true,
+      refused: true,
+      way: true,
     })
   })
 })
