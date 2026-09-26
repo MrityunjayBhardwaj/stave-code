@@ -44,7 +44,7 @@
 
 import * as Y from 'yjs'
 
-import { IdbMissingError, openIdbWithTimeout, requestResult } from '../idb'
+import { IdbMissingError, isQuotaError, openIdbWithTimeout, requestResult } from '../idb'
 import { listAssetRecords } from './assetDoc'
 import type { AssetRecord } from './assetNaming'
 import { deleteAsset, listAssets, type StoredAssetMeta } from './assetStore'
@@ -60,6 +60,18 @@ export type CollectResult =
       readonly count: number
     }
   | { readonly kind: 'nothing-unused' }
+  | {
+      /**
+       * The browser refused to delete (#1792). Firefox refuses every
+       * read-write transaction, deletes included, once the origin is at its
+       * limit; only a whole-database delete still works. What was freed before
+       * the refusal is reported, and nothing is thrown: "refused" must never
+       * read as "nothing to free".
+       */
+      readonly kind: 'refused'
+      readonly bytes: number
+      readonly count: number
+    }
   | {
       readonly kind: 'could-not-check'
       readonly reason: CouldNotCheckReason
@@ -292,7 +304,20 @@ export async function collectUnusedSounds(deps: CollectDeps = {}): Promise<Colle
 
     const { unused, bytes } = planSweep(await listAssets(), marked)
     if (unused.length === 0) return { kind: 'nothing-unused' }
-    for (const blob of unused) await deleteAsset(blob.hash)
+    let freedBytes = 0
+    let freedCount = 0
+    for (const blob of unused) {
+      try {
+        await deleteAsset(blob.hash)
+      } catch (err) {
+        // Firefox at its limit refuses deletes too (#1792); every later delete
+        // would be refused the same way, so stop and say so.
+        if (isQuotaError(err)) return { kind: 'refused', bytes: freedBytes, count: freedCount }
+        throw err
+      }
+      freedBytes += blob.size
+      freedCount++
+    }
     return { kind: 'freed', bytes, count: unused.length }
   })
 }

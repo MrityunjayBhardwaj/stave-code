@@ -46248,7 +46248,18 @@ async function collectUnusedSounds(deps = {}) {
     }
     const { unused, bytes } = planSweep(await listAssets(), marked);
     if (unused.length === 0) return { kind: "nothing-unused" };
-    for (const blob of unused) await deleteAsset(blob.hash);
+    let freedBytes = 0;
+    let freedCount = 0;
+    for (const blob of unused) {
+      try {
+        await deleteAsset(blob.hash);
+      } catch (err) {
+        if (isQuotaError(err)) return { kind: "refused", bytes: freedBytes, count: freedCount };
+        throw err;
+      }
+      freedBytes += blob.size;
+      freedCount++;
+    }
     return { kind: "freed", bytes, count: unused.length };
   });
 }
@@ -46960,9 +46971,9 @@ function deleteProjectDocDb(id) {
 }
 __name(deleteProjectDocDb, "deleteProjectDocDb");
 async function deleteProject(id) {
-  await deleteProjectMeta(id);
+  await deleteProjectDocDb(id);
   const results = await Promise.allSettled([
-    deleteProjectDocDb(id),
+    deleteProjectMeta(id),
     deleteProjectHistory(id)
   ]);
   const failed = results.find((r) => r.status === "rejected");
@@ -46979,6 +46990,8 @@ function describeCollect(result) {
       return `freed ${result.bytes} bytes (${result.count} unused sounds)`;
     case "nothing-unused":
       return "no unused sounds";
+    case "refused":
+      return `the browser refused to delete (freed ${result.bytes} bytes first)`;
     case "could-not-check":
       return `could not check (${result.reason}${result.detail ? `: ${result.detail}` : ""})`;
   }
