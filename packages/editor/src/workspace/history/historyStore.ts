@@ -65,13 +65,51 @@ export async function saveHistory(h: ProjectHistory): Promise<void> {
   db.close()
 }
 
-/** Delete a project's history (used by tests / project deletion). */
+/**
+ * Delete a project's commit history row only. Deleting a whole project uses
+ * {@link deleteProjectHistory}, which also clears its snapshots.
+ */
 export async function deleteHistory(projectId: string): Promise<void> {
   const db = await openDb()
   await committed(
     db.transaction(HISTORY_STORE, 'readwrite').objectStore(HISTORY_STORE).delete(projectId),
   )
   db.close()
+}
+
+/**
+ * Delete everything a project left in this database: its commit history and
+ * any snapshots from the older snapshot store (#1784).
+ *
+ * Deleting a project used to drop its registry row and its document but leave
+ * this row behind, where nothing could open it again and it still counted
+ * toward the quota. Both stores are cleared in ONE transaction, awaited to
+ * commit, so a refusal is heard rather than reported as done, and a project
+ * is never left with its history gone but its snapshots kept.
+ *
+ * The older store has no writer left in the app; its rows exist only in
+ * profiles from before the commit store. They are keyed by snapshot id, so
+ * the project's rows are found through the `byProject` index.
+ */
+export async function deleteProjectHistory(projectId: string): Promise<void> {
+  const db = await openDb()
+  try {
+    const tx = db.transaction([HISTORY_STORE, LEGACY_STORE], 'readwrite')
+    // Listening before any request, so the transaction cannot finish unheard;
+    // the catch only keeps a rejection from going unhandled if a read below
+    // throws first.
+    const done = transactionDone(tx)
+    done.catch(() => {})
+    tx.objectStore(HISTORY_STORE).delete(projectId)
+    const snapshots = tx.objectStore(LEGACY_STORE)
+    const keys = await wrap<IDBValidKey[]>(
+      snapshots.index('byProject').getAllKeys(IDBKeyRange.only(projectId)),
+    )
+    for (const key of keys) snapshots.delete(key)
+    await done
+  } finally {
+    db.close()
+  }
 }
 
 /**

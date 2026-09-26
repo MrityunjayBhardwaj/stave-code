@@ -509,13 +509,13 @@ export {
   createProject,
   touchProject,
   renameProject,
-  deleteProject,
   duplicateProject,
   dropLegacyBackgroundCrop,
   EPHEMERAL_ID_PREFIX,
   isEphemeralProjectId,
   type ProjectMeta,
 } from './workspace/projectRegistry'
+export { deleteProject } from './workspace/projectDeletion'
 
 // Ephemeral-session cleanup (#688)
 export { pruneEphemeralArtifacts } from './workspace/ephemeralPrune'

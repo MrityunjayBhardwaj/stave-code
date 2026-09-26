@@ -27301,18 +27301,12 @@ async function renameProject(id, name) {
   db.close();
 }
 __name(renameProject, "renameProject");
-async function deleteProject(id) {
+async function deleteProjectMeta(id) {
   const db = await openDb2();
   await committed(tx2(db, "readwrite").delete(id));
   db.close();
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.deleteDatabase(`stave-${id}`);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-    req.onblocked = () => resolve();
-  });
 }
-__name(deleteProject, "deleteProject");
+__name(deleteProjectMeta, "deleteProjectMeta");
 async function duplicateProject(id) {
   const source = await getProject(id);
   if (!source) return void 0;
@@ -27380,6 +27374,25 @@ async function saveHistory(h) {
   db.close();
 }
 __name(saveHistory, "saveHistory");
+async function deleteProjectHistory(projectId) {
+  const db = await openDb3();
+  try {
+    const tx3 = db.transaction([HISTORY_STORE, LEGACY_STORE], "readwrite");
+    const done = transactionDone(tx3);
+    done.catch(() => {
+    });
+    tx3.objectStore(HISTORY_STORE).delete(projectId);
+    const snapshots2 = tx3.objectStore(LEGACY_STORE);
+    const keys = await requestResult(
+      snapshots2.index("byProject").getAllKeys(IDBKeyRange.only(projectId))
+    );
+    for (const key2 of keys) snapshots2.delete(key2);
+    await done;
+  } finally {
+    db.close();
+  }
+}
+__name(deleteProjectHistory, "deleteProjectHistory");
 async function pruneEphemeralHistory() {
   const db = await openDb3();
   try {
@@ -46809,6 +46822,27 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   ] });
 }
 __name(HistoryPanel, "HistoryPanel");
+
+// src/workspace/projectDeletion.ts
+function deleteProjectDocDb(id) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(`stave-${id}`);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => resolve();
+  });
+}
+__name(deleteProjectDocDb, "deleteProjectDocDb");
+async function deleteProject(id) {
+  await deleteProjectMeta(id);
+  const results = await Promise.allSettled([
+    deleteProjectDocDb(id),
+    deleteProjectHistory(id)
+  ]);
+  const failed = results.find((r) => r.status === "rejected");
+  if (failed) throw failed.reason;
+}
+__name(deleteProject, "deleteProject");
 
 // src/workspace/ephemeralPrune.ts
 async function pruneEphemeralArtifacts() {

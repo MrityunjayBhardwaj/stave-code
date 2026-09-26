@@ -107,10 +107,10 @@ export {
   createProject,
   touchProject,
   renameProject,
-  deleteProject,
   duplicateProject,
   type ProjectMeta,
 } from './projectRegistry'
+export { deleteProject } from './projectDeletion'
 export { useWorkspaceFile } from './useWorkspaceFile'
 export type { UseWorkspaceFileResult } from './useWorkspaceFile'
 // Phase 20-12 α-2/α-3 — track-chrome persistence (D-01/D-02). Re-exported so

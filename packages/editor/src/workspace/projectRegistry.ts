@@ -160,27 +160,15 @@ export async function renameProject(id: string, name: string): Promise<void> {
 }
 
 /**
- * Delete a project's metadata. Also deletes the y-indexeddb database
- * for the project's Y.Doc content.
+ * Delete a project's registry row. The rest of the project (its document,
+ * its history) is deleted by `deleteProject` in `projectDeletion.ts`, which
+ * owns the whole set; this module cannot import the history store, which
+ * already imports it.
  */
-export async function deleteProject(id: string): Promise<void> {
-  // Delete metadata
+export async function deleteProjectMeta(id: string): Promise<void> {
   const db = await openDb()
   await committed(tx(db, 'readwrite').delete(id))
   db.close()
-
-  // Delete the y-indexeddb content database.
-  // indexedDB.deleteDatabase is fire-and-forget (no await needed for
-  // correctness, but we wrap it for clean error reporting).
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.deleteDatabase(`stave-${id}`)
-    req.onsuccess = () => resolve()
-    req.onerror = () => reject(req.error)
-    // onblocked fires if another tab has the DB open. In that case,
-    // the delete is deferred until the other tab closes or releases.
-    // For Phase 2 single-tab, this is fine.
-    req.onblocked = () => resolve()
-  })
 }
 
 /**
