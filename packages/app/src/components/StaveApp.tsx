@@ -1333,7 +1333,9 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       const ok = await showConfirm({
         title: `Remove "${record.name}"?`,
         description:
-          `It leaves this project, and code that plays s("${record.name}") goes silent. ` +
+          // Observed: a pattern still playing it goes silent AND reports the
+          // sound missing on every note, as for any unknown name.
+          `It leaves this project. Code that plays s("${record.name}") goes silent and reports it missing. ` +
           "Its audio is deleted too, unless another sound or project still uses it.",
         confirmLabel: "Remove",
         danger: true,
