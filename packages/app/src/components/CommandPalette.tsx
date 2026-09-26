@@ -68,7 +68,11 @@ export function CommandPalette({
   // appear in the palette without closing).
   useEffect(() => subscribeToCommands(() => forceTick((t) => t + 1)), []);
 
-  // Build the row list: registered commands + any extras.
+  // Build the row list: registered commands + any extras. Rebuilt on every OPEN
+  // as well as on registry changes: a command's `when` can depend on state the
+  // registry never hears about (a section selected on the Song timeline, #1562),
+  // and this component stays mounted while closed, so without `open` the list
+  // kept whatever `when` answered the last time the command set changed.
   const allRows: PaletteRow[] = useMemo(() => {
     const rows: PaletteRow[] = [];
     if (!hideCommands) {
@@ -79,7 +83,7 @@ export function CommandPalette({
     if (extraRows) rows.push(...extraRows);
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hideCommands, extraRows, tick]);
+  }, [hideCommands, extraRows, tick, open]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
