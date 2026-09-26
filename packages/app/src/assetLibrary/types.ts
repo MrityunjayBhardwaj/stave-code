@@ -104,6 +104,17 @@ export interface Asset {
    * `+` writes files under `viz_lib/` rather than inserting at the cursor.
    */
   readonly insertLabel?: string;
+  /**
+   * How much room the asset's bytes take on this device, in bytes. Shown
+   * muted on the row so a user whose storage is full can see what to remove
+   * (#1786). Absent → no size shown (built-in sounds live on a CDN).
+   */
+  readonly sizeBytes?: number;
+  /**
+   * Remove the asset from the project (#1786). The provider owns asking first
+   * and saying what happened. Absent → no remove affordance.
+   */
+  readonly remove?: () => void | Promise<void>;
 }
 
 /**

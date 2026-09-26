@@ -6391,11 +6391,11 @@ function resolveAlias(rawS) {
   return SOUND_ALIASES[rawS.toLowerCase()];
 }
 __name(resolveAlias, "resolveAlias");
-function aliasSoundValue(value, soundMap2) {
+function aliasSoundValue(value, soundMap3) {
   if (value === null || typeof value !== "object") return { value };
   const rawS = value.s;
   if (typeof rawS !== "string") return { value };
-  if (soundMap2 && soundMap2[rawS.toLowerCase()] !== void 0) return { value };
+  if (soundMap3 && soundMap3[rawS.toLowerCase()] !== void 0) return { value };
   const aliased = resolveAlias(rawS);
   if (!aliased || aliased === rawS) return { value };
   return { value: { ...value, s: aliased }, resolution: { from: rawS, to: aliased } };
@@ -46073,6 +46073,11 @@ async function registerAsset(record) {
   return true;
 }
 __name(registerAsset, "registerAsset");
+function unregisterAsset(name) {
+  const key2 = name.toLowerCase().replace(/\s+/g, "_");
+  webaudio.soundMap.setKey(key2, void 0);
+}
+__name(unregisterAsset, "unregisterAsset");
 async function registerAssets(records) {
   const registered = [];
   for (const record of records) {
@@ -50083,6 +50088,7 @@ exports.touchProject = touchProject;
 exports.transpose = transpose;
 exports.undo = undo;
 exports.uniqueSoundName = uniqueSoundName;
+exports.unregisterAsset = unregisterAsset;
 exports.unregisterBottomPanelTab = unregisterBottomPanelTab;
 exports.unregisterNamedViz = unregisterNamedViz;
 exports.updateVizConfig = updateVizConfig;

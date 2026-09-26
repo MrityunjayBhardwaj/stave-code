@@ -118,6 +118,14 @@ import { startAudition } from "@stave/editor";
 import { listAssetRecords, subscribeToAssets } from "@stave/editor";
 // #1785 — this tab's presence, seen by another tab's sound collection.
 import { holdTabPresence } from "@stave/editor";
+// #1786 — remove one of your sounds, and see what each one takes.
+import {
+  collectUnusedSounds,
+  listAssets,
+  removeAssetRecord,
+  unregisterAsset,
+} from "@stave/editor";
+import { removedButFailedMessage, removedMessage } from "../assetLibrary/freeSpaceMessages";
 import { gmFamily, soundfontGroupLabel } from "@stave/editor";
 import { isVizLanguage, languageForRenderer } from "@stave/editor";
 import { mountVizPreview } from "@stave/editor";
@@ -1303,16 +1311,63 @@ export function StaveApp({ initialProject }: StaveAppProps) {
   // only a notify, which `RecordTakeButton` fires. The subscription here covers
   // the OTHER writers (rename, remove, and a project switch bringing a
   // different set of takes), which the button knows nothing about.
+  //
+  // #1786 — each row shows its stored size and can be removed. Sizes come from
+  // the byte store, which the provider cannot read synchronously, so they are
+  // held here by content hash and re-read whenever the records change.
   useEffect(() => {
+    let alive = true;
+    const sizes = new Map<string, number>();
+    const refreshSizes = async () => {
+      try {
+        const rows = await listAssets();
+        if (!alive) return;
+        sizes.clear();
+        for (const row of rows) sizes.set(row.hash, row.size);
+        notifyAssetProvidersChanged();
+      } catch {
+        /* sizes are a hint; a store that can't be read shows none */
+      }
+    };
+    const onRemove = async (record: { id: string; name: string }) => {
+      const ok = await showConfirm({
+        title: `Remove "${record.name}"?`,
+        description:
+          // Observed: a pattern still playing it goes silent AND reports the
+          // sound missing on every note, as for any unknown name.
+          `It leaves this project. Code that plays s("${record.name}") goes silent and reports it missing. ` +
+          "Its audio is deleted too, unless another sound or project still uses it.",
+        confirmLabel: "Remove",
+        danger: true,
+      });
+      if (!ok) return;
+      removeAssetRecord(record.id);
+      unregisterAsset(record.name);
+      try {
+        const result = await collectUnusedSounds();
+        showToast(removedMessage(record.name, result), result.kind === "could-not-check" ? "error" : "info");
+      } catch (err) {
+        console.error("[stave] freeing a removed sound's space failed:", err);
+        showToast(removedButFailedMessage(record.name), "error");
+      }
+      await refreshSizes();
+    };
     const unreg = registerAssetProvider(
       createSamplesProvider({
         readRecords: () => listAssetRecords(),
         startPreview: (name) => startAudition(name),
         onInsert: (name) => shellRef.current?.assignSoundToCursor(name),
+        sizeOf: (hash) => sizes.get(hash),
+        onRemove,
       }),
     );
-    const unsub = subscribeToAssets(() => notifyAssetProvidersChanged());
+    void refreshSizes();
+    const unsub = subscribeToAssets(() => {
+      notifyAssetProvidersChanged();
+      void refreshSizes();
+    });
     return () => {
+      alive = false;
       unsub();
       unreg();
     };

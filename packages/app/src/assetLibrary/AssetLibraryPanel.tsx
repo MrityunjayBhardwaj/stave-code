@@ -34,6 +34,7 @@ import {
   type AssetFilter,
 } from "./filter";
 import { computeWindow } from "./windowing";
+import { formatBytes } from "./freeSpaceMessages";
 import { useVizPreviewHeight } from "../state/vizPreviewHeight";
 import type { Asset, AssetPreviewHandle, AssetSource, AssetType } from "./types";
 
@@ -539,6 +540,18 @@ function useRowActions(
           <Icon name="add" size="14px" />
         </button>
       )}
+      {/* Remove from the project (#1786) — hover-revealed; the provider asks first. */}
+      {asset.remove && (hovered || previewing) && (
+        <button
+          style={btn}
+          title={`Remove "${asset.name}" from this project`}
+          aria-label={`Remove ${asset.name}`}
+          onClick={() => void asset.remove?.()}
+          data-asset-remove={rowKey}
+        >
+          <Icon name="trash" size="14px" />
+        </button>
+      )}
       {/* Preview — play toggles to stop while active. */}
       {asset.preview && (
         <button
@@ -587,6 +600,12 @@ function AssetRow({
       <div style={styles.rowText}>
         <span style={styles.rowName}>{asset.name}</span>
         {asset.group && <span style={styles.rowGroup}>{asset.group}</span>}
+        {/* #1786 — what this asset takes on disk, so a full disk has a map. */}
+        {asset.sizeBytes != null && (
+          <span style={styles.rowGroup} data-asset-size={rowKey}>
+            {formatBytes(asset.sizeBytes)}
+          </span>
+        )}
       </div>
       <div style={styles.rowActions}>{actions(styles.rowBtn)}</div>
     </div>

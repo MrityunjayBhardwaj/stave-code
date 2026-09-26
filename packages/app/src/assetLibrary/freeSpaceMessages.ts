@@ -1,0 +1,50 @@
+import type { CollectResult, CouldNotCheckReason } from "@stave/editor";
+
+/**
+ * What to tell the user after sound bytes were (or were not) freed (#1786,
+ * reused by the storage notice in #1787).
+ *
+ * The collector has three outcomes and each needs a different next step from
+ * the user, so they never share a sentence: "freed" is done; "nothing unused"
+ * means the audio is still used somewhere, so removing more is the way to make
+ * room; "could not check" means nothing was looked at, and the reason says
+ * what to change. "Could not check" must never read as "nothing to free".
+ */
+
+/** `1536` → `1.5 KB`. Decimal units, as browsers and OS file sizes use. */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "";
+  if (bytes < 1000) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let v = bytes / 1000;
+  let u = 0;
+  while (v >= 1000 && u < units.length - 1) {
+    v /= 1000;
+    u++;
+  }
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[u]}`;
+}
+
+const WHY_NOT: Record<CouldNotCheckReason, string> = {
+  "other-tab": "another Stave tab is open. Close it and try again",
+  "unreadable-project": "one of your projects couldn't be read",
+  "no-locks": "this browser can't check what your other projects use",
+  "no-database-list": "this browser can't list your other projects",
+};
+
+/** The sentence after a sound was removed and a collection ran. */
+export function removedMessage(name: string, result: CollectResult): string {
+  switch (result.kind) {
+    case "freed":
+      return `Removed "${name}" and freed ${formatBytes(result.bytes)}.`;
+    case "nothing-unused":
+      return `Removed "${name}". Its audio is still used by another sound or project, so no space was freed.`;
+    case "could-not-check":
+      return `Removed "${name}", but its space wasn't freed: ${WHY_NOT[result.reason]}.`;
+  }
+}
+
+/** The sentence when the collection itself failed. */
+export function removedButFailedMessage(name: string): string {
+  return `Removed "${name}", but freeing its space failed. See the console for details.`;
+}
