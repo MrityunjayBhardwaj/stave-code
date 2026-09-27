@@ -921,3 +921,15 @@ export { P5_DOCS_INDEX } from './monaco/docs/p5'
 export { HYDRA_DOCS_INDEX } from './monaco/docs/hydra'
 export { SONICPI_DOCS_INDEX } from './monaco/docs/sonicpi'
 export { STRUDEL_DOCS_INDEX } from './monaco/strudelDocs'
+
+// #1799 — the one chord builder every key binding goes through (app dispatcher,
+// Shortcuts panel capture, grid keys).
+export {
+  chordFromEvent,
+  chordMatches,
+  normalizeChord,
+  isModifierOnlyKey,
+  isMacPlatform,
+  tokenForCode,
+} from './keys/chord'
+export type { ChordOptions } from './keys/chord'

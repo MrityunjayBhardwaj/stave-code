@@ -13,6 +13,7 @@
  * commands (layering).
  */
 
+import { chordFromEvent, chordMatches } from "@stave/editor/chord";
 import { executeCommand, listCommands, getCommand, type Command } from "./registry";
 
 const STORAGE_KEY = "stave:keybindings";
@@ -154,6 +155,8 @@ function formatPart(part: string, isMac: boolean): string {
   if (p === "ctrl") return isMac ? "⌃" : "Ctrl";
   if (p === "shift") return isMac ? "⇧" : "Shift";
   if (p === "alt" || p === "option") return isMac ? "⌥" : "Alt";
+  if (p === "space") return "Space";
+  if (p === "plus") return "+";
   if (p === "enter") return "⏎";
   if (p === "escape") return "Esc";
   if (p === "tab") return "Tab";
@@ -188,35 +191,14 @@ export function keybindingTokens(chord: string): string[] {
     .flatMap((single) => single.split("+").map((part) => formatPart(part, isMac)));
 }
 
-/** Parse a KeyboardEvent into a chord string like 'mod+shift+z'. */
+/**
+ * Chords are built and compared by the ONE builder in the editor package
+ * (#1799), shared with the Shortcuts panel's capture and the grids: ⌥-letters
+ * by physical key (the label is "Dead" or composed), ⇧3 as shift+3, and on a
+ * Mac ⌃ as its own `ctrl`, apart from ⌘ `mod`.
+ */
 function eventToChord(e: KeyboardEvent): string {
-  const parts: string[] = [];
-  if (e.metaKey || e.ctrlKey) parts.push("mod");
-  if (e.shiftKey) parts.push("shift");
-  if (e.altKey) parts.push("alt");
-  const k = e.key.toLowerCase();
-  // Normalise a-z / 0-9 / punctuation to single-char tokens.
-  if (k.length === 1) parts.push(k);
-  else if (k === "escape") parts.push("escape");
-  else if (k === "enter") parts.push("enter");
-  else if (k === "tab") parts.push("tab");
-  else parts.push(k);
-  return parts.join("+");
-}
-
-function chordMatches(eventChord: string, declared: string): boolean {
-  // Normalise declared chord — lowercase, sort modifiers deterministically.
-  const norm = (s: string) => {
-    const tokens = s.toLowerCase().split("+");
-    const mods = tokens
-      .filter((t) => t === "mod" || t === "shift" || t === "alt")
-      .sort();
-    const rest = tokens.filter(
-      (t) => t !== "mod" && t !== "shift" && t !== "alt",
-    );
-    return [...mods, ...rest].join("+");
-  };
-  return norm(eventChord) === norm(declared);
+  return chordFromEvent(e);
 }
 
 /** True when focus is inside a text-input context where shortcuts should defer. */

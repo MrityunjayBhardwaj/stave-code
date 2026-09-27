@@ -249,3 +249,124 @@ describe("#1795 scoped commands", () => {
     expect(conflictsForCommand("test.clip.delete").map((c) => c.id)).toContain("test.clip.duplicate");
   });
 });
+
+// ---------------------------------------------------------------------------
+// #1799 — one chord builder: ⌥-letters, ⇧-digits and ⌃ on a Mac
+// ---------------------------------------------------------------------------
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+describe("#1799 chords on a Mac, from real key presses", () => {
+  let platform: { mockRestore(): void };
+  let cleanup: Array<() => void> = [];
+  beforeEach(() => {
+    platform = vi.spyOn(window.navigator, "platform", "get").mockReturnValue("MacIntel");
+  });
+  afterEach(() => {
+    cleanup.forEach((d) => d());
+    cleanup = [];
+    platform.mockRestore();
+  });
+  const scoped = (id: string, keybinding: string) =>
+    cleanup.push(registerCommand(scopedCommand({ id, title: id, keybinding, scope: "panel1799" })));
+
+  it("⌥K (key Dead) reaches alt+k; ⌥⌘K reaches mod+alt+k in Chromium and Firefox", () => {
+    scoped("t.altk", "alt+k");
+    scoped("t.stepinput", "mod+alt+k");
+    expect(matchScopedCommand("panel1799", key({ key: "Dead", code: "KeyK", altKey: true }))?.id).toBe("t.altk");
+    expect(matchScopedCommand("panel1799", key({ key: "Dead", code: "KeyK", altKey: true, metaKey: true }))?.id).toBe("t.stepinput");
+    expect(matchScopedCommand("panel1799", key({ key: "˚", code: "KeyK", altKey: true, metaKey: true }))?.id).toBe("t.stepinput");
+  });
+
+  it("⇧3 (key #) reaches shift+3", () => {
+    scoped("t.sharp", "shift+3");
+    expect(matchScopedCommand("panel1799", key({ key: "#", code: "Digit3", shiftKey: true }))?.id).toBe("t.sharp");
+  });
+
+  it("⌃⌫ reaches ctrl+backspace and not mod+backspace; ⌘⌫ the reverse", () => {
+    scoped("t.clearstep", "ctrl+backspace");
+    scoped("t.cmdback", "mod+backspace");
+    expect(matchScopedCommand("panel1799", key({ key: "Backspace", code: "Backspace", ctrlKey: true }))?.id).toBe("t.clearstep");
+    expect(matchScopedCommand("panel1799", key({ key: "Backspace", code: "Backspace", metaKey: true }))?.id).toBe("t.cmdback");
+  });
+
+  it("⌘⌥Z reaches Zen's mod+alt+z in Firefox too (key \u2019)", () => {
+    scoped("t.zen", "mod+alt+z");
+    expect(matchScopedCommand("panel1799", key({ key: "\u2019", code: "KeyZ", metaKey: true, altKey: true }))?.id).toBe("t.zen");
+  });
+
+  it("Space reaches space", () => {
+    scoped("t.space", "space");
+    expect(matchScopedCommand("panel1799", key({ key: " ", code: "Space" }))?.id).toBe("t.space");
+  });
+
+  it("⌃⇧P does not run the palette; ⌘⇧P does", () => {
+    const palette = vi.fn();
+    cleanup.push(registerCommand({ id: "stave.palette.test1799", title: "p", keybinding: "mod+shift+p", run: palette }));
+    const uninstall = installKeybindingDispatcher();
+    cleanup.push(uninstall);
+    document.body.dispatchEvent(key({ key: "P", code: "KeyP", ctrlKey: true, shiftKey: true }));
+    expect(palette).toHaveBeenCalledTimes(0);
+    document.body.dispatchEvent(key({ key: "P", code: "KeyP", metaKey: true, shiftKey: true }));
+    expect(palette).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Every chord the app declares today, with the key press a Mac sends for it
+// (real OS keys, Chromium and Firefox, 2026-09-27). The rebuilt matcher must
+// reach each one. ⌘⌥Z (Zen) never matched before #1799: its key arrives as
+// "Dead" in Chromium and "’" in Firefox.
+const DECLARED_CHORDS: Array<[string, KeyboardEventInit]> = [
+  ["mod+shift+p", { key: "P", code: "KeyP", metaKey: true, shiftKey: true }],
+  ["mod+shift+d", { key: "D", code: "KeyD", metaKey: true, shiftKey: true }],
+  ["mod+n", { key: "n", code: "KeyN", metaKey: true }],
+  ["mod+o", { key: "o", code: "KeyO", metaKey: true }],
+  ["mod+z", { key: "z", code: "KeyZ", metaKey: true }],
+  ["mod+shift+z", { key: "Z", code: "KeyZ", metaKey: true, shiftKey: true }],
+  ["mod+b", { key: "b", code: "KeyB", metaKey: true }],
+  ["mod+alt+z", { key: "Dead", code: "KeyZ", metaKey: true, altKey: true }],
+  ["mod+=", { key: "=", code: "Equal", metaKey: true }],
+  ["mod+-", { key: "-", code: "Minus", metaKey: true }],
+  ["mod+\\", { key: "\\", code: "Backslash", metaKey: true }],
+  ["mod+shift+\\", { key: "\\", code: "Backslash", metaKey: true, shiftKey: true }],
+  ["mod+/", { key: "/", code: "Slash", metaKey: true }],
+  ["mod+p", { key: "p", code: "KeyP", metaKey: true }],
+  ["mod+shift+f", { key: "F", code: "KeyF", metaKey: true, shiftKey: true }],
+  ["mod+d", { key: "d", code: "KeyD", metaKey: true }],
+  ["s", { key: "s", code: "KeyS" }],
+  ["delete", { key: "Delete", code: "Delete" }],
+  ["backspace", { key: "Backspace", code: "Backspace" }],
+  ["mod+shift+backspace", { key: "Backspace", code: "Backspace", metaKey: true, shiftKey: true }],
+  ["mod+shift+delete", { key: "Delete", code: "Delete", metaKey: true, shiftKey: true }],
+  ["mod+i", { key: "i", code: "KeyI", metaKey: true }],
+  ["f2", { key: "F2", code: "F2" }],
+  ["enter", { key: "Enter", code: "Enter" }],
+  ["p", { key: "p", code: "KeyP" }],
+];
+
+describe("#1799 every declared chord still matches its key press", () => {
+  it("the table covers every chord literal the app declares", () => {
+    const src = ["../../components/StaveApp.tsx", "../../components/musicalTimeline/clipGestures.ts"]
+      .map((p) => readFileSync(resolve(__dirname, p), "utf8"))
+      .join("\n");
+    const declared = new Set<string>();
+    for (const m of src.matchAll(/keybinding:\s*["']((?:\\.|[^"'])+)["']/g)) declared.add(m[1].replace(/\\\\/g, "\\"));
+    for (const m of src.matchAll(/alternateKeybindings:\s*\[([^\]]*)\]/g)) {
+      for (const a of m[1].matchAll(/["']([^"']+)["']/g)) declared.add(a[1]);
+    }
+    expect(declared.size).toBeGreaterThan(20);
+    expect([...declared].sort()).toEqual(DECLARED_CHORDS.map(([c]) => c).sort());
+  });
+
+  it.each(DECLARED_CHORDS)("%s", (chord, init) => {
+    const platform = vi.spyOn(window.navigator, "platform", "get").mockReturnValue("MacIntel");
+    const off = registerCommand(scopedCommand({ id: "t.table", title: "t", keybinding: chord, scope: "table1799" }));
+    try {
+      expect(matchScopedCommand("table1799", key(init))?.id).toBe("t.table");
+    } finally {
+      off();
+      platform.mockRestore();
+    }
+  });
+});

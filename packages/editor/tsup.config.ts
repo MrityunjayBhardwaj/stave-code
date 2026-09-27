@@ -14,11 +14,14 @@ export default defineConfig({
   // worker entry uses for the same reason.
   // A FOURTH (#1679), for the same reason: what a track's label means — its id
   // and its mute marker — read by the app's timeline without the barrel.
+  // A FIFTH (#1799), for the same reason: the one chord builder, read by the
+  // app's command dispatcher and Shortcuts panel.
   entry: [
     'src/index.ts',
     'src/visualizers/worker/index.ts',
     'src/visualEdit/panels/knobScale.ts',
     'src/ir/trackId.ts',
+    'src/keys/chord.ts',
   ],
   format: ['esm', 'cjs'],
   dts: true,

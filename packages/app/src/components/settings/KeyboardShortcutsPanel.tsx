@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { chordFromEvent, isModifierOnlyKey } from "@stave/editor/chord";
 import { listCommands, subscribeToCommands, type Command } from "../../commands/registry";
 import {
   keybindingTokens,
@@ -54,13 +55,10 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
       e.preventDefault();
       e.stopPropagation();
       if (e.key === "Escape") { setCapturingId(null); return; }
-      if (["Control", "Meta", "Shift", "Alt"].includes(e.key)) return;
-      const parts: string[] = [];
-      if (e.metaKey || e.ctrlKey) parts.push("mod");
-      if (e.shiftKey) parts.push("shift");
-      if (e.altKey) parts.push("alt");
-      parts.push(e.key.toLowerCase());
-      setKeybindingOverride(capturingId, parts.join("+")); // persists + notifies
+      if (isModifierOnlyKey(e)) return;
+      // The dispatcher's own builder (#1799), so the chord recorded here is the
+      // chord that will match — ⌥⌘K, ⇧3 and ⌃⌫ included.
+      setKeybindingOverride(capturingId, chordFromEvent(e)); // persists + notifies
       setCapturingId(null);
     };
     window.addEventListener("keydown", onKey, true);
