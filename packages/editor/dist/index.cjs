@@ -35377,6 +35377,181 @@ function getNoteClip() {
   return clip;
 }
 __name(getNoteClip, "getNoteClip");
+
+// src/keys/chord.ts
+function isMacPlatform() {
+  return typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+}
+__name(isMacPlatform, "isMacPlatform");
+var PUNCTUATION_BY_CODE = {
+  Minus: "-",
+  Equal: "=",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Backslash: "\\",
+  Semicolon: ";",
+  Quote: "'",
+  Comma: ",",
+  Period: ".",
+  Slash: "/",
+  Backquote: "`"
+};
+var BASE_OF_SHIFTED = {
+  "!": "1",
+  "@": "2",
+  "#": "3",
+  "$": "4",
+  "%": "5",
+  "^": "6",
+  "&": "7",
+  "*": "8",
+  "(": "9",
+  ")": "0",
+  _: "-",
+  "{": "[",
+  "}": "]",
+  "|": "\\",
+  ":": ";",
+  '"': "'",
+  "<": ",",
+  ">": ".",
+  "?": "/",
+  "~": "`"
+};
+function tokenForCode(code) {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (code in PUNCTUATION_BY_CODE) return PUNCTUATION_BY_CODE[code];
+  return code.toLowerCase();
+}
+__name(tokenForCode, "tokenForCode");
+var PLAIN_LABEL = /^[\x21-\x7e]$/;
+function keyToken(e, byPosition) {
+  const fromCode = e.code ? tokenForCode(e.code) : "";
+  if (byPosition && fromCode) return fromCode;
+  const key2 = e.key;
+  if (key2 === " ") return "space";
+  if (key2.length === 1) {
+    const codeIsSymbolKey = /^Digit[0-9]$/.test(e.code) || e.code in PUNCTUATION_BY_CODE;
+    if (e.shiftKey && codeIsSymbolKey) return fromCode;
+    if (PLAIN_LABEL.test(key2)) return key2 === "+" ? "plus" : key2.toLowerCase();
+    return fromCode || key2.toLowerCase();
+  }
+  if (key2 === "Dead" || key2 === "Unidentified" || key2 === "") return fromCode || "unidentified";
+  return key2.toLowerCase();
+}
+__name(keyToken, "keyToken");
+function chordFromEvent(e, opts = {}) {
+  const isMac = opts.isMac ?? isMacPlatform();
+  const parts = [];
+  if (isMac) {
+    if (e.metaKey) parts.push("mod");
+    if (e.ctrlKey) parts.push("ctrl");
+  } else if (e.metaKey || e.ctrlKey) {
+    parts.push("mod");
+  }
+  if (e.shiftKey) parts.push("shift");
+  if (e.altKey) parts.push("alt");
+  parts.push(keyToken(e, opts.byPosition ?? false));
+  return parts.join("+");
+}
+__name(chordFromEvent, "chordFromEvent");
+var MODIFIER_ORDER = ["mod", "ctrl", "shift", "alt"];
+function normalizeChord(chord, opts = {}) {
+  const isMac = opts.isMac ?? isMacPlatform();
+  const mods = /* @__PURE__ */ new Set();
+  let key2 = "";
+  for (const raw of chord.toLowerCase().split("+")) {
+    let t = raw;
+    if (t === "cmd" || t === "command" || t === "meta") t = "mod";
+    else if (t === "control") t = isMac ? "ctrl" : "mod";
+    else if (t === "ctrl" && !isMac) t = "mod";
+    else if (t === "option" || t === "opt") t = "alt";
+    if (MODIFIER_ORDER.includes(t)) mods.add(t);
+    else if (t === " " || t === "spacebar") key2 = "space";
+    else if (t === "esc") key2 = "escape";
+    else if (t === "return") key2 = "enter";
+    else key2 = t;
+  }
+  if (mods.has("shift") && key2 in BASE_OF_SHIFTED) key2 = BASE_OF_SHIFTED[key2];
+  return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key2].join("+");
+}
+__name(normalizeChord, "normalizeChord");
+function chordMatches(eventChord, declared, opts = {}) {
+  return normalizeChord(eventChord, opts) === normalizeChord(declared, opts);
+}
+__name(chordMatches, "chordMatches");
+
+// src/visualEdit/panels/gridGestures.ts
+var GRID_SCOPE = {
+  pianoRoll: "pianoRoll",
+  sequencer: "sequencer"
+};
+var GRID_GESTURE = {
+  rollDelete: "stave.pianoRoll.deleteNote",
+  rollCopy: "stave.pianoRoll.copyNote",
+  rollPaste: "stave.pianoRoll.pasteNote"
+};
+var GRID_GESTURES = [
+  {
+    id: GRID_GESTURE.rollDelete,
+    scope: GRID_SCOPE.pianoRoll,
+    title: "Delete selected note",
+    keybinding: "delete",
+    alternateKeybindings: ["backspace"]
+  },
+  { id: GRID_GESTURE.rollCopy, scope: GRID_SCOPE.pianoRoll, title: "Copy selected note", keybinding: "mod+c" },
+  {
+    id: GRID_GESTURE.rollPaste,
+    scope: GRID_SCOPE.pianoRoll,
+    title: "Paste note at selected cell",
+    keybinding: "mod+v"
+  }
+];
+var GRID_SCOPE_LABEL = {
+  pianoRoll: { category: "Piano roll", where: "In the piano roll, on the selected cell" },
+  sequencer: { category: "Sequencer", where: "In the sequencer, on the selected cell" }
+};
+function matchDefaults(scope, e) {
+  const chord = chordFromEvent(e);
+  for (const g of GRID_GESTURES) {
+    if (g.scope !== scope) continue;
+    if ([g.keybinding, ...g.alternateKeybindings ?? []].some((b) => chordMatches(chord, b))) return g.id;
+  }
+  return void 0;
+}
+__name(matchDefaults, "matchDefaults");
+var matcher = matchDefaults;
+function setGridKeyMatcher(fn) {
+  matcher = fn;
+  return () => {
+    if (matcher === fn) matcher = matchDefaults;
+  };
+}
+__name(setGridKeyMatcher, "setGridKeyMatcher");
+function matchGridKey(scope, e) {
+  const id = matcher(scope, e);
+  return id && isGridGestureId(id) ? id : void 0;
+}
+__name(matchGridKey, "matchGridKey");
+var IDS = new Set(Object.values(GRID_GESTURE));
+function isGridGestureId(id) {
+  return IDS.has(id);
+}
+__name(isGridGestureId, "isGridGestureId");
+var mounted = /* @__PURE__ */ new Map();
+function mountGridGestures(scope, run) {
+  mounted.set(scope, run);
+  return () => {
+    if (mounted.get(scope) === run) mounted.delete(scope);
+  };
+}
+__name(mountGridGestures, "mountGridGestures");
+function runGridGesture(scope, id, dryRun) {
+  if (!isGridGestureId(id)) return false;
+  return mounted.get(scope)?.(id, dryRun) ?? false;
+}
+__name(runGridGesture, "runGridGesture");
 var AUDITION_ENVELOPE = {
   gain: 0.9,
   attack: 0.01,
@@ -35771,6 +35946,33 @@ function PianoRollGrid({
     scaleToSlots,
     onResolution
   );
+  const runGesture = /* @__PURE__ */ __name((id, dryRun) => {
+    const sel = selectedRef.current;
+    if (!model || !sel || sel.kind !== "roll") return false;
+    const hasNote = model.notes.some((n) => n.pitch === sel.pitch && n.start === sel.start);
+    switch (id) {
+      case GRID_GESTURE.rollDelete:
+        if (dryRun) return hasNote;
+        removeSelected();
+        return true;
+      case GRID_GESTURE.rollCopy:
+        if (dryRun) return hasNote;
+        copySelected();
+        return true;
+      case GRID_GESTURE.rollPaste:
+        if (dryRun) return getNoteClip() !== null;
+        pasteClip();
+        return true;
+      default:
+        return false;
+    }
+  }, "runGesture");
+  const runGestureRef = React36__namespace.useRef(runGesture);
+  runGestureRef.current = runGesture;
+  React36__namespace.useEffect(
+    () => mountGridGestures(GRID_SCOPE.pianoRoll, (id, dryRun) => runGestureRef.current(id, dryRun)),
+    []
+  );
   if (!model) {
     return React36__namespace.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
@@ -35787,20 +35989,11 @@ function PianoRollGrid({
       tabIndex: 0,
       onPointerDownCapture: (e) => e.currentTarget.focus({ preventScroll: true }),
       onKeyDown: (e) => {
-        if (e.key === "Delete" || e.key === "Backspace") {
-          e.preventDefault();
-          removeSelected();
-          return;
-        }
-        if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
-          if (e.key === "c" || e.key === "C") {
-            e.preventDefault();
-            copySelected();
-          } else if (e.key === "v" || e.key === "V") {
-            e.preventDefault();
-            pasteClip();
-          }
-        }
+        const id = matchGridKey(GRID_SCOPE.pianoRoll, e.nativeEvent);
+        if (!id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        runGesture(id, false);
       },
       style: {
         position: "relative",
@@ -48194,7 +48387,7 @@ function CompiledVizMount(props) {
     if (isP5) {
       setCurrentP5Source(file.path, getP5LineOffset(file.content));
     }
-    let mounted = null;
+    let mounted2 = null;
     const reportError = /* @__PURE__ */ __name((e) => {
       const index = isP5 ? P5_DOCS_INDEX : HYDRA_DOCS_INDEX;
       const parts = formatFriendlyError(e, runtime, { index });
@@ -48212,17 +48405,17 @@ function CompiledVizMount(props) {
       });
     }, "reportError");
     try {
-      mounted = mountVizRenderer(
+      mounted2 = mountVizRenderer(
         el,
         descriptor.factory,
         components,
         size,
         reportError
       );
-      rendererRef.current = mounted;
+      rendererRef.current = mounted2;
       if (paused) {
         try {
-          mounted.renderer.pause();
+          mounted2.renderer.pause();
         } catch {
         }
       }
@@ -48232,10 +48425,10 @@ function CompiledVizMount(props) {
     return () => {
       rendererRef.current = null;
       if (isP5) setCurrentP5Source(null);
-      if (mounted) {
+      if (mounted2) {
         try {
-          mounted.disconnect();
-          mounted.renderer.destroy();
+          mounted2.disconnect();
+          mounted2.renderer.destroy();
         } catch {
         }
       }
@@ -49607,6 +49800,10 @@ exports.FSCOPE_P5_CODE = FSCOPE_P5_CODE;
 exports.GLSL_VIZ = GLSL_VIZ;
 exports.GM_FAMILY_KEY_COUNT = GM_FAMILY_KEY_COUNT;
 exports.GM_FAMILY_ORDER = GM_FAMILY_ORDER;
+exports.GRID_GESTURE = GRID_GESTURE;
+exports.GRID_GESTURES = GRID_GESTURES;
+exports.GRID_SCOPE = GRID_SCOPE;
+exports.GRID_SCOPE_LABEL = GRID_SCOPE_LABEL;
 exports.HYDRA_DOCS_INDEX = HYDRA_DOCS_INDEX;
 exports.HYDRA_VIZ = HYDRA_VIZ;
 exports.HapStream = HapStream;
@@ -50026,6 +50223,7 @@ exports.revealOffsetInFile = revealOffsetInFile;
 exports.revertFileToSeed = revertFileToSeed;
 exports.rootStackArms = rootStackArms;
 exports.routeSurface = routeSurface;
+exports.runGridGesture = runGridGesture;
 exports.runPasses = runPasses;
 exports.sampleRefOf = sampleRefOf;
 exports.sanitizePresetName = sanitizePresetName;
@@ -50055,6 +50253,7 @@ exports.setEditorTheme = setEditorTheme;
 exports.setEditorUiIconSize = setEditorUiIconSize;
 exports.setFileHistoryTarget = setFileHistoryTarget;
 exports.setFolderOrder = setFolderOrder;
+exports.setGridKeyMatcher = setGridKeyMatcher;
 exports.setInlineVizActionSize = setInlineVizActionSize;
 exports.setInlineVizResolution = setInlineVizResolution;
 exports.setInlineVizTeardownEnabled = setInlineVizTeardownEnabled;

@@ -73,6 +73,8 @@ import { ConsolePanel } from "./ConsolePanel";
 import { IRInspectorPanel } from "./IRInspectorPanel";
 import { registerCommand } from "../commands/registry";
 import { installKeybindingDispatcher } from "../commands/keybindings";
+// #1801 — registers the piano roll / sequencer keys as scoped commands.
+import "../commands/gridCommands";
 import { registerPanel } from "../panels/registry";
 import { AssetLibraryPanel } from "../assetLibrary/AssetLibraryPanel";
 import { registerAssetProvider, notifyAssetProvidersChanged } from "../assetLibrary/registry";
