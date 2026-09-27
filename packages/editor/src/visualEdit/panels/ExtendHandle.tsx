@@ -1,8 +1,8 @@
 /**
  * ExtendHandle — the `+` just past a grid's last column (#1824).
  *
- *   click  → repeat the whole pattern once (Logic's Step Sequencer: "the added
- *            steps duplicate the existing pattern")
+ *   click  → add one bar that continues the pattern (Logic's Step Sequencer:
+ *            "the added steps duplicate the existing pattern")
  *   drag   → grow the grid one column at a time while held; on release, add that
  *            many columns' worth of EMPTY bars, rounded up (Logic's region resize:
  *            "lengthen a MIDI region to add silence"). Whole bars, because a
@@ -49,7 +49,7 @@ export function ExtendHandle({ length, gridRef, cellAttr, cols }: ExtendHandlePr
   // Pointer or focus on the handle — only then is the (Strudel-querying) verdict asked.
   const [engaged, setEngaged] = React.useState(false)
   const dragRef = React.useRef<{ x: number; moved: boolean } | null>(null)
-  // The click that follows a drag's pointerup must not also repeat the pattern.
+  // The click that follows a drag's pointerup must not also add a bar.
   const swallowClick = React.useRef(false)
 
   const measure = React.useCallback(() => {
@@ -90,7 +90,7 @@ export function ExtendHandle({ length, gridRef, cellAttr, cols }: ExtendHandlePr
   const perBar = Math.max(1, Math.round(cols / length.bars))
   const barsFor = (n: number): number => Math.ceil(n / perBar)
   const verdict = engaged ? length.verdict() : null
-  const blocked = verdict && !verdict.repeat.ok ? verdict.repeat.reason : null
+  const blocked = verdict && !verdict.duplicate.ok ? verdict.duplicate.reason : null
   const appendBlocked = verdict && !verdict.append.ok ? verdict.append.reason : null
 
   const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>): void => {
@@ -112,7 +112,7 @@ export function ExtendHandle({ length, gridRef, cellAttr, cols }: ExtendHandlePr
   const onPointerUp = (): void => {
     const d = dragRef.current
     dragRef.current = null
-    if (!d?.moved) return // a click — `onClick` repeats
+    if (!d?.moved) return // a click — `onClick` adds the bar
     swallowClick.current = true
     const n = added
     setAdded(0)
@@ -121,8 +121,8 @@ export function ExtendHandle({ length, gridRef, cellAttr, cols }: ExtendHandlePr
 
   const ghostWidth = frame ? added * frame.pitch : 0
   const label = blocked
-    ? `Can't repeat this pattern: ${blocked}`
-    : 'Repeat the pattern (click) or add empty bars (drag)'
+    ? `Can't continue this pattern: ${blocked}`
+    : 'Add a bar that continues the pattern (click) or empty bars (drag)'
 
   return (
     <>
@@ -192,7 +192,7 @@ export function ExtendHandle({ length, gridRef, cellAttr, cols }: ExtendHandlePr
             swallowClick.current = false
             return
           }
-          length.onRepeat()
+          length.onDuplicate()
         }}
         style={{
           position: 'absolute',

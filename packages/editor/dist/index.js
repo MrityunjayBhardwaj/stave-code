@@ -34907,7 +34907,7 @@ function ExtendHandle({ length, gridRef, cellAttr, cols }) {
   const perBar2 = Math.max(1, Math.round(cols / length.bars));
   const barsFor = /* @__PURE__ */ __name((n) => Math.ceil(n / perBar2), "barsFor");
   const verdict = engaged ? length.verdict() : null;
-  const blocked = verdict && !verdict.repeat.ok ? verdict.repeat.reason : null;
+  const blocked = verdict && !verdict.duplicate.ok ? verdict.duplicate.reason : null;
   const appendBlocked = verdict && !verdict.append.ok ? verdict.append.reason : null;
   const onPointerDown = /* @__PURE__ */ __name((e) => {
     if (e.button !== 0) return;
@@ -34934,7 +34934,7 @@ function ExtendHandle({ length, gridRef, cellAttr, cols }) {
     if (n > 0) length.onAddBars(barsFor(n));
   }, "onPointerUp");
   const ghostWidth = frame ? added * frame.pitch : 0;
-  const label = blocked ? `Can't repeat this pattern: ${blocked}` : "Repeat the pattern (click) or add empty bars (drag)";
+  const label = blocked ? `Can't continue this pattern: ${blocked}` : "Add a bar that continues the pattern (click) or empty bars (drag)";
   return /* @__PURE__ */ jsxs(Fragment, { children: [
     frame && added > 0 && /* @__PURE__ */ jsx(
       "div",
@@ -35005,7 +35005,7 @@ function ExtendHandle({ length, gridRef, cellAttr, cols }) {
             swallowClick.current = false;
             return;
           }
-          length.onRepeat();
+          length.onDuplicate();
         },
         style: {
           position: "absolute",
@@ -35049,6 +35049,23 @@ function entriesOf(mini) {
   return alt !== null ? alt.trim() : `[${mini.trim()}]`;
 }
 __name(entriesOf, "entriesOf");
+function splitEntries(inner) {
+  const out = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of inner) {
+    if ("[<{(".includes(ch)) depth++;
+    else if ("]>})".includes(ch)) depth--;
+    if (depth === 0 && ",|".includes(ch)) return null;
+    if (depth === 0 && /\s/.test(ch)) {
+      if (cur) out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out.some((e) => e === "." || e === "!" || e === "_") ? null : out;
+}
+__name(splitEntries, "splitEntries");
 function barKey(pat, bar2) {
   let haps;
   try {
@@ -35068,16 +35085,21 @@ function reify(mini$1) {
 }
 __name(reify, "reify");
 var CHANGES_PER_CYCLE = "this pattern plays differently from one cycle to the next, and repeating it as bars would change what it plays";
-function playsAsIntended(oldMini, newMini, bars, newBars, expect) {
+function oldBars(oldMini, bars) {
   const before = reify(oldMini);
-  const after = reify(newMini);
-  if (before === null || after === null) return "Strudel can't read the result";
+  if (before === null) return { reason: "Strudel can't read the pattern" };
   const old = [];
   for (let b = 0; b < bars; b++) {
     const k = barKey(before, b);
-    if (k === null || barKey(before, b + bars) !== k) return CHANGES_PER_CYCLE;
+    if (k === null || barKey(before, b + bars) !== k) return { reason: CHANGES_PER_CYCLE };
     old.push(k);
   }
+  return old;
+}
+__name(oldBars, "oldBars");
+function playsAsIntended(old, newMini, newBars, expect) {
+  const after = reify(newMini);
+  if (after === null) return "Strudel can't read the result";
   for (let b = 0; b < 2 * newBars; b++) {
     const want = expect(b % newBars);
     const got = barKey(after, b);
@@ -35087,17 +35109,33 @@ function playsAsIntended(oldMini, newMini, bars, newBars, expect) {
   return null;
 }
 __name(playsAsIntended, "playsAsIntended");
-function repeatBars(mini, bars) {
-  const entries3 = entriesOf(mini);
-  const next = `<${entries3} ${entries3}>`;
-  const why = playsAsIntended(mini, next, bars, 2 * bars, (b) => b % bars);
+function shortestRun(old) {
+  for (let p = 1; p < old.length; p++) {
+    if (old.every((k, i) => i < p || k === old[i - p])) return p;
+  }
+  return old.length;
+}
+__name(shortestRun, "shortestRun");
+var WHICH_BAR = "its text can't be split into one entry per bar";
+function duplicateBar(mini, bars) {
+  const old = oldBars(mini, bars);
+  if (!Array.isArray(old)) return { ok: false, reason: old.reason };
+  const inner = unwrapAlternation2(mini);
+  if (inner === null && bars !== 1) return { ok: false, reason: CHANGES_PER_CYCLE };
+  const entries3 = inner !== null ? splitEntries(inner) : [`[${mini.trim()}]`];
+  if (entries3 === null || entries3.length !== bars) return { ok: false, reason: WHICH_BAR };
+  const source = bars % shortestRun(old);
+  const next = `<${entriesOf(mini)} ${entries3[source]}>`;
+  const why = playsAsIntended(old, next, bars + 1, (b) => b < bars ? b : source);
   return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
 }
-__name(repeatBars, "repeatBars");
+__name(duplicateBar, "duplicateBar");
 function appendEmptyBars(mini, bars, add) {
   if (!Number.isInteger(add) || add < 1) return { ok: false, reason: "nothing to add" };
+  const old = oldBars(mini, bars);
+  if (!Array.isArray(old)) return { ok: false, reason: old.reason };
   const next = `<${entriesOf(mini)}${" ~".repeat(add)}>`;
-  const why = playsAsIntended(mini, next, bars, bars + add, (b) => b < bars ? b : null);
+  const why = playsAsIntended(old, next, bars + add, (b) => b < bars ? b : null);
   return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
 }
 __name(appendEmptyBars, "appendEmptyBars");
@@ -35130,26 +35168,26 @@ function usePatternLength(chunk, model, parse6, writeMini) {
       cache3.current = {
         key: key2,
         verdict: {
-          repeat: check(repeatBars(mini, bars), 2 * bars),
+          duplicate: check(duplicateBar(mini, bars), bars + 1),
           append: check(appendEmptyBars(mini, bars, 1), bars + 1)
         }
       };
     }
     return cache3.current.verdict;
   }, "verdict");
-  const onRepeat = /* @__PURE__ */ __name(() => {
-    const r = verdict()?.repeat;
+  const onDuplicate = /* @__PURE__ */ __name(() => {
+    const r = verdict()?.duplicate;
     if (!r) return;
     if (r.ok) writeMini(r.mini);
-    else report("Couldn't repeat the pattern", r.reason);
-  }, "onRepeat");
+    else report("Couldn't add a bar that continues the pattern", r.reason);
+  }, "onDuplicate");
   const onAddBars = /* @__PURE__ */ __name((n) => {
     if (mini === null || n < 1) return;
     const r = check(appendEmptyBars(mini, bars, n), bars + n);
     if (r.ok) writeMini(r.mini);
     else report(`Couldn't add ${n === 1 ? "a bar" : `${n} bars`}`, r.reason);
   }, "onAddBars");
-  return { bars, verdict, onRepeat, onAddBars };
+  return { bars, verdict, onDuplicate, onAddBars };
 }
 __name(usePatternLength, "usePatternLength");
 function report(attempted, reason) {

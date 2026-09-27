@@ -5,13 +5,15 @@
  * entry per bar — the spelling 345 of the corpus's 591 multi-cycle pitched calls
  * already use, and the one both grids draw one bar per entry:
  *
- *   repeatBars(mini, bars)          X → <[X] [X]>,  <a b> → <a b a b>
+ *   duplicateBar(mini, bars)        X → <[X] [X]>,  <a b> → <a b a>,  <a b a> → <a b a b>
  *   appendEmptyBars(mini, bars, n)  X → <[X] ~>,    <a b> → <a b ~>
  *
- * The first is Logic's Step Sequencer ("the added steps duplicate the existing
- * pattern"); the second is Logic's region resize ("lengthen a MIDI region to add
- * silence"). Whole bars only: a length that is not a whole number of cycles is a
- * polymeter against every other track, and neither grid can draw it.
+ * The first is Logic's Step Sequencer ("When you increase the pattern length, the
+ * added steps duplicate the existing pattern"), one bar per click: the new bar is
+ * the one that continues the pattern's shortest repeating run of bars. The second
+ * is Logic's region resize ("lengthen a MIDI region to add silence"). Whole bars
+ * only: a length that is not a whole number of cycles is a polymeter against every
+ * other track, and neither grid can draw it.
  *
  * ⚠ THE ANSWER COMES FROM STRUDEL, NOT FROM THE SPELLING. Wrapping a pattern in
  * `<…>` gives each entry its own cycle count, so anything inside that changes from
@@ -19,7 +21,8 @@
  * rewrite (`c3 <e3 g3>` repeated this way plays e3 e3 g3 g3, not e3 g3 e3 g3). No
  * syntax test is asked to predict that. Both rewrites are checked by querying the
  * old and new patterns and comparing them bar by bar; a rewrite that does not play
- * exactly the intended bars is refused.
+ * exactly the intended bars is refused. The same bar-by-bar reading is what says
+ * which bar continues the pattern.
  */
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 
@@ -42,6 +45,28 @@ function unwrapAlternation(mini: string): string | null {
 function entriesOf(mini: string): string {
   const alt = unwrapAlternation(mini)
   return alt !== null ? alt.trim() : `[${mini.trim()}]`
+}
+
+/**
+ * The `<…>` entries one by one, or null when the text is not a plain list of them
+ * (a top-level `,` `|` `.`, or a lone `!` `_` that belongs to its neighbour).
+ * Whether each entry really is one bar is left to the haps check.
+ */
+function splitEntries(inner: string): string[] | null {
+  const out: string[] = []
+  let depth = 0
+  let cur = ''
+  for (const ch of inner) {
+    if ('[<{('.includes(ch)) depth++
+    else if (']>})'.includes(ch)) depth--
+    if (depth === 0 && ',|'.includes(ch)) return null
+    if (depth === 0 && /\s/.test(ch)) {
+      if (cur) out.push(cur)
+      cur = ''
+    } else cur += ch
+  }
+  if (cur) out.push(cur)
+  return out.some((e) => e === '.' || e === '!' || e === '_') ? null : out
 }
 
 type Hap = {
@@ -80,30 +105,35 @@ const CHANGES_PER_CYCLE =
   'this pattern plays differently from one cycle to the next, and repeating it as bars would change what it plays'
 
 /**
- * The haps check both rewrites share. `expect(bar)` names, for each bar of the new
- * pattern, the OLD bar it must play — or null for a bar that must be silent.
- *
- * The old pattern is first held to its own claimed length: every bar in two
- * periods must repeat the bar one period earlier. A pattern that does not repeat
- * every `bars` cycles is one the grid is not showing whole, and no rewrite of it
- * can be checked against what is on screen.
+ * What each of the old pattern's `bars` plays, held first to its own claimed
+ * length: every bar in two periods must repeat the bar one period earlier. A
+ * pattern that does not repeat every `bars` cycles is one the grid is not showing
+ * whole, and no rewrite of it can be checked against what is on screen.
  */
-function playsAsIntended(
-  oldMini: string,
-  newMini: string,
-  bars: number,
-  newBars: number,
-  expect: (bar: number) => number | null,
-): string | null {
+function oldBars(oldMini: string, bars: number): string[] | { reason: string } {
   const before = reify(oldMini)
-  const after = reify(newMini)
-  if (before === null || after === null) return "Strudel can't read the result"
+  if (before === null) return { reason: "Strudel can't read the pattern" }
   const old: string[] = []
   for (let b = 0; b < bars; b++) {
     const k = barKey(before, b)
-    if (k === null || barKey(before, b + bars) !== k) return CHANGES_PER_CYCLE
+    if (k === null || barKey(before, b + bars) !== k) return { reason: CHANGES_PER_CYCLE }
     old.push(k)
   }
+  return old
+}
+
+/**
+ * The haps check both rewrites share. `expect(bar)` names, for each bar of the new
+ * pattern, the OLD bar it must play — or null for a bar that must be silent.
+ */
+function playsAsIntended(
+  old: string[],
+  newMini: string,
+  newBars: number,
+  expect: (bar: number) => number | null,
+): string | null {
+  const after = reify(newMini)
+  if (after === null) return "Strudel can't read the result"
   // Two full periods of the new pattern, so a bar that plays right once but not on
   // the repeat is caught too.
   for (let b = 0; b < 2 * newBars; b++) {
@@ -115,15 +145,35 @@ function playsAsIntended(
   return null
 }
 
+/** the shortest run of bars the pattern repeats: `a b a` → 2, `a a` → 1, `a b c` → 3 */
+function shortestRun(old: string[]): number {
+  for (let p = 1; p < old.length; p++) {
+    if (old.every((k, i) => i < p || k === old[i - p])) return p
+  }
+  return old.length
+}
+
+const WHICH_BAR = "its text can't be split into one entry per bar"
+
 /**
- * Repeat the whole pattern once: `bars` → `2 × bars`, sounding exactly as before
- * until the new bars are edited. `bars` is how many cycles the grid draws the
- * pattern over (the roll's `bars`, 1 for a plain sequence).
+ * Add one bar that continues the pattern: `bars` → `bars + 1`, the new bar a copy of
+ * the one the pattern's shortest repeating run would play next. A one-bar pattern
+ * sounds exactly as before until the copy is edited; `<a b>` becomes `<a b a>`, and
+ * a second click `<a b a b>`. `bars` is how many cycles the grid draws the pattern
+ * over (the roll's `bars`, 1 for a plain sequence).
  */
-export function repeatBars(mini: string, bars: number): LengthenResult {
-  const entries = entriesOf(mini)
-  const next = `<${entries} ${entries}>`
-  const why = playsAsIntended(mini, next, bars, 2 * bars, (b) => b % bars)
+export function duplicateBar(mini: string, bars: number): LengthenResult {
+  const old = oldBars(mini, bars)
+  if (!Array.isArray(old)) return { ok: false, reason: old.reason }
+  const inner = unwrapAlternation(mini)
+  // One text drawn over several bars changes from cycle to cycle by itself
+  // (`c3 <e3 g3>`); no single bar of it can be written down as a copy.
+  if (inner === null && bars !== 1) return { ok: false, reason: CHANGES_PER_CYCLE }
+  const entries = inner !== null ? splitEntries(inner) : [`[${mini.trim()}]`]
+  if (entries === null || entries.length !== bars) return { ok: false, reason: WHICH_BAR }
+  const source = bars % shortestRun(old)
+  const next = `<${entriesOf(mini)} ${entries[source]}>`
+  const why = playsAsIntended(old, next, bars + 1, (b) => (b < bars ? b : source))
   return why === null ? { ok: true, mini: next } : { ok: false, reason: why }
 }
 
@@ -133,7 +183,9 @@ export function repeatBars(mini: string, bars: number): LengthenResult {
  */
 export function appendEmptyBars(mini: string, bars: number, add: number): LengthenResult {
   if (!Number.isInteger(add) || add < 1) return { ok: false, reason: 'nothing to add' }
+  const old = oldBars(mini, bars)
+  if (!Array.isArray(old)) return { ok: false, reason: old.reason }
   const next = `<${entriesOf(mini)}${' ~'.repeat(add)}>`
-  const why = playsAsIntended(mini, next, bars, bars + add, (b) => (b < bars ? b : null))
+  const why = playsAsIntended(old, next, bars + add, (b) => (b < bars ? b : null))
   return why === null ? { ok: true, mini: next } : { ok: false, reason: why }
 }

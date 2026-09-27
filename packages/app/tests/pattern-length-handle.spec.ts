@@ -4,7 +4,8 @@ import { expectRefusalReported, expectNoRefusalReported } from './_console'
 
 /**
  * #1824 — the `+` past a grid's last column makes the pattern longer.
- *   click → repeat the whole pattern once (sounds the same until edited)
+ *   click → one more bar, continuing the pattern (a one-bar pattern sounds the
+ *           same until the copy is edited)
  *   drag  → one column at a time while held; on release, that many columns' worth
  *           of EMPTY bars, rounded up
  * Driven with the real mouse. What each rewrite PLAYS is checked against Strudel in
@@ -38,7 +39,7 @@ function columns(panel: Locator, attr: string): Promise<number> {
 }
 
 test.describe('piano roll', () => {
-  test('click + repeats the pattern: two bars, one undo step, nothing reported', async ({ page }) => {
+  test('click + adds one bar that continues the pattern: one undo step, nothing reported', async ({ page }) => {
     const code = `$: note("${MELODY}")`
     const roll = await open(page, code, ROLL, '[data-roll-cell="64:0"]')
     expect(await columns(roll, 'data-roll-cell')).toBe(8)
@@ -49,8 +50,17 @@ test.describe('piano roll', () => {
     await expect.poll(() => columns(roll, 'data-roll-cell')).toBe(16)
     // bar 2 is the copy: the first note of bar 1 again, at column 8
     await expect(roll.locator('[data-roll-cell="64:8"]')).toHaveAttribute('aria-pressed', 'true')
-    // one gesture, one undo step
+    // a second click adds ONE more bar — three, not four
+    await roll.locator('[data-extend-handle]').click()
+    await expect.poll(() => editorValue(page), { timeout: 5_000 }).toBe(
+      `$: note("<[${MELODY}] [${MELODY}] [${MELODY}]>")`,
+    )
+    await expect.poll(() => columns(roll, 'data-roll-cell')).toBe(24)
+    await expect(roll.locator('[data-roll-cell="64:16"]')).toHaveAttribute('aria-pressed', 'true')
+    // one gesture, one undo step each
     await roll.locator('[data-roll-cell="64:0"]').focus()
+    await page.keyboard.press('Meta+z')
+    await expect.poll(() => editorValue(page), { timeout: 5_000 }).toBe(`$: note("<[${MELODY}] [${MELODY}]>")`)
     await page.keyboard.press('Meta+z')
     await expect.poll(() => editorValue(page), { timeout: 5_000 }).toBe(code)
     await expectNoRefusalReported(page)
@@ -85,12 +95,17 @@ test.describe('piano roll', () => {
     await expectNoRefusalReported(page)
   })
 
-  test('a chord progression repeats by its own bars', async ({ page }) => {
+  test('a chord progression continues: its first chord, then its second', async ({ page }) => {
     const roll = await open(page, '$: note("<[c3,e3,g3] [a2,c3,e3]>")', ROLL, '[data-roll-cell="48:0"]')
+    await roll.locator('[data-extend-handle]').click()
+    await expect.poll(() => editorValue(page), { timeout: 5_000 }).toBe(
+      '$: note("<[c3,e3,g3] [a2,c3,e3] [c3,e3,g3]>")',
+    )
     await roll.locator('[data-extend-handle]').click()
     await expect.poll(() => editorValue(page), { timeout: 5_000 }).toBe(
       '$: note("<[c3,e3,g3] [a2,c3,e3] [c3,e3,g3] [a2,c3,e3]>")',
     )
+    await expectNoRefusalReported(page)
   })
 
   test('REFUSES a pattern that changes from cycle to cycle, says so on the handle and in the Console', async ({ page }) => {
@@ -104,7 +119,7 @@ test.describe('piano roll', () => {
     // by position: a disabled-looking control is still one a user can press
     const at = await centre(handle)
     await page.mouse.click(at.x, at.y)
-    await expectRefusalReported(page, "Couldn't repeat the pattern")
+    await expectRefusalReported(page, "Couldn't add a bar that continues the pattern")
     expect(await editorValue(page)).toBe(code)
   })
 
@@ -116,13 +131,13 @@ test.describe('piano roll', () => {
     await expect(handle).toHaveAttribute('title', /velocities are written per column/)
     const at = await centre(handle)
     await page.mouse.click(at.x, at.y)
-    await expectRefusalReported(page, "Couldn't repeat the pattern")
+    await expectRefusalReported(page, "Couldn't add a bar that continues the pattern")
     expect(await editorValue(page)).toBe(code)
   })
 })
 
 test.describe('step sequencer', () => {
-  test('click + repeats a drum pattern', async ({ page }) => {
+  test('click + adds a bar to a drum pattern', async ({ page }) => {
     const seq = await open(page, '$: s("bd sd bd sd")', SEQ, '[data-seq-cell="0:0"]')
     expect(await columns(seq, 'data-seq-cell')).toBe(4)
     await seq.locator('[data-extend-handle]').click()
@@ -131,13 +146,13 @@ test.describe('step sequencer', () => {
     await expectNoRefusalReported(page)
   })
 
-  test('REFUSES a repeat the step grid could not show, rather than sending it to standby', async ({ page }) => {
+  test('REFUSES a bar the step grid could not show, rather than sending it to standby', async ({ page }) => {
     const code = '$: s("bd*2 sd")'
     const seq = await open(page, code, SEQ, '[data-seq-cell="0:0"]')
     await seq.locator('[data-extend-handle]').hover()
     await expect(seq.locator('[data-extend-handle]')).toHaveAttribute('title', /grid couldn't show the longer pattern/)
     await seq.locator('[data-extend-handle]').click()
-    await expectRefusalReported(page, "Couldn't repeat the pattern")
+    await expectRefusalReported(page, "Couldn't add a bar that continues the pattern")
     expect(await editorValue(page)).toBe(code)
   })
 })

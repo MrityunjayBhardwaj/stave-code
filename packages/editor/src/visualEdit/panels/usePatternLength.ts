@@ -10,7 +10,7 @@ import * as React from 'react'
 
 import { emitLog } from '../../engine/engineLog'
 import type { ChunkInfo } from '../chunkDetect'
-import { appendEmptyBars, repeatBars, type LengthenResult } from '../notation/lengthen'
+import { appendEmptyBars, duplicateBar, type LengthenResult } from '../notation/lengthen'
 import type { ParseResult } from '../notation/model'
 import { UNREFINED, type ViewScale } from '../notation/viewResolution'
 
@@ -30,8 +30,8 @@ function hasVelocityString(chunk: ChunkInfo): boolean {
 }
 
 export interface Verdict {
-  /** click: repeat the pattern once — or why not */
-  repeat: LengthenResult
+  /** click: add one bar that continues the pattern — or why not */
+  duplicate: LengthenResult
   /** drag: can empty bars be appended at all — or why not */
   append: LengthenResult
 }
@@ -46,7 +46,7 @@ export interface PatternLength {
    * every edit would land on every frame of an unrelated note drag.
    */
   verdict: () => Verdict | null
-  onRepeat: () => void
+  onDuplicate: () => void
   onAddBars: (n: number) => void
 }
 
@@ -80,7 +80,7 @@ export function usePatternLength<M extends { bars?: number }>(
       cache.current = {
         key,
         verdict: {
-          repeat: check(repeatBars(mini, bars), 2 * bars),
+          duplicate: check(duplicateBar(mini, bars), bars + 1),
           append: check(appendEmptyBars(mini, bars, 1), bars + 1),
         },
       }
@@ -88,11 +88,11 @@ export function usePatternLength<M extends { bars?: number }>(
     return cache.current.verdict
   }
 
-  const onRepeat = (): void => {
-    const r = verdict()?.repeat
+  const onDuplicate = (): void => {
+    const r = verdict()?.duplicate
     if (!r) return
     if (r.ok) writeMini(r.mini)
-    else report("Couldn't repeat the pattern", r.reason)
+    else report("Couldn't add a bar that continues the pattern", r.reason)
   }
   const onAddBars = (n: number): void => {
     if (mini === null || n < 1) return
@@ -100,7 +100,7 @@ export function usePatternLength<M extends { bars?: number }>(
     if (r.ok) writeMini(r.mini)
     else report(`Couldn't add ${n === 1 ? 'a bar' : `${n} bars`}`, r.reason)
   }
-  return { bars, verdict, onRepeat, onAddBars }
+  return { bars, verdict, onDuplicate, onAddBars }
 }
 
 /** Said in the Console, as the grids' other refusals are; the document is untouched. */

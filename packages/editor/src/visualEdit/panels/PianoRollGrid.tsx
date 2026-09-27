@@ -335,7 +335,7 @@ export function PianoRollGrid({
     onViewScaleConsumed: () => setViewScale(UNREFINED),
     collapseToDocument: collapsePianoRollToDocument,
   })
-  // The `+` past the last column: repeat the pattern, or drag in empty bars (#1824).
+  // The `+` past the last column: add a bar that continues the pattern, or drag in empty bars (#1824).
   const length = usePatternLength(chunk, model, parsePianoRoll, writeMini)
 
   // A refinement belongs to the pattern it was made on — see `SequencerGrid` for
