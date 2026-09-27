@@ -19,6 +19,7 @@
  * surface, and the cursor→chunk binding resolves exactly one chain.
  */
 import * as React from 'react'
+import { CODE_UNDO_ACTIVE, CODE_UNDO_ATTR } from '../../workspace/codeUndo'
 
 import { useActiveChunk } from './useActiveChunk'
 import { chunkSurface } from './surfaceRoute'
@@ -83,6 +84,9 @@ export function PatternPanel(): React.ReactElement {
   return (
     <div
       data-bottom-panel-tab="pattern"
+      // The grids and the mixer write to the active code editor, so ⌘Z pressed
+      // in here walks that editor's history (#1800).
+      {...{ [CODE_UNDO_ATTR]: CODE_UNDO_ACTIVE }}
       style={{ display: 'flex', height: '100%', width: '100%', minWidth: 0 }}
     >
       {/* adaptive grid — Sequencer for drums, Piano Roll for melodies */}

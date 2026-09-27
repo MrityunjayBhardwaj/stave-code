@@ -134,8 +134,8 @@ export function KeyboardShortcutsPanel({ query }: KeyboardShortcutsPanelProps) {
         <div className="kb-cmd">
           <div className="kb-name">{r.cmd.title}</div>
           {/* A scoped command only works inside its panel — say where (#1795). */}
-          {r.cmd.scope && r.cmd.description ? (
-            <div className="kb-when" data-testid={`when-${r.cmd.id}`}>{r.cmd.description}</div>
+          {r.cmd.where || (r.cmd.scope && r.cmd.description) ? (
+            <div className="kb-when" data-testid={`when-${r.cmd.id}`}>{r.cmd.where ?? r.cmd.description}</div>
           ) : null}
           {conflicts.length ? (
             <div className="conflict" data-testid={`conflict-${r.cmd.id}`}>

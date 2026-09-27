@@ -30,6 +30,11 @@ export interface Command {
   /** Optional trailing description for the palette. */
   readonly description?: string;
   /**
+   * Where the key works, when that is not "everywhere" and the command is not
+   * scoped (#1800) — shown under the chord in Settings → Keyboard Shortcuts.
+   */
+  readonly where?: string;
+  /**
    * Extra DEFAULT chords, beside `keybinding` (#1795). Delete on a Mac keyboard
    * sends `Backspace`, so a "delete" gesture needs both out of the box. A user
    * rebind replaces the whole set with the one chord they chose.
