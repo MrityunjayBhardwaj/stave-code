@@ -770,8 +770,20 @@ export const resizableNotes = (model: PianoRollModel): Set<RollNote> => {
 const rollReadsBack = (next: PianoRollModel): boolean => {
   const out = serializePianoRoll(next)
   if (out === null) return false
-  const back = parsePianoRoll(out)
+  let back = parsePianoRoll(out)
   if (!back.ok) return false
+  // ⚠ READ IT BACK IN THE UNITS IT WAS MEANT IN (#1822). A refined view (Slots ×2)
+  // counts steps at its own resolution, and a write whose notes no longer need that
+  // resolution is spelled at the document's coarser one — so the unrefined re-parse
+  // came back with fewer steps and EVERY delete on a refined view was refused. Read
+  // the document at the factor it came back coarser by, which is exact: notes that
+  // match there match in document units too. Only for a refined model; an unrefined
+  // one has no finer unit to be read in, and is judged exactly as before.
+  const k = next.steps / back.model.steps
+  if (next.viewScale !== undefined && k > 1 && Number.isInteger(k)) {
+    back = parsePianoRoll(out, k)
+    if (!back.ok) return false
+  }
   if (back.model.steps !== next.steps) return false
   if (back.model.notes.length !== next.notes.length) return false
   const key = (n: RollNote): string => `${n.pitch}@${n.start}+${n.duration}`
