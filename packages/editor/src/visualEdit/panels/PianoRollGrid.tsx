@@ -1012,8 +1012,7 @@ export function PianoRollGrid({
         // bound (#1801) — so ⌘⇧C (Chrome's element picker) and ⌘⇧V (paste
         // without formatting) are not copy and paste (#1425), and ⌥⌫ is not
         // delete. A matched key is claimed even when there is nothing to act on,
-        // as it always was: ⌘C on an empty cell must not fall through to a copy
-        // of whatever the page has selected.
+        // as the raw handler before it did.
         const id = matchGridKey(GRID_SCOPE.pianoRoll, e.nativeEvent)
         if (!id) return
         e.preventDefault()
