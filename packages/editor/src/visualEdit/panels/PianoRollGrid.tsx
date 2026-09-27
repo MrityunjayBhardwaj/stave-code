@@ -1145,10 +1145,17 @@ export function PianoRollGrid({
   }
 
   const tabCell = cursorCell() ?? defaultCell()
-  // A gap before each bar after the first — the sequencer's long-standing rule, so a
-  // pattern made longer by the `+` reads as bars rather than one run of columns (#1824).
+  // A line before each bar after the first, so a pattern made longer by the `+` reads
+  // as bars rather than one run of columns (#1824).
+  //
+  // ⚠ A SHADOW INTO THE EXISTING 1px GAP, NOT A MARGIN. The sequencer's 8px gap was tried
+  // first and MEASURED: on 32 columns at 1280px it narrowed every cell 2.6px (to 18.3px),
+  // which put a cell's centre on its note's 8px resize handle — a grab-to-move became a
+  // resize (roll-move-readback went red). A roll's cells are flexible and already narrow;
+  // a bar marker must not take width from them.
   const barCols = model.bars && model.bars > 1 && Number.isInteger(cols / model.bars) ? cols / model.bars : 0
-  const barGap = (c: number): number => (barCols && c > 0 && c % barCols === 0 ? 8 : 0)
+  const barLine = (c: number): string | undefined =>
+    barCols && c > 0 && c % barCols === 0 ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined
 
   return (
     <div
@@ -1366,7 +1373,7 @@ export function PianoRollGrid({
                       key={step}
                       role="gridcell"
                       aria-selected={isSel}
-                      style={{ display: 'flex', flex: '1 1 0', minWidth: 12, maxWidth: 44, marginLeft: barGap(step) }}
+                      style={{ display: 'flex', flex: '1 1 0', minWidth: 12, maxWidth: 44, boxShadow: barLine(step) }}
                     >
                     <button
                       type="button"
@@ -1690,7 +1697,7 @@ export function PianoRollGrid({
                       flex: '1 1 0',
                       minWidth: 12,
                       maxWidth: 44,
-                      marginLeft: barGap(col),
+                      boxShadow: barLine(col),
                       height: '100%',
                       borderRadius: 2,
                       background: 'var(--background-elevated, #26262c)',

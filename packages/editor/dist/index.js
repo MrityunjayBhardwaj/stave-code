@@ -36643,7 +36643,7 @@ function PianoRollGrid({
   }
   const tabCell = cursorCell() ?? defaultCell();
   const barCols = model.bars && model.bars > 1 && Number.isInteger(cols / model.bars) ? cols / model.bars : 0;
-  const barGap = /* @__PURE__ */ __name((c) => barCols && c > 0 && c % barCols === 0 ? 8 : 0, "barGap");
+  const barLine = /* @__PURE__ */ __name((c) => barCols && c > 0 && c % barCols === 0 ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0, "barLine");
   return /* @__PURE__ */ jsxs(
     "div",
     {
@@ -36825,7 +36825,7 @@ function PianoRollGrid({
                                     {
                                       role: "gridcell",
                                       "aria-selected": isSel,
-                                      style: { display: "flex", flex: "1 1 0", minWidth: 12, maxWidth: 44, marginLeft: barGap(step) },
+                                      style: { display: "flex", flex: "1 1 0", minWidth: 12, maxWidth: 44, boxShadow: barLine(step) },
                                       children: /* @__PURE__ */ jsxs(
                                         "button",
                                         {
@@ -37068,7 +37068,7 @@ function PianoRollGrid({
                                 flex: "1 1 0",
                                 minWidth: 12,
                                 maxWidth: 44,
-                                marginLeft: barGap(col),
+                                boxShadow: barLine(col),
                                 height: "100%",
                                 borderRadius: 2,
                                 background: "var(--background-elevated, #26262c)",
