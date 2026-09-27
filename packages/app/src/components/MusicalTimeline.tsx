@@ -1131,6 +1131,11 @@ export function MusicalTimeline(
       data-bottom-panel-tab="musical-timeline"
       role="region"
       aria-label="Timeline"
+      // Every timeline edit is written into this file's code editor, so ⌘Z
+      // pressed in here walks that editor's history (#1800). The name is the
+      // editor package's CODE_UNDO_ATTR, spelled out because this module's
+      // tests mock the package whole; the keyboard-undo spec fails on a mismatch.
+      data-code-undo-file={fileId}
       style={styles.root}
     >
         <FullSongTimeline

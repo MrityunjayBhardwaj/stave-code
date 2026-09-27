@@ -921,3 +921,6 @@ export { P5_DOCS_INDEX } from './monaco/docs/p5'
 export { HYDRA_DOCS_INDEX } from './monaco/docs/hydra'
 export { SONICPI_DOCS_INDEX } from './monaco/docs/sonicpi'
 export { STRUDEL_DOCS_INDEX } from './monaco/strudelDocs'
+
+// #1800 — which code editor ⌘Z means for the focused panel.
+export { CODE_UNDO_ATTR, codeEditorForFocus, codeUndoForFocus } from './workspace/codeUndo'

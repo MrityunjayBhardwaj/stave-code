@@ -29629,6 +29629,27 @@ registerBottomPanelTab({
   title: "Timeline",
   content: React36__namespace.createElement(EmptyTimelineStub)
 });
+
+// src/workspace/codeUndo.ts
+var CODE_UNDO_ATTR = "data-code-undo-file";
+var CODE_UNDO_ACTIVE = "active";
+function codeEditorForFocus(el) {
+  const host = el?.closest?.(`[${CODE_UNDO_ATTR}]`);
+  const target = host?.getAttribute(CODE_UNDO_ATTR);
+  if (!target) return void 0;
+  const editor = target === CODE_UNDO_ACTIVE ? getActiveEditor() : getEditorForFile(target);
+  return editor ?? void 0;
+}
+__name(codeEditorForFocus, "codeEditorForFocus");
+function codeUndoForFocus(el, which) {
+  const editor = codeEditorForFocus(el);
+  if (!editor) return false;
+  const model = editor.getModel?.();
+  if (which === "undo") model?.undo?.();
+  else model?.redo?.();
+  return true;
+}
+__name(codeUndoForFocus, "codeUndoForFocus");
 function useActiveChunk() {
   const [editor, setEditor] = React36__namespace.useState(() => getActiveEditor());
   const [chunk, setChunk] = React36__namespace.useState(null);
@@ -39448,6 +39469,7 @@ function PatternPanel() {
     "div",
     {
       "data-bottom-panel-tab": "pattern",
+      ...{ [CODE_UNDO_ATTR]: CODE_UNDO_ACTIVE },
       style: { display: "flex", height: "100%", width: "100%", minWidth: 0 },
       children: [
         /* @__PURE__ */ jsxRuntime.jsx("div", { "data-pattern-grid": true, style: { flex: 1, minWidth: 0, height: "100%", overflow: "hidden" }, children: grid }),
@@ -49570,6 +49592,7 @@ exports.BUNDLED_PREFIX = BUNDLED_PREFIX;
 exports.BottomPanel = BottomPanel;
 exports.BreakpointStore = BreakpointStore;
 exports.BufferedScheduler = BufferedScheduler;
+exports.CODE_UNDO_ATTR = CODE_UNDO_ATTR;
 exports.DARK_THEME_TOKENS = DARK_THEME_TOKENS;
 exports.DEFAULT_VIZ_CONFIG = DEFAULT_VIZ_CONFIG;
 exports.DEFAULT_VIZ_DESCRIPTORS = DEFAULT_VIZ_DESCRIPTORS;
@@ -49701,6 +49724,8 @@ exports.clearCapture = clearCapture;
 exports.clearIRSnapshot = clearIRSnapshot;
 exports.clearLog = clearLog;
 exports.clearShellState = clearShellState;
+exports.codeEditorForFocus = codeEditorForFocus;
+exports.codeUndoForFocus = codeUndoForFocus;
 exports.collectUnusedSounds = collectUnusedSounds;
 exports.commitWorkspace = commitWorkspace;
 exports.compilePreset = compilePreset;

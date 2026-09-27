@@ -19,6 +19,8 @@ import {
   canUndo,
   canRedo,
   subscribeToUndoState,
+  codeEditorForFocus,
+  codeUndoForFocus,
   dropLegacyBackgroundCrop,
   type CropRegion,
   type ProjectMeta,
@@ -192,6 +194,10 @@ function saveBlob(blob: Blob, fileName: string): void {
   // exportProjectAsZip).
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+/** Where Undo/Redo act, shown under them in Settings → Keyboard Shortcuts (#1800). */
+const UNDO_WHERE =
+  "In the piano roll, sequencer or Song timeline: that code edit. In the code editor: its own history. Elsewhere: file changes."
 
 export function StaveApp({ initialProject }: StaveAppProps) {
   const [activeProject, setActiveProject] = useState<ProjectMeta>(initialProject);
@@ -1610,16 +1616,20 @@ export function StaveApp({ initialProject }: StaveAppProps) {
       title: "Undo",
       category: "Edit",
       keybinding: "mod+z",
-      when: () => canUndo(),
-      run: () => { undo(); },
+      where: UNDO_WHERE,
+      // #1800 — a panel that edits code undoes in that code's history; only
+      // elsewhere does ⌘Z undo file changes.
+      when: () => !!codeEditorForFocus(document.activeElement) || canUndo(),
+      run: () => { if (!codeUndoForFocus(document.activeElement, "undo")) undo(); },
     }));
     unregs.push(registerCommand({
       id: "stave.edit.redo",
       title: "Redo",
       category: "Edit",
       keybinding: "mod+shift+z",
-      when: () => canRedo(),
-      run: () => { redo(); },
+      where: UNDO_WHERE,
+      when: () => !!codeEditorForFocus(document.activeElement) || canRedo(),
+      run: () => { if (!codeUndoForFocus(document.activeElement, "redo")) redo(); },
     }));
     unregs.push(registerCommand({
       id: "stave.view.toggleSidebar",
