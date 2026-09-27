@@ -70,6 +70,8 @@ import {
   type NoteEdit,
 } from './gridGestures'
 import { readChainMethod } from './chainMethod'
+import { ExtendHandle } from './ExtendHandle'
+import { usePatternLength } from './usePatternLength'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
 
@@ -322,7 +324,7 @@ export function PianoRollGrid({
    * worst case measured here is a sweep down the 13 declined cells of one column.
    */
   const [declinedCell, setDeclinedCell] = React.useState<string | null>(null)
-  const { chunk, model, mutate, settle, beginGesture, endGesture } = useGridModel<PianoRollModel>({
+  const { chunk, model, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel<PianoRollModel>({
     source: 'roll',
     eligible: opensPianoRoll,
     parse: parsePianoRoll,
@@ -333,6 +335,8 @@ export function PianoRollGrid({
     onViewScaleConsumed: () => setViewScale(UNREFINED),
     collapseToDocument: collapsePianoRollToDocument,
   })
+  // The `+` past the last column: add a bar that continues the pattern, or drag in empty bars (#1824).
+  const length = usePatternLength(chunk, model, parsePianoRoll, writeMini)
 
   // A refinement belongs to the pattern it was made on — see `SequencerGrid` for
   // why carrying it across a cursor move could send an editable pattern to standby.
@@ -1141,6 +1145,17 @@ export function PianoRollGrid({
   }
 
   const tabCell = cursorCell() ?? defaultCell()
+  // A line before each bar after the first, so a pattern made longer by the `+` reads
+  // as bars rather than one run of columns (#1824).
+  //
+  // ⚠ A SHADOW INTO THE EXISTING 1px GAP, NOT A MARGIN. The sequencer's 8px gap was tried
+  // first and MEASURED: on 32 columns at 1280px it narrowed every cell 2.6px (to 18.3px),
+  // which put a cell's centre on its note's 8px resize handle — a grab-to-move became a
+  // resize (roll-move-readback went red). A roll's cells are flexible and already narrow;
+  // a bar marker must not take width from them.
+  const barCols = model.bars && model.bars > 1 && Number.isInteger(cols / model.bars) ? cols / model.bars : 0
+  const barLine = (c: number): string | undefined =>
+    barCols && c > 0 && c % barCols === 0 ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined
 
   return (
     <div
@@ -1219,7 +1234,9 @@ export function PianoRollGrid({
         style={{ padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' }}
       >
         <div
-          style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}
+          // paddingRight: room for the `+` past the last column (#1824), so a long
+          // pattern's cells never grow into it
+          style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 1, width: '100%', paddingRight: 28, boxSizing: 'border-box' }}
           onPointerLeave={() => setHoveredMidi(null)}
         >
           {/* The pitch rows are the grid (#1802); the velocity lane below is not a row of it. */}
@@ -1356,7 +1373,7 @@ export function PianoRollGrid({
                       key={step}
                       role="gridcell"
                       aria-selected={isSel}
-                      style={{ display: 'flex', flex: '1 1 0', minWidth: 12, maxWidth: 44 }}
+                      style={{ display: 'flex', flex: '1 1 0', minWidth: 12, maxWidth: 44, boxShadow: barLine(step) }}
                     >
                     <button
                       type="button"
@@ -1594,6 +1611,7 @@ export function PianoRollGrid({
           )
         })}
           </div>
+        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-roll-cell" cols={cols} />
         {gainInScope(model) && (
           <div
             data-roll-velocity-lane
@@ -1679,6 +1697,7 @@ export function PianoRollGrid({
                       flex: '1 1 0',
                       minWidth: 12,
                       maxWidth: 44,
+                      boxShadow: barLine(col),
                       height: '100%',
                       borderRadius: 2,
                       background: 'var(--background-elevated, #26262c)',
