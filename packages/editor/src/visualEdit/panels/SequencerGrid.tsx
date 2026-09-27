@@ -52,6 +52,7 @@ import {
 } from '../notation/resolution'
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
+import { GRID_SCOPE, isCursorMove, matchGridKey, mountGridGestures, moveCursor, type GridAction, type GridCell } from './gridGestures'
 
 const SEQ_HINT = 'Click a drum pattern to edit it as a step grid.'
 
@@ -416,6 +417,86 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     paintCell(laneIndex, stepIndex, g.paintValue)
   }
 
+  // THE CURSOR (#1802): a (lane, step) the arrow keys move and the keys act on.
+  // A press on a cell moves it there too. Local to the grid — the sequencer has no
+  // selection for anything else to share.
+  const [cursor, setCursor] = React.useState<GridCell | null>(null)
+  const rowsN = model?.lanes.length ?? 0
+  const colsN = model?.steps ?? 0
+  /** The cursor, when it is still on the grid (a voice can be removed under it). */
+  const liveCursor = cursor && cursor.row < rowsN && cursor.col < colsN ? cursor : null
+  const cursorRef = React.useRef(liveCursor)
+  cursorRef.current = liveCursor
+
+  // The cursor belongs to the pattern it was placed on, like the Piano Roll's
+  // selection (PatternPanel). Keyed on the STATEMENT, not `chunkKey` — that one
+  // changes on every edit, and a toggle must not throw the cursor away.
+  const stmtId = chunk ? chunk.statementRange[0] : null
+  const stmtRef = React.useRef<number | null>(stmtId)
+  React.useEffect(() => {
+    if (stmtRef.current !== stmtId) {
+      stmtRef.current = stmtId
+      setCursor(null)
+    }
+  }, [stmtId])
+
+  // Set when a key moved the cursor, so the render that draws it also focuses it.
+  const focusCursorRef = React.useRef(false)
+  const gridRef = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    if (!focusCursorRef.current) return
+    focusCursorRef.current = false
+    gridRef.current?.querySelector<HTMLElement>('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')?.focus()
+  })
+
+  // One edit, bracketed the way the click brackets it — one undo step, one re-eval.
+  const paintByKey = (laneIndex: number, stepIndex: number, value: boolean): void => {
+    beginGesture()
+    paintCell(laneIndex, stepIndex, value)
+    endGesture()
+  }
+
+  // The sequencer's keys (#1802), through the same command path as the roll's
+  // (#1801). `fromKey`: a key on the grid's tab stop before any cursor exists
+  // acts on that cell (the top-left); the palette, with no cursor, acts nowhere.
+  const runGesture = (action: GridAction, dryRun: boolean, fromKey = false): boolean => {
+    if (!model || rowsN === 0 || colsN === 0) return false
+    const at = cursorRef.current ?? (fromKey ? { row: 0, col: 0 } : null)
+    if (isCursorMove(action)) {
+      if (dryRun) return true
+      focusCursorRef.current = true
+      setCursor(moveCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN))
+      return true
+    }
+    if (!at) return false
+    const cell = model.lanes[at.row]?.cells[at.col]
+    const on = cell !== undefined && isCellOn(cell)
+    switch (action) {
+      case 'toggle':
+        // Exactly what a click does: an ON cell turns off; an empty cell turns on
+        // where the writer takes it (`placeable`, the same gate that makes the
+        // cell inert to the pointer); a column a note sounds through is inert.
+        if (!on && !(placeable?.[at.row]?.[at.col] ?? false)) return false
+        if (!dryRun) {
+          if (!cursorRef.current) setCursor(at)
+          paintByKey(at.row, at.col, !on)
+        }
+        return true
+      case 'remove':
+        if (!on) return false
+        if (!dryRun) paintByKey(at.row, at.col, false)
+        return true
+      default:
+        return false
+    }
+  }
+  const runGestureRef = React.useRef(runGesture)
+  runGestureRef.current = runGesture
+  React.useEffect(
+    () => mountGridGestures(GRID_SCOPE.sequencer, (action, dryRun) => runGestureRef.current(action, dryRun)),
+    [],
+  )
+
   if (!model) {
     return React.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
@@ -427,9 +508,26 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   }
 
   const barSize = model.bars ? model.steps / model.bars : 0
+  const tabCell = liveCursor ?? { row: 0, col: 0 }
 
   return (
     <div
+      // Cell pointerdowns call preventDefault (blocks default focus), so focus the
+      // pressed cell in the capture phase — the cursor moves there (#1802).
+      onPointerDownCapture={(e) => {
+        ;(e.target as HTMLElement).closest<HTMLElement>('[data-seq-cell]')?.focus({ preventScroll: true })
+      }}
+      onKeyDown={(e) => {
+        // Only from a cell: Enter on "remove voice", or a key in the voice menu or
+        // the track chip, is that control's own.
+        if (!(e.target as HTMLElement).closest?.('[data-seq-cell]')) return
+        // Matched exactly against the keys the host has bound (#1801, #1802).
+        const action = matchGridKey(GRID_SCOPE.sequencer, e.nativeEvent)
+        if (!action) return
+        e.preventDefault()
+        e.stopPropagation()
+        runGesture(action, false, true)
+      }}
       data-bottom-panel-tab="sequencer"
       // always-visible (non-overlay) scrollbar when the grid overflows the panel,
       // styled in globals.css (the editor ships no CSS) — #pattern-scrollbar.
@@ -486,10 +584,19 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             Edits the notes already here — to add one, use the code view.
           </div>
         )}
+        {/* The voices are the grid (#1802, ARIA grid pattern): a row per voice, a
+            gridcell per step, one tab stop that moves with the cursor. */}
+        <div ref={gridRef} role="grid" aria-label="Step sequencer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {model.lanes.map((lane, laneIndex) => {
           const voice = sampleVoice(lane.sound)
           return (
-          <div key={`${lane.sound}:${lane.part ?? 0}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            key={`${lane.sound}:${lane.part ?? 0}`}
+            role="row"
+            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+          >
+            {/* The voice's name and its remove button are the row's header. */}
+            <div role="rowheader" style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
             {/* Per-voice label only — the colour dot was removed (#589); the track's
                 identity colour lives in the PatternTrackChip up top, so a separate
                 drumVoices palette here would read as a second, conflicting colour code. */}
@@ -531,7 +638,8 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             >
               ×
             </button>
-            <div style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
+            </div>
+            <div role="none" style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
               {lane.cells.map((cell, stepIndex) => {
                 // A cell is drawn from the note SOUNDING through it, not from the
                 // trigger alone (#1056): `cov.extent` is how much of this column
@@ -565,10 +673,32 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                 // Where it will not, the cell is inert AND says so, instead of
                 // swallowing the click the way it did before (#1064/#1070).
                 const canPlace = on || (placeable?.[laneIndex]?.[stepIndex] ?? true)
+                const isCursor = liveCursor?.row === laneIndex && liveCursor.col === stepIndex
+                const isTab = tabCell.row === laneIndex && tabCell.col === stepIndex
                 return (
-                  <button
+                  // A gridcell holding one toggle button — `aria-pressed` stays on the
+                  // button, which may carry it; the cursor is the cell's `aria-selected`.
+                  <div
                     key={stepIndex}
+                    role="gridcell"
+                    aria-selected={isCursor}
+                    style={{
+                      display: 'flex',
+                      flex: '1 1 0',
+                      minWidth: 16,
+                      maxWidth: 56,
+                      // subtle gap at each bar boundary
+                      marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
+                    }}
+                  >
+                  <button
                     type="button"
+                    // One tab stop for the whole grid, and it moves with the cursor.
+                    tabIndex={isTab ? 0 : -1}
+                    // Focus IS the cursor (ARIA grid pattern).
+                    onFocus={() => {
+                      if (!isCursor) setCursor({ row: laneIndex, col: stepIndex })
+                    }}
                     aria-pressed={on}
                     // A carried column now LOOKS different and has to READ different:
                     // the fill says "a note is sounding through here" to anyone who can
@@ -609,6 +739,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     }
                     onPointerDown={(e) => {
                       e.preventDefault()
+                      setCursor({ row: laneIndex, col: stepIndex })
                       // RESIZE INTENT IS DECIDED FIRST, and before the placement guard.
                       // The grab zone runs inward from the BAR's trailing edge, which on
                       // a held note is a column the placement gate has already made inert
@@ -637,9 +768,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     onPointerEnter={() => onCellEnter(laneIndex, stepIndex)}
                     style={{
                       position: 'relative',
-                      flex: '1 1 0',
-                      minWidth: 16,
-                      maxWidth: 56,
+                      width: '100%',
                       height: 22,
                       padding: 0,
                       overflow: 'hidden',
@@ -647,8 +776,6 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                         ? '1px solid var(--foreground, #e6e6ea)'
                         : '1px solid var(--border, #3a3a42)',
                       borderRadius: 3,
-                      // subtle gap at each bar boundary
-                      marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
                       background: isPlaying
                         ? 'var(--background, #34343c)'
                         : 'var(--background-elevated, #26262c)',
@@ -732,12 +859,14 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                       />
                     )}
                   </button>
+                  </div>
                 )
               })}
             </div>
           </div>
           )
         })}
+        </div>
         {/* The drum catalogue is the wrong menu for a chord chart — it would
             offer Kick and Snare as things to add to a progression. Withdrawn
             rather than restocked: a chord picker is a different feature, and

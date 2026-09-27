@@ -97,8 +97,15 @@ test('the piano roll has its own group in Settings, with every key and where the
   await openKeys(page)
   const section = page.getByTestId('keys-section-Piano roll')
   await expect(section).toBeVisible()
-  await expect(section.locator('.kb-row')).toHaveCount(3)
-  for (const title of ['Delete selected note', 'Copy selected note', 'Paste note at selected cell']) {
+  // Delete / Copy / Paste (#1801), plus the toggle and eight cursor keys (#1802).
+  await expect(section.locator('.kb-row')).toHaveCount(12)
+  for (const title of [
+    'Delete selected note',
+    'Copy selected note',
+    'Paste note at selected cell',
+    'Add or remove a note at the cursor',
+    'Move cursor right',
+  ]) {
     await expect(section.getByText(title, { exact: true })).toBeVisible()
   }
   const del = page.getByTestId('chord-stave.pianoRoll.deleteNote')
@@ -107,6 +114,19 @@ test('the piano roll has its own group in Settings, with every key and where the
   await expect(page.getByTestId('when-stave.pianoRoll.deleteNote')).toHaveText(
     'In the piano roll, on the selected cell',
   )
+})
+
+test('the sequencer has its own group too, with its toggle, clear and cursor keys (#1802)', async ({ page }) => {
+  await boot(page)
+  await openKeys(page)
+  const section = page.getByTestId('keys-section-Sequencer')
+  await expect(section).toBeVisible()
+  await expect(section.locator('.kb-row')).toHaveCount(10)
+  const clear = page.getByTestId('chord-stave.sequencer.clearStep')
+  await expect(clear).toContainText('Delete')
+  await expect(clear).toContainText('Backspace')
+  await expect(page.getByTestId('chord-stave.sequencer.cursorRight')).toContainText('→')
+  await expect(page.getByTestId('chord-stave.sequencer.toggleStep')).toContainText("'")
 })
 
 test('a rebind survives a reload and reaches the roll; the old key stops working', async ({ page }) => {
@@ -153,18 +173,20 @@ test('the palette offers Delete selected note only while a note is selected, and
   await boot(page)
   await setCode(page, PATTERN)
   const grid = await openRoll(page)
-  const want = await mouseDelete(page, grid)
   const input = page.getByPlaceholder('Type a command...')
   const row = page.locator('[data-palette-row]', { hasText: 'Delete selected note' })
 
   // Nothing selected: not offered. No query, so an absent row is the command
-  // withheld, not a filter.
+  // withheld, not a filter. Asked BEFORE any click: a plain click moves the
+  // roll's cursor (#1802), which selects.
   await grid.focus()
   await page.keyboard.press(`${MOD}+Shift+P`)
   await expect(input).toBeVisible()
   await expect(page.locator('[data-palette-row]').first()).toBeVisible()
   await expect(row).toHaveCount(0)
   await page.keyboard.press('Escape')
+
+  const want = await mouseDelete(page, grid)
 
   await selectC3(page, grid)
   await page.keyboard.press(`${MOD}+Shift+P`)

@@ -12412,23 +12412,52 @@ declare const GRID_SCOPE: {
     readonly sequencer: "sequencer";
 };
 type GridScope = (typeof GRID_SCOPE)[keyof typeof GRID_SCOPE];
+/**
+ * What a grid gesture does. Each grid decides what that means on its own model:
+ * `toggle` is what a click on the cursor cell does, `remove` takes away the note
+ * under the cursor (the roll's Delete, the sequencer's Clear Step).
+ */
+type GridAction = CursorMove | 'toggle' | 'remove' | 'copy' | 'paste';
+/** Where a cursor key sends the cursor. */
+type CursorMove = 'left' | 'right' | 'up' | 'down' | 'rowStart' | 'rowEnd' | 'first' | 'last';
 declare const GRID_GESTURE: {
     readonly rollDelete: "stave.pianoRoll.deleteNote";
     readonly rollCopy: "stave.pianoRoll.copyNote";
     readonly rollPaste: "stave.pianoRoll.pasteNote";
+    readonly rollToggle: "stave.pianoRoll.toggleNote";
+    readonly rollLeft: "stave.pianoRoll.cursorLeft";
+    readonly rollRight: "stave.pianoRoll.cursorRight";
+    readonly rollUp: "stave.pianoRoll.cursorUp";
+    readonly rollDown: "stave.pianoRoll.cursorDown";
+    readonly rollRowStart: "stave.pianoRoll.cursorRowStart";
+    readonly rollRowEnd: "stave.pianoRoll.cursorRowEnd";
+    readonly rollFirst: "stave.pianoRoll.cursorFirst";
+    readonly rollLast: "stave.pianoRoll.cursorLast";
+    readonly seqToggle: "stave.sequencer.toggleStep";
+    readonly seqClear: "stave.sequencer.clearStep";
+    readonly seqLeft: "stave.sequencer.cursorLeft";
+    readonly seqRight: "stave.sequencer.cursorRight";
+    readonly seqUp: "stave.sequencer.cursorUp";
+    readonly seqDown: "stave.sequencer.cursorDown";
+    readonly seqRowStart: "stave.sequencer.cursorRowStart";
+    readonly seqRowEnd: "stave.sequencer.cursorRowEnd";
+    readonly seqFirst: "stave.sequencer.cursorFirst";
+    readonly seqLast: "stave.sequencer.cursorLast";
 };
 type GridGestureId = (typeof GRID_GESTURE)[keyof typeof GRID_GESTURE];
 interface GridGestureDef {
     id: GridGestureId;
     scope: GridScope;
+    action: GridAction;
     title: string;
     keybinding: string;
     alternateKeybindings?: readonly string[];
 }
 /**
- * The defaults are the keys the roll has always answered to. A Mac keyboard's
- * delete key sends `Backspace`, so delete takes both. The sequencer has no keys
- * yet — its first ones arrive with the grid cursor (#1802).
+ * The roll's Delete/⌘C/⌘V are the keys it has always answered to; a Mac
+ * keyboard's delete key sends `Backspace`, so delete takes both. Toggle is Logic
+ * 12.3's `Toggle Selected Step` | `Apostrophe`, with Enter beside it. Space is
+ * NOT a toggle: in Logic it is Play or Stop.
  */
 declare const GRID_GESTURES: readonly GridGestureDef[];
 /** Settings' group name and "where it works" line, per grid. */
