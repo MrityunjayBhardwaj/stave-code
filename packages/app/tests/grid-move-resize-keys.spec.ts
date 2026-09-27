@@ -115,6 +115,27 @@ test.describe('piano roll', () => {
     await expectNoRefusalReported(page)
   })
 
+  test('with the snap at 1/4, ⌥→ and ⌥⇧→ step by a quarter, as a snapped drag does', async ({ page }) => {
+    // 16 steps a bar: 1/4 is four columns.
+    const code = '$: note("c3 ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~")'
+    const roll = await open(page, code, ROLL, '[data-roll-cell="48:0"]')
+    await page.locator('[data-mixer-division-select]').selectOption('1/4')
+    const moved = await byMouse(page, code, () =>
+      drag(page, roll.locator('[data-roll-cell="48:0"]'), roll.locator('[data-roll-cell="48:4"]')),
+    )
+    const longer = await byMouse(page, code, () =>
+      drag(page, roll.locator('[data-roll-resize="48:0"]'), roll.locator('[data-roll-cell="48:3"]')),
+    )
+    await roll.locator('[data-roll-cell="48:0"]').focus()
+    await page.keyboard.press('Alt+ArrowRight')
+    await expect.poll(() => editorValue(page), { timeout: 5_000 }).toBe(moved)
+    await expect.poll(() => focusedCell(page, 'data-roll-cell')).toBe('48:4')
+    await seedCode(page, code)
+    await roll.locator('[data-roll-cell="48:0"]').focus()
+    await page.keyboard.press('Alt+Shift+ArrowRight')
+    await expect.poll(() => editorValue(page), { timeout: 5_000 }).toBe(longer)
+  })
+
   test('a move the writer declines is refused and said, as the drag is', async ({ page }) => {
     // The #1452 fixture: every drop into column 7 is declined for this note.
     const code = '$: note("- - - <b3 [b3 b3]>")'
