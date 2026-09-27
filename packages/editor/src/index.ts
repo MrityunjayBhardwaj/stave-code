@@ -746,7 +746,15 @@ export {
   SEQUENCER_TAB_ID,
   MIXER_TAB_ID,
   PIANO_ROLL_TAB_ID,
+  // #1801 — the grids' keys, for the host's command registry.
+  GRID_SCOPE,
+  GRID_GESTURE,
+  GRID_GESTURES,
+  GRID_SCOPE_LABEL,
+  setGridKeyMatcher,
+  runGridGesture,
 } from './visualEdit'
+export type { GridScope, GridGestureId, GridGestureDef, GridKeyMatcher } from './visualEdit'
 // Sound audition (#805/#816/#820) — preview a sound through the shared
 // superdough graph. `auditionSound` is the one-shot (Mixer ▶); `startAudition`
 // is the sustained/looping preview (Asset Library play/pause) returning a stop

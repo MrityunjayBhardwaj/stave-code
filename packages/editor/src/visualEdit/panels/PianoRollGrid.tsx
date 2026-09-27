@@ -59,6 +59,7 @@ import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolu
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'
+import { GRID_GESTURE, GRID_SCOPE, matchGridKey, mountGridGestures, type GridGestureId } from './gridGestures'
 import { readChainMethod } from './chainMethod'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
@@ -953,6 +954,38 @@ export function PianoRollGrid({
     onResolution,
   )
 
+  // The roll's keys are commands (#1801): the host lists and rebinds them, and
+  // the palette runs them here. A dry run answers whether one applies now —
+  // the same early returns the gestures themselves take, so the palette never
+  // offers a gesture that would do nothing.
+  const runGesture = (id: GridGestureId, dryRun: boolean): boolean => {
+    const sel = selectedRef.current
+    if (!model || !sel || sel.kind !== 'roll') return false
+    const hasNote = model.notes.some((n) => n.pitch === sel.pitch && n.start === sel.start)
+    switch (id) {
+      case GRID_GESTURE.rollDelete:
+        if (dryRun) return hasNote
+        removeSelected()
+        return true
+      case GRID_GESTURE.rollCopy:
+        if (dryRun) return hasNote
+        copySelected()
+        return true
+      case GRID_GESTURE.rollPaste:
+        if (dryRun) return getNoteClip() !== null
+        pasteClip()
+        return true
+      default:
+        return false
+    }
+  }
+  const runGestureRef = React.useRef(runGesture)
+  runGestureRef.current = runGesture
+  React.useEffect(
+    () => mountGridGestures(GRID_SCOPE.pianoRoll, (id, dryRun) => runGestureRef.current(id, dryRun)),
+    [],
+  )
+
   if (!model) {
     return React.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
@@ -975,28 +1008,17 @@ export function PianoRollGrid({
       // focus the grid in the capture phase to receive the Delete key (#432).
       onPointerDownCapture={(e) => (e.currentTarget as HTMLElement).focus({ preventScroll: true })}
       onKeyDown={(e) => {
-        if (e.key === 'Delete' || e.key === 'Backspace') {
-          e.preventDefault()
-          removeSelected()
-          return
-        }
-        // ⚠ `!e.shiftKey` is load-bearing (#1425). `e.key` is the produced
-        // character, so Shift+c IS `'C'` — without it, ⌘⇧C and ⌘⇧V ran copy and
-        // paste too, `preventDefault()` and all. Nothing in Stave owns those
-        // chords, but the platform does: ⌘⇧C is Chrome's element picker and
-        // ⌘⇧V is paste-without-formatting nearly everywhere. Reaching for
-        // either got you a silent edit to the pattern instead.
-        // The `|| 'C'` stays for capslock, which produces `'C'` with no
-        // shiftKey — the guard is about SHIFT, not about case.
-        if ((e.metaKey || e.ctrlKey) && !e.shiftKey) {
-          if (e.key === 'c' || e.key === 'C') {
-            e.preventDefault()
-            copySelected()
-          } else if (e.key === 'v' || e.key === 'V') {
-            e.preventDefault()
-            pasteClip()
-          }
-        }
+        // Matched exactly, modifiers included, against the keys the host has
+        // bound (#1801) — so ⌘⇧C (Chrome's element picker) and ⌘⇧V (paste
+        // without formatting) are not copy and paste (#1425), and ⌥⌫ is not
+        // delete. A matched key is claimed even when there is nothing to act on,
+        // as it always was: ⌘C on an empty cell must not fall through to a copy
+        // of whatever the page has selected.
+        const id = matchGridKey(GRID_SCOPE.pianoRoll, e.nativeEvent)
+        if (!id) return
+        e.preventDefault()
+        e.stopPropagation()
+        runGesture(id, false)
       }}
       style={{
         position: 'relative',

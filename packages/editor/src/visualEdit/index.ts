@@ -89,6 +89,16 @@ export type { VisualEditStandbyProps } from './panels/VisualEditStandby'
 export { Mixer } from './panels/Mixer'
 export { SequencerGrid } from './panels/SequencerGrid'
 export { PianoRollGrid } from './panels/PianoRollGrid'
+// #1801 — the grids' keys, for the host's command registry.
+export {
+  GRID_SCOPE,
+  GRID_GESTURE,
+  GRID_GESTURES,
+  GRID_SCOPE_LABEL,
+  setGridKeyMatcher,
+  runGridGesture,
+} from './panels/gridGestures'
+export type { GridScope, GridGestureId, GridGestureDef, GridKeyMatcher } from './panels/gridGestures'
 export { PatternPanel } from './panels/PatternPanel'
 export { patternKind, isStepChunk, isRollChunk } from './panels/patternKind'
 export type { PatternKind } from './panels/patternKind'
