@@ -59,7 +59,16 @@ import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolu
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'
-import { GRID_SCOPE, isCursorMove, matchGridKey, mountGridGestures, moveCursor, type GridAction } from './gridGestures'
+import {
+  GRID_SCOPE,
+  isCursorMove,
+  isNoteEdit,
+  matchGridKey,
+  mountGridGestures,
+  moveCursor,
+  type GridAction,
+  type NoteEdit,
+} from './gridGestures'
 import { readChainMethod } from './chainMethod'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
@@ -985,13 +994,89 @@ export function PianoRollGrid({
   }
 
   // Set when a key moved the cursor, so the render that draws it also focuses it.
+  // Held until the cursor cell EXISTS: an octave move can put the note on a row the
+  // sticky range only draws a render later (#1803).
   const focusCursorRef = React.useRef(false)
   const gridRef = React.useRef<HTMLDivElement>(null)
   React.useEffect(() => {
     if (!focusCursorRef.current) return
+    const cell = gridRef.current?.querySelector<HTMLElement>('[role="gridcell"][aria-selected="true"] > [data-roll-cell]')
+    if (!cell) return
     focusCursorRef.current = false
-    gridRef.current?.querySelector<HTMLElement>('[role="gridcell"][aria-selected="true"] > [data-roll-cell]')?.focus()
+    cell.focus()
   })
+
+  // Move, transpose or resize the note under the cursor by key (#1803): the drag's
+  // own writers, under the read-back gate the drag's commit applies, so a key can
+  // write nothing a drag would refuse. One key, one write, one undo step. The
+  // cursor follows the note. The step is the roll's snap division, the unit a drag
+  // snaps to (Stave has no separate nudge value).
+  const editNote = (note: RollNote, edit: NoteEdit, dryRun: boolean): boolean => {
+    if (!model) return false
+    const step = snapInterval(stepsPerBar(model.steps, model.bars), division) ?? 1
+    const head = headColumn(note)
+    const midi = pitchToMidi(note.pitch)
+    if (midi === null) return false
+    const follow = (pitch: string, start: number): void => {
+      focusCursorRef.current = true
+      select({ kind: 'roll', pitch, start })
+    }
+    if (edit === 'shorter' || edit === 'longer') {
+      // The drag's rule: a whole number of columns, the END edge on a division line.
+      const cols = Math.max(1, Math.round(note.duration))
+      let dur = edit === 'longer' ? cols + step : cols - step
+      if (step > 1) dur = Math.max(step, snapColumn(head + dur, step) - head)
+      if (dur < 1 || dur === cols) return false
+      if (dryRun) return true
+      const settled = resizeNote(model, note.start, note.pitch, dur, { readback: true })
+      if (settled === model) {
+        reportRefusal("Couldn't set that length")
+        return true
+      }
+      mutate(() => settled)
+      follow(note.pitch, head)
+      return true
+    }
+    if (edit === 'octaveUp' || edit === 'octaveDown') {
+      // On a degree roll (`n()`, or any `.scale()`) a row is a scale step, so twelve
+      // rows is not an octave: measured, one row up on `n("0 ~ ~ 7").scale("C:major")`
+      // writes `1`. Refused rather than guessed.
+      const degrees = !!model.numeric || (chunk ? readChainMethod(chunk, ['scale']) !== null : false)
+      if (degrees) {
+        // The palette does not offer it; the key is claimed and says why.
+        if (dryRun) return false
+        emitLog({
+          level: 'warn',
+          runtime: 'stave',
+          message:
+            "Couldn't move that note an octave — on a scale pattern a row is one scale step, so twelve rows isn't an octave, left unchanged.",
+        })
+        return true
+      }
+    }
+    let toMidi = midi
+    let toStart = head
+    if (edit === 'rowUp') toMidi = midi + 1
+    else if (edit === 'rowDown') toMidi = midi - 1
+    else if (edit === 'octaveUp') toMidi = midi + 12
+    else if (edit === 'octaveDown') toMidi = midi - 12
+    else if (edit === 'nudgeLeft') toStart = head - step
+    else if (edit === 'nudgeRight') toStart = head + step
+    if (step > 1) toStart = snapColumn(toStart, step)
+    toStart = Math.max(0, Math.min(toStart, model.steps - 1))
+    if (toMidi === midi && toStart === head) return false
+    if (toMidi < 0 || toMidi > 127) return false
+    if (dryRun) return true
+    const toPitch = tokenForRow(!!model.numeric, toMidi)
+    const settled = moveNote(model, note.pitch, note.start, toPitch, toStart, { readback: true })
+    if (settled === model) {
+      reportRefusal("Couldn't move that note there")
+      return true
+    }
+    mutate(() => settled)
+    follow(toPitch, toStart)
+    return true
+  }
 
   // The roll's keys are commands (#1801) and act at the cursor (#1802). A dry run
   // answers whether one applies now — the palette offers only what would act.
@@ -1010,6 +1095,7 @@ export function PianoRollGrid({
     if (!at) return false
     const midi = rows[at.row]
     const note = noteAt(model, midi, at.col)
+    if (isNoteEdit(action)) return note ? editNote(note, action, dryRun) : false
     switch (action) {
       case 'remove':
         if (!note) return false

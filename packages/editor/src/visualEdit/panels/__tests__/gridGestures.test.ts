@@ -115,6 +115,28 @@ describe('runGridGesture', () => {
   })
 })
 
+describe('note edits (#1803)', () => {
+  it("are Logic 12.3's ⌥ arrows in the roll; the sequencer gets length only", () => {
+    const r = GRID_SCOPE.pianoRoll
+    const s = GRID_SCOPE.sequencer
+    expect(matchGridKey(r, key('ArrowRight', 'ArrowRight', { altKey: true }))).toBe('nudgeRight')
+    expect(matchGridKey(r, key('ArrowLeft', 'ArrowLeft', { altKey: true }))).toBe('nudgeLeft')
+    expect(matchGridKey(r, key('ArrowUp', 'ArrowUp', { altKey: true }))).toBe('rowUp')
+    expect(matchGridKey(r, key('ArrowDown', 'ArrowDown', { altKey: true }))).toBe('rowDown')
+    expect(matchGridKey(r, key('ArrowUp', 'ArrowUp', { altKey: true, shiftKey: true }))).toBe('octaveUp')
+    expect(matchGridKey(r, key('ArrowDown', 'ArrowDown', { altKey: true, shiftKey: true }))).toBe('octaveDown')
+    expect(matchGridKey(r, key('ArrowRight', 'ArrowRight', { altKey: true, shiftKey: true }))).toBe('longer')
+    expect(matchGridKey(r, key('ArrowLeft', 'ArrowLeft', { altKey: true, shiftKey: true }))).toBe('shorter')
+    expect(matchGridKey(s, key('ArrowRight', 'ArrowRight', { altKey: true, shiftKey: true }))).toBe('longer')
+    expect(matchGridKey(s, key('ArrowLeft', 'ArrowLeft', { altKey: true, shiftKey: true }))).toBe('shorter')
+    // No move in the sequencer: ⌥→ is not one of its keys.
+    expect(matchGridKey(s, key('ArrowRight', 'ArrowRight', { altKey: true }))).toBeUndefined()
+    expect(gridGestureAction(s, GRID_GESTURE.rollNudgeRight)).toBeUndefined()
+    // A plain arrow is still a cursor move, not an edit.
+    expect(matchGridKey(r, key('ArrowRight', 'ArrowRight'))).toBe('right')
+  })
+})
+
 describe('moveCursor', () => {
   const at = { row: 1, col: 1 }
   it('moves one cell per arrow, and clamps at every edge instead of wrapping', () => {

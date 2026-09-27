@@ -12417,9 +12417,15 @@ type GridScope = (typeof GRID_SCOPE)[keyof typeof GRID_SCOPE];
  * `toggle` is what a click on the cursor cell does, `remove` takes away the note
  * under the cursor (the roll's Delete, the sequencer's Clear Step).
  */
-type GridAction = CursorMove | 'toggle' | 'remove' | 'copy' | 'paste';
+type GridAction = CursorMove | NoteEdit | 'toggle' | 'remove' | 'copy' | 'paste';
 /** Where a cursor key sends the cursor. */
 type CursorMove = 'left' | 'right' | 'up' | 'down' | 'rowStart' | 'rowEnd' | 'first' | 'last';
+/**
+ * What an edit key does to the note under the cursor (#1803): move it a column
+ * earlier/later, a row or an octave up/down, or make it shorter/longer. A grid
+ * that has no such operation (the sequencer cannot move a hit) declines it.
+ */
+type NoteEdit = 'nudgeLeft' | 'nudgeRight' | 'rowUp' | 'rowDown' | 'octaveUp' | 'octaveDown' | 'shorter' | 'longer';
 declare const GRID_GESTURE: {
     readonly rollDelete: "stave.pianoRoll.deleteNote";
     readonly rollCopy: "stave.pianoRoll.copyNote";
@@ -12443,6 +12449,16 @@ declare const GRID_GESTURE: {
     readonly seqRowEnd: "stave.sequencer.cursorRowEnd";
     readonly seqFirst: "stave.sequencer.cursorFirst";
     readonly seqLast: "stave.sequencer.cursorLast";
+    readonly rollNudgeLeft: "stave.pianoRoll.nudgeLeft";
+    readonly rollNudgeRight: "stave.pianoRoll.nudgeRight";
+    readonly rollRowUp: "stave.pianoRoll.transposeUp";
+    readonly rollRowDown: "stave.pianoRoll.transposeDown";
+    readonly rollOctaveUp: "stave.pianoRoll.octaveUp";
+    readonly rollOctaveDown: "stave.pianoRoll.octaveDown";
+    readonly rollShorter: "stave.pianoRoll.shorter";
+    readonly rollLonger: "stave.pianoRoll.longer";
+    readonly seqShorter: "stave.sequencer.shorter";
+    readonly seqLonger: "stave.sequencer.longer";
 };
 type GridGestureId = (typeof GRID_GESTURE)[keyof typeof GRID_GESTURE];
 interface GridGestureDef {
