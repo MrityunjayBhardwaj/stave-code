@@ -160,6 +160,11 @@ function formatPart(part: string, isMac: boolean): string {
   if (p === "enter") return "⏎";
   if (p === "escape") return "Esc";
   if (p === "tab") return "Tab";
+  // #1802 — the grids' cursor keys.
+  if (p === "arrowleft") return "←";
+  if (p === "arrowright") return "→";
+  if (p === "arrowup") return "↑";
+  if (p === "arrowdown") return "↓";
   if (p.length === 1) return p.toUpperCase();
   return part[0].toUpperCase() + part.slice(1);
 }

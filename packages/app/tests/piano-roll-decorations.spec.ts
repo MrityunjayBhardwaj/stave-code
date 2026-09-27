@@ -277,7 +277,7 @@ test.describe('roll decorations follow the note, not the column (#1078)', () => 
 })
 
 test.describe('the roll says which cell is selected (#1080)', () => {
-  test('the selected cell carries aria-current', async ({ page }) => {
+  test('the selected cell is aria-selected (its gridcell, #1802)', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c4 e4 g4 c5")')
     await openRoll(page)
@@ -286,19 +286,22 @@ test.describe('the roll says which cell is selected (#1080)', () => {
     await target.click({ modifiers: ['Meta'] })
     // the pre-existing signal still holds — this is the precondition, not the claim
     await expect(target).toHaveAttribute('data-roll-selected', 'true')
-    // THE CLAIM: selection reaches assistive tech, not only pixels and a data attribute
-    await expect(target).toHaveAttribute('aria-current', 'true')
+    // THE CLAIM: selection reaches assistive tech, not only pixels and a data attribute.
+    // Since #1802 the roll is an ARIA grid and the selection is its cursor, said on the
+    // gridcell that holds the cell's button.
+    await expect(target.locator('xpath=..')).toHaveAttribute('role', 'gridcell')
+    await expect(target.locator('xpath=..')).toHaveAttribute('aria-selected', 'true')
   })
 
-  test('CONTROL — an unselected cell carries no aria-current', async ({ page }) => {
+  test('CONTROL — an unselected cell is not aria-selected', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: note("c4 e4 g4 c5")')
     await openRoll(page)
 
     const cells = page.locator('[data-roll-cell]')
     await cells.first().click({ modifiers: ['Meta'] })
-    await expect(cells.first()).toHaveAttribute('aria-current', 'true')
-    // if every cell claimed to be current, the attribute would say nothing
-    await expect(cells.nth(1)).not.toHaveAttribute('aria-current', 'true')
+    await expect(cells.first().locator('xpath=..')).toHaveAttribute('aria-selected', 'true')
+    // if every cell claimed to be selected, the attribute would say nothing
+    await expect(cells.nth(1).locator('xpath=..')).toHaveAttribute('aria-selected', 'false')
   })
 })

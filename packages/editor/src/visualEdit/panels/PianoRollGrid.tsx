@@ -59,7 +59,7 @@ import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolu
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'
-import { GRID_GESTURE, GRID_SCOPE, matchGridKey, mountGridGestures, type GridGestureId } from './gridGestures'
+import { GRID_SCOPE, isCursorMove, matchGridKey, mountGridGestures, moveCursor, type GridAction } from './gridGestures'
 import { readChainMethod } from './chainMethod'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
@@ -705,6 +705,9 @@ export function PianoRollGrid({
       select({ kind: 'roll', pitch: tokenForRow(!!model.numeric, midi), start: step })
       return
     }
+    // A plain click moves the cursor too (#1802): the cursor IS the selection, so
+    // the keys that follow act where the pointer last was.
+    select({ kind: 'roll', pitch: tokenForRow(!!model.numeric, midi), start: step })
     const note = noteAt(model, midi, step)
     if (note) {
       // Pressing the trailing edge of the note's TAIL cell = resize intent (#530),
@@ -760,16 +763,22 @@ export function PianoRollGrid({
       // commit — the check runs on the write. Ungated, 4,362 of 35,601 placements the
       // panel offers wrote a document that reopens without the note the click just made,
       // after re-spelling the pattern around it for nothing.
-      let refused = false
-      mutate((prev) => {
-        const next = placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, {
-          readback: true,
-        })
-        refused = next === prev
-        return next
-      })
-      if (refused) reportRefusal("Couldn't add that note")
+      placeAt(midi, step)
     }
+  }
+
+  // A one-step note at (midi, step) — the click on an empty cell, and the toggle
+  // key on one (#1802). One op, one read-back, one refusal sentence.
+  const placeAt = (midi: number, step: number): void => {
+    let refused = false
+    mutate((prev) => {
+      const next = placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, {
+        readback: true,
+      })
+      refused = next === prev
+      return next
+    })
+    if (refused) reportRefusal("Couldn't add that note")
   }
 
   // Grab a note's right-edge handle → resize its duration. Anchored at the
@@ -868,32 +877,23 @@ export function PianoRollGrid({
     d.askedStart = newStart
   }
 
-  // Delete/Backspace removes the selected note (#432 — removal moved off the
-  // plain click). One undo step; clears the selection.
-  const removeSelected = (): void => {
-    const sel = selectedRef.current
-    if (!sel || sel.kind !== 'roll') return
-    // Same gate as the click-delete above — one gesture, one parse (#1340).
+  // Delete/Backspace and the toggle key remove the note UNDER the cursor — any
+  // column it covers, as a click anywhere on a note does (#1802). The same op and
+  // gate as the click-delete (#1340). One undo step; the cursor stays where it is,
+  // so the next key acts on the same cell.
+  const deleteNote = (note: RollNote): void => {
     let refused = false
     mutate((prev) => {
-      const next = removeNote(prev, sel.start, sel.pitch, { readback: true })
+      const next = removeNote(prev, note.start, note.pitch, { readback: true })
       refused = next === prev
       return next
     })
-    if (refused) {
-      reportRefusal("Couldn't delete that note")
-      return
-    }
-    select(null)
+    if (refused) reportRefusal("Couldn't delete that note")
   }
 
   // ⌘/Ctrl-C → copy the note at the selected cell (its shape: pitch/duration/
   // gain) to the session clipboard (#528). No-op if the selected cell is empty.
-  const copySelected = (): void => {
-    const sel = selectedRef.current
-    if (!model || !sel || sel.kind !== 'roll') return
-    const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start)
-    if (!note) return
+  const copyNote = (note: RollNote): void => {
     setNoteClip({ pitch: note.pitch, duration: note.duration, gain: note.gain ?? 1 })
   }
 
@@ -954,35 +954,92 @@ export function PianoRollGrid({
     onResolution,
   )
 
-  // The roll's keys are commands (#1801): the host lists and rebinds them, and
-  // the palette runs them here. A dry run answers whether one applies now —
-  // the same early returns the gestures themselves take, so the palette never
-  // offers a gesture that would do nothing.
-  const runGesture = (id: GridGestureId, dryRun: boolean): boolean => {
+  // Rows top to bottom (high pitch first) — the render draws exactly these.
+  const rows: number[] = []
+  for (let m = range.hi; m >= range.lo; m--) rows.push(m)
+
+  /** The cursor as a (row, col) — the selected cell, when it is a roll cell on screen. */
+  const cursorCell = (): { row: number; col: number } | null => {
     const sel = selectedRef.current
-    if (!model || !sel || sel.kind !== 'roll') return false
-    const hasNote = model.notes.some((n) => n.pitch === sel.pitch && n.start === sel.start)
-    switch (id) {
-      case GRID_GESTURE.rollDelete:
-        if (dryRun) return hasNote
-        removeSelected()
+    if (!sel || sel.kind !== 'roll') return null
+    const midi = pitchToMidi(sel.pitch)
+    const row = midi === null ? -1 : rows.indexOf(midi)
+    return row < 0 || sel.start >= cols ? null : { row, col: sel.start }
+  }
+
+  /**
+   * Where the cursor is before anyone has put it anywhere: the first note (earliest,
+   * then highest), else the top-left cell. It is the grid's one tab stop, so Tab
+   * lands on the music rather than 40 empty rows above it.
+   */
+  const defaultCell = (): { row: number; col: number } => {
+    let best: { row: number; col: number } | null = null
+    for (const n of model?.notes ?? []) {
+      const midi = pitchToMidi(n.pitch)
+      const row = midi === null ? -1 : rows.indexOf(midi)
+      const col = model ? headColumn(n) : 0
+      if (row < 0 || col < 0 || col >= cols) continue
+      if (!best || col < best.col || (col === best.col && row < best.row)) best = { row, col }
+    }
+    return best ?? { row: 0, col: 0 }
+  }
+
+  // Set when a key moved the cursor, so the render that draws it also focuses it.
+  const focusCursorRef = React.useRef(false)
+  const gridRef = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    if (!focusCursorRef.current) return
+    focusCursorRef.current = false
+    gridRef.current?.querySelector<HTMLElement>('[role="gridcell"][aria-selected="true"] > [data-roll-cell]')?.focus()
+  })
+
+  // The roll's keys are commands (#1801) and act at the cursor (#1802). A dry run
+  // answers whether one applies now — the palette offers only what would act.
+  // `fromKey`: a key pressed on the grid's tab stop before any cursor exists acts
+  // on that cell; the palette, with nothing selected, acts nowhere.
+  const runGesture = (action: GridAction, dryRun: boolean, fromKey = false): boolean => {
+    if (!model || rows.length === 0 || cols === 0) return false
+    const at = cursorCell() ?? (fromKey ? defaultCell() : null)
+    if (isCursorMove(action)) {
+      if (dryRun) return true
+      const next = moveCursor(at ?? defaultCell(), action, rows.length, cols)
+      focusCursorRef.current = true
+      select({ kind: 'roll', pitch: tokenForRow(!!model.numeric, rows[next.row]), start: next.col })
+      return true
+    }
+    if (!at) return false
+    const midi = rows[at.row]
+    const note = noteAt(model, midi, at.col)
+    switch (action) {
+      case 'remove':
+        if (!note) return false
+        if (!dryRun) deleteNote(note)
         return true
-      case GRID_GESTURE.rollCopy:
-        if (dryRun) return hasNote
-        copySelected()
+      case 'copy':
+        if (!note) return false
+        if (!dryRun) copyNote(note)
         return true
-      case GRID_GESTURE.rollPaste:
-        if (dryRun) return getNoteClip() !== null
-        pasteClip()
+      case 'paste':
+        // Paste lands on the SELECTED cell (#528), so it needs a real cursor.
+        if (!getNoteClip() || !cursorCell()) return false
+        if (!dryRun) pasteClip()
         return true
-      default:
-        return false
+      case 'toggle':
+        // Exactly what a click on this cell does: a note → delete it; an empty cell
+        // → place one, where the view takes a new note at all (#1070).
+        if (note) {
+          if (!dryRun) deleteNote(note)
+          return true
+        }
+        if (!placesNotes) return false
+        if (!dryRun) placeAt(midi, at.col)
+        return true
     }
   }
   const runGestureRef = React.useRef(runGesture)
   runGestureRef.current = runGesture
   React.useEffect(
-    () => mountGridGestures(GRID_SCOPE.pianoRoll, (id, dryRun) => runGestureRef.current(id, dryRun)),
+    () => mountGridGestures(GRID_SCOPE.pianoRoll, (action, dryRun) => runGestureRef.current(action, dryRun)),
     [],
   )
 
@@ -997,27 +1054,35 @@ export function PianoRollGrid({
     })
   }
 
-  const rows: number[] = []
-  for (let m = range.hi; m >= range.lo; m--) rows.push(m) // high pitch on top
+  const tabCell = cursorCell() ?? defaultCell()
 
   return (
     <div
       data-bottom-panel-tab="piano-roll"
-      tabIndex={0}
+      // Focusable, but not a tab stop: the grid's one tab stop is its cursor cell
+      // (#1802, ARIA grid pattern).
+      tabIndex={-1}
       // Cell pointerdowns call preventDefault (blocks default focus, P200), so
-      // focus the grid in the capture phase to receive the Delete key (#432).
-      onPointerDownCapture={(e) => (e.currentTarget as HTMLElement).focus({ preventScroll: true })}
+      // focus in the capture phase — the pressed CELL, which is where the cursor
+      // moves (#1802), else the panel, so ⌘Z still finds it (#432, #1800).
+      onPointerDownCapture={(e) => {
+        const cell = (e.target as HTMLElement).closest<HTMLElement>('[data-roll-cell]')
+        ;(cell ?? (e.currentTarget as HTMLElement)).focus({ preventScroll: true })
+      }}
       onKeyDown={(e) => {
+        // Only from a cell: Enter on the track chip's button, or a key in its
+        // rename box, is that control's own.
+        if (!(e.target as HTMLElement).closest?.('[data-roll-cell]')) return
         // Matched exactly, modifiers included, against the keys the host has
         // bound (#1801) — so ⌘⇧C (Chrome's element picker) and ⌘⇧V (paste
         // without formatting) are not copy and paste (#1425), and ⌥⌫ is not
         // delete. A matched key is claimed even when there is nothing to act on,
         // as the raw handler before it did.
-        const id = matchGridKey(GRID_SCOPE.pianoRoll, e.nativeEvent)
-        if (!id) return
+        const action = matchGridKey(GRID_SCOPE.pianoRoll, e.nativeEvent)
+        if (!action) return
         e.preventDefault()
         e.stopPropagation()
-        runGesture(id, false)
+        runGesture(action, false, true)
       }}
       style={{
         position: 'relative',
@@ -1071,6 +1136,13 @@ export function PianoRollGrid({
           style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}
           onPointerLeave={() => setHoveredMidi(null)}
         >
+          {/* The pitch rows are the grid (#1802); the velocity lane below is not a row of it. */}
+          <div
+            ref={gridRef}
+            role="grid"
+            aria-label="Piano roll"
+            style={{ display: 'flex', flexDirection: 'column', gap: 1 }}
+          >
           {rows.map((midi) => {
           // Piano black/white striping only makes sense for note-name rows;
           // for numeric patterns a row is a raw value (MIDI or degree), not a
@@ -1081,6 +1153,7 @@ export function PianoRollGrid({
           return (
             <div
               key={midi}
+              role="row"
               style={{ display: 'flex', alignItems: 'center', gap: 6 }}
               // Don't chase hover mid-drag — a re-render here would interrupt the
               // note move/resize gesture (which is driven by cell pointerenter).
@@ -1092,6 +1165,7 @@ export function PianoRollGrid({
                 // Numeric rows are raw values/degrees, not piano keys — keep the
                 // value label (no keyboard graphic).
                 <span
+                  role="rowheader"
                   style={{
                     width: 36,
                     fontSize: 9,
@@ -1109,6 +1183,8 @@ export function PianoRollGrid({
                 // BACK (left) of the bed, leaving the white front edge visible —
                 // the keyboard look. C rows are labelled (C is always white).
                 <span
+                  role="rowheader"
+                  aria-label={noteDisplayName(midi)}
                   data-roll-key={midi}
                   data-roll-key-black={black ? 'true' : undefined}
                   // Press-and-hold to audition (sustains while held); drag onto
@@ -1156,7 +1232,7 @@ export function PianoRollGrid({
                   <span style={{ position: 'relative' }}>{keyC ?? ''}</span>
                 </span>
               )}
-              <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
+              <div role="none" style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
                 {Array.from({ length: cols }, (_, step) => {
                   const hit = overlapAt(model, midi, step)
                   const note = hit?.note
@@ -1184,29 +1260,39 @@ export function PianoRollGrid({
                   // must NOT disable the cell: `aria-disabled` would announce that
                   // nothing works, which is false and is the louder error of the two.
                   const resizeInert = on && isTail && resizable?.has(note!) === false
+                  const isTab = tabCell.col === step && rows[tabCell.row] === midi
                   return (
-                    <button
+                    // A gridcell holding one toggle button (ARIA grid pattern: a cell
+                    // with a single widget puts focus on the widget). The button keeps
+                    // `aria-pressed` — a gridcell may not carry it, a button may — and
+                    // the cell carries the cursor as `aria-selected` (#1802).
+                    <div
                       key={step}
+                      role="gridcell"
+                      aria-selected={isSel}
+                      style={{ display: 'flex', flex: '1 1 0', minWidth: 12, maxWidth: 44 }}
+                    >
+                    <button
                       type="button"
+                      // One tab stop for the whole grid, and it moves with the cursor.
+                      tabIndex={isTab ? 0 : -1}
+                      // Focus IS the cursor (ARIA grid pattern): Tab landing here, or a
+                      // focus moved by any other means, puts the cursor on this cell.
+                      onFocus={() => {
+                        if (!isSel) select({ kind: 'roll', pitch: tokenForRow(!!model.numeric, midi), start: step })
+                      }}
                       aria-pressed={on}
-                      aria-label={`${tokenForRow(!!model.numeric, midi)} step ${step + 1}`}
-                      // THE SELECTION, SAID RATHER THAN ONLY DRAWN (#1080). Until
-                      // now selection was a data attribute and a ring — one for
-                      // tests, one for pixels, neither of which reaches assistive
-                      // tech, so the copy/paste target was announced exactly like
-                      // every other cell. #1077 was the same object failing for
-                      // sighted users; restoring the ring is what made the half
-                      // that was never there worth writing down.
-                      //
-                      // `aria-current` rather than `aria-selected`: this cell IS
-                      // the target of the next paste, which is what `aria-current`
-                      // means on a control. `aria-selected` would imply a
-                      // listbox/grid role, and declaring one commits the panel to a
-                      // keyboard contract (roving tabindex, arrow-key navigation)
-                      // it does not implement — announcing a contract you do not
-                      // keep is worse than the omission. That role, and the
-                      // navigation it obliges, is its own question (#1083).
-                      aria-current={isSel ? 'true' : undefined}
+                      // A column a longer note sounds through reads as that note, not
+                      // as an empty cell (#1802) — the sequencer's wording.
+                      aria-label={
+                        on && !isHead
+                          ? `${tokenForRow(!!model.numeric, midi)} step ${step + 1}, held from step ${headColumn(note!) + 1}`
+                          : `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`
+                      }
+                      // THE SELECTION IS SAID, NOT ONLY DRAWN (#1080) — now as the
+                      // gridcell's `aria-selected`, above. #1080 held back from
+                      // `aria-selected` because a grid role commits the panel to a
+                      // roving tab stop and arrow keys; #1802 keeps that contract.
                       data-roll-cell={`${midi}:${step}`}
                       data-roll-selected={isSel ? 'true' : undefined}
                       data-playing={step === playingStep ? 'true' : undefined}
@@ -1241,9 +1327,7 @@ export function PianoRollGrid({
                       onPointerEnter={() => onCellEnter(midi, step)}
                       style={{
                         position: 'relative',
-                        flex: '1 1 0',
-                        minWidth: 12,
-                        maxWidth: 44,
+                        width: '100%',
                         height: 16,
                         padding: 0,
                         border:
@@ -1416,12 +1500,14 @@ export function PianoRollGrid({
                         />
                       )}
                     </button>
+                    </div>
                   )
                 })}
               </div>
             </div>
           )
         })}
+          </div>
         {gainInScope(model) && (
           <div
             data-roll-velocity-lane

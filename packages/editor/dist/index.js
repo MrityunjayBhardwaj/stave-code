@@ -34856,6 +34856,296 @@ function setColumnGain(model, stepIndex, gain) {
   return { ...model, gains };
 }
 __name(setColumnGain, "setColumnGain");
+
+// src/keys/chord.ts
+function isMacPlatform() {
+  return typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+}
+__name(isMacPlatform, "isMacPlatform");
+var PUNCTUATION_BY_CODE = {
+  Minus: "-",
+  Equal: "=",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Backslash: "\\",
+  Semicolon: ";",
+  Quote: "'",
+  Comma: ",",
+  Period: ".",
+  Slash: "/",
+  Backquote: "`"
+};
+var BASE_OF_SHIFTED = {
+  "!": "1",
+  "@": "2",
+  "#": "3",
+  "$": "4",
+  "%": "5",
+  "^": "6",
+  "&": "7",
+  "*": "8",
+  "(": "9",
+  ")": "0",
+  _: "-",
+  "{": "[",
+  "}": "]",
+  "|": "\\",
+  ":": ";",
+  '"': "'",
+  "<": ",",
+  ">": ".",
+  "?": "/",
+  "~": "`"
+};
+function tokenForCode(code) {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (code in PUNCTUATION_BY_CODE) return PUNCTUATION_BY_CODE[code];
+  return code.toLowerCase();
+}
+__name(tokenForCode, "tokenForCode");
+var PLAIN_LABEL = /^[\x21-\x7e]$/;
+function keyToken(e, byPosition) {
+  const fromCode = e.code ? tokenForCode(e.code) : "";
+  if (byPosition && fromCode) return fromCode;
+  const key2 = e.key;
+  if (key2 === " ") return "space";
+  if (key2.length === 1) {
+    const codeIsSymbolKey = /^Digit[0-9]$/.test(e.code) || e.code in PUNCTUATION_BY_CODE;
+    if (e.shiftKey && codeIsSymbolKey) return fromCode;
+    if (PLAIN_LABEL.test(key2)) return key2 === "+" ? "plus" : key2.toLowerCase();
+    return fromCode || key2.toLowerCase();
+  }
+  if (key2 === "Dead" || key2 === "Unidentified" || key2 === "") return fromCode || "unidentified";
+  return key2.toLowerCase();
+}
+__name(keyToken, "keyToken");
+function chordFromEvent(e, opts = {}) {
+  const isMac = opts.isMac ?? isMacPlatform();
+  const parts = [];
+  if (isMac) {
+    if (e.metaKey) parts.push("mod");
+    if (e.ctrlKey) parts.push("ctrl");
+  } else if (e.metaKey || e.ctrlKey) {
+    parts.push("mod");
+  }
+  if (e.shiftKey) parts.push("shift");
+  if (e.altKey) parts.push("alt");
+  parts.push(keyToken(e, opts.byPosition ?? false));
+  return parts.join("+");
+}
+__name(chordFromEvent, "chordFromEvent");
+var MODIFIER_ORDER = ["mod", "ctrl", "shift", "alt"];
+function normalizeChord(chord, opts = {}) {
+  const isMac = opts.isMac ?? isMacPlatform();
+  const mods = /* @__PURE__ */ new Set();
+  let key2 = "";
+  for (const raw of chord.toLowerCase().split("+")) {
+    let t = raw;
+    if (t === "cmd" || t === "command" || t === "meta") t = "mod";
+    else if (t === "control") t = isMac ? "ctrl" : "mod";
+    else if (t === "ctrl" && !isMac) t = "mod";
+    else if (t === "option" || t === "opt") t = "alt";
+    if (MODIFIER_ORDER.includes(t)) mods.add(t);
+    else if (t === " " || t === "spacebar") key2 = "space";
+    else if (t === "esc") key2 = "escape";
+    else if (t === "return") key2 = "enter";
+    else key2 = t;
+  }
+  if (mods.has("shift") && key2 in BASE_OF_SHIFTED) key2 = BASE_OF_SHIFTED[key2];
+  return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key2].join("+");
+}
+__name(normalizeChord, "normalizeChord");
+function chordMatches(eventChord, declared, opts = {}) {
+  return normalizeChord(eventChord, opts) === normalizeChord(declared, opts);
+}
+__name(chordMatches, "chordMatches");
+
+// src/visualEdit/panels/gridGestures.ts
+var GRID_SCOPE = {
+  pianoRoll: "pianoRoll",
+  sequencer: "sequencer"
+};
+var GRID_GESTURE = {
+  rollDelete: "stave.pianoRoll.deleteNote",
+  rollCopy: "stave.pianoRoll.copyNote",
+  rollPaste: "stave.pianoRoll.pasteNote",
+  rollToggle: "stave.pianoRoll.toggleNote",
+  rollLeft: "stave.pianoRoll.cursorLeft",
+  rollRight: "stave.pianoRoll.cursorRight",
+  rollUp: "stave.pianoRoll.cursorUp",
+  rollDown: "stave.pianoRoll.cursorDown",
+  rollRowStart: "stave.pianoRoll.cursorRowStart",
+  rollRowEnd: "stave.pianoRoll.cursorRowEnd",
+  rollFirst: "stave.pianoRoll.cursorFirst",
+  rollLast: "stave.pianoRoll.cursorLast",
+  seqToggle: "stave.sequencer.toggleStep",
+  seqClear: "stave.sequencer.clearStep",
+  seqLeft: "stave.sequencer.cursorLeft",
+  seqRight: "stave.sequencer.cursorRight",
+  seqUp: "stave.sequencer.cursorUp",
+  seqDown: "stave.sequencer.cursorDown",
+  seqRowStart: "stave.sequencer.cursorRowStart",
+  seqRowEnd: "stave.sequencer.cursorRowEnd",
+  seqFirst: "stave.sequencer.cursorFirst",
+  seqLast: "stave.sequencer.cursorLast"
+};
+function cursorKeys(scope, ids) {
+  const keys = [
+    ["left", "Move cursor left", "arrowleft"],
+    ["right", "Move cursor right", "arrowright"],
+    ["up", "Move cursor up", "arrowup"],
+    ["down", "Move cursor down", "arrowdown"],
+    ["rowStart", "Move cursor to the start of the row", "home"],
+    ["rowEnd", "Move cursor to the end of the row", "end"],
+    ["first", "Move cursor to the first cell", "mod+home"],
+    ["last", "Move cursor to the last cell", "mod+end"]
+  ];
+  return keys.map(([action, title, keybinding]) => ({ id: ids[action], scope, action, title, keybinding }));
+}
+__name(cursorKeys, "cursorKeys");
+var GRID_GESTURES = [
+  {
+    id: GRID_GESTURE.rollDelete,
+    scope: GRID_SCOPE.pianoRoll,
+    action: "remove",
+    title: "Delete selected note",
+    keybinding: "delete",
+    alternateKeybindings: ["backspace"]
+  },
+  {
+    id: GRID_GESTURE.rollCopy,
+    scope: GRID_SCOPE.pianoRoll,
+    action: "copy",
+    title: "Copy selected note",
+    keybinding: "mod+c"
+  },
+  {
+    id: GRID_GESTURE.rollPaste,
+    scope: GRID_SCOPE.pianoRoll,
+    action: "paste",
+    title: "Paste note at selected cell",
+    keybinding: "mod+v"
+  },
+  {
+    id: GRID_GESTURE.rollToggle,
+    scope: GRID_SCOPE.pianoRoll,
+    action: "toggle",
+    title: "Add or remove a note at the cursor",
+    keybinding: "'",
+    alternateKeybindings: ["enter"]
+  },
+  ...cursorKeys(GRID_SCOPE.pianoRoll, {
+    left: GRID_GESTURE.rollLeft,
+    right: GRID_GESTURE.rollRight,
+    up: GRID_GESTURE.rollUp,
+    down: GRID_GESTURE.rollDown,
+    rowStart: GRID_GESTURE.rollRowStart,
+    rowEnd: GRID_GESTURE.rollRowEnd,
+    first: GRID_GESTURE.rollFirst,
+    last: GRID_GESTURE.rollLast
+  }),
+  {
+    id: GRID_GESTURE.seqToggle,
+    scope: GRID_SCOPE.sequencer,
+    action: "toggle",
+    title: "Turn the step at the cursor on or off",
+    keybinding: "'",
+    alternateKeybindings: ["enter"]
+  },
+  // Logic 12.3: `Clear Step` | `Control-Delete`. Delete and ⌫ as well, because on
+  // this grid removing the hit under the cursor and clearing the step are one edit.
+  {
+    id: GRID_GESTURE.seqClear,
+    scope: GRID_SCOPE.sequencer,
+    action: "remove",
+    title: "Clear the step at the cursor",
+    keybinding: "delete",
+    alternateKeybindings: ["backspace", "ctrl+backspace"]
+  },
+  ...cursorKeys(GRID_SCOPE.sequencer, {
+    left: GRID_GESTURE.seqLeft,
+    right: GRID_GESTURE.seqRight,
+    up: GRID_GESTURE.seqUp,
+    down: GRID_GESTURE.seqDown,
+    rowStart: GRID_GESTURE.seqRowStart,
+    rowEnd: GRID_GESTURE.seqRowEnd,
+    first: GRID_GESTURE.seqFirst,
+    last: GRID_GESTURE.seqLast
+  })
+];
+var BY_ID = new Map(GRID_GESTURES.map((g) => [g.id, g]));
+function gridGestureAction(scope, id) {
+  const g = BY_ID.get(id);
+  return g && g.scope === scope ? g.action : void 0;
+}
+__name(gridGestureAction, "gridGestureAction");
+function moveCursor(at, move, rows, cols) {
+  const clamp = /* @__PURE__ */ __name((v, n) => Math.max(0, Math.min(n - 1, v)), "clamp");
+  switch (move) {
+    case "left":
+      return { row: at.row, col: clamp(at.col - 1, cols) };
+    case "right":
+      return { row: at.row, col: clamp(at.col + 1, cols) };
+    case "up":
+      return { row: clamp(at.row - 1, rows), col: at.col };
+    case "down":
+      return { row: clamp(at.row + 1, rows), col: at.col };
+    case "rowStart":
+      return { row: at.row, col: 0 };
+    case "rowEnd":
+      return { row: at.row, col: Math.max(0, cols - 1) };
+    case "first":
+      return { row: 0, col: 0 };
+    case "last":
+      return { row: Math.max(0, rows - 1), col: Math.max(0, cols - 1) };
+  }
+}
+__name(moveCursor, "moveCursor");
+function isCursorMove(action) {
+  return action !== "toggle" && action !== "remove" && action !== "copy" && action !== "paste";
+}
+__name(isCursorMove, "isCursorMove");
+var GRID_SCOPE_LABEL = {
+  pianoRoll: { category: "Piano roll", where: "In the piano roll, on the selected cell" },
+  sequencer: { category: "Sequencer", where: "In the sequencer, on the selected cell" }
+};
+function matchDefaults(scope, e) {
+  const chord = chordFromEvent(e);
+  for (const g of GRID_GESTURES) {
+    if (g.scope !== scope) continue;
+    if ([g.keybinding, ...g.alternateKeybindings ?? []].some((b) => chordMatches(chord, b))) return g.id;
+  }
+  return void 0;
+}
+__name(matchDefaults, "matchDefaults");
+var matcher = matchDefaults;
+function setGridKeyMatcher(fn) {
+  matcher = fn;
+  return () => {
+    if (matcher === fn) matcher = matchDefaults;
+  };
+}
+__name(setGridKeyMatcher, "setGridKeyMatcher");
+function matchGridKey(scope, e) {
+  const id = matcher(scope, e);
+  return id ? gridGestureAction(scope, id) : void 0;
+}
+__name(matchGridKey, "matchGridKey");
+var mounted = /* @__PURE__ */ new Map();
+function mountGridGestures(scope, run) {
+  mounted.set(scope, run);
+  return () => {
+    if (mounted.get(scope) === run) mounted.delete(scope);
+  };
+}
+__name(mountGridGestures, "mountGridGestures");
+function runGridGesture(scope, id, dryRun) {
+  const action = gridGestureAction(scope, id);
+  if (!action) return false;
+  return mounted.get(scope)?.(action, dryRun) ?? false;
+}
+__name(runGridGesture, "runGridGesture");
 var SEQ_HINT = "Click a drum pattern to edit it as a step grid.";
 var VELOCITY_FULL_PX = 80;
 var DRAG_THRESHOLD = 4;
@@ -35050,6 +35340,66 @@ function SequencerGrid({ onResolution } = {}) {
     if (g.mode !== "paint") return;
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
+  const [cursor, setCursor] = React36.useState(null);
+  const rowsN = model?.lanes.length ?? 0;
+  const colsN = model?.steps ?? 0;
+  const liveCursor = cursor && cursor.row < rowsN && cursor.col < colsN ? cursor : null;
+  const cursorRef = React36.useRef(liveCursor);
+  cursorRef.current = liveCursor;
+  const stmtId = chunk ? chunk.statementRange[0] : null;
+  const stmtRef = React36.useRef(stmtId);
+  React36.useEffect(() => {
+    if (stmtRef.current !== stmtId) {
+      stmtRef.current = stmtId;
+      setCursor(null);
+    }
+  }, [stmtId]);
+  const focusCursorRef = React36.useRef(false);
+  const gridRef = React36.useRef(null);
+  React36.useEffect(() => {
+    if (!focusCursorRef.current) return;
+    focusCursorRef.current = false;
+    gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')?.focus();
+  });
+  const paintByKey = /* @__PURE__ */ __name((laneIndex, stepIndex, value) => {
+    beginGesture();
+    paintCell(laneIndex, stepIndex, value);
+    endGesture();
+  }, "paintByKey");
+  const runGesture = /* @__PURE__ */ __name((action, dryRun, fromKey = false) => {
+    if (!model || rowsN === 0 || colsN === 0) return false;
+    const at = cursorRef.current ?? (fromKey ? { row: 0, col: 0 } : null);
+    if (isCursorMove(action)) {
+      if (dryRun) return true;
+      focusCursorRef.current = true;
+      setCursor(moveCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN));
+      return true;
+    }
+    if (!at) return false;
+    const cell = model.lanes[at.row]?.cells[at.col];
+    const on = cell !== void 0 && isCellOn(cell);
+    switch (action) {
+      case "toggle":
+        if (!on && !(placeable?.[at.row]?.[at.col] ?? false)) return false;
+        if (!dryRun) {
+          if (!cursorRef.current) setCursor(at);
+          paintByKey(at.row, at.col, !on);
+        }
+        return true;
+      case "remove":
+        if (!on) return false;
+        if (!dryRun) paintByKey(at.row, at.col, false);
+        return true;
+      default:
+        return false;
+    }
+  }, "runGesture");
+  const runGestureRef = React36.useRef(runGesture);
+  runGestureRef.current = runGesture;
+  React36.useEffect(
+    () => mountGridGestures(GRID_SCOPE.sequencer, (action, dryRun) => runGestureRef.current(action, dryRun)),
+    []
+  );
   if (!model) {
     return React36.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
@@ -35058,9 +35408,21 @@ function SequencerGrid({ onResolution } = {}) {
     });
   }
   const barSize = model.bars ? model.steps / model.bars : 0;
+  const tabCell = liveCursor ?? { row: 0, col: 0 };
   return /* @__PURE__ */ jsx(
     "div",
     {
+      onPointerDownCapture: (e) => {
+        e.target.closest("[data-seq-cell]")?.focus({ preventScroll: true });
+      },
+      onKeyDown: (e) => {
+        if (!e.target.closest?.("[data-seq-cell]")) return;
+        const action = matchGridKey(GRID_SCOPE.sequencer, e.nativeEvent);
+        if (!action) return;
+        e.preventDefault();
+        e.stopPropagation();
+        runGesture(action, false, true);
+      },
       "data-bottom-panel-tab": "sequencer",
       "data-pattern-scroll": true,
       style: {
@@ -35097,185 +35459,217 @@ function SequencerGrid({ onResolution } = {}) {
             children: "Edits the notes already here \u2014 to add one, use the code view."
           }
         ),
-        model.lanes.map((lane, laneIndex) => {
+        /* @__PURE__ */ jsx("div", { ref: gridRef, role: "grid", "aria-label": "Step sequencer", style: { display: "flex", flexDirection: "column", gap: 4 }, children: model.lanes.map((lane, laneIndex) => {
           const voice = sampleVoice(lane.sound);
-          return /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
-            /* @__PURE__ */ jsx(
-              "span",
-              {
-                "data-seq-voice": lane.sound,
-                style: {
-                  width: 72,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  fontSize: 11,
-                  color: "var(--foreground, #e6e6ea)",
-                  overflow: "hidden",
-                  whiteSpace: "nowrap"
-                },
-                title: lane.sound,
-                children: /* @__PURE__ */ jsx("span", { style: { overflow: "hidden", textOverflow: "ellipsis" }, children: voice.label })
-              }
-            ),
-            /* @__PURE__ */ jsx(
-              "button",
-              {
-                type: "button",
-                "aria-label": `remove ${lane.sound}`,
-                "data-seq-remove-voice": lane.sound,
-                title: `Remove ${lane.sound}`,
-                onClick: () => removeVoice(lane.sound),
-                style: {
-                  width: 16,
-                  height: 16,
-                  flex: "0 0 auto",
-                  padding: 0,
-                  lineHeight: "14px",
-                  fontSize: 12,
-                  borderRadius: 3,
-                  border: "1px solid var(--border, #3a3a42)",
-                  background: "transparent",
-                  color: "var(--foreground-muted, #a0a0aa)",
-                  cursor: "pointer"
-                },
-                children: "\xD7"
-              }
-            ),
-            /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((cell, stepIndex) => {
-              const on = isCellOn(cell);
-              const cov = coverage?.[laneIndex]?.[stepIndex];
-              const held2 = cov !== void 0 && cov.start !== stepIndex;
-              const isTail = cov !== void 0 && coverage?.[laneIndex]?.[stepIndex + 1]?.start !== cov.start;
-              const resizeStart = cov !== void 0 && isTail && resizable?.[laneIndex]?.has(cov.start) ? cov.start : null;
-              const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
-              const isPlaying = stepIndex === playingStep;
-              const canPlace = on || (placeable?.[laneIndex]?.[stepIndex] ?? true);
-              return /* @__PURE__ */ jsxs(
-                "button",
-                {
-                  type: "button",
-                  "aria-pressed": on,
-                  "aria-label": held2 ? `${lane.sound} step ${stepIndex + 1}, held from step ${cov.start + 1}` : `${lane.sound} step ${stepIndex + 1}`,
-                  "data-seq-cell": `${laneIndex}:${stepIndex}`,
-                  "data-gain": on && gainScoped ? gain : void 0,
-                  "data-playing": isPlaying ? "true" : void 0,
-                  "data-seq-cell-inert": canPlace ? void 0 : "true",
-                  "aria-disabled": canPlace ? void 0 : true,
-                  title: canPlace ? void 0 : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
-                  onPointerDown: (e) => {
-                    e.preventDefault();
-                    if (resizeStart !== null) {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const barW = clamp012(cov.extent) * rect.width;
-                      const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
-                      if (e.clientX - rect.left >= barW - zone) {
-                        onResizeDown(laneIndex, resizeStart);
-                        return;
-                      }
+          return /* @__PURE__ */ jsxs(
+            "div",
+            {
+              role: "row",
+              style: { display: "flex", alignItems: "center", gap: 8 },
+              children: [
+                /* @__PURE__ */ jsxs("div", { role: "rowheader", style: { display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }, children: [
+                  /* @__PURE__ */ jsx(
+                    "span",
+                    {
+                      "data-seq-voice": lane.sound,
+                      style: {
+                        width: 72,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        fontSize: 11,
+                        color: "var(--foreground, #e6e6ea)",
+                        overflow: "hidden",
+                        whiteSpace: "nowrap"
+                      },
+                      title: lane.sound,
+                      children: /* @__PURE__ */ jsx("span", { style: { overflow: "hidden", textOverflow: "ellipsis" }, children: voice.label })
                     }
-                    if (!canPlace) return;
-                    onCellDown(laneIndex, stepIndex, on, e);
-                  },
-                  onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
-                  style: {
-                    position: "relative",
-                    flex: "1 1 0",
-                    minWidth: 16,
-                    maxWidth: 56,
-                    height: 22,
-                    padding: 0,
-                    overflow: "hidden",
-                    border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-                    borderRadius: 3,
-                    // subtle gap at each bar boundary
-                    marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
-                    background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-                    cursor: !canPlace ? "default" : gainScoped && on ? "ns-resize" : "pointer"
-                  },
-                  children: [
-                    cov && // Two orthogonal axes on one bar, which is how a DAW draws a
-                    // note: WIDTH is how much of this column the note sounds for
-                    // (#1056), HEIGHT is velocity, bottom-anchored and full when
-                    // neutral — so a length-1 note at neutral gain is the same
-                    // solid square it has always been. The hue is the voice
-                    // colour (#471), or a velocity ramp when View ▸ Note Color =
-                    // Velocity (#428).
-                    //
-                    // A carried column is dimmed rather than drawn solid, the
-                    // vocabulary the piano roll already ships for the same fact
-                    // (`opacity: on && !isHead ? 0.7 : 1`) — one held note reads
-                    // as one note, and never as a second trigger.
+                  ),
+                  /* @__PURE__ */ jsx(
+                    "button",
+                    {
+                      type: "button",
+                      "aria-label": `remove ${lane.sound}`,
+                      "data-seq-remove-voice": lane.sound,
+                      title: `Remove ${lane.sound}`,
+                      onClick: () => removeVoice(lane.sound),
+                      style: {
+                        width: 16,
+                        height: 16,
+                        flex: "0 0 auto",
+                        padding: 0,
+                        lineHeight: "14px",
+                        fontSize: 12,
+                        borderRadius: 3,
+                        border: "1px solid var(--border, #3a3a42)",
+                        background: "transparent",
+                        color: "var(--foreground-muted, #a0a0aa)",
+                        cursor: "pointer"
+                      },
+                      children: "\xD7"
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((cell, stepIndex) => {
+                  const on = isCellOn(cell);
+                  const cov = coverage?.[laneIndex]?.[stepIndex];
+                  const held2 = cov !== void 0 && cov.start !== stepIndex;
+                  const isTail = cov !== void 0 && coverage?.[laneIndex]?.[stepIndex + 1]?.start !== cov.start;
+                  const resizeStart = cov !== void 0 && isTail && resizable?.[laneIndex]?.has(cov.start) ? cov.start : null;
+                  const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
+                  const isPlaying = stepIndex === playingStep;
+                  const canPlace = on || (placeable?.[laneIndex]?.[stepIndex] ?? true);
+                  const isCursor = liveCursor?.row === laneIndex && liveCursor.col === stepIndex;
+                  const isTab = tabCell.row === laneIndex && tabCell.col === stepIndex;
+                  return (
+                    // A gridcell holding one toggle button — `aria-pressed` stays on the
+                    // button, which may carry it; the cursor is the cell's `aria-selected`.
                     /* @__PURE__ */ jsx(
-                      "span",
+                      "div",
                       {
-                        "data-seq-fill": true,
-                        "data-seq-sustain": held2 ? "true" : void 0,
-                        "data-seq-extent": cov.extent !== 1 ? cov.extent.toFixed(4) : void 0,
+                        role: "gridcell",
+                        "aria-selected": isCursor,
                         style: {
-                          position: "absolute",
-                          left: 0,
-                          bottom: 0,
-                          // `minWidth` is a floor on the PIXEL, not on the datum: a
-                          // note whose length rounds to nothing still has to be
-                          // visible, or the grid would silently lose a trigger it
-                          // can spell.
-                          width: `${clamp012(cov.extent) * 100}%`,
-                          minWidth: held2 ? 0 : 2,
-                          height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
-                          background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
-                          opacity: held2 ? 0.7 : 1,
-                          pointerEvents: "none"
-                        }
-                      }
-                    ),
-                    resizeStart !== null && // THE LENGTH HANDLE (#1053) — the axis #1056 made visible, made
-                    // settable. Same shape as the roll's, because this is the same
-                    // gesture on the other surface and the issue asks the two to agree.
-                    //
-                    // It sits at the BAR's trailing edge rather than the cell's, so a
-                    // note that stops mid-column carries its handle on its own end
-                    // instead of floating in the empty background past it. Width is
-                    // clamped to the bar for the same reason the roll clamps it: a
-                    // handle wider than the note would overhang backwards past the
-                    // note's own start. What that costs a very short note — a very
-                    // small handle — is paid back by the invisible grab zone above.
-                    //
-                    // RENDERED ONLY WHERE A DRAG WOULD DO SOMETHING (`resizable`),
-                    // which is the panel's standing rule for every affordance it draws
-                    // (#1064/#1070): a handle on a note whose every length the writer
-                    // declines is a control the user can press to no effect, and this
-                    // project ranks that worse than not offering it at all.
-                    /* @__PURE__ */ jsx(
-                      "span",
-                      {
-                        "data-seq-resize": `${laneIndex}:${resizeStart}`,
-                        "aria-label": `resize ${lane.sound} step ${resizeStart + 1}`,
-                        onPointerDown: (e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onResizeDown(laneIndex, resizeStart);
+                          display: "flex",
+                          flex: "1 1 0",
+                          minWidth: 16,
+                          maxWidth: 56,
+                          // subtle gap at each bar boundary
+                          marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0
                         },
-                        style: {
-                          position: "absolute",
-                          top: 0,
-                          bottom: 0,
-                          right: `${(1 - clamp012(cov.extent)) * 100}%`,
-                          width: `min(${RESIZE_ZONE_PX}px, ${clamp012(cov.extent) * 100}%)`,
-                          cursor: "ew-resize",
-                          background: "var(--foreground, #e6e6ea)",
-                          opacity: 0.45,
-                          borderRadius: "0 2px 2px 0"
-                        }
-                      }
+                        children: /* @__PURE__ */ jsxs(
+                          "button",
+                          {
+                            type: "button",
+                            tabIndex: isTab ? 0 : -1,
+                            onFocus: () => {
+                              if (!isCursor) setCursor({ row: laneIndex, col: stepIndex });
+                            },
+                            "aria-pressed": on,
+                            "aria-label": held2 ? `${lane.sound} step ${stepIndex + 1}, held from step ${cov.start + 1}` : `${lane.sound} step ${stepIndex + 1}`,
+                            "data-seq-cell": `${laneIndex}:${stepIndex}`,
+                            "data-gain": on && gainScoped ? gain : void 0,
+                            "data-playing": isPlaying ? "true" : void 0,
+                            "data-seq-cell-inert": canPlace ? void 0 : "true",
+                            "aria-disabled": canPlace ? void 0 : true,
+                            title: canPlace ? void 0 : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
+                            onPointerDown: (e) => {
+                              e.preventDefault();
+                              setCursor({ row: laneIndex, col: stepIndex });
+                              if (resizeStart !== null) {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const barW = clamp012(cov.extent) * rect.width;
+                                const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
+                                if (e.clientX - rect.left >= barW - zone) {
+                                  onResizeDown(laneIndex, resizeStart);
+                                  return;
+                                }
+                              }
+                              if (!canPlace) return;
+                              onCellDown(laneIndex, stepIndex, on, e);
+                            },
+                            onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
+                            style: {
+                              position: "relative",
+                              width: "100%",
+                              height: 22,
+                              padding: 0,
+                              overflow: "hidden",
+                              border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                              borderRadius: 3,
+                              background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
+                              cursor: !canPlace ? "default" : gainScoped && on ? "ns-resize" : "pointer"
+                            },
+                            children: [
+                              cov && // Two orthogonal axes on one bar, which is how a DAW draws a
+                              // note: WIDTH is how much of this column the note sounds for
+                              // (#1056), HEIGHT is velocity, bottom-anchored and full when
+                              // neutral — so a length-1 note at neutral gain is the same
+                              // solid square it has always been. The hue is the voice
+                              // colour (#471), or a velocity ramp when View ▸ Note Color =
+                              // Velocity (#428).
+                              //
+                              // A carried column is dimmed rather than drawn solid, the
+                              // vocabulary the piano roll already ships for the same fact
+                              // (`opacity: on && !isHead ? 0.7 : 1`) — one held note reads
+                              // as one note, and never as a second trigger.
+                              /* @__PURE__ */ jsx(
+                                "span",
+                                {
+                                  "data-seq-fill": true,
+                                  "data-seq-sustain": held2 ? "true" : void 0,
+                                  "data-seq-extent": cov.extent !== 1 ? cov.extent.toFixed(4) : void 0,
+                                  style: {
+                                    position: "absolute",
+                                    left: 0,
+                                    bottom: 0,
+                                    // `minWidth` is a floor on the PIXEL, not on the datum: a
+                                    // note whose length rounds to nothing still has to be
+                                    // visible, or the grid would silently lose a trigger it
+                                    // can spell.
+                                    width: `${clamp012(cov.extent) * 100}%`,
+                                    minWidth: held2 ? 0 : 2,
+                                    height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
+                                    background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
+                                    opacity: held2 ? 0.7 : 1,
+                                    pointerEvents: "none"
+                                  }
+                                }
+                              ),
+                              resizeStart !== null && // THE LENGTH HANDLE (#1053) — the axis #1056 made visible, made
+                              // settable. Same shape as the roll's, because this is the same
+                              // gesture on the other surface and the issue asks the two to agree.
+                              //
+                              // It sits at the BAR's trailing edge rather than the cell's, so a
+                              // note that stops mid-column carries its handle on its own end
+                              // instead of floating in the empty background past it. Width is
+                              // clamped to the bar for the same reason the roll clamps it: a
+                              // handle wider than the note would overhang backwards past the
+                              // note's own start. What that costs a very short note — a very
+                              // small handle — is paid back by the invisible grab zone above.
+                              //
+                              // RENDERED ONLY WHERE A DRAG WOULD DO SOMETHING (`resizable`),
+                              // which is the panel's standing rule for every affordance it draws
+                              // (#1064/#1070): a handle on a note whose every length the writer
+                              // declines is a control the user can press to no effect, and this
+                              // project ranks that worse than not offering it at all.
+                              /* @__PURE__ */ jsx(
+                                "span",
+                                {
+                                  "data-seq-resize": `${laneIndex}:${resizeStart}`,
+                                  "aria-label": `resize ${lane.sound} step ${resizeStart + 1}`,
+                                  onPointerDown: (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onResizeDown(laneIndex, resizeStart);
+                                  },
+                                  style: {
+                                    position: "absolute",
+                                    top: 0,
+                                    bottom: 0,
+                                    right: `${(1 - clamp012(cov.extent)) * 100}%`,
+                                    width: `min(${RESIZE_ZONE_PX}px, ${clamp012(cov.extent) * 100}%)`,
+                                    cursor: "ew-resize",
+                                    background: "var(--foreground, #e6e6ea)",
+                                    opacity: 0.45,
+                                    borderRadius: "0 2px 2px 0"
+                                  }
+                                }
+                              )
+                            ]
+                          }
+                        )
+                      },
+                      stepIndex
                     )
-                  ]
-                },
-                stepIndex
-              );
-            }) })
-          ] }, `${lane.sound}:${lane.part ?? 0}`);
-        }),
+                  );
+                }) })
+              ]
+            },
+            `${lane.sound}:${lane.part ?? 0}`
+          );
+        }) }),
         !isChordChart && /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 4 }, children: [
           /* @__PURE__ */ jsx("span", { style: { width: 72, flex: "0 0 auto" } }),
           /* @__PURE__ */ jsxs(
@@ -35351,181 +35745,6 @@ function getNoteClip() {
   return clip;
 }
 __name(getNoteClip, "getNoteClip");
-
-// src/keys/chord.ts
-function isMacPlatform() {
-  return typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
-}
-__name(isMacPlatform, "isMacPlatform");
-var PUNCTUATION_BY_CODE = {
-  Minus: "-",
-  Equal: "=",
-  BracketLeft: "[",
-  BracketRight: "]",
-  Backslash: "\\",
-  Semicolon: ";",
-  Quote: "'",
-  Comma: ",",
-  Period: ".",
-  Slash: "/",
-  Backquote: "`"
-};
-var BASE_OF_SHIFTED = {
-  "!": "1",
-  "@": "2",
-  "#": "3",
-  "$": "4",
-  "%": "5",
-  "^": "6",
-  "&": "7",
-  "*": "8",
-  "(": "9",
-  ")": "0",
-  _: "-",
-  "{": "[",
-  "}": "]",
-  "|": "\\",
-  ":": ";",
-  '"': "'",
-  "<": ",",
-  ">": ".",
-  "?": "/",
-  "~": "`"
-};
-function tokenForCode(code) {
-  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
-  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
-  if (code in PUNCTUATION_BY_CODE) return PUNCTUATION_BY_CODE[code];
-  return code.toLowerCase();
-}
-__name(tokenForCode, "tokenForCode");
-var PLAIN_LABEL = /^[\x21-\x7e]$/;
-function keyToken(e, byPosition) {
-  const fromCode = e.code ? tokenForCode(e.code) : "";
-  if (byPosition && fromCode) return fromCode;
-  const key2 = e.key;
-  if (key2 === " ") return "space";
-  if (key2.length === 1) {
-    const codeIsSymbolKey = /^Digit[0-9]$/.test(e.code) || e.code in PUNCTUATION_BY_CODE;
-    if (e.shiftKey && codeIsSymbolKey) return fromCode;
-    if (PLAIN_LABEL.test(key2)) return key2 === "+" ? "plus" : key2.toLowerCase();
-    return fromCode || key2.toLowerCase();
-  }
-  if (key2 === "Dead" || key2 === "Unidentified" || key2 === "") return fromCode || "unidentified";
-  return key2.toLowerCase();
-}
-__name(keyToken, "keyToken");
-function chordFromEvent(e, opts = {}) {
-  const isMac = opts.isMac ?? isMacPlatform();
-  const parts = [];
-  if (isMac) {
-    if (e.metaKey) parts.push("mod");
-    if (e.ctrlKey) parts.push("ctrl");
-  } else if (e.metaKey || e.ctrlKey) {
-    parts.push("mod");
-  }
-  if (e.shiftKey) parts.push("shift");
-  if (e.altKey) parts.push("alt");
-  parts.push(keyToken(e, opts.byPosition ?? false));
-  return parts.join("+");
-}
-__name(chordFromEvent, "chordFromEvent");
-var MODIFIER_ORDER = ["mod", "ctrl", "shift", "alt"];
-function normalizeChord(chord, opts = {}) {
-  const isMac = opts.isMac ?? isMacPlatform();
-  const mods = /* @__PURE__ */ new Set();
-  let key2 = "";
-  for (const raw of chord.toLowerCase().split("+")) {
-    let t = raw;
-    if (t === "cmd" || t === "command" || t === "meta") t = "mod";
-    else if (t === "control") t = isMac ? "ctrl" : "mod";
-    else if (t === "ctrl" && !isMac) t = "mod";
-    else if (t === "option" || t === "opt") t = "alt";
-    if (MODIFIER_ORDER.includes(t)) mods.add(t);
-    else if (t === " " || t === "spacebar") key2 = "space";
-    else if (t === "esc") key2 = "escape";
-    else if (t === "return") key2 = "enter";
-    else key2 = t;
-  }
-  if (mods.has("shift") && key2 in BASE_OF_SHIFTED) key2 = BASE_OF_SHIFTED[key2];
-  return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key2].join("+");
-}
-__name(normalizeChord, "normalizeChord");
-function chordMatches(eventChord, declared, opts = {}) {
-  return normalizeChord(eventChord, opts) === normalizeChord(declared, opts);
-}
-__name(chordMatches, "chordMatches");
-
-// src/visualEdit/panels/gridGestures.ts
-var GRID_SCOPE = {
-  pianoRoll: "pianoRoll",
-  sequencer: "sequencer"
-};
-var GRID_GESTURE = {
-  rollDelete: "stave.pianoRoll.deleteNote",
-  rollCopy: "stave.pianoRoll.copyNote",
-  rollPaste: "stave.pianoRoll.pasteNote"
-};
-var GRID_GESTURES = [
-  {
-    id: GRID_GESTURE.rollDelete,
-    scope: GRID_SCOPE.pianoRoll,
-    title: "Delete selected note",
-    keybinding: "delete",
-    alternateKeybindings: ["backspace"]
-  },
-  { id: GRID_GESTURE.rollCopy, scope: GRID_SCOPE.pianoRoll, title: "Copy selected note", keybinding: "mod+c" },
-  {
-    id: GRID_GESTURE.rollPaste,
-    scope: GRID_SCOPE.pianoRoll,
-    title: "Paste note at selected cell",
-    keybinding: "mod+v"
-  }
-];
-var GRID_SCOPE_LABEL = {
-  pianoRoll: { category: "Piano roll", where: "In the piano roll, on the selected cell" },
-  sequencer: { category: "Sequencer", where: "In the sequencer, on the selected cell" }
-};
-function matchDefaults(scope, e) {
-  const chord = chordFromEvent(e);
-  for (const g of GRID_GESTURES) {
-    if (g.scope !== scope) continue;
-    if ([g.keybinding, ...g.alternateKeybindings ?? []].some((b) => chordMatches(chord, b))) return g.id;
-  }
-  return void 0;
-}
-__name(matchDefaults, "matchDefaults");
-var matcher = matchDefaults;
-function setGridKeyMatcher(fn) {
-  matcher = fn;
-  return () => {
-    if (matcher === fn) matcher = matchDefaults;
-  };
-}
-__name(setGridKeyMatcher, "setGridKeyMatcher");
-function matchGridKey(scope, e) {
-  const id = matcher(scope, e);
-  return id && isGridGestureId(id) ? id : void 0;
-}
-__name(matchGridKey, "matchGridKey");
-var IDS = new Set(Object.values(GRID_GESTURE));
-function isGridGestureId(id) {
-  return IDS.has(id);
-}
-__name(isGridGestureId, "isGridGestureId");
-var mounted = /* @__PURE__ */ new Map();
-function mountGridGestures(scope, run) {
-  mounted.set(scope, run);
-  return () => {
-    if (mounted.get(scope) === run) mounted.delete(scope);
-  };
-}
-__name(mountGridGestures, "mountGridGestures");
-function runGridGesture(scope, id, dryRun) {
-  if (!isGridGestureId(id)) return false;
-  return mounted.get(scope)?.(id, dryRun) ?? false;
-}
-__name(runGridGesture, "runGridGesture");
 var AUDITION_ENVELOPE = {
   gain: 0.9,
   attack: 0.01,
@@ -35796,6 +36015,7 @@ function PianoRollGrid({
       select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
       return;
     }
+    select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
     const note = noteAt(model, midi, step);
     if (note) {
       const isTail = tailColumn(note) === step;
@@ -35819,17 +36039,20 @@ function PianoRollGrid({
       };
       beginGesture();
     } else {
-      let refused2 = false;
-      mutate((prev) => {
-        const next = placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, {
-          readback: true
-        });
-        refused2 = next === prev;
-        return next;
-      });
-      if (refused2) reportRefusal("Couldn't add that note");
+      placeAt(midi, step);
     }
   }, "onCellDown");
+  const placeAt = /* @__PURE__ */ __name((midi, step) => {
+    let refused2 = false;
+    mutate((prev) => {
+      const next = placeNote(prev, tokenForRow(!!prev.numeric, midi), step, 1, {
+        readback: true
+      });
+      refused2 = next === prev;
+      return next;
+    });
+    if (refused2) reportRefusal("Couldn't add that note");
+  }, "placeAt");
   const onResizeDown = /* @__PURE__ */ __name((note) => {
     if (!model) return;
     dragRef.current = {
@@ -35867,28 +36090,18 @@ function PianoRollGrid({
     d.askedPitch = newPitch;
     d.askedStart = newStart;
   }, "onCellEnter");
-  const removeSelected = /* @__PURE__ */ __name(() => {
-    const sel = selectedRef.current;
-    if (!sel || sel.kind !== "roll") return;
+  const deleteNote = /* @__PURE__ */ __name((note) => {
     let refused2 = false;
     mutate((prev) => {
-      const next = removeNote(prev, sel.start, sel.pitch, { readback: true });
+      const next = removeNote(prev, note.start, note.pitch, { readback: true });
       refused2 = next === prev;
       return next;
     });
-    if (refused2) {
-      reportRefusal("Couldn't delete that note");
-      return;
-    }
-    select(null);
-  }, "removeSelected");
-  const copySelected = /* @__PURE__ */ __name(() => {
-    const sel = selectedRef.current;
-    if (!model || !sel || sel.kind !== "roll") return;
-    const note = model.notes.find((n) => n.pitch === sel.pitch && n.start === sel.start);
-    if (!note) return;
+    if (refused2) reportRefusal("Couldn't delete that note");
+  }, "deleteNote");
+  const copyNote = /* @__PURE__ */ __name((note) => {
     setNoteClip({ pitch: note.pitch, duration: note.duration, gain: note.gain ?? 1 });
-  }, "copySelected");
+  }, "copyNote");
   const pasteClip = /* @__PURE__ */ __name(() => {
     const clip2 = getNoteClip();
     const sel = selectedRef.current;
@@ -35920,31 +36133,73 @@ function PianoRollGrid({
     scaleToSlots,
     onResolution
   );
-  const runGesture = /* @__PURE__ */ __name((id, dryRun) => {
+  const rows = [];
+  for (let m = range2.hi; m >= range2.lo; m--) rows.push(m);
+  const cursorCell = /* @__PURE__ */ __name(() => {
     const sel = selectedRef.current;
-    if (!model || !sel || sel.kind !== "roll") return false;
-    const hasNote = model.notes.some((n) => n.pitch === sel.pitch && n.start === sel.start);
-    switch (id) {
-      case GRID_GESTURE.rollDelete:
-        if (dryRun) return hasNote;
-        removeSelected();
+    if (!sel || sel.kind !== "roll") return null;
+    const midi = pitchToMidi(sel.pitch);
+    const row = midi === null ? -1 : rows.indexOf(midi);
+    return row < 0 || sel.start >= cols ? null : { row, col: sel.start };
+  }, "cursorCell");
+  const defaultCell = /* @__PURE__ */ __name(() => {
+    let best = null;
+    for (const n of model?.notes ?? []) {
+      const midi = pitchToMidi(n.pitch);
+      const row = midi === null ? -1 : rows.indexOf(midi);
+      const col = model ? headColumn(n) : 0;
+      if (row < 0 || col < 0 || col >= cols) continue;
+      if (!best || col < best.col || col === best.col && row < best.row) best = { row, col };
+    }
+    return best ?? { row: 0, col: 0 };
+  }, "defaultCell");
+  const focusCursorRef = React36.useRef(false);
+  const gridRef = React36.useRef(null);
+  React36.useEffect(() => {
+    if (!focusCursorRef.current) return;
+    focusCursorRef.current = false;
+    gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-roll-cell]')?.focus();
+  });
+  const runGesture = /* @__PURE__ */ __name((action, dryRun, fromKey = false) => {
+    if (!model || rows.length === 0 || cols === 0) return false;
+    const at = cursorCell() ?? (fromKey ? defaultCell() : null);
+    if (isCursorMove(action)) {
+      if (dryRun) return true;
+      const next = moveCursor(at ?? defaultCell(), action, rows.length, cols);
+      focusCursorRef.current = true;
+      select({ kind: "roll", pitch: tokenForRow(!!model.numeric, rows[next.row]), start: next.col });
+      return true;
+    }
+    if (!at) return false;
+    const midi = rows[at.row];
+    const note = noteAt(model, midi, at.col);
+    switch (action) {
+      case "remove":
+        if (!note) return false;
+        if (!dryRun) deleteNote(note);
         return true;
-      case GRID_GESTURE.rollCopy:
-        if (dryRun) return hasNote;
-        copySelected();
+      case "copy":
+        if (!note) return false;
+        if (!dryRun) copyNote(note);
         return true;
-      case GRID_GESTURE.rollPaste:
-        if (dryRun) return getNoteClip() !== null;
-        pasteClip();
+      case "paste":
+        if (!getNoteClip() || !cursorCell()) return false;
+        if (!dryRun) pasteClip();
         return true;
-      default:
-        return false;
+      case "toggle":
+        if (note) {
+          if (!dryRun) deleteNote(note);
+          return true;
+        }
+        if (!placesNotes) return false;
+        if (!dryRun) placeAt(midi, at.col);
+        return true;
     }
   }, "runGesture");
   const runGestureRef = React36.useRef(runGesture);
   runGestureRef.current = runGesture;
   React36.useEffect(
-    () => mountGridGestures(GRID_SCOPE.pianoRoll, (id, dryRun) => runGestureRef.current(id, dryRun)),
+    () => mountGridGestures(GRID_SCOPE.pianoRoll, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
   if (!model) {
@@ -35954,20 +36209,23 @@ function PianoRollGrid({
       icon: "music"
     });
   }
-  const rows = [];
-  for (let m = range2.hi; m >= range2.lo; m--) rows.push(m);
+  const tabCell = cursorCell() ?? defaultCell();
   return /* @__PURE__ */ jsxs(
     "div",
     {
       "data-bottom-panel-tab": "piano-roll",
-      tabIndex: 0,
-      onPointerDownCapture: (e) => e.currentTarget.focus({ preventScroll: true }),
+      tabIndex: -1,
+      onPointerDownCapture: (e) => {
+        const cell = e.target.closest("[data-roll-cell]");
+        (cell ?? e.currentTarget).focus({ preventScroll: true });
+      },
       onKeyDown: (e) => {
-        const id = matchGridKey(GRID_SCOPE.pianoRoll, e.nativeEvent);
-        if (!id) return;
+        if (!e.target.closest?.("[data-roll-cell]")) return;
+        const action = matchGridKey(GRID_SCOPE.pianoRoll, e.nativeEvent);
+        if (!action) return;
         e.preventDefault();
         e.stopPropagation();
-        runGesture(id, false);
+        runGesture(action, false, true);
       },
       style: {
         position: "relative",
@@ -36015,296 +36273,325 @@ function PianoRollGrid({
                 style: { display: "flex", flexDirection: "column", gap: 1, width: "100%" },
                 onPointerLeave: () => setHoveredMidi(null),
                 children: [
-                  rows.map((midi) => {
-                    const black = !model.numeric && isBlackKey(midi);
-                    const hovered = midi === hoveredMidi;
-                    const keyC = cLabel(midi);
-                    return /* @__PURE__ */ jsxs(
-                      "div",
-                      {
-                        style: { display: "flex", alignItems: "center", gap: 6 },
-                        onPointerEnter: () => {
-                          if (!dragRef.current && !velRef.current) setHoveredMidi(midi);
-                        },
-                        children: [
-                          model.numeric ? (
-                            // Numeric rows are raw values/degrees, not piano keys — keep the
-                            // value label (no keyboard graphic).
-                            /* @__PURE__ */ jsx(
-                              "span",
-                              {
-                                style: {
-                                  width: 36,
-                                  fontSize: 9,
-                                  textAlign: "right",
-                                  color: "var(--foreground, #e6e6ea)"
-                                },
-                                children: tokenForRow(true, midi)
-                              }
-                            )
-                          ) : (
-                            // Graphical piano key (#430). Fixed-width key bed so the note
-                            // cells stay column-aligned across every row (PV120 single
-                            // vertical axis — same `rows` midi list). White keys fill the
-                            // bed light; a black key is a shorter dark bar overlaid on the
-                            // BACK (left) of the bed, leaving the white front edge visible —
-                            // the keyboard look. C rows are labelled (C is always white).
-                            /* @__PURE__ */ jsxs(
-                              "span",
-                              {
-                                "data-roll-key": midi,
-                                "data-roll-key-black": black ? "true" : void 0,
-                                title: `Play ${noteDisplayName(midi)}`,
-                                onPointerDown: (e) => {
-                                  e.preventDefault();
-                                  startHold(midi);
-                                },
-                                onPointerEnter: () => moveHold(midi),
-                                style: {
-                                  position: "relative",
-                                  width: 40,
-                                  height: 16,
-                                  flex: "0 0 auto",
-                                  boxSizing: "border-box",
-                                  borderRadius: "2px 3px 3px 2px",
-                                  border: "1px solid var(--border, #3a3a42)",
-                                  background: hovered ? "#cdd3ff" : "#e8e8ec",
-                                  color: "#3a3a42",
-                                  fontSize: 8,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "flex-end",
-                                  paddingRight: 3,
-                                  overflow: "hidden",
-                                  cursor: "pointer",
-                                  touchAction: "none"
-                                  // let a touch-drag glissando across keys
-                                },
-                                children: [
-                                  black && /* @__PURE__ */ jsx(
-                                    "span",
-                                    {
-                                      "aria-hidden": "true",
-                                      style: {
-                                        position: "absolute",
-                                        left: 0,
-                                        top: 0,
-                                        bottom: 0,
-                                        width: "62%",
-                                        background: hovered ? "#3a3a44" : "#1b1b20",
-                                        borderRadius: "1px 2px 2px 1px"
-                                      }
-                                    }
-                                  ),
-                                  /* @__PURE__ */ jsx("span", { style: { position: "relative" }, children: keyC ?? "" })
-                                ]
-                              }
-                            )
-                          ),
-                          /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, step) => {
-                            const hit = overlapAt(model, midi, step);
-                            const note = hit?.note;
-                            const on = note !== void 0;
-                            const isHead = on && headColumn(note) === step;
-                            const isTail = on && tailColumn(note) === step;
-                            const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
-                            const canPlace = on || placesNotes;
-                            const dropRefused = declinedCell === `${midi}:${step}`;
-                            const resizeInert = on && isTail && resizable?.has(note) === false;
-                            return /* @__PURE__ */ jsxs(
-                              "button",
-                              {
-                                type: "button",
-                                "aria-pressed": on,
-                                "aria-label": `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
-                                "aria-current": isSel ? "true" : void 0,
-                                "data-roll-cell": `${midi}:${step}`,
-                                "data-roll-selected": isSel ? "true" : void 0,
-                                "data-playing": step === playingStep ? "true" : void 0,
-                                "data-roll-cell-inert": canPlace ? void 0 : "true",
-                                "data-roll-drop-refused": dropRefused ? "true" : void 0,
-                                "data-roll-resize-inert": resizeInert ? "true" : void 0,
-                                "aria-disabled": canPlace ? void 0 : true,
-                                title: !canPlace ? "This pattern edits its existing notes \u2014 add notes in the code view." : resizeInert ? "This note has no other length the pattern can hold \u2014 change its length in the code view." : void 0,
-                                onPointerDown: (e) => {
-                                  e.preventDefault();
-                                  if (!canPlace && !(e.metaKey || e.ctrlKey)) return;
-                                  onCellDown(midi, step, e);
-                                },
-                                onPointerEnter: () => onCellEnter(midi, step),
-                                style: {
-                                  position: "relative",
-                                  flex: "1 1 0",
-                                  minWidth: 12,
-                                  maxWidth: 44,
-                                  height: 16,
-                                  padding: 0,
-                                  border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-                                  borderRadius: 2,
-                                  // The note is drawn by the fill BELOW, not by this background, so
-                                  // that a note occupying part of a column occupies part of the box
-                                  // (#1074). The cell keeps its own empty-cell background.
-                                  background: step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-                                  cursor: dropRefused ? "not-allowed" : "pointer"
-                                  // The selection ring (#432) is NOT here — see the overlay that
-                                  // is the cell's last child (#1077).
-                                },
-                                children: [
-                                  hit && // The note itself. WIDTH is how much of this column it sounds
-                                  // for and LEFT is where in the column it begins — the same
-                                  // geometry the step grid draws (#1056), from the same shared
-                                  // `columnOverlap` rule, with the offset that only the roll needs
-                                  // because only a roll note carries a fractional start.
-                                  //
-                                  // A non-head is dimmed, which is what this surface already did
-                                  // via the button's own opacity; moving it onto the fill keeps the
-                                  // cell's playhead border and selection ring at full strength.
+                  /* @__PURE__ */ jsx(
+                    "div",
+                    {
+                      ref: gridRef,
+                      role: "grid",
+                      "aria-label": "Piano roll",
+                      style: { display: "flex", flexDirection: "column", gap: 1 },
+                      children: rows.map((midi) => {
+                        const black = !model.numeric && isBlackKey(midi);
+                        const hovered = midi === hoveredMidi;
+                        const keyC = cLabel(midi);
+                        return /* @__PURE__ */ jsxs(
+                          "div",
+                          {
+                            role: "row",
+                            style: { display: "flex", alignItems: "center", gap: 6 },
+                            onPointerEnter: () => {
+                              if (!dragRef.current && !velRef.current) setHoveredMidi(midi);
+                            },
+                            children: [
+                              model.numeric ? (
+                                // Numeric rows are raw values/degrees, not piano keys — keep the
+                                // value label (no keyboard graphic).
+                                /* @__PURE__ */ jsx(
+                                  "span",
+                                  {
+                                    role: "rowheader",
+                                    style: {
+                                      width: 36,
+                                      fontSize: 9,
+                                      textAlign: "right",
+                                      color: "var(--foreground, #e6e6ea)"
+                                    },
+                                    children: tokenForRow(true, midi)
+                                  }
+                                )
+                              ) : (
+                                // Graphical piano key (#430). Fixed-width key bed so the note
+                                // cells stay column-aligned across every row (PV120 single
+                                // vertical axis — same `rows` midi list). White keys fill the
+                                // bed light; a black key is a shorter dark bar overlaid on the
+                                // BACK (left) of the bed, leaving the white front edge visible —
+                                // the keyboard look. C rows are labelled (C is always white).
+                                /* @__PURE__ */ jsxs(
+                                  "span",
+                                  {
+                                    role: "rowheader",
+                                    "aria-label": noteDisplayName(midi),
+                                    "data-roll-key": midi,
+                                    "data-roll-key-black": black ? "true" : void 0,
+                                    title: `Play ${noteDisplayName(midi)}`,
+                                    onPointerDown: (e) => {
+                                      e.preventDefault();
+                                      startHold(midi);
+                                    },
+                                    onPointerEnter: () => moveHold(midi),
+                                    style: {
+                                      position: "relative",
+                                      width: 40,
+                                      height: 16,
+                                      flex: "0 0 auto",
+                                      boxSizing: "border-box",
+                                      borderRadius: "2px 3px 3px 2px",
+                                      border: "1px solid var(--border, #3a3a42)",
+                                      background: hovered ? "#cdd3ff" : "#e8e8ec",
+                                      color: "#3a3a42",
+                                      fontSize: 8,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "flex-end",
+                                      paddingRight: 3,
+                                      overflow: "hidden",
+                                      cursor: "pointer",
+                                      touchAction: "none"
+                                      // let a touch-drag glissando across keys
+                                    },
+                                    children: [
+                                      black && /* @__PURE__ */ jsx(
+                                        "span",
+                                        {
+                                          "aria-hidden": "true",
+                                          style: {
+                                            position: "absolute",
+                                            left: 0,
+                                            top: 0,
+                                            bottom: 0,
+                                            width: "62%",
+                                            background: hovered ? "#3a3a44" : "#1b1b20",
+                                            borderRadius: "1px 2px 2px 1px"
+                                          }
+                                        }
+                                      ),
+                                      /* @__PURE__ */ jsx("span", { style: { position: "relative" }, children: keyC ?? "" })
+                                    ]
+                                  }
+                                )
+                              ),
+                              /* @__PURE__ */ jsx("div", { role: "none", style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, step) => {
+                                const hit = overlapAt(model, midi, step);
+                                const note = hit?.note;
+                                const on = note !== void 0;
+                                const isHead = on && headColumn(note) === step;
+                                const isTail = on && tailColumn(note) === step;
+                                const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
+                                const canPlace = on || placesNotes;
+                                const dropRefused = declinedCell === `${midi}:${step}`;
+                                const resizeInert = on && isTail && resizable?.has(note) === false;
+                                const isTab = tabCell.col === step && rows[tabCell.row] === midi;
+                                return (
+                                  // A gridcell holding one toggle button (ARIA grid pattern: a cell
+                                  // with a single widget puts focus on the widget). The button keeps
+                                  // `aria-pressed` — a gridcell may not carry it, a button may — and
+                                  // the cell carries the cursor as `aria-selected` (#1802).
                                   /* @__PURE__ */ jsx(
-                                    "span",
+                                    "div",
                                     {
-                                      "data-roll-fill": true,
-                                      "data-roll-sustain": !isHead ? "true" : void 0,
-                                      style: {
-                                        position: "absolute",
-                                        top: 0,
-                                        bottom: 0,
-                                        left: `${hit.overlap.offset * 100}%`,
-                                        width: `${hit.overlap.extent * 100}%`,
-                                        background: colorMode === "velocity" ? velocityColor(note.gain ?? 1) : "var(--accent, #6ea8fe)",
-                                        opacity: isHead ? 1 : 0.7,
-                                        pointerEvents: "none"
-                                      }
-                                    }
-                                  ),
-                                  isHead && // Note name inside the bar (#605) — rendered on the head
-                                  // cell, clipped to THE BAR so it never spills onto a
-                                  // neighbour or onto the empty part of its own column.
-                                  // pointer-events:none so it never blocks the cell's
-                                  // pointer gestures (paint/drag) or the tail resize handle.
-                                  //
-                                  // Positioned against the FILL's box, not the cell's (#1078).
-                                  // While the note WAS the whole cell the two rectangles
-                                  // coincided and nothing had to choose; once the note became a
-                                  // child span occupying only its overlap (#1076), `inset: 0`
-                                  // put the label on empty background BESIDE the bar it names —
-                                  // 12 of 4842 corpus notes, every one of them a note that
-                                  // begins mid-column. Same two numbers the bar uses, so the
-                                  // two cannot drift apart again.
-                                  /* @__PURE__ */ jsx(
-                                    "span",
-                                    {
-                                      "data-roll-note-name": true,
-                                      "aria-hidden": "true",
-                                      style: {
-                                        position: "absolute",
-                                        top: 0,
-                                        bottom: 0,
-                                        left: `${hit.overlap.offset * 100}%`,
-                                        width: `${hit.overlap.extent * 100}%`,
-                                        display: "flex",
-                                        alignItems: "center",
-                                        paddingLeft: 3,
-                                        fontSize: 8,
-                                        lineHeight: 1,
-                                        fontWeight: 600,
-                                        color: "#fff",
-                                        textShadow: "0 1px 1px rgba(0,0,0,0.55)",
-                                        whiteSpace: "nowrap",
-                                        overflow: "hidden",
-                                        pointerEvents: "none"
-                                      },
-                                      children: model.numeric ? String(midi) : noteDisplayName(midi)
-                                    }
-                                  ),
-                                  isTail && resizable?.has(note) && // RENDERED ONLY WHERE A DRAG WOULD WRITE (`resizable`, #1322),
-                                  // which is the standing rule for every affordance this panel
-                                  // draws (#1064/#1070/#1089). 1,861 of 5,480 corpus notes have no
-                                  // length the document can carry, and until now every one of them
-                                  // drew a handle that took the cursor and did nothing.
-                                  //
-                                  // The resize handle sits at the BAR's trailing edge, not the
-                                  // cell's (#1078). A note that ends mid-column used to put its
-                                  // handle at the far side of the column — floating in empty
-                                  // background past the end of the note it resizes, which is a
-                                  // handle you cannot aim at because it is not on the thing.
-                                  // 18 of 4842 corpus notes.
-                                  //
-                                  // WIDTH IS CLAMPED TO THE BAR: a `@0.25` note in a
-                                  // minimum-width (12px) column is a 3px bar, and a fixed 8px
-                                  // handle would be wider than the note, overhanging backwards
-                                  // past its own start. The handle is never wider than what it
-                                  // resizes. What that costs — a very small note draws a very
-                                  // small handle — is paid back by the pointer-down grab zone
-                                  // below, which is floored and invisible: what you SEE is the
-                                  // note's own trailing edge, what you can HIT is larger.
-                                  /* @__PURE__ */ jsx(
-                                    "span",
-                                    {
-                                      "data-roll-resize": `${midi}:${note.start}`,
-                                      "aria-label": `resize ${tokenForRow(!!model.numeric, midi)}`,
-                                      onPointerDown: (e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        onResizeDown(note);
-                                      },
-                                      style: {
-                                        position: "absolute",
-                                        top: 0,
-                                        bottom: 0,
-                                        right: `${(1 - hit.overlap.offset - hit.overlap.extent) * 100}%`,
-                                        width: `min(${RESIZE_ZONE_PX2}px, ${hit.overlap.extent * 100}%)`,
-                                        cursor: "ew-resize",
-                                        background: "var(--foreground, #e6e6ea)",
-                                        opacity: 0.45,
-                                        borderRadius: "0 2px 2px 0"
-                                      }
-                                    }
-                                  ),
-                                  isSel && // Selection ring (#432), drawn as the LAST child rather than as
-                                  // the cell's own inset shadow (#1077).
-                                  //
-                                  // An inset box-shadow paints with the element's background, and
-                                  // every child paints above it. That cost nothing while the note
-                                  // WAS the background; once the note became a child span (#1074)
-                                  // the ring was covered on every cell holding a note — which is
-                                  // every cell you would want to select. Measured against the
-                                  // previous build: 424 white ring pixels on a selected note cell
-                                  // → 0, while a selected EMPTY cell was unaffected, which is
-                                  // exactly why every existing assertion stayed green.
-                                  //
-                                  // Drawn last so it frames whatever is underneath — note, name,
-                                  // resize handle or bare cell — and never has to know which.
-                                  /* @__PURE__ */ jsx(
-                                    "span",
-                                    {
-                                      "data-roll-selection": true,
-                                      "aria-hidden": "true",
-                                      style: {
-                                        position: "absolute",
-                                        // Laid out against the PADDING box, so the ring sits a pixel
-                                        // further in than the old inset shadow did — measured 403
-                                        // white frame pixels against the original 424. Growing the
-                                        // overlay by the border width to close that gap was tried and
-                                        // MEASURED WORSE: at `inset: -1` the ring is drawn outside the
-                                        // cell and bleeds across the 1px lane gap (2156). The pixel
-                                        // nearest the border is not worth a ring that leaves its cell.
-                                        inset: 0,
-                                        borderRadius: 2,
-                                        boxShadow: "inset 0 0 0 2px var(--foreground, #e6e6ea)",
-                                        pointerEvents: "none"
-                                      }
-                                    }
+                                      role: "gridcell",
+                                      "aria-selected": isSel,
+                                      style: { display: "flex", flex: "1 1 0", minWidth: 12, maxWidth: 44 },
+                                      children: /* @__PURE__ */ jsxs(
+                                        "button",
+                                        {
+                                          type: "button",
+                                          tabIndex: isTab ? 0 : -1,
+                                          onFocus: () => {
+                                            if (!isSel) select({ kind: "roll", pitch: tokenForRow(!!model.numeric, midi), start: step });
+                                          },
+                                          "aria-pressed": on,
+                                          "aria-label": on && !isHead ? `${tokenForRow(!!model.numeric, midi)} step ${step + 1}, held from step ${headColumn(note) + 1}` : `${tokenForRow(!!model.numeric, midi)} step ${step + 1}`,
+                                          "data-roll-cell": `${midi}:${step}`,
+                                          "data-roll-selected": isSel ? "true" : void 0,
+                                          "data-playing": step === playingStep ? "true" : void 0,
+                                          "data-roll-cell-inert": canPlace ? void 0 : "true",
+                                          "data-roll-drop-refused": dropRefused ? "true" : void 0,
+                                          "data-roll-resize-inert": resizeInert ? "true" : void 0,
+                                          "aria-disabled": canPlace ? void 0 : true,
+                                          title: !canPlace ? "This pattern edits its existing notes \u2014 add notes in the code view." : resizeInert ? "This note has no other length the pattern can hold \u2014 change its length in the code view." : void 0,
+                                          onPointerDown: (e) => {
+                                            e.preventDefault();
+                                            if (!canPlace && !(e.metaKey || e.ctrlKey)) return;
+                                            onCellDown(midi, step, e);
+                                          },
+                                          onPointerEnter: () => onCellEnter(midi, step),
+                                          style: {
+                                            position: "relative",
+                                            width: "100%",
+                                            height: 16,
+                                            padding: 0,
+                                            border: step === playingStep ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                                            borderRadius: 2,
+                                            // The note is drawn by the fill BELOW, not by this background, so
+                                            // that a note occupying part of a column occupies part of the box
+                                            // (#1074). The cell keeps its own empty-cell background.
+                                            background: step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
+                                            cursor: dropRefused ? "not-allowed" : "pointer"
+                                            // The selection ring (#432) is NOT here — see the overlay that
+                                            // is the cell's last child (#1077).
+                                          },
+                                          children: [
+                                            hit && // The note itself. WIDTH is how much of this column it sounds
+                                            // for and LEFT is where in the column it begins — the same
+                                            // geometry the step grid draws (#1056), from the same shared
+                                            // `columnOverlap` rule, with the offset that only the roll needs
+                                            // because only a roll note carries a fractional start.
+                                            //
+                                            // A non-head is dimmed, which is what this surface already did
+                                            // via the button's own opacity; moving it onto the fill keeps the
+                                            // cell's playhead border and selection ring at full strength.
+                                            /* @__PURE__ */ jsx(
+                                              "span",
+                                              {
+                                                "data-roll-fill": true,
+                                                "data-roll-sustain": !isHead ? "true" : void 0,
+                                                style: {
+                                                  position: "absolute",
+                                                  top: 0,
+                                                  bottom: 0,
+                                                  left: `${hit.overlap.offset * 100}%`,
+                                                  width: `${hit.overlap.extent * 100}%`,
+                                                  background: colorMode === "velocity" ? velocityColor(note.gain ?? 1) : "var(--accent, #6ea8fe)",
+                                                  opacity: isHead ? 1 : 0.7,
+                                                  pointerEvents: "none"
+                                                }
+                                              }
+                                            ),
+                                            isHead && // Note name inside the bar (#605) — rendered on the head
+                                            // cell, clipped to THE BAR so it never spills onto a
+                                            // neighbour or onto the empty part of its own column.
+                                            // pointer-events:none so it never blocks the cell's
+                                            // pointer gestures (paint/drag) or the tail resize handle.
+                                            //
+                                            // Positioned against the FILL's box, not the cell's (#1078).
+                                            // While the note WAS the whole cell the two rectangles
+                                            // coincided and nothing had to choose; once the note became a
+                                            // child span occupying only its overlap (#1076), `inset: 0`
+                                            // put the label on empty background BESIDE the bar it names —
+                                            // 12 of 4842 corpus notes, every one of them a note that
+                                            // begins mid-column. Same two numbers the bar uses, so the
+                                            // two cannot drift apart again.
+                                            /* @__PURE__ */ jsx(
+                                              "span",
+                                              {
+                                                "data-roll-note-name": true,
+                                                "aria-hidden": "true",
+                                                style: {
+                                                  position: "absolute",
+                                                  top: 0,
+                                                  bottom: 0,
+                                                  left: `${hit.overlap.offset * 100}%`,
+                                                  width: `${hit.overlap.extent * 100}%`,
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  paddingLeft: 3,
+                                                  fontSize: 8,
+                                                  lineHeight: 1,
+                                                  fontWeight: 600,
+                                                  color: "#fff",
+                                                  textShadow: "0 1px 1px rgba(0,0,0,0.55)",
+                                                  whiteSpace: "nowrap",
+                                                  overflow: "hidden",
+                                                  pointerEvents: "none"
+                                                },
+                                                children: model.numeric ? String(midi) : noteDisplayName(midi)
+                                              }
+                                            ),
+                                            isTail && resizable?.has(note) && // RENDERED ONLY WHERE A DRAG WOULD WRITE (`resizable`, #1322),
+                                            // which is the standing rule for every affordance this panel
+                                            // draws (#1064/#1070/#1089). 1,861 of 5,480 corpus notes have no
+                                            // length the document can carry, and until now every one of them
+                                            // drew a handle that took the cursor and did nothing.
+                                            //
+                                            // The resize handle sits at the BAR's trailing edge, not the
+                                            // cell's (#1078). A note that ends mid-column used to put its
+                                            // handle at the far side of the column — floating in empty
+                                            // background past the end of the note it resizes, which is a
+                                            // handle you cannot aim at because it is not on the thing.
+                                            // 18 of 4842 corpus notes.
+                                            //
+                                            // WIDTH IS CLAMPED TO THE BAR: a `@0.25` note in a
+                                            // minimum-width (12px) column is a 3px bar, and a fixed 8px
+                                            // handle would be wider than the note, overhanging backwards
+                                            // past its own start. The handle is never wider than what it
+                                            // resizes. What that costs — a very small note draws a very
+                                            // small handle — is paid back by the pointer-down grab zone
+                                            // below, which is floored and invisible: what you SEE is the
+                                            // note's own trailing edge, what you can HIT is larger.
+                                            /* @__PURE__ */ jsx(
+                                              "span",
+                                              {
+                                                "data-roll-resize": `${midi}:${note.start}`,
+                                                "aria-label": `resize ${tokenForRow(!!model.numeric, midi)}`,
+                                                onPointerDown: (e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  onResizeDown(note);
+                                                },
+                                                style: {
+                                                  position: "absolute",
+                                                  top: 0,
+                                                  bottom: 0,
+                                                  right: `${(1 - hit.overlap.offset - hit.overlap.extent) * 100}%`,
+                                                  width: `min(${RESIZE_ZONE_PX2}px, ${hit.overlap.extent * 100}%)`,
+                                                  cursor: "ew-resize",
+                                                  background: "var(--foreground, #e6e6ea)",
+                                                  opacity: 0.45,
+                                                  borderRadius: "0 2px 2px 0"
+                                                }
+                                              }
+                                            ),
+                                            isSel && // Selection ring (#432), drawn as the LAST child rather than as
+                                            // the cell's own inset shadow (#1077).
+                                            //
+                                            // An inset box-shadow paints with the element's background, and
+                                            // every child paints above it. That cost nothing while the note
+                                            // WAS the background; once the note became a child span (#1074)
+                                            // the ring was covered on every cell holding a note — which is
+                                            // every cell you would want to select. Measured against the
+                                            // previous build: 424 white ring pixels on a selected note cell
+                                            // → 0, while a selected EMPTY cell was unaffected, which is
+                                            // exactly why every existing assertion stayed green.
+                                            //
+                                            // Drawn last so it frames whatever is underneath — note, name,
+                                            // resize handle or bare cell — and never has to know which.
+                                            /* @__PURE__ */ jsx(
+                                              "span",
+                                              {
+                                                "data-roll-selection": true,
+                                                "aria-hidden": "true",
+                                                style: {
+                                                  position: "absolute",
+                                                  // Laid out against the PADDING box, so the ring sits a pixel
+                                                  // further in than the old inset shadow did — measured 403
+                                                  // white frame pixels against the original 424. Growing the
+                                                  // overlay by the border width to close that gap was tried and
+                                                  // MEASURED WORSE: at `inset: -1` the ring is drawn outside the
+                                                  // cell and bleeds across the 1px lane gap (2156). The pixel
+                                                  // nearest the border is not worth a ring that leaves its cell.
+                                                  inset: 0,
+                                                  borderRadius: 2,
+                                                  boxShadow: "inset 0 0 0 2px var(--foreground, #e6e6ea)",
+                                                  pointerEvents: "none"
+                                                }
+                                              }
+                                            )
+                                          ]
+                                        }
+                                      )
+                                    },
+                                    step
                                   )
-                                ]
-                              },
-                              step
-                            );
-                          }) })
-                        ]
-                      },
-                      midi
-                    );
-                  }),
+                                );
+                              }) })
+                            ]
+                          },
+                          midi
+                        );
+                      })
+                    }
+                  ),
                   gainInScope2(model) && /* @__PURE__ */ jsxs(
                     "div",
                     {
