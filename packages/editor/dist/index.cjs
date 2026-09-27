@@ -34992,6 +34992,20 @@ var GRID_SCOPE = {
   pianoRoll: "pianoRoll",
   sequencer: "sequencer"
 };
+var NOTE_EDITS = /* @__PURE__ */ new Set([
+  "nudgeLeft",
+  "nudgeRight",
+  "rowUp",
+  "rowDown",
+  "octaveUp",
+  "octaveDown",
+  "shorter",
+  "longer"
+]);
+function isNoteEdit(action) {
+  return NOTE_EDITS.has(action);
+}
+__name(isNoteEdit, "isNoteEdit");
 var GRID_GESTURE = {
   rollDelete: "stave.pianoRoll.deleteNote",
   rollCopy: "stave.pianoRoll.copyNote",
@@ -35014,7 +35028,17 @@ var GRID_GESTURE = {
   seqRowStart: "stave.sequencer.cursorRowStart",
   seqRowEnd: "stave.sequencer.cursorRowEnd",
   seqFirst: "stave.sequencer.cursorFirst",
-  seqLast: "stave.sequencer.cursorLast"
+  seqLast: "stave.sequencer.cursorLast",
+  rollNudgeLeft: "stave.pianoRoll.nudgeLeft",
+  rollNudgeRight: "stave.pianoRoll.nudgeRight",
+  rollRowUp: "stave.pianoRoll.transposeUp",
+  rollRowDown: "stave.pianoRoll.transposeDown",
+  rollOctaveUp: "stave.pianoRoll.octaveUp",
+  rollOctaveDown: "stave.pianoRoll.octaveDown",
+  rollShorter: "stave.pianoRoll.shorter",
+  rollLonger: "stave.pianoRoll.longer",
+  seqShorter: "stave.sequencer.shorter",
+  seqLonger: "stave.sequencer.longer"
 };
 function cursorKeys(scope, ids) {
   const keys = [
@@ -35061,6 +35085,18 @@ var GRID_GESTURES = [
     keybinding: "'",
     alternateKeybindings: ["enter"]
   },
+  // #1803 — Logic 12.3's defaults: `Transpose … +1 Semitone` | `Option-Up Arrow`,
+  // `Transpose … +12 Semitone` | `Option-Shift-Up Arrow`, `Nudge … Position Right by
+  // Nudge Value` | `Option-Right Arrow`, `Nudge … Length Right by Nudge Value` |
+  // `Option-Shift-Right Arrow`. The nudge value is the roll's snap division.
+  { id: GRID_GESTURE.rollNudgeLeft, scope: GRID_SCOPE.pianoRoll, action: "nudgeLeft", title: "Move note earlier", keybinding: "alt+arrowleft" },
+  { id: GRID_GESTURE.rollNudgeRight, scope: GRID_SCOPE.pianoRoll, action: "nudgeRight", title: "Move note later", keybinding: "alt+arrowright" },
+  { id: GRID_GESTURE.rollRowUp, scope: GRID_SCOPE.pianoRoll, action: "rowUp", title: "Move note up a row", keybinding: "alt+arrowup" },
+  { id: GRID_GESTURE.rollRowDown, scope: GRID_SCOPE.pianoRoll, action: "rowDown", title: "Move note down a row", keybinding: "alt+arrowdown" },
+  { id: GRID_GESTURE.rollOctaveUp, scope: GRID_SCOPE.pianoRoll, action: "octaveUp", title: "Move note up an octave", keybinding: "alt+shift+arrowup" },
+  { id: GRID_GESTURE.rollOctaveDown, scope: GRID_SCOPE.pianoRoll, action: "octaveDown", title: "Move note down an octave", keybinding: "alt+shift+arrowdown" },
+  { id: GRID_GESTURE.rollShorter, scope: GRID_SCOPE.pianoRoll, action: "shorter", title: "Make note shorter", keybinding: "alt+shift+arrowleft" },
+  { id: GRID_GESTURE.rollLonger, scope: GRID_SCOPE.pianoRoll, action: "longer", title: "Make note longer", keybinding: "alt+shift+arrowright" },
   ...cursorKeys(GRID_SCOPE.pianoRoll, {
     left: GRID_GESTURE.rollLeft,
     right: GRID_GESTURE.rollRight,
@@ -35089,6 +35125,9 @@ var GRID_GESTURES = [
     keybinding: "delete",
     alternateKeybindings: ["backspace", "ctrl+backspace"]
   },
+  // Length only: the sequencer has no move operation, and a drag there paints (#1803).
+  { id: GRID_GESTURE.seqShorter, scope: GRID_SCOPE.sequencer, action: "shorter", title: "Make step shorter", keybinding: "alt+shift+arrowleft" },
+  { id: GRID_GESTURE.seqLonger, scope: GRID_SCOPE.sequencer, action: "longer", title: "Make step longer", keybinding: "alt+shift+arrowright" },
   ...cursorKeys(GRID_SCOPE.sequencer, {
     left: GRID_GESTURE.seqLeft,
     right: GRID_GESTURE.seqRight,
@@ -35129,9 +35168,10 @@ function moveCursor(at, move, rows, cols) {
 }
 __name(moveCursor, "moveCursor");
 function isCursorMove(action) {
-  return action !== "toggle" && action !== "remove" && action !== "copy" && action !== "paste";
+  return CURSOR_MOVES.has(action);
 }
 __name(isCursorMove, "isCursorMove");
+var CURSOR_MOVES = /* @__PURE__ */ new Set(["left", "right", "up", "down", "rowStart", "rowEnd", "first", "last"]);
 var GRID_SCOPE_LABEL = {
   pianoRoll: { category: "Piano roll", where: "In the piano roll, on the selected cell" },
   sequencer: { category: "Sequencer", where: "In the sequencer, on the selected cell" }
@@ -35392,6 +35432,31 @@ function SequencerGrid({ onResolution } = {}) {
     paintCell(laneIndex, stepIndex, value);
     endGesture();
   }, "paintByKey");
+  const resizeByKey = /* @__PURE__ */ __name((at, action, dryRun) => {
+    if (!model || action !== "shorter" && action !== "longer") return false;
+    const cells = model.lanes[at.row]?.cells ?? [];
+    let head = -1;
+    for (let si = at.col; si >= 0; si--) {
+      const c2 = cells[si];
+      if (isCellOn(c2)) {
+        if (si + Math.ceil(c2.duration) > at.col) head = si;
+        break;
+      }
+    }
+    if (head < 0) return false;
+    const c = cells[head];
+    if (!isCellOn(c)) return false;
+    const dur = Math.round(c.duration) + (action === "longer" ? 1 : -1);
+    if (!canResizeCell(model, at.row, head, dur)) return false;
+    if (!dryRun) {
+      beginGesture();
+      mutate((prev) => resizeCell(prev, at.row, head, dur));
+      endGesture();
+      focusCursorRef.current = true;
+      setCursor({ row: at.row, col: head });
+    }
+    return true;
+  }, "resizeByKey");
   const runGesture = /* @__PURE__ */ __name((action, dryRun, fromKey = false) => {
     if (!model || rowsN === 0 || colsN === 0) return false;
     const at = cursorRef.current ?? (fromKey ? { row: 0, col: 0 } : null);
@@ -35402,6 +35467,7 @@ function SequencerGrid({ onResolution } = {}) {
       return true;
     }
     if (!at) return false;
+    if (isNoteEdit(action)) return resizeByKey(at, action, dryRun);
     const cell = model.lanes[at.row]?.cells[at.col];
     const on = cell !== void 0 && isCellOn(cell);
     switch (action) {
@@ -36183,9 +36249,71 @@ function PianoRollGrid({
   const gridRef = React36__namespace.useRef(null);
   React36__namespace.useEffect(() => {
     if (!focusCursorRef.current) return;
+    const cell = gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-roll-cell]');
+    if (!cell) return;
     focusCursorRef.current = false;
-    gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-roll-cell]')?.focus();
+    cell.focus();
   });
+  const editNote = /* @__PURE__ */ __name((note, edit, dryRun) => {
+    if (!model) return false;
+    const step = snapInterval(stepsPerBar(model.steps, model.bars), division2) ?? 1;
+    const head = headColumn(note);
+    const midi = pitchToMidi(note.pitch);
+    if (midi === null) return false;
+    const follow = /* @__PURE__ */ __name((pitch, start) => {
+      focusCursorRef.current = true;
+      select({ kind: "roll", pitch, start });
+    }, "follow");
+    if (edit === "shorter" || edit === "longer") {
+      const cols2 = Math.max(1, Math.round(note.duration));
+      let dur = edit === "longer" ? cols2 + step : cols2 - step;
+      if (step > 1) dur = Math.max(step, snapColumn(head + dur, step) - head);
+      if (dur < 1 || dur === cols2) return false;
+      if (dryRun) return true;
+      const settled2 = resizeNote(model, note.start, note.pitch, dur, { readback: true });
+      if (settled2 === model) {
+        reportRefusal("Couldn't set that length");
+        return true;
+      }
+      mutate(() => settled2);
+      follow(note.pitch, head);
+      return true;
+    }
+    if (edit === "octaveUp" || edit === "octaveDown") {
+      const degrees = !!model.numeric || (chunk ? readChainMethod(chunk, ["scale"]) !== null : false);
+      if (degrees) {
+        if (dryRun) return false;
+        emitLog({
+          level: "warn",
+          runtime: "stave",
+          message: "Couldn't move that note an octave \u2014 on a scale pattern a row is one scale step, so twelve rows isn't an octave, left unchanged."
+        });
+        return true;
+      }
+    }
+    let toMidi = midi;
+    let toStart = head;
+    if (edit === "rowUp") toMidi = midi + 1;
+    else if (edit === "rowDown") toMidi = midi - 1;
+    else if (edit === "octaveUp") toMidi = midi + 12;
+    else if (edit === "octaveDown") toMidi = midi - 12;
+    else if (edit === "nudgeLeft") toStart = head - step;
+    else if (edit === "nudgeRight") toStart = head + step;
+    if (step > 1) toStart = snapColumn(toStart, step);
+    toStart = Math.max(0, Math.min(toStart, model.steps - 1));
+    if (toMidi === midi && toStart === head) return false;
+    if (toMidi < 0 || toMidi > 127) return false;
+    if (dryRun) return true;
+    const toPitch = tokenForRow(!!model.numeric, toMidi);
+    const settled = moveNote(model, note.pitch, note.start, toPitch, toStart, { readback: true });
+    if (settled === model) {
+      reportRefusal("Couldn't move that note there");
+      return true;
+    }
+    mutate(() => settled);
+    follow(toPitch, toStart);
+    return true;
+  }, "editNote");
   const runGesture = /* @__PURE__ */ __name((action, dryRun, fromKey = false) => {
     if (!model || rows.length === 0 || cols === 0) return false;
     const at = cursorCell() ?? (fromKey ? defaultCell() : null);
@@ -36199,6 +36327,7 @@ function PianoRollGrid({
     if (!at) return false;
     const midi = rows[at.row];
     const note = noteAt(model, midi, at.col);
+    if (isNoteEdit(action)) return note ? editNote(note, action, dryRun) : false;
     switch (action) {
       case "remove":
         if (!note) return false;

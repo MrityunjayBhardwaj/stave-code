@@ -34,6 +34,7 @@ export type GridScope = (typeof GRID_SCOPE)[keyof typeof GRID_SCOPE]
  */
 export type GridAction =
   | CursorMove
+  | NoteEdit
   | 'toggle'
   | 'remove'
   | 'copy'
@@ -41,6 +42,37 @@ export type GridAction =
 
 /** Where a cursor key sends the cursor. */
 export type CursorMove = 'left' | 'right' | 'up' | 'down' | 'rowStart' | 'rowEnd' | 'first' | 'last'
+
+/**
+ * What an edit key does to the note under the cursor (#1803): move it a column
+ * earlier/later, a row or an octave up/down, or make it shorter/longer. A grid
+ * that has no such operation (the sequencer cannot move a hit) declines it.
+ */
+export type NoteEdit =
+  | 'nudgeLeft'
+  | 'nudgeRight'
+  | 'rowUp'
+  | 'rowDown'
+  | 'octaveUp'
+  | 'octaveDown'
+  | 'shorter'
+  | 'longer'
+
+const NOTE_EDITS = new Set<string>([
+  'nudgeLeft',
+  'nudgeRight',
+  'rowUp',
+  'rowDown',
+  'octaveUp',
+  'octaveDown',
+  'shorter',
+  'longer',
+])
+
+/** Is `action` an edit of the note under the cursor? */
+export function isNoteEdit(action: GridAction): action is NoteEdit {
+  return NOTE_EDITS.has(action)
+}
 
 export const GRID_GESTURE = {
   rollDelete: 'stave.pianoRoll.deleteNote',
@@ -65,6 +97,16 @@ export const GRID_GESTURE = {
   seqRowEnd: 'stave.sequencer.cursorRowEnd',
   seqFirst: 'stave.sequencer.cursorFirst',
   seqLast: 'stave.sequencer.cursorLast',
+  rollNudgeLeft: 'stave.pianoRoll.nudgeLeft',
+  rollNudgeRight: 'stave.pianoRoll.nudgeRight',
+  rollRowUp: 'stave.pianoRoll.transposeUp',
+  rollRowDown: 'stave.pianoRoll.transposeDown',
+  rollOctaveUp: 'stave.pianoRoll.octaveUp',
+  rollOctaveDown: 'stave.pianoRoll.octaveDown',
+  rollShorter: 'stave.pianoRoll.shorter',
+  rollLonger: 'stave.pianoRoll.longer',
+  seqShorter: 'stave.sequencer.shorter',
+  seqLonger: 'stave.sequencer.longer',
 } as const
 
 export type GridGestureId = (typeof GRID_GESTURE)[keyof typeof GRID_GESTURE]
@@ -138,6 +180,18 @@ export const GRID_GESTURES: readonly GridGestureDef[] = [
     keybinding: "'",
     alternateKeybindings: ['enter'],
   },
+  // #1803 — Logic 12.3's defaults: `Transpose … +1 Semitone` | `Option-Up Arrow`,
+  // `Transpose … +12 Semitone` | `Option-Shift-Up Arrow`, `Nudge … Position Right by
+  // Nudge Value` | `Option-Right Arrow`, `Nudge … Length Right by Nudge Value` |
+  // `Option-Shift-Right Arrow`. The nudge value is the roll's snap division.
+  { id: GRID_GESTURE.rollNudgeLeft, scope: GRID_SCOPE.pianoRoll, action: 'nudgeLeft', title: 'Move note earlier', keybinding: 'alt+arrowleft' },
+  { id: GRID_GESTURE.rollNudgeRight, scope: GRID_SCOPE.pianoRoll, action: 'nudgeRight', title: 'Move note later', keybinding: 'alt+arrowright' },
+  { id: GRID_GESTURE.rollRowUp, scope: GRID_SCOPE.pianoRoll, action: 'rowUp', title: 'Move note up a row', keybinding: 'alt+arrowup' },
+  { id: GRID_GESTURE.rollRowDown, scope: GRID_SCOPE.pianoRoll, action: 'rowDown', title: 'Move note down a row', keybinding: 'alt+arrowdown' },
+  { id: GRID_GESTURE.rollOctaveUp, scope: GRID_SCOPE.pianoRoll, action: 'octaveUp', title: 'Move note up an octave', keybinding: 'alt+shift+arrowup' },
+  { id: GRID_GESTURE.rollOctaveDown, scope: GRID_SCOPE.pianoRoll, action: 'octaveDown', title: 'Move note down an octave', keybinding: 'alt+shift+arrowdown' },
+  { id: GRID_GESTURE.rollShorter, scope: GRID_SCOPE.pianoRoll, action: 'shorter', title: 'Make note shorter', keybinding: 'alt+shift+arrowleft' },
+  { id: GRID_GESTURE.rollLonger, scope: GRID_SCOPE.pianoRoll, action: 'longer', title: 'Make note longer', keybinding: 'alt+shift+arrowright' },
   ...cursorKeys(GRID_SCOPE.pianoRoll, {
     left: GRID_GESTURE.rollLeft,
     right: GRID_GESTURE.rollRight,
@@ -166,6 +220,9 @@ export const GRID_GESTURES: readonly GridGestureDef[] = [
     keybinding: 'delete',
     alternateKeybindings: ['backspace', 'ctrl+backspace'],
   },
+  // Length only: the sequencer has no move operation, and a drag there paints (#1803).
+  { id: GRID_GESTURE.seqShorter, scope: GRID_SCOPE.sequencer, action: 'shorter', title: 'Make step shorter', keybinding: 'alt+shift+arrowleft' },
+  { id: GRID_GESTURE.seqLonger, scope: GRID_SCOPE.sequencer, action: 'longer', title: 'Make step longer', keybinding: 'alt+shift+arrowright' },
   ...cursorKeys(GRID_SCOPE.sequencer, {
     left: GRID_GESTURE.seqLeft,
     right: GRID_GESTURE.seqRight,
@@ -221,8 +278,10 @@ export function moveCursor(at: GridCell, move: CursorMove, rows: number, cols: n
 
 /** Is `action` a cursor move? */
 export function isCursorMove(action: GridAction): action is CursorMove {
-  return action !== 'toggle' && action !== 'remove' && action !== 'copy' && action !== 'paste'
+  return CURSOR_MOVES.has(action)
 }
+
+const CURSOR_MOVES = new Set<string>(['left', 'right', 'up', 'down', 'rowStart', 'rowEnd', 'first', 'last'])
 
 /** Settings' group name and "where it works" line, per grid. */
 export const GRID_SCOPE_LABEL: Record<GridScope, { category: string; where: string }> = {

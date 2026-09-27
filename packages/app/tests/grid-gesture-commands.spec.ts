@@ -97,8 +97,9 @@ test('the piano roll has its own group in Settings, with every key and where the
   await openKeys(page)
   const section = page.getByTestId('keys-section-Piano roll')
   await expect(section).toBeVisible()
-  // Delete / Copy / Paste (#1801), plus the toggle and eight cursor keys (#1802).
-  await expect(section.locator('.kb-row')).toHaveCount(12)
+  // Delete / Copy / Paste (#1801), the toggle and eight cursor keys (#1802), and
+  // eight move/transpose/resize keys (#1803).
+  await expect(section.locator('.kb-row')).toHaveCount(20)
   for (const title of [
     'Delete selected note',
     'Copy selected note',
@@ -121,7 +122,8 @@ test('the sequencer has its own group too, with its toggle, clear and cursor key
   await openKeys(page)
   const section = page.getByTestId('keys-section-Sequencer')
   await expect(section).toBeVisible()
-  await expect(section.locator('.kb-row')).toHaveCount(10)
+  // Toggle, clear and eight cursor keys (#1802), shorter and longer (#1803).
+  await expect(section.locator('.kb-row')).toHaveCount(12)
   const clear = page.getByTestId('chord-stave.sequencer.clearStep')
   await expect(clear).toContainText('Delete')
   await expect(clear).toContainText('Backspace')

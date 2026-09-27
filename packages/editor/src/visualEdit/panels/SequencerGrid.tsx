@@ -52,7 +52,16 @@ import {
 } from '../notation/resolution'
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
-import { GRID_SCOPE, isCursorMove, matchGridKey, mountGridGestures, moveCursor, type GridAction, type GridCell } from './gridGestures'
+import {
+  GRID_SCOPE,
+  isCursorMove,
+  isNoteEdit,
+  matchGridKey,
+  mountGridGestures,
+  moveCursor,
+  type GridAction,
+  type GridCell,
+} from './gridGestures'
 
 const SEQ_HINT = 'Click a drum pattern to edit it as a step grid.'
 
@@ -456,6 +465,36 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     endGesture()
   }
 
+  // ⌥⇧← / ⌥⇧→ set the length of the hit under the cursor, a column at a time (#1803)
+  // — what the handle does, through the same `resizeCell`, on the note sounding
+  // through the cursor's column (its head, when the cursor sits on a held column).
+  // The sequencer has no move: every other note edit is declined here.
+  const resizeByKey = (at: GridCell, action: GridAction, dryRun: boolean): boolean => {
+    if (!model || (action !== 'shorter' && action !== 'longer')) return false
+    const cells = model.lanes[at.row]?.cells ?? []
+    let head = -1
+    for (let si = at.col; si >= 0; si--) {
+      const c = cells[si]
+      if (isCellOn(c)) {
+        if (si + Math.ceil(c.duration) > at.col) head = si
+        break
+      }
+    }
+    if (head < 0) return false
+    const c = cells[head]
+    if (!isCellOn(c)) return false
+    const dur = Math.round(c.duration) + (action === 'longer' ? 1 : -1)
+    if (!canResizeCell(model, at.row, head, dur)) return false
+    if (!dryRun) {
+      beginGesture()
+      mutate((prev) => resizeCell(prev, at.row, head, dur))
+      endGesture()
+      focusCursorRef.current = true
+      setCursor({ row: at.row, col: head })
+    }
+    return true
+  }
+
   // The sequencer's keys (#1802), through the same command path as the roll's
   // (#1801). `fromKey`: a key on the grid's tab stop before any cursor exists
   // acts on that cell (the top-left); the palette, with no cursor, acts nowhere.
@@ -469,6 +508,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
       return true
     }
     if (!at) return false
+    if (isNoteEdit(action)) return resizeByKey(at, action, dryRun)
     const cell = model.lanes[at.row]?.cells[at.col]
     const on = cell !== undefined && isCellOn(cell)
     switch (action) {
