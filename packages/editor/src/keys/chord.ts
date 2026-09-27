@@ -68,6 +68,16 @@ const PUNCTUATION_BY_CODE: Record<string, string> = {
   Backquote: '`',
 }
 
+/**
+ * The base key under each shifted US-keyboard symbol. Before #1799 a rebind was
+ * saved as the character typed (⇧/ as `shift+?`); reading those back through
+ * this table keeps them matching the key that saved them (#1814).
+ */
+const BASE_OF_SHIFTED: Record<string, string> = {
+  '!': '1', '@': '2', '#': '3', '$': '4', '%': '5', '^': '6', '&': '7', '*': '8', '(': '9', ')': '0',
+  _: '-', '{': '[', '}': ']', '|': '\\', ':': ';', '"': "'", '<': ',', '>': '.', '?': '/', '~': '`',
+}
+
 /** Key token for a physical key: `KeyK` → `k`, `Digit3` → `3`, `Space` → `space`. */
 export function tokenForCode(code: string): string {
   if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase()
@@ -137,6 +147,7 @@ export function normalizeChord(chord: string, opts: ChordOptions = {}): string {
     else if (t === 'return') key = 'enter'
     else key = t
   }
+  if (mods.has('shift') && key in BASE_OF_SHIFTED) key = BASE_OF_SHIFTED[key]
   return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key].join('+')
 }
 

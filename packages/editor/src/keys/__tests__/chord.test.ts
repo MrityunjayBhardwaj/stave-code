@@ -80,6 +80,18 @@ describe('chordFromEvent — the real-key table (#1799)', () => {
   })
 })
 
+describe('a rebind saved before #1799 still matches', () => {
+  // The old capture saved the TYPED character: ⇧/ as "shift+?", ⇧3 as "shift+#".
+  it('a saved shifted symbol matches the key press that saved it', () => {
+    expect(chordMatches(chordFromEvent(ev('?', 'Slash', { shiftKey: true }), mac), 'shift+?', mac)).toBe(true)
+    expect(chordMatches(chordFromEvent(ev('#', 'Digit3', { shiftKey: true }), mac), 'shift+#', mac)).toBe(true)
+    expect(chordMatches(chordFromEvent(ev('{', 'BracketLeft', { shiftKey: true, metaKey: true }), mac), 'mod+shift+{', mac)).toBe(true)
+  })
+  it('a shifted symbol without shift is not rewritten', () => {
+    expect(normalizeChord('mod+?', mac)).toBe('mod+?')
+  })
+})
+
 describe('normalizeChord', () => {
   it('orders modifiers and resolves aliases', () => {
     expect(normalizeChord('shift+mod+z', mac)).toBe('mod+shift+z')

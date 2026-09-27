@@ -5,7 +5,6 @@ import * as React from 'react';
 import React__default, { ReactNode } from 'react';
 import * as Monaco from 'monaco-editor';
 import { getSound, getSampleInfo, getCachedBuffer, loadBuffer, getAudioContext } from '@strudel/webaudio';
-export { ChordOptions, chordFromEvent, chordMatches, isMacPlatform, isModifierOnlyKey, normalizeChord, tokenForCode } from './keys/chord.js';
 import 'p5';
 
 /**

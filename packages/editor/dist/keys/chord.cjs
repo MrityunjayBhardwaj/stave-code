@@ -21,6 +21,28 @@ var PUNCTUATION_BY_CODE = {
   Slash: "/",
   Backquote: "`"
 };
+var BASE_OF_SHIFTED = {
+  "!": "1",
+  "@": "2",
+  "#": "3",
+  "$": "4",
+  "%": "5",
+  "^": "6",
+  "&": "7",
+  "*": "8",
+  "(": "9",
+  ")": "0",
+  _: "-",
+  "{": "[",
+  "}": "]",
+  "|": "\\",
+  ":": ";",
+  '"': "'",
+  "<": ",",
+  ">": ".",
+  "?": "/",
+  "~": "`"
+};
 function tokenForCode(code) {
   if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
   if (/^Digit[0-9]$/.test(code)) return code.slice(5);
@@ -80,6 +102,7 @@ function normalizeChord(chord, opts = {}) {
     else if (t === "return") key = "enter";
     else key = t;
   }
+  if (mods.has("shift") && key in BASE_OF_SHIFTED) key = BASE_OF_SHIFTED[key];
   return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key].join("+");
 }
 __name(normalizeChord, "normalizeChord");
