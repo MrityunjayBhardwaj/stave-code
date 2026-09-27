@@ -27,6 +27,11 @@
       "types": "./dist/ir/trackId.d.ts",
       "import": "./dist/ir/trackId.js",
       "require": "./dist/ir/trackId.cjs"
+    },
+    "./chord": {
+      "types": "./dist/keys/chord.d.ts",
+      "import": "./dist/keys/chord.js",
+      "require": "./dist/keys/chord.cjs"
     }
   },
   "files": [
