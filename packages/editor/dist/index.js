@@ -33158,8 +33158,13 @@ var resizableNotes = /* @__PURE__ */ __name((model) => {
 var rollReadsBack = /* @__PURE__ */ __name((next) => {
   const out = serializePianoRoll(next);
   if (out === null) return false;
-  const back = parsePianoRoll(out);
+  let back = parsePianoRoll(out);
   if (!back.ok) return false;
+  const k = next.steps / back.model.steps;
+  if (next.viewScale !== void 0 && k > 1 && Number.isInteger(k)) {
+    back = parsePianoRoll(out, k);
+    if (!back.ok) return false;
+  }
   if (back.model.steps !== next.steps) return false;
   if (back.model.notes.length !== next.notes.length) return false;
   const key2 = /* @__PURE__ */ __name((n) => `${n.pitch}@${n.start}+${n.duration}`, "key");
