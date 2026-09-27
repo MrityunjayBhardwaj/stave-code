@@ -96,6 +96,13 @@ export interface GridModel<M> {
    * disabled by the write it exists to undo.
    */
   settle: (model: M) => void
+  /**
+   * Replace the whole mini with `mini` as written — not a model's serialization
+   * (#1824). For rewrites that change what the grid IS (its length) rather than a
+   * cell in it; the model reseeds from the result like any external edit. The
+   * caller has already checked the result reads back.
+   */
+  writeMini: (mini: string) => void
   beginGesture: () => void
   endGesture: () => void
 }
@@ -266,5 +273,16 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
   /** See {@link GridModel.settle}. Deliberately skips both of `mutate`'s guards. */
   const settle = React.useCallback((next: M): void => writeModel(next), [writeModel])
 
-  return { model, chunk, mutate, settle, beginGesture, endGesture }
+  /** See {@link GridModel.writeMini}. One edit, so one undo step. */
+  const writeMini = React.useCallback(
+    (mini: string): void => {
+      applyEdit((fresh, wb) => {
+        if (!fresh.miniRange) return
+        wb.replaceRanges([{ range: fresh.miniRange, text: mini }], optsRef.current.source)
+      })
+    },
+    [applyEdit],
+  )
+
+  return { model, chunk, mutate, settle, writeMini, beginGesture, endGesture }
 }

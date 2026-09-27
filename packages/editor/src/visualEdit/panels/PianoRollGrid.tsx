@@ -70,6 +70,8 @@ import {
   type NoteEdit,
 } from './gridGestures'
 import { readChainMethod } from './chainMethod'
+import { ExtendHandle } from './ExtendHandle'
+import { usePatternLength } from './usePatternLength'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
 
@@ -322,7 +324,7 @@ export function PianoRollGrid({
    * worst case measured here is a sweep down the 13 declined cells of one column.
    */
   const [declinedCell, setDeclinedCell] = React.useState<string | null>(null)
-  const { chunk, model, mutate, settle, beginGesture, endGesture } = useGridModel<PianoRollModel>({
+  const { chunk, model, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel<PianoRollModel>({
     source: 'roll',
     eligible: opensPianoRoll,
     parse: parsePianoRoll,
@@ -333,6 +335,8 @@ export function PianoRollGrid({
     onViewScaleConsumed: () => setViewScale(UNREFINED),
     collapseToDocument: collapsePianoRollToDocument,
   })
+  // The `+` past the last column: repeat the pattern, or drag in empty bars (#1824).
+  const length = usePatternLength(chunk, model, parsePianoRoll, writeMini)
 
   // A refinement belongs to the pattern it was made on — see `SequencerGrid` for
   // why carrying it across a cursor move could send an editable pattern to standby.
@@ -1141,6 +1145,10 @@ export function PianoRollGrid({
   }
 
   const tabCell = cursorCell() ?? defaultCell()
+  // A gap before each bar after the first — the sequencer's long-standing rule, so a
+  // pattern made longer by the `+` reads as bars rather than one run of columns (#1824).
+  const barCols = model.bars && model.bars > 1 && Number.isInteger(cols / model.bars) ? cols / model.bars : 0
+  const barGap = (c: number): number => (barCols && c > 0 && c % barCols === 0 ? 8 : 0)
 
   return (
     <div
@@ -1219,7 +1227,9 @@ export function PianoRollGrid({
         style={{ padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' }}
       >
         <div
-          style={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}
+          // paddingRight: room for the `+` past the last column (#1824), so a long
+          // pattern's cells never grow into it
+          style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 1, width: '100%', paddingRight: 28, boxSizing: 'border-box' }}
           onPointerLeave={() => setHoveredMidi(null)}
         >
           {/* The pitch rows are the grid (#1802); the velocity lane below is not a row of it. */}
@@ -1356,7 +1366,7 @@ export function PianoRollGrid({
                       key={step}
                       role="gridcell"
                       aria-selected={isSel}
-                      style={{ display: 'flex', flex: '1 1 0', minWidth: 12, maxWidth: 44 }}
+                      style={{ display: 'flex', flex: '1 1 0', minWidth: 12, maxWidth: 44, marginLeft: barGap(step) }}
                     >
                     <button
                       type="button"
@@ -1594,6 +1604,7 @@ export function PianoRollGrid({
           )
         })}
           </div>
+        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-roll-cell" cols={cols} />
         {gainInScope(model) && (
           <div
             data-roll-velocity-lane
@@ -1679,6 +1690,7 @@ export function PianoRollGrid({
                       flex: '1 1 0',
                       minWidth: 12,
                       maxWidth: 44,
+                      marginLeft: barGap(col),
                       height: '100%',
                       borderRadius: 2,
                       background: 'var(--background-elevated, #26262c)',

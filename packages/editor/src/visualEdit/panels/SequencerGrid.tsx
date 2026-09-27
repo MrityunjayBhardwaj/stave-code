@@ -52,6 +52,8 @@ import {
 } from '../notation/resolution'
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
+import { ExtendHandle } from './ExtendHandle'
+import { usePatternLength } from './usePatternLength'
 import {
   GRID_SCOPE,
   isCursorMove,
@@ -97,7 +99,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // reaches the document until an actual edit is made, and the first write absorbs
   // it (`useGridModel` → `absorbViewScale`).
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { chunk, model, mutate, beginGesture, endGesture } = useGridModel<StepGridModel>({
+  const { chunk, model, mutate, writeMini, beginGesture, endGesture } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: opensStepGrid,
     parse: parseStepGrid,
@@ -108,6 +110,8 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     onViewScaleConsumed: () => setViewScale(UNREFINED),
     collapseToDocument: collapseStepGridToDocument,
   })
+  // The `+` past the last column: repeat the pattern, or drag in empty bars (#1824).
+  const length = usePatternLength(chunk, model, parseStepGrid, writeMini)
 
   // A refinement belongs to the pattern it was made on. Dropping it when the cursor
   // moves keeps a leftover zoom from deciding whether the NEXT pattern opens at all —
@@ -581,7 +585,8 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
         touchAction: 'none',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
+      {/* paddingRight: room for the `+` past the last column (#1824) */}
+      <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 4, width: '100%', paddingRight: 28, boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 4 }}>
           {/* Track identity (#589) — the bound track's colour dot + name; click
               the dot to recolour, double-click the name to rename. */}
@@ -907,6 +912,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
           )
         })}
         </div>
+        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-seq-cell" cols={model.steps} />
         {/* The drum catalogue is the wrong menu for a chord chart — it would
             offer Kick and Snare as things to add to a progression. Withdrawn
             rather than restocked: a chord picker is a different feature, and
