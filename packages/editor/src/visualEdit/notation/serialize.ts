@@ -25,7 +25,7 @@ import type {
   StepLane,
 } from './model'
 import { cellLengthKey, columnSplit, gridCellKey, isCellOn } from './model'
-import { lcmOf, toUniformGrid, toUniformRoll } from './perBar'
+import { barStarts, lcmOf, toUniformGrid, toUniformRoll } from './perBar'
 
 /**
  * An `altSource` still describes a model only while its single-cycle width times
@@ -258,7 +258,8 @@ export function serializeStepGridWithExtent(drawn: StepGridModel): {
         rebuiltParts: spliced.rebuiltParts,
       },
     }
-  return { mini: rebuildGrid(model), extent: { path: 'rebuild' } }
+  // a grid drawn per bar is rebuilt from its DRAWN columns, where each bar is whole cells
+  return { mini: rebuildGrid(respell ? drawn : model), extent: { path: 'rebuild' } }
 }
 
 /**
@@ -284,7 +285,7 @@ export function serializeStepGrid(model: StepGridModel): string | null {
  */
 function rebuildGrid(model: StepGridModel): string | null {
   const bars = model.bars ?? 1
-  if (bars > 1) return gridBars(model, bars)
+  if (bars > 1) return gridBars(model, barBounds(model))
 
   const parts = [...new Set(model.lanes.map((l) => l.part ?? 0))].sort((a, b) => a - b)
   if (parts.length <= 1) return gridColumns(model.lanes, model.steps)?.join(' ') ?? null
@@ -1496,18 +1497,40 @@ export function serializeStepGain(model: StepGridModel): GainWrite {
 }
 
 /** `<...>` with one slot per bar; an all-rest bar collapses to `~` */
-function gridBars(model: StepGridModel, bars: number): string | null {
-  const perBar = model.steps / bars
+function gridBars(model: StepGridModel, bounds: readonly number[]): string | null {
   const cols = gridColumns(model.lanes, model.steps)
   if (cols === null) return null
   const slots: string[] = []
-  for (let b = 0; b < bars; b++) {
-    const bar = cols.slice(b * perBar, (b + 1) * perBar)
+  for (let b = 0; b + 1 < bounds.length; b++) {
+    const bar = cols.slice(bounds[b], bounds[b + 1])
     if (bar.every((c) => c === '~')) slots.push('~')
-    else if (perBar === 1) slots.push(bar[0])
+    else if (bar.length === 1) slots.push(bar[0])
     else slots.push(`[${bar.join(' ')}]`)
   }
   return `<${slots.join(' ')}>`
+}
+
+/**
+ * Where each bar starts, in the model's own columns, with the total as a final entry —
+ * the one question every multi-bar rebuild asks (#1827). Uniform models answer
+ * `b × steps / bars` exactly as the rebuilds always strode; a model drawn per bar answers
+ * from its own counts, so a bar of 3 is rebuilt as 3 steps and a bar of 4 as 4.
+ */
+function barBounds(model: { steps: number; bars?: number; barSteps?: readonly number[] }): number[] {
+  if (model.barSteps) return barStarts(model.barSteps)
+  const bars = model.bars ?? 1
+  const perBar = model.steps / bars
+  return Array.from({ length: bars + 1 }, (_, b) => b * perBar)
+}
+
+/** the bar a hold starting at `bounds[b]` reaches the end of after exactly `duration`, as a count of bars */
+function heldBars(bounds: readonly number[], b: number, duration: number): number {
+  for (let k = 1; b + k < bounds.length; k++) {
+    const span = bounds[b + k] - bounds[b]
+    if (Math.abs(span - duration) < 1e-9) return k
+    if (span > duration) break
+  }
+  return 0
 }
 
 /* ── piano roll ────────────────────────────────────────────────── */
@@ -1696,10 +1719,13 @@ export function serializePianoRollWithExtent(drawn: PianoRollModel): {
     // a bar, or a chord whose members differ in length — the bar slots carry parallel
     // lanes instead (#1312). `rollBarLanes` declines the cross-bar case, which needs
     // lanes at the document level and is not attempted.
-    const groups = buildGroups(model)
-    const flat = groups === null ? null : rollBars(groups, model.steps, bars)
+    // a roll drawn per bar is rebuilt from its DRAWN columns, where each bar is whole cells
+    const src = respell ? drawn : model
+    const bounds = barBounds(src)
+    const groups = buildGroups(src)
+    const flat = groups === null ? null : rollBars(groups, bounds)
     if (flat !== null) return { mini: flat, extent: { path: 'rebuild' } }
-    return { mini: rollBarLanes(model, bars), extent: { path: 'rebuild' } }
+    return { mini: rollBarLanes(src, bounds), extent: { path: 'rebuild' } }
   }
   return { mini: serializeRollLanes(model), extent: { path: 'rebuild' } }
 }
@@ -2355,18 +2381,19 @@ function serializeRollLanes(model: PianoRollModel): string | null {
  * `@`-durations; an all-rest bar is `~`. A note crossing a bar line partway is
  * inexpressible → null.
  */
-function rollBars(groups: Map<number, Group>, steps: number, bars: number): string | null {
-  const perBar = steps / bars
-  if (!Number.isInteger(perBar)) return null
+function rollBars(groups: Map<number, Group>, bounds: readonly number[]): string | null {
+  if (!bounds.every((x) => Number.isInteger(x))) return null
+  const bars = bounds.length - 1
   const starts = [...groups.keys()].sort((a, b) => a - b)
   const slots: string[] = []
   let b = 0
   while (b < bars) {
-    const barStart = b * perBar
-    const barEnd = barStart + perBar
+    const barStart = bounds[b]
+    const barEnd = bounds[b + 1]
+    const perBar = barEnd - barStart
     const atStart = groups.get(barStart)
-    if (atStart && atStart.duration % perBar === 0) {
-      const k = atStart.duration / perBar
+    const k = atStart ? heldBars(bounds, b, atStart.duration) : 0
+    if (atStart && k >= 1) {
       const heldEnd = barStart + atStart.duration
       if (starts.some((s) => s > barStart && s < heldEnd)) return null
       slots.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`)
@@ -2431,9 +2458,9 @@ function rollBars(groups: Map<number, Group>, steps: number, bars: number): stri
  * per ask across both builds, and every newly admitted ask judged against the standard
  * the refusal itself states.
  */
-function rollBarLanes(model: PianoRollModel, bars: number): string | null {
-  const perBar = model.steps / bars
-  if (!Number.isInteger(perBar)) return null
+function rollBarLanes(model: PianoRollModel, bounds: readonly number[]): string | null {
+  if (!bounds.every((x) => Number.isInteger(x))) return null
+  const bars = bounds.length - 1
   const E = 1e-9
   const notes = [...model.notes].sort((a, b) => a.start - b.start || a.duration - b.duration)
   for (const n of notes)
@@ -2442,8 +2469,9 @@ function rollBarLanes(model: PianoRollModel, bars: number): string | null {
   const slots: string[] = []
   let b = 0
   while (b < bars) {
-    const barStart = b * perBar
-    const barEnd = barStart + perBar
+    const barStart = bounds[b]
+    const barEnd = bounds[b + 1]
+    const perBar = barEnd - barStart
     const over = notes.filter((n) => n.start < barEnd - E && n.start + n.duration > barStart + E)
     if (over.length === 0) {
       slots.push('~')
@@ -2480,8 +2508,8 @@ function rollBarLanes(model: PianoRollModel, bars: number): string | null {
     if (held.length === 0 || held.length !== over.length) return null
     const dur = held[0].duration
     if (held.some((n) => Math.abs(n.duration - dur) > E)) return null
-    const k = dur / perBar
-    if (!Number.isInteger(k) || k < 1) return null
+    const k = heldBars(bounds, b, dur)
+    if (k < 1) return null
     if (notes.some((n) => n.start > barStart + E && n.start < barStart + dur - E)) return null
     const body = groupBody({ pitches: held.map((n) => n.pitch), duration: dur })
     slots.push(k === 1 ? body : `${body}@${k}`)

@@ -1107,6 +1107,9 @@ export function moveNote(
   const rebuilt: PianoRollModel = {
     steps: base.steps,
     ...(base.bars != null ? { bars: base.bars } : {}),
+    // Not a source: the RULER the notes are measured in. A roll drawn per bar (#1827)
+    // holds drawn columns, and without its counts the writer reads them as shared ones.
+    ...(base.barSteps ? { barSteps: base.barSteps } : {}),
     ...(base.numeric ? { numeric: true } : {}),
     notes,
   }

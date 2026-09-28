@@ -61,4 +61,16 @@ describe('cycleToStep', () => {
     expect(cycleToStep(0.9, 1.5, 1, 1)).toBe(0)
     expect(cycleToStep(0.999999, 1.5, 1, 1)).toBe(0)
   })
+
+  it('follows each bar at its own count when bars differ (#1827)', () => {
+    // `<[a b c] [a b c d]>` drawn as 3 + 4 cells. Read uniformly, 7 cells over 2 cycles
+    // puts cycle 0.9 in cell 3 — bar 2's first cell, while bar 1 is still playing.
+    const bs = [3, 4]
+    expect(cycleToStep(0.9, 7, 2, 7, bs)).toBe(2) // bar 1's last cell, not bar 2
+    expect(cycleToStep(0.9, 7, 2, 7)).toBe(3) // the uniform reading this replaces
+    expect(cycleToStep(1.0, 7, 2, 7, bs)).toBe(3) // bar 2's downbeat
+    expect(cycleToStep(1.3, 7, 2, 7, bs)).toBe(4) // 30% into a bar of 4 → its second cell
+    expect(cycleToStep(1.999, 7, 2, 7, bs)).toBe(6)
+    expect(cycleToStep(2.1, 7, 2, 7, bs)).toBe(0) // the pattern loops
+  })
 })

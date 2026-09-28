@@ -9,7 +9,7 @@ import { mini } from '@strudel/mini/mini.mjs'
 
 import { parsePianoRoll, parseStepGrid } from '../parse'
 import { serializePianoRoll, serializeStepGrid } from '../serialize'
-import { placeNote, removeNote, toggleCell } from '../place'
+import { moveNote, placeNote, removeNote, toggleCell } from '../place'
 import { drawnAt, perBarLayout, sharedAt } from '../perBar'
 import type { PianoRollModel, StepGridModel } from '../model'
 
@@ -121,6 +121,29 @@ describe('the piano roll', () => {
     // drawn column 8 is bar 2's first cell
     const out = serializePianoRoll(placeNote(removeNote(m, 8, 'c3', { readback: true }), 'e4', 8, 1, { readback: true }))
     expect(out).toBe(`<[${EIGHT}] [e4 d3 e3 f3 g3 a3 b3]>`)
+  })
+})
+
+describe('a move re-authors the pattern, still one bar at a time', () => {
+  it('moves a note within its bar and keeps both bars at their own counts', () => {
+    // A move re-authors through the rebuild writers rather than the splice, and those
+    // strode bars by one uniform width: without the per-bar bounds this bar of 3 came back
+    // as twelve slots, reopened uniform, and the read-back refused every drag.
+    const m = roll(THREE_FOUR)
+    const out = serializePianoRoll(moveNote(m, 'g3', 2, 'a3', 2, { readback: true }))
+    expect(out).toBe('<[c3 e3 a3] [c3 e3 g3 b3]>')
+  })
+
+  it('moves a note from the bar of 4 into the bar of 3, where a cell is longer', () => {
+    // drawn column 6 is bar 2's last cell (a quarter); drawn column 2 is bar 1's last (a third)
+    const m = roll('<[c3 e3 ~] [c3 e3 g3 b3]>')
+    expect(m.barSteps).toEqual([3, 4])
+    const moved = moveNote(m, 'b3', 6, 'b3', 2, { readback: true })
+    expect(moved).not.toBe(m)
+    const out = serializePianoRoll(moved)!
+    expect(out).toBe('<[c3 e3 b3] [c3 e3 g3 ~]>')
+    // …and it plays there for bar 1's third of a cycle
+    expect(plays(out, 2)).toContain('"b3"@0.6666666666666666+0.33333333333333337')
   })
 })
 

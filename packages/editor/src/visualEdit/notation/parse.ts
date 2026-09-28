@@ -54,7 +54,7 @@ import { cellOn, gridCellKey, isCellOn } from './model'
 import { MAX_VIEW_STEPS, UNREFINED, documentSteps, viewScaleFits } from './viewResolution'
 import type { ViewScale } from './viewResolution'
 import { pitchToMidi } from './pitch'
-import { MAX_SHARED_STEPS, perBarLayout, toDrawnGrid, toDrawnRoll } from './perBar'
+import { MAX_SHARED_STEPS, lcmOf, perBarLayout, toDrawnGrid, toDrawnRoll } from './perBar'
 
 /**
  * A bare integer (`60`, `0`, `-7`) — a numeric note value for the roll (#469).
@@ -2464,6 +2464,17 @@ function leafExpected(
  * edited through a ×2 view. Nothing here decides when the spans apply — the width
  * guard both leaf writers already call does.
  */
+/**
+ * The width an overlay's spans belong to: the DOCUMENT's columns, one span entry each.
+ * For a model drawn per bar (#1827) those are the SHARED grid's columns, not the drawn
+ * ones — the writer converts back to the shared grid before it asks for surgery, and a
+ * stamp of the drawn width there refuses every splice (roll surgical deletes fell 365 →
+ * 364 on `writer-reach` until this was stamped at the width the writer actually holds).
+ */
+function overlayWidth(model: { steps: number; viewScale?: number; barSteps?: number[] }): number {
+  return model.barSteps ? model.barSteps.length * lcmOf(model.barSteps) : documentSteps(model)
+}
+
 function withSurgery(mini: string, r: ParseResult<StepGridModel>): ParseResult<StepGridModel> {
   if (!r.ok) return r
   // ⚠ THE ATTACHED WIDTH IS RE-STAMPED, and it is the one field that must not travel
@@ -2481,7 +2492,7 @@ function withSurgery(mini: string, r: ParseResult<StepGridModel>): ParseResult<S
   // on 5 corpus units, caught by `1117-refined-round-trip` and by nothing else.
   return {
     ok: true,
-    model: { ...r.model, surgical: lazyGridLeaf(mini, documentSteps(r.model)) },
+    model: { ...r.model, surgical: lazyGridLeaf(mini, overlayWidth(r.model)) },
   }
 }
 
@@ -2797,11 +2808,16 @@ function gridFromAlternation(
   const documentDiv = division(tok.steps)
   // Bars whose counts do not nest are drawn each at its own count (#1827) — see the
   // roll's alternation path, which asks the same two ceilings for the same reason.
-  const layout = viewScale === UNREFINED ? perBarLayout(tok.steps.map(stepUnits)) : null
+  const perBar = perBarLayout(tok.steps.map(stepUnits))
+  const layout = viewScale === UNREFINED ? perBar : null
   const tooWide = layout
     ? layout.some((n) => n > MAX_STEPS) || tok.steps.length * documentDiv > MAX_SHARED_STEPS
     : tok.steps.length * documentDiv > MAX_STEPS
   if (tooWide) {
+    // the roll's rule: opens per bar at ×1, so a refined refusal is the VIEW's ceiling
+    if (perBar && !layout) {
+      return { ok: false, reason: gateReason('view-resolution', 'grid'), gate: 'view-resolution' }
+    }
     return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` }
   }
   if (!layout && !viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
@@ -3756,7 +3772,7 @@ function withRollSurgery(
   // rather than the drawn one — see `withSurgery` for both halves and what each costs (#1235)
   return {
     ok: true,
-    model: { ...r.model, surgical: lazyRollLeaf(mini, documentSteps(r.model)) },
+    model: { ...r.model, surgical: lazyRollLeaf(mini, overlayWidth(r.model)) },
   }
 }
 
@@ -3890,14 +3906,18 @@ export function parsePianoRollCore(
   // higher one on the shared grid the writers still spell from. Only one entry per
   // bar (no `@n` spanning bars), and only unrefined: a refine multiplies one global
   // grid, which is exactly what this layout does not have.
-  const layout =
-    alt !== null && viewScale === UNREFINED && tok.steps.every((st) => st.elongation === 1)
-      ? perBarLayout(tok.steps.map(stepUnits))
-      : null
+  const perBar =
+    alt !== null && tok.steps.every((st) => st.elongation === 1) ? perBarLayout(tok.steps.map(stepUnits)) : null
+  const layout = viewScale === UNREFINED ? perBar : null
   const tooWide = layout
     ? layout.some((n) => n > MAX_STEPS) || bars * documentDiv > MAX_SHARED_STEPS
     : (documentDiv > 1 || alt !== null) && bars * documentDiv > MAX_STEPS
   if (tooWide) {
+    // A pattern the document draws per bar but whose REFINED view has to be one shared
+    // grid is refused by the view's ceiling, not the notation's: at ×1 it opens.
+    if (perBar && !layout) {
+      return { ok: false, reason: gateReason('view-resolution', 'roll'), gate: 'view-resolution' }
+    }
     return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` }
   }
   // …and the VIEW's ceiling, asked of what would actually be drawn. The columns this
