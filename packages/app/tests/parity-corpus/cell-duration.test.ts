@@ -59,12 +59,15 @@ const minis = [...new Set(corpus.minis.map((o) => o.mini.trim()).filter((m) => m
 /** hap bounds are Fraction→float: a note lasting its column arrives as 0.999…8 too */
 const EPS = 1e-9
 
-/** what the ENGINE played: per column index, per token, the lengths in columns */
-function playedLengths(
-  mini: string,
-  perBar: number,
-  bars: number,
-): Map<string, number[]> | null {
+/**
+ * what the ENGINE played: per column index, per token, the lengths in columns.
+ *
+ * `barSteps` is each bar's own column count — a column is not one width across bars
+ * when the model is drawn per bar (#1827), so cycles→columns is taken bar by bar, exactly
+ * as `cell-coverage` does. Uniform models pass one count per bar: the old arithmetic.
+ */
+function playedLengths(mini: string, barSteps: readonly number[]): Map<string, number[]> | null {
+  const bars = barSteps.length
   let pat: unknown
   try {
     pat = reifyMini(mini)
@@ -72,7 +75,8 @@ function playedLengths(
     return null
   }
   const out = new Map<string, number[]>()
-  for (let cyc = 0; cyc < bars; cyc++) {
+  for (let cyc = 0, before = 0; cyc < bars; before += barSteps[cyc], cyc++) {
+    const perBar = barSteps[cyc]
     let haps: Array<{
       hasOnset?: () => boolean
       whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
@@ -90,7 +94,7 @@ function playedLengths(
       const token =
         typeof v === 'string' ? v : Array.isArray(v) ? v.join(':') : typeof v === 'number' ? null : null
       if (token === null) continue
-      const col = cyc * perBar + Math.round((h.whole.begin.valueOf() - cyc) * perBar)
+      const col = before + Math.round((h.whole.begin.valueOf() - cyc) * perBar)
       const len = (h.whole.end.valueOf() - h.whole.begin.valueOf()) * perBar
       const key = `${col} ${token}`
       out.set(key, [...(out.get(key) ?? []), len])
@@ -158,8 +162,8 @@ for (const mini of minis) {
   if (!r.ok) continue
   const bars = Math.max(1, r.model.bars ?? 1)
   const perBar = r.model.steps / bars
-  if (!Number.isInteger(perBar) || perBar <= 0) continue
-  const played = playedLengths(mini, perBar, bars)
+  if (!r.model.barSteps && (!Number.isInteger(perBar) || perBar <= 0)) continue
+  const played = playedLengths(mini, r.model.barSteps ?? Array.from({ length: bars }, () => perBar))
   if (played === null) continue
   units.push({
     mini,
@@ -253,7 +257,7 @@ describe('the step cell carries a length the engine actually played', () => {
     const r = parseStepGrid('bd [sd sd sd]')
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    const played = playedLengths('bd [sd sd sd]', r.model.steps, 1)!
+    const played = playedLengths('bd [sd sd sd]', [r.model.steps])!
     expect(check(r.model, played)).toEqual([])
     expect(check(r.model, played, 1).map((m) => m.sound)).toEqual(['bd'])
   })

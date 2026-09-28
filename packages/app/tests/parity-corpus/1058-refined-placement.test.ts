@@ -194,15 +194,24 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // ⚠ 973 -> 1013 at #1242 — the corpus widened 1535 -> 1633 units
       // (98 arrivals, 0 departures): the harvest gained the product's own
       // resolver, so every figure here is over a wider population. Upward only.
-      expect(s.opensAtDocument, `k=${k} opens`).toBe(1013)
+      // ⚠ 1013 -> 1014 at #1827 (each bar drawn at its own step count): the one grid unit
+      // that used to exceed 64 shared columns now opens per bar,
+      // `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` (1+1+3+4+3+4+4+4 cells, 96 shared). Its
+      // refined view has to be one shared grid, so it is the new `view-resolution` below.
+      expect(s.opensAtDocument, `k=${k} opens`).toBe(1014)
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
       expect(s.admitsFinerView, `k=${k} admits`).toBe(927)
-      // ONE refusal gate, and it is the leaf path saying so by name: a leaf model
-      // anchors each note to its own source span, so there is no span to
+      // Two refusal gates, each saying why by name. `no-finer-view` is the leaf path: a
+      // leaf model anchors each note to its own source span, so there is no span to
       // subdivide, and the entry refuses a refine rather than quietly drawing the
-      // document's own layout for one.
+      // document's own layout for one. `view-resolution` is the one unit drawn per bar
+      // at ×1 (#1827) whose refined view would be one shared grid past the view's
+      // ceiling. 1014 = 927 + 86 + 1: nothing unaccounted for.
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-      expect([...s.refusesFinerView.entries()], `k=${k} gates`).toEqual([['no-finer-view', 86]])
+      expect([...s.refusesFinerView.entries()], `k=${k} gates`).toEqual([
+        ['no-finer-view', 86],
+        ['view-resolution', 1],
+      ])
       // IDENTICAL AT EVERY SCALE, and that is the point rather than a coincidence:
       // the population, the routing and the refusals are properties of the
       // PATTERN, so a view multiplier must not move any of them (#1116).
@@ -732,10 +741,17 @@ describe('#1058 — the roll, gated separately', () => {
       // from the delete side, which is what identifies them as one fact and not two.
       // 595 = 541 + 54 and 595 = 540 + 54 + 1: nothing is unaccounted for on either side.
       //
+      // ⚠ opens 595 -> 596 at #1827 (each bar drawn at its own step count), READ OFF A RUN:
+      // `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` (4+6+8+4, 96 shared columns) now opens
+      // per bar at ×1. Its refined view would be one shared grid past the view's ceiling,
+      // so it is refused as `view-resolution` at both scales; `admits` and the leaf
+      // refusals are unmoved. 596 = 541 + 54 + 1 (k=2) and 596 = 540 + 54 + 2 (k=4).
+      //
       // ⚠ These were first moved with a comment claiming `admits` and the leaf refusals
       // were UNMOVED. That was inferred from the arrival's shape and never measured, and
       // it was wrong by 3. The figures above are read off a run.
-      expect(opens, `k=${k} opens`).toBe(595)
+      expect(opens, `k=${k} opens`).toBe(596)
+      expect(gates.get('view-resolution'), `k=${k} view refusals`).toBe(k === 2 ? 1 : 2)
       expect(admits, `k=${k} admits`).toBe(k === 2 ? 541 : 540)
       expect(gates.get('no-finer-view'), `k=${k} leaf refusals`).toBe(54)
       expect(asks, `k=${k} asks`).toBeGreaterThan(4000)

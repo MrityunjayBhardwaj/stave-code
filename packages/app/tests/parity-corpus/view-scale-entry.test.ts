@@ -76,6 +76,17 @@ import {
 import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
 import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import type { StepGridModel, PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
+import { toUniformGrid, toUniformRoll } from '../../../editor/src/visualEdit/notation/perBar'
+
+/**
+ * The document's model in the columns a refine MAGNIFIES. A refined view is one shared
+ * column grid; a document whose bars' counts do not nest is drawn per bar at ×1 (#1827),
+ * in drawn columns — so "k× the base" is asked of the base's exact shared form, which for
+ * those units is the model this file was written against and for every other unit is the
+ * model itself.
+ */
+const sharedForm = <M,>(m: M): M =>
+  ('lanes' in (m as object) ? toUniformGrid(m as never) : toUniformRoll(m as never)) as M
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -200,8 +211,9 @@ function sweep<M extends Model>(
   const name = (m: string) => JSON.stringify(m.length > 48 ? m.slice(0, 48) + '…' : m)
 
   for (const mini of minis) {
-    const base = parse(mini)
-    if (!base.ok) continue
+    const parsed = parse(mini)
+    if (!parsed.ok) continue
+    const base = { ok: true as const, model: sharedForm(parsed.model) }
     for (const k of [2, 4]) {
       const r = parse(mini, k)
       if (!r.ok) {
