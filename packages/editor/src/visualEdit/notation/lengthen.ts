@@ -69,10 +69,25 @@ function splitEntries(inner: string): string[] | null {
   return out.some((e) => e === '.' || e === '!' || e === '_') ? null : out
 }
 
+/** one of Strudel's exact time values (fraction.js) */
+type Time = { valueOf(): number; sub?: (n: number) => Time; toFraction?: () => string }
+
 type Hap = {
   hasOnset?: () => boolean
-  whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
+  whole?: { begin: Time; end: Time }
   value: unknown
+}
+
+/**
+ * A time measured from a bar's downbeat, EXACTLY (#1829). In floating point a third
+ * of the way into bar 1 is `1.3333333333333333 − 1` = `0.33333333333333326`, which is
+ * not bar 0's `0.3333333333333333` — so identical bars compared unequal and every
+ * pattern with thirds read as changing from cycle to cycle. Strudel's times are exact
+ * fractions; subtracting there gives `1/3` in every bar.
+ */
+function fromBar(t: Time, bar: number): string {
+  const d = t.sub?.(bar)
+  return d?.toFraction ? d.toFraction() : String(+t - bar)
 }
 
 /**
@@ -88,7 +103,7 @@ function barKey(pat: unknown, bar: number): string | null {
   }
   return haps
     .filter((h) => (h.hasOnset?.() ?? false) && h.whole)
-    .map((h) => `${JSON.stringify(h.value)}|${+h.whole!.begin.valueOf() - bar}|${+h.whole!.end.valueOf() - bar}`)
+    .map((h) => `${JSON.stringify(h.value)}|${fromBar(h.whole!.begin, bar)}|${fromBar(h.whole!.end, bar)}`)
     .sort()
     .join(' ')
 }

@@ -102,6 +102,18 @@ describe('duplicateBar — click +: one more bar, continuing the pattern', () =>
   it("REFUSES what Strudel can't parse, rather than writing it", () => {
     expect(duplicateBar('bd [sd', 1).ok).toBe(false)
   })
+
+  it('continues a pattern in thirds — equal bars compare equal whatever the split', () => {
+    // Every step lands on a third or a sixth of a cycle, which floating-point
+    // subtraction does not measure the same in bar 1 as in bar 0 (#1829).
+    expect(duplicateBar('c3 e3 g3', 1)).toEqual({ ok: true, mini: '<[c3 e3 g3] [c3 e3 g3]>' })
+    expect(duplicateBar('c3 e3 g3 b3 c4 e4', 1).ok).toBe(true)
+    expect(duplicateBar('<[c3 e3 g3] [c3 e3 g3 b3]>', 2)).toEqual({
+      ok: true,
+      mini: '<[c3 e3 g3] [c3 e3 g3 b3] [c3 e3 g3]>',
+    })
+    expect(appendEmptyBars('c3 e3 g3', 1, 1)).toEqual({ ok: true, mini: '<[c3 e3 g3] ~>' })
+  })
 })
 
 describe('appendEmptyBars — drag +: silent bars after the pattern', () => {

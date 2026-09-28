@@ -35071,6 +35071,11 @@ function splitEntries(inner) {
   return out.some((e) => e === "." || e === "!" || e === "_") ? null : out;
 }
 __name(splitEntries, "splitEntries");
+function fromBar(t, bar2) {
+  const d = t.sub?.(bar2);
+  return d?.toFraction ? d.toFraction() : String(+t - bar2);
+}
+__name(fromBar, "fromBar");
 function barKey(pat, bar2) {
   let haps;
   try {
@@ -35078,7 +35083,7 @@ function barKey(pat, bar2) {
   } catch {
     return null;
   }
-  return haps.filter((h) => (h.hasOnset?.() ?? false) && h.whole).map((h) => `${JSON.stringify(h.value)}|${+h.whole.begin.valueOf() - bar2}|${+h.whole.end.valueOf() - bar2}`).sort().join(" ");
+  return haps.filter((h) => (h.hasOnset?.() ?? false) && h.whole).map((h) => `${JSON.stringify(h.value)}|${fromBar(h.whole.begin, bar2)}|${fromBar(h.whole.end, bar2)}`).sort().join(" ");
 }
 __name(barKey, "barKey");
 function reify(mini$1) {
