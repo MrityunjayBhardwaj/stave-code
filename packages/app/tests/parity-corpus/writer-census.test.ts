@@ -744,7 +744,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // …and the split the whole conjunction exists to keep visible. Asserted here rather
     // than left to the generated document, because the document is an OUTPUT of this run
     // and cannot testify about it.
-    expect([p6.grid.blocker, p6.roll.blocker]).toEqual([18, 33])
+    // ⚠ [18, 33] -> [19, 34] at #1827 — one per surface, the two units the core newly serves per bar.
+    expect([p6.grid.blocker, p6.roll.blocker]).toEqual([19, 34])
   }, 900_000)
 
   /**
