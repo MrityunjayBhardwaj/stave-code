@@ -35795,11 +35795,6 @@ var VELOCITY_FULL_PX = 80;
 var DRAG_THRESHOLD = 4;
 var RESIZE_ZONE_PX = 8;
 var clamp012 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
-function gainInScope(model) {
-  if (model.gainForeign || (model.bars ?? 1) > 1) return false;
-  return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1;
-}
-__name(gainInScope, "gainInScope");
 function reportRefusal(attempted) {
   emitLog({
     level: "warn",
@@ -35834,7 +35829,7 @@ function SequencerGrid({ onResolution } = {}) {
   );
   const [colorMode] = useNoteColorMode();
   const gestureRef = React38__namespace.useRef(null);
-  const gainScoped = model ? gainInScope(model) : false;
+  const gainScoped = React38__namespace.useMemo(() => model ? serializeStepGain(model).kind !== "skip" : false, [model]);
   const placesNotes = React38__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
   const isChordChart = React38__namespace.useMemo(
@@ -36215,7 +36210,6 @@ function SequencerGrid({ onResolution } = {}) {
                   const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
                   const isPlaying = stepIndex === playingStep;
                   const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true;
-                  const pressable2 = canToggle || on && gainScoped;
                   const isCursor = liveCursor?.row === laneIndex && liveCursor.col === stepIndex;
                   const isTab = tabCell.row === laneIndex && tabCell.col === stepIndex;
                   return (
@@ -36247,8 +36241,8 @@ function SequencerGrid({ onResolution } = {}) {
                             "data-seq-cell": `${laneIndex}:${stepIndex}`,
                             "data-gain": on && gainScoped ? gain : void 0,
                             "data-playing": isPlaying ? "true" : void 0,
-                            "data-seq-cell-inert": pressable2 ? void 0 : "true",
-                            "aria-disabled": pressable2 ? void 0 : true,
+                            "data-seq-cell-inert": canToggle ? void 0 : "true",
+                            "aria-disabled": canToggle ? void 0 : true,
                             title: canToggle ? void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
                             onPointerDown: (e) => {
                               e.preventDefault();
@@ -36262,7 +36256,7 @@ function SequencerGrid({ onResolution } = {}) {
                                   return;
                                 }
                               }
-                              if (!pressable2) return;
+                              if (!canToggle) return;
                               onCellDown(laneIndex, stepIndex, on, e);
                             },
                             onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
@@ -36275,7 +36269,7 @@ function SequencerGrid({ onResolution } = {}) {
                               border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
                               borderRadius: 3,
                               background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-                              cursor: !pressable2 ? "default" : gainScoped && on ? "ns-resize" : "pointer"
+                              cursor: !canToggle ? "default" : gainScoped && on ? "ns-resize" : "pointer"
                             },
                             children: [
                               cov && // Two orthogonal axes on one bar, which is how a DAW draws a
@@ -36496,10 +36490,10 @@ var VELOCITY_READ_ONLY = "Shows this pattern\u2019s velocities \u2014 to change 
 var LANE_HEIGHT = 48;
 var VELOCITY_FULL_PX2 = 80;
 var clamp013 = /* @__PURE__ */ __name((v) => Math.max(0, Math.min(1, v)), "clamp01");
-function gainInScope2(model) {
+function gainInScope(model) {
   return !model.gainForeign && (model.bars == null || model.bars === model.steps);
 }
-__name(gainInScope2, "gainInScope");
+__name(gainInScope, "gainInScope");
 var tokenForRow = /* @__PURE__ */ __name((numeric, midi) => numeric ? String(midi) : midiToPitch(midi), "tokenForRow");
 var LEFT_UNCHANGED = "so it was left unchanged";
 var STAYED_AT_LAST_ACCEPTED = "so it stayed at the last spot it could go";
@@ -37362,7 +37356,7 @@ function PianoRollGrid({
                     }
                   ),
                   /* @__PURE__ */ jsxRuntime.jsx(ExtendHandle, { length, gridRef, cellAttr: "data-roll-cell", cols, lastBarCols: layout.lastBarCols }),
-                  gainInScope2(model) && /* @__PURE__ */ jsxRuntime.jsxs(
+                  gainInScope(model) && /* @__PURE__ */ jsxRuntime.jsxs(
                     "div",
                     {
                       "data-roll-velocity-lane": true,

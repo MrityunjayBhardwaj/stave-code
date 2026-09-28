@@ -7,18 +7,16 @@
  * whether the toggle came back unchanged. No model-level arm can see that, because none of
  * them render a cell or read the Console.
  *
- * The panel has two honest answers, and each fixture pins one:
+ * The pointer is told BEFORE the click: a refused lit cell is inert (`aria-disabled`) and
+ * titled with the reason, exactly as a refused EMPTY cell has been since #1070. The keys
+ * are told AT the press, as a `stave` warn row (the roll's `reportRefusal` shape), since a
+ * key user never sees a title.
  *
- *   1. SAID BEFORE THE CLICK — a refused lit cell with nothing else to offer is inert
- *      (`aria-disabled`) and titled with the reason, exactly as a refused EMPTY cell has
- *      been since #1070. Fixture: the two-bar leaf grid the issue was observed on, where
- *      10 of the 13 lit cells refuse and velocity is out of scope (more than one bar).
- *
- *   2. SAID AT THE CLICK — a refused lit cell that still takes a velocity drag stays
- *      pressable, so a plain click reaches the op and must be reported as a `stave` warn
- *      row, the roll's `reportRefusal` shape. Fixture: a one-bar leaf grid from the
- *      corpus, where the `sd` hits are one token drawn twice (`[- sd]*2`); 38 of the 285
- *      corpus refusals are of this kind.
+ * Two fixtures, both leaf-read, which is where every one of the 285 refusals lives: the
+ * two-bar grid the issue was observed on (10 of 13 lit cells refuse), and a one-bar corpus
+ * grid where the `sd` hits are one token drawn twice (`[- sd]*2`). The one-bar grid is the
+ * case a velocity drag would have kept pressable — on leaf grids the writer never writes
+ * velocity (#1839), so it is inert like the rest.
  *
  * ⚠ EACH REFUSED ARM HAS A TWIN ON THE SAME GRID that erases normally, so "nothing
  * happened" cannot be read as "the click never landed", and "one warning" cannot be
@@ -36,7 +34,7 @@ const TWO_BARS_REFUSED = '0:8'
 const TWO_BARS_ACCEPTED = '0:0'
 const TWO_BARS_AFTER = '$: s("<~ [~ bd]>@2 hh@2 bd <bd ~> [hh bd] [~ hh]")'
 
-/** One bar, one part — velocity is in scope, so a refused lit cell stays pressable. */
+/** One bar, one part, leaf-read: the `sd` token `[- sd]*2` is drawn as two hits. */
 const ONE_BAR = '$: s("[bd - [- bd] -], [- sd]*2")'
 
 async function openSequencer(page: Page, code: string) {
@@ -70,7 +68,7 @@ async function litKeys(page: Page): Promise<{ key: string; inert: boolean; title
     )
 }
 
-test.describe('a refused erase is said before the click where nothing else is offered (#1836)', () => {
+test.describe('a refused erase is said before the click (#1836)', () => {
   test('the refused lit cell is inert and titled; a click leaves the code alone and raises nothing', async ({
     page,
   }) => {
@@ -142,22 +140,21 @@ test.describe('a refused erase by key is reported (#1836)', () => {
   })
 })
 
-test.describe('a refused erase is reported at the click where the cell stays pressable (#1836)', () => {
-  test('the refused hit keeps its velocity drag, and a plain click is reported, not swallowed', async ({
+test.describe('a one-bar grid refuses the same way (#1836)', () => {
+  test('the hit drawn twice from one token is inert and titled; a click leaves the code alone', async ({
     page,
   }) => {
     await openSequencer(page, ONE_BAR)
     const sd = (await litKeys(page)).filter((c) => c.key.startsWith('1:'))
     expect(sd.length, 'the `sd` lane draws two hits from one token').toBe(2)
     const cell = await litCell(page, sd[0].key)
-    // Pressable (velocity is in scope) and still titled with why the click cannot erase.
-    await expect(cell.loc).not.toHaveAttribute('aria-disabled', 'true')
+    await expect(cell.loc).toHaveAttribute('aria-disabled', 'true')
     await expect(cell.loc).toHaveAttribute('title', /plays in more than one box/)
 
     await page.mouse.click(cell.x, cell.y)
     await page.waitForTimeout(700)
     expect(await editorValue(page), 'a refused erase must not write').toBe(ONE_BAR)
-    await expectRefusalReported(page, "Couldn't remove that hit")
+    await expectNoRefusalReported(page)
   })
 
   test('the removable hit on the same grid erases and stays quiet', async ({ page }) => {

@@ -741,7 +741,11 @@
   },
   "sequencer-erase-refusal.spec.ts": {
     "runs": "gate",
-    "why": "A lit sequencer cell whose erase the writer refuses must say so: inert and titled where nothing else is offered, reported as a warning at the click where it stays pressable for velocity, and reported for a key, which never sees a title (#1836). Before, every lit cell looked clickable and 285 of the corpus's erase clicks did nothing silently."
+    "why": "A lit sequencer cell whose erase the writer refuses must say so: inert and titled for the pointer, and reported as a warning for a key, which never sees a title (#1836). Before, every lit cell looked clickable and 285 of the corpus's erase clicks did nothing silently."
+  },
+  "sequencer-velocity-writable.spec.ts": {
+    "runs": "gate",
+    "why": "The sequencer offers a velocity drag only where the gain writer writes it (#1839). Its own copy of the writer's rule missed the leaf line, so on 20 leaf-read corpus grids a drag redrew the bar and never changed the code."
   },
   "roll-move-decline-reported.spec.ts": {
     "runs": "gate",
