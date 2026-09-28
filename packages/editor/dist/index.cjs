@@ -30051,7 +30051,7 @@ function serializeStepGridWithExtent(drawn) {
         rebuiltParts: spliced.rebuiltParts
       }
     };
-  return { mini: rebuildGrid(model), extent: { path: "rebuild" } };
+  return { mini: rebuildGrid(respell ? drawn : model), extent: { path: "rebuild" } };
 }
 __name(serializeStepGridWithExtent, "serializeStepGridWithExtent");
 function serializeStepGrid(model) {
@@ -30060,7 +30060,7 @@ function serializeStepGrid(model) {
 __name(serializeStepGrid, "serializeStepGrid");
 function rebuildGrid(model) {
   const bars = model.bars ?? 1;
-  if (bars > 1) return gridBars(model, bars);
+  if (bars > 1) return gridBars(model, barBounds(model));
   const parts = [...new Set(model.lanes.map((l) => l.part ?? 0))].sort((a, b) => a - b);
   if (parts.length <= 1) return gridColumns(model.lanes, model.steps)?.join(" ") ?? null;
   const lines = parts.map(
@@ -30444,20 +30444,35 @@ function serializeStepGain(model) {
   return { kind: "write", value: mini, quoted: true };
 }
 __name(serializeStepGain, "serializeStepGain");
-function gridBars(model, bars) {
-  const perBar2 = model.steps / bars;
+function gridBars(model, bounds) {
   const cols = gridColumns(model.lanes, model.steps);
   if (cols === null) return null;
   const slots = [];
-  for (let b = 0; b < bars; b++) {
-    const bar2 = cols.slice(b * perBar2, (b + 1) * perBar2);
+  for (let b = 0; b + 1 < bounds.length; b++) {
+    const bar2 = cols.slice(bounds[b], bounds[b + 1]);
     if (bar2.every((c) => c === "~")) slots.push("~");
-    else if (perBar2 === 1) slots.push(bar2[0]);
+    else if (bar2.length === 1) slots.push(bar2[0]);
     else slots.push(`[${bar2.join(" ")}]`);
   }
   return `<${slots.join(" ")}>`;
 }
 __name(gridBars, "gridBars");
+function barBounds(model) {
+  if (model.barSteps) return barStarts(model.barSteps);
+  const bars = model.bars ?? 1;
+  const perBar2 = model.steps / bars;
+  return Array.from({ length: bars + 1 }, (_, b) => b * perBar2);
+}
+__name(barBounds, "barBounds");
+function heldBars(bounds, b, duration) {
+  for (let k = 1; b + k < bounds.length; k++) {
+    const span = bounds[b + k] - bounds[b];
+    if (Math.abs(span - duration) < 1e-9) return k;
+    if (span > duration) break;
+  }
+  return 0;
+}
+__name(heldBars, "heldBars");
 var groupBody = /* @__PURE__ */ __name((g) => g.pitches.length === 1 ? g.pitches[0] : `[${g.pitches.join(",")}]`, "groupBody");
 var weightToken = /* @__PURE__ */ __name((n) => String(Number(n.toPrecision(12))), "weightToken");
 var groupToken = /* @__PURE__ */ __name((g) => g.duration === 1 ? groupBody(g) : `${groupBody(g)}@${weightToken(g.duration)}`, "groupToken");
@@ -30498,10 +30513,12 @@ function serializePianoRollWithExtent(drawn) {
   if (spliced !== null) return { mini: spliced, extent: { path: "splice" } };
   const bars = model.bars ?? 1;
   if (bars > 1) {
-    const groups = buildGroups(model);
-    const flat = groups === null ? null : rollBars(groups, model.steps, bars);
+    const src = respell ? drawn : model;
+    const bounds = barBounds(src);
+    const groups = buildGroups(src);
+    const flat = groups === null ? null : rollBars(groups, bounds);
     if (flat !== null) return { mini: flat, extent: { path: "rebuild" } };
-    return { mini: rollBarLanes(model, bars), extent: { path: "rebuild" } };
+    return { mini: rollBarLanes(src, bounds), extent: { path: "rebuild" } };
   }
   return { mini: serializeRollLanes(model), extent: { path: "rebuild" } };
 }
@@ -30811,18 +30828,19 @@ function serializeRollLanes(model) {
   return strings.join(", ");
 }
 __name(serializeRollLanes, "serializeRollLanes");
-function rollBars(groups, steps, bars) {
-  const perBar2 = steps / bars;
-  if (!Number.isInteger(perBar2)) return null;
+function rollBars(groups, bounds) {
+  if (!bounds.every((x) => Number.isInteger(x))) return null;
+  const bars = bounds.length - 1;
   const starts = [...groups.keys()].sort((a, b2) => a - b2);
   const slots = [];
   let b = 0;
   while (b < bars) {
-    const barStart = b * perBar2;
-    const barEnd = barStart + perBar2;
+    const barStart = bounds[b];
+    const barEnd = bounds[b + 1];
+    const perBar2 = barEnd - barStart;
     const atStart = groups.get(barStart);
-    if (atStart && atStart.duration % perBar2 === 0) {
-      const k = atStart.duration / perBar2;
+    const k = atStart ? heldBars(bounds, b, atStart.duration) : 0;
+    if (atStart && k >= 1) {
       const heldEnd = barStart + atStart.duration;
       if (starts.some((s) => s > barStart && s < heldEnd)) return null;
       slots.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
@@ -30856,9 +30874,9 @@ function rollBars(groups, steps, bars) {
   return `<${slots.join(" ")}>`;
 }
 __name(rollBars, "rollBars");
-function rollBarLanes(model, bars) {
-  const perBar2 = model.steps / bars;
-  if (!Number.isInteger(perBar2)) return null;
+function rollBarLanes(model, bounds) {
+  if (!bounds.every((x) => Number.isInteger(x))) return null;
+  const bars = bounds.length - 1;
   const E = 1e-9;
   const notes = [...model.notes].sort((a, b2) => a.start - b2.start || a.duration - b2.duration);
   for (const n of notes)
@@ -30866,8 +30884,9 @@ function rollBarLanes(model, bars) {
   const slots = [];
   let b = 0;
   while (b < bars) {
-    const barStart = b * perBar2;
-    const barEnd = barStart + perBar2;
+    const barStart = bounds[b];
+    const barEnd = bounds[b + 1];
+    const perBar2 = barEnd - barStart;
     const over = notes.filter((n) => n.start < barEnd - E && n.start + n.duration > barStart + E);
     if (over.length === 0) {
       slots.push("~");
@@ -30896,8 +30915,8 @@ function rollBarLanes(model, bars) {
     if (held2.length === 0 || held2.length !== over.length) return null;
     const dur = held2[0].duration;
     if (held2.some((n) => Math.abs(n.duration - dur) > E)) return null;
-    const k = dur / perBar2;
-    if (!Number.isInteger(k) || k < 1) return null;
+    const k = heldBars(bounds, b, dur);
+    if (k < 1) return null;
     if (notes.some((n) => n.start > barStart + E && n.start < barStart + dur - E)) return null;
     const body = groupBody({ pitches: held2.map((n) => n.pitch), duration: dur });
     slots.push(k === 1 ? body : `${body}@${k}`);
@@ -32026,11 +32045,15 @@ function leafExpected(cols, perBar2, bars, span, text) {
   return out;
 }
 __name(leafExpected, "leafExpected");
+function overlayWidth(model) {
+  return model.barSteps ? model.barSteps.length * lcmOf(model.barSteps) : documentSteps(model);
+}
+__name(overlayWidth, "overlayWidth");
 function withSurgery(mini, r) {
   if (!r.ok) return r;
   return {
     ok: true,
-    model: { ...r.model, surgical: lazyGridLeaf(mini, documentSteps(r.model)) }
+    model: { ...r.model, surgical: lazyGridLeaf(mini, overlayWidth(r.model)) }
   };
 }
 __name(withSurgery, "withSurgery");
@@ -32127,9 +32150,13 @@ function gridFromAlternation(inner, viewScale = UNREFINED) {
     return { ok: false, reason: "elongation is beyond the drum-grid subset" };
   }
   const documentDiv = division(tok.steps);
-  const layout = viewScale === UNREFINED ? perBarLayout(tok.steps.map(stepUnits)) : null;
+  const perBar2 = perBarLayout(tok.steps.map(stepUnits));
+  const layout = viewScale === UNREFINED ? perBar2 : null;
   const tooWide = layout ? layout.some((n) => n > MAX_STEPS) || tok.steps.length * documentDiv > MAX_SHARED_STEPS : tok.steps.length * documentDiv > MAX_STEPS;
   if (tooWide) {
+    if (perBar2 && !layout) {
+      return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
+    }
     return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` };
   }
   if (!layout && !viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
@@ -32714,7 +32741,7 @@ function withRollSurgery(mini, r) {
   if (!r.ok) return r;
   return {
     ok: true,
-    model: { ...r.model, surgical: lazyRollLeaf(mini, documentSteps(r.model)) }
+    model: { ...r.model, surgical: lazyRollLeaf(mini, overlayWidth(r.model)) }
   };
 }
 __name(withRollSurgery, "withRollSurgery");
@@ -32773,9 +32800,13 @@ function parsePianoRollCore(mini, viewScale = UNREFINED) {
   if (alt !== null && tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
   const documentDiv = division(tok.steps);
   const bars = tok.steps.reduce((b, s) => b + s.elongation, 0);
-  const layout = alt !== null && viewScale === UNREFINED && tok.steps.every((st) => st.elongation === 1) ? perBarLayout(tok.steps.map(stepUnits)) : null;
+  const perBar2 = alt !== null && tok.steps.every((st) => st.elongation === 1) ? perBarLayout(tok.steps.map(stepUnits)) : null;
+  const layout = viewScale === UNREFINED ? perBar2 : null;
   const tooWide = layout ? layout.some((n) => n > MAX_STEPS) || bars * documentDiv > MAX_SHARED_STEPS : (documentDiv > 1 || alt !== null) && bars * documentDiv > MAX_STEPS;
   if (tooWide) {
+    if (perBar2 && !layout) {
+      return { ok: false, reason: gateReason("view-resolution", "roll"), gate: "view-resolution" };
+    }
     return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` };
   }
   if (!layout && !viewScaleFits(documentDiv, bars, viewScale)) {
@@ -33460,6 +33491,9 @@ function moveNote(base, fromPitch, fromStart, toPitch, toStart, opts = {}) {
   const rebuilt = {
     steps: base.steps,
     ...base.bars != null ? { bars: base.bars } : {},
+    // Not a source: the RULER the notes are measured in. A roll drawn per bar (#1827)
+    // holds drawn columns, and without its counts the writer reads them as shared ones.
+    ...base.barSteps ? { barSteps: base.barSteps } : {},
     ...base.numeric ? { numeric: true } : {},
     notes
   };
