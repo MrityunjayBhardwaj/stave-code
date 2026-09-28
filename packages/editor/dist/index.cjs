@@ -37178,7 +37178,7 @@ function PianoRollGrid({
                 style: { position: "relative", display: "flex", flexDirection: "column", gap: 1, width: "100%", paddingRight: 28, boxSizing: "border-box" },
                 onPointerLeave: () => setHoveredMidi(null),
                 children: [
-                  /* @__PURE__ */ jsxRuntime.jsxs("div", { "data-roll-ruler": true, "aria-hidden": "true", style: { display: "flex", alignItems: "flex-end", gap: 6, height: 12 }, children: [
+                  /* @__PURE__ */ jsxRuntime.jsxs("div", { "data-roll-ruler": true, "aria-hidden": "true", style: { display: "flex", alignItems: "flex-end", gap: 6, height: 12, marginTop: -13 }, children: [
                     /* @__PURE__ */ jsxRuntime.jsx("div", { style: { width: model.numeric ? 36 : 40, flex: "0 0 auto" } }),
                     /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, c) => {
                       const label = ruler.get(c);

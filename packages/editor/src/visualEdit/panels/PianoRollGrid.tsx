@@ -1287,8 +1287,15 @@ export function PianoRollGrid({
         >
           {/* THE RULER (#1841): counts the written steps, `1, 1.2, …, 2`, laid out like a
               row — the key bed's width, the same weights — so each label sits over its
-              column. Visual only, hidden from the accessibility tree. */}
-          <div data-roll-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 12 }}>
+              column. Visual only, hidden from the accessibility tree.
+
+              ⚠ IT SITS IN THE SCROLL AREA'S TOP PADDING, TAKING NO HEIGHT. As a plain
+              row it pushed every pitch row down 13px (its 12 + the 1px row gap), which
+              cost the roll most of a visible row and put `snap-division`'s c3 row past
+              the bottom of a 720px viewport, where the drag's press landed on nothing.
+              The padding is 16px, so the -13px margin keeps the rows exactly where they
+              were before the ruler existed. */}
+          <div data-roll-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 12, marginTop: -13 }}>
             <div style={{ width: model.numeric ? 36 : 40, flex: '0 0 auto' }} />
             <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
               {Array.from({ length: cols }, (_, c) => {
