@@ -54,6 +54,7 @@ import { scaleStepGrid } from '../../../editor/src/visualEdit/notation/resolutio
 import { setGroupGain } from '../../../editor/src/visualEdit/panels/inspector'
 import { isCellOn, laneCoverage, columnCount, columnOverlap, headColumn, tailColumn, sequentialColumnGroups } from '../../../editor/src/visualEdit/notation/model'
 import type { StepCell, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+import { barRuler, columnAt } from './engineEditOracle'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -64,8 +65,17 @@ const minis = [...new Set(corpus.minis.map((o) => o.mini.trim()).filter((m) => m
 /** hap bounds are Fraction→float: a note lasting its column arrives as 0.999…8 too */
 const EPS = 1e-9
 
-/** what the ENGINE sounded: per token, the [begin, end) intervals in COLUMNS */
-function playedSpans(mini: string, perBar: number, bars: number): Map<string, [number, number][]> | null {
+/**
+ * what the ENGINE sounded: per token, the [begin, end) intervals in COLUMNS, measured with
+ * the shared `barRuler` — a column is not one width across bars when the model is drawn
+ * per bar (#1827), `<c2*2 g2*5 [a g]>` being 2 + 5 + 2. For a uniform model this is exactly
+ * the old `cyc × perBar + t × perBar`.
+ */
+function playedSpans(
+  mini: string,
+  ruler: { widths: number[]; starts: number[] },
+): Map<string, [number, number][]> | null {
+  const bars = ruler.widths.length
   let pat: unknown
   try {
     pat = reifyMini(mini)
@@ -90,8 +100,8 @@ function playedSpans(mini: string, perBar: number, bars: number): Map<string, [n
       // the token as the reader spells it: a string, or a `:`-variant's ARRAY (#1019)
       const token = typeof v === 'string' ? v : Array.isArray(v) ? v.join(':') : null
       if (token === null) continue
-      const begin = (h.whole.begin.valueOf() - cyc) * perBar + cyc * perBar
-      const end = (h.whole.end.valueOf() - cyc) * perBar + cyc * perBar
+      const begin = columnAt(ruler, cyc, h.whole.begin.valueOf())
+      const end = columnAt(ruler, cyc, h.whole.end.valueOf())
       out.set(token, [...(out.get(token) ?? []), [begin, end]])
     }
   }
@@ -127,8 +137,9 @@ for (const mini of minis) {
   if (!r.ok) continue
   const bars = Math.max(1, r.model.bars ?? 1)
   const perBar = r.model.steps / bars
-  if (!Number.isInteger(perBar) || perBar <= 0) continue
-  const spans = playedSpans(mini, perBar, bars)
+  const ruler = barRuler(r.model)
+  if (ruler === null) continue
+  const spans = playedSpans(mini, ruler)
   if (spans === null) continue
   units.push({
     mini,
@@ -225,7 +236,13 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // ⚠ 1853 -> 2080 at #1242 — the corpus widened 1535 -> 1633 units
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
-    expect(carried).toBe(2080)
+    // ⚠ 2080 -> 2059 at #1827 (each bar drawn at its own step count), counted, not
+    // inferred: `<c2*2 g2*5 [a g]>` drew 30 columns, where each c2, a and g carried 4
+    // columns past its own and each g2 1 (8 + 5 + 8 = 21). Drawn per bar as 2 + 5 + 2
+    // cells, every note is exactly its own cell and carries none. The grid unit that
+    // newly opens (`<~ ~ bd*3 bd*4 …>`) is all one-cell hits and adds none. `partial` is
+    // unmoved.
+    expect(carried).toBe(2059)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     expect(partial).toBe(15)
   })
@@ -603,7 +620,9 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // as an admissibility oracle, so a writer that can spell more opens one more roll
     // unit — `[-7 2,<4 5 6>]*8` — and it brings its own 72 notes. Population, not
     // drawing: every zero below is unmoved.
-    expect(integral).toBe(5505)
+    // ⚠ 5505 -> 5527 at #1827: the one roll unit that newly opens per bar,
+    // `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>`, brings its own 22 notes (4+6+8+4).
+    expect(integral).toBe(5527)
     expect(invisible).toBe(0)
     expect(misdrawn).toBe(0)
     expect(affected.size).toBe(0)
@@ -659,14 +678,14 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // as an admissibility oracle, so a writer that can spell more opens one more roll
     // unit — `[-7 2,<4 5 6>]*8` — and it brings its own 72 notes. Population, not
     // drawing: every zero below is unmoved.
-    expect(notes).toBe(5505)
+    expect(notes).toBe(5527) // +22 at #1827 — see `integral` above
     expect(silent).toBe(0)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     // ⚠ 5433 -> 5505 at #1310 (region-local parallel lanes): `parse.ts` uses the writer
     // as an admissibility oracle, so a writer that can spell more opens one more roll
     // unit — `[-7 2,<4 5 6>]*8` — and it brings its own 72 notes. Population, not
     // drawing: every zero below is unmoved.
-    expect(checked).toBe(5505)
+    expect(checked).toBe(5527) // +22 at #1827 — see `integral` above
     expect(headBad).toBe(0)
     expect(tailBad).toBe(0)
   })
@@ -736,7 +755,8 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
     // ⚠ 596 -> 597 at #1310 — the one roll unit the widened writer lets the parser open.
-    expect(models).toBe(597)
+    // ⚠ 597 -> 598 at #1827 — the one roll unit that newly opens per bar.
+    expect(models).toBe(598)
     expect(fractional).toBe(0)
     expect(uncovered).toEqual([])
   })

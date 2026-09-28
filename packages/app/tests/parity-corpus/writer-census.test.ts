@@ -466,9 +466,15 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // the product's own resolver (98 arrivals, 0 departures). Same warning as #1037
     // below: every figure in this file is over a wider population than a pre-#1242 one
     // and the two must never be quoted side by side.
-    expect(grid.length).toBe(1633 - 813)
+    // ⚠ 813 -> 812 core-refused grid units at #1827 (each bar drawn at its own step
+    // count): `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` used to exceed 64 shared columns and
+    // is now served by the core, drawn per bar. Likewise 1180 -> 1179 on the roll, for
+    // `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>`. The derived projections still cap at
+    // 64 shared columns, so both arrive UNTRANSFERABLE (core-structured), which is the
+    // +1/+1 the P6 table shows.
+    expect(grid.length).toBe(1633 - 812)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    expect(roll.length).toBe(1633 - 1180)
+    expect(roll.length).toBe(1633 - 1179)
 
     // A BAND, NOT A FLOOR. This is a measurement, so a move in EITHER direction is
     // a finding and should turn this red rather than pass quietly upward.
@@ -525,7 +531,11 @@ describe('writer census — how much of the syntactic core transfers to the deri
         unverified: all.filter((r) => r.outcome === 'no-probe').length,
       },
       'the census partition' + why,
-    ).toEqual({ transfers: 1096, untransferable: 68, unverified: 109 })
+      // ⚠ untransferable 68 -> 70 at #1827 (each bar drawn at its own step count), the other
+      // two UNMOVED. The mechanism is `core-structured`: two units the core now serves drawn
+      // per bar (`<~ ~ bd*3 bd*4 …>`, `<[36 48]*2 [34 46]*3 …>`) need 96 shared columns, and
+      // the derived projections still cap at 64, so neither has a derived view to transfer to.
+    ).toEqual({ transfers: 1096, untransferable: 70, unverified: 109 })
     // The reclassification is asserted by MECHANISM as well as by total, so that a
     // future change cannot hold the totals steady while moving asks between buckets.
     // ⚠ 11 → 0 at #1010 P4c. The printer preserves lengths, so nothing in the census
@@ -635,7 +645,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // Folded into one array assertion so BOTH columns report in a single run —
     // `expect` aborts a test at its first failure, and the whole point of this
     // pair is the split between the columns, which one value cannot show.
-    expect([p6.both.arrayValue, p6.both.structural]).toEqual([9, 59])
+    // ⚠ structural 59 -> 61 at #1827 (each bar drawn at its own step count): the two core-served units that need 96 shared columns.
+    expect([p6.both.arrayValue, p6.both.structural]).toEqual([9, 61])
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
     // structured core view" and "45 have a verified core edit" are different
@@ -724,12 +735,17 @@ describe('writer census — how much of the syntactic core transfers to the deri
       coreStructured: p6.both.coreStructured,
       coreEdits: p6.both.coreEdits,
       both: p6.both.blocker,
-    }).toEqual({ coreStructured: 53, coreEdits: 53, both: 51 })
+      // ⚠ 53/53/51 -> 55/55/53 at #1827 (each bar drawn at its own step count): the two units the
+      // core newly serves per bar have structure AND a core edit the engine oracle verifies —
+      // once the oracle measures a per-bar model with its own ruler (`barRuler`). Before
+      // that fix the drum grid's edit was filed `corrupt`: the probe deleted the wrong cell.
+    }).toEqual({ coreStructured: 55, coreEdits: 55, both: 53 })
 
     // …and the split the whole conjunction exists to keep visible. Asserted here rather
     // than left to the generated document, because the document is an OUTPUT of this run
     // and cannot testify about it.
-    expect([p6.grid.blocker, p6.roll.blocker]).toEqual([18, 33])
+    // ⚠ [18, 33] -> [19, 34] at #1827 — one per surface, the two units the core newly serves per bar.
+    expect([p6.grid.blocker, p6.roll.blocker]).toEqual([19, 34])
   }, 900_000)
 
   /**
@@ -980,11 +996,13 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // ⚠ 1204 -> 1273 at #1242 — the corpus widened 1535 -> 1633 units
       // (98 arrivals, 0 departures): the harvest gained the product's own
       // resolver, so every figure here is over a wider population. Upward only.
-      expect(checked).toBe(1273)
+      // ⚠ 1273 -> 1275 at #1827: the two units the core newly serves per bar (see the
+      // population pins above).
+      expect(checked).toBe(1275)
       // the field the comparison above is allowed to ignore must be on EVERY one of them —
       // otherwise "identical apart from `surgical`" is satisfied by never attaching it
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-      expect(overlaid, 'the overlay is not reaching the core-served asks').toBe(1273)
+      expect(overlaid, 'the overlay is not reaching the core-served asks').toBe(1275)
     }, 900_000)
 
     it('RED TEST: the census distinguishes the two writers — it is not measuring one twice', () => {

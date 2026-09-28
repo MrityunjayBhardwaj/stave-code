@@ -158,7 +158,7 @@ export function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry
 function rollStepsPerBar(chunk: ChunkInfo | null): number | null {
   if (!chunk || chunk.miniString === null || !isRollChunk(chunk)) return null
   const parsed = parsePianoRoll(chunk.miniString)
-  return parsed.ok ? stepsPerBar(parsed.model.steps, parsed.model.bars) : null
+  return parsed.ok ? stepsPerBar(parsed.model.steps, parsed.model.bars, parsed.model.barSteps) : null
 }
 
 /**

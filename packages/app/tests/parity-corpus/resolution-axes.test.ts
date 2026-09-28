@@ -318,11 +318,15 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     // ⚠ MOVED at #1242 — the corpus widened 1535 -> 1633 units (98 arrivals, 0
     // departures). `unwritable` and `hapsUnevaluable` stay at ZERO, which is the
     // half that matters: 248 new asks, none of them unwritable.
+    // ⚠ MOVED at #1827 (each bar drawn at its own step count): +1 unit
+    // (`<~ ~ bd*3 bd*4 …>` now opens), +6 asks, +2 coarsen skips, +6 no-offer. `measured`
+    // is UNMOVED and `unwritable` / `hapsUnevaluable` stay ZERO — a multi-bar grid is
+    // never offered a refine, so everything it brings is `no-offer`.
     }).toEqual({
-      units: 1013,
-      asks: 7586,
-      coarsenSkipped: 1272,
-      'no-offer': 1081,
+      units: 1014,
+      asks: 7592,
+      coarsenSkipped: 1274,
+      'no-offer': 1087,
       unwritable: 0,
       measured: 6505,
       hapsUnevaluable: 0,
@@ -354,16 +358,19 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     // `parse.ts` asks the writer whether a view is safe, so a wider writer admits one
     // more document — +1 unit, +2 asks, +4 coarsen skips, +2 no-offer. `unwritable`
     // stays ZERO, which is the arm that matters: the widening added asks, not failures.
+    // ⚠ MOVED at #1827 (each bar drawn at its own step count): +1 unit
+    // (`<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` now opens), +10 asks, all `no-offer`
+    // (819 below) — `measured` UNMOVED at 2961, `unwritable` still ZERO.
     }).toEqual({
-      units: 597,
-      asks: 3770,
+      units: 598,
+      asks: 3780,
       coarsenSkipped: 1100,
       // ⚠ MOVED at #1312 (per-bar lanes + the region ladder): six asks move from `no-offer`
       // to `measured`, 815 -> 809 and 2955 -> 2961. They are the same six — the writer now
       // has an answer where it previously had none — so `units` and `asks` do not move at
       // all. `unwritable` stays ZERO, which is the arm that matters: the widening turned
       // silence into measurements, not into failures.
-      'no-offer': 809,
+      'no-offer': 819,
       unwritable: 0,
       measured: 2961,
       hapsUnevaluable: 0,

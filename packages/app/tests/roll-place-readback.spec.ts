@@ -11,24 +11,29 @@
  *
  * THE FIXTURE is a corpus mini, and the pair is ADJACENT CELLS ON ONE ROW:
  *
- *     <c2*2 g2*5 [a g]>        30 columns, 3 bars, 9 notes
+ *     <c2*2 g2*3 [a g] c2*6>   24 columns, 4 bars
  *
- *   c2 column 10   accepted — the document gains the note, spelled `[g2,c2]@2`
- *   c2 column 11   refused  — ungated it wrote `<c2*2 [g2@2 g2@2 g2@2 g2@2 g2@2] [a g]>`,
- *                             which parses, re-spells `g2*5` for nothing, and does NOT
+ *   c2 column 6    accepted — the document gains the note, spelled `[g2,c2]@2`
+ *   c2 column 7    refused  — ungated it writes `<c2*2 [g2@2 g2@2 g2@2] [a g] c2*6>`,
+ *                             which parses, re-spells `g2*3` for nothing, and does NOT
  *                             contain the note the click just made
  *
- * ⚠ THE PAIR IS THE POINT, and same-row adjacency is what makes it tight: "column 11 wrote
+ * ⚠ THE BARS' STEP COUNTS MUST NEST (2, 3, 2, 6 all divide 6) so the roll draws one
+ * shared column grid, where a half-cell like column 7 exists to be clicked. The original
+ * fixture `<c2*2 g2*5 [a g]>` (2, 5, 2) is now drawn one bar at a time (#1827), as 9 cells
+ * with no half-cells, so it can no longer pose this question.
+ *
+ * ⚠ THE PAIR IS THE POINT, and same-row adjacency is what makes it tight: "column 7 wrote
  * nothing" cannot be read as "this row is not clickable" or "the roll never received the
- * gesture" when column 10, one cell away on the same row in the same render, writes.
+ * gesture" when column 6, one cell away on the same row in the same render, writes.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { bootApp, seedCode, editorValue } from './_appBoot'
 import { expectRefusalReported, expectNoRefusalReported } from './_console'
 
-const CODE = '$: note("<c2*2 g2*5 [a g]>")'
-/** the accepted click — c2 joins the first g2 pair as a chord */
-const ACCEPTED = '$: note("<c2*2 [[g2,c2]@2 g2@2 g2@2 g2@2 g2@2] [a g]>")'
+const CODE = '$: note("<c2*2 g2*3 [a g] c2*6>")'
+/** the accepted click — c2 joins the first g2 as a chord */
+const ACCEPTED = '$: note("<c2*2 [[g2,c2]@2 g2@2 g2@2] [a g] c2*6>")'
 
 async function openRoll(page: Page, code: string) {
   await bootApp(page, { drawer: { tabId: 'pattern', height: 520 } })
@@ -50,7 +55,7 @@ async function cell(page: Page, key: string): Promise<{ x: number; y: number }> 
 test.describe('a placed note is only written where the document keeps it (#1333)', () => {
   test('the accepted cell places the note, and the document holds it', async ({ page }) => {
     await openRoll(page, CODE)
-    const at = await cell(page, '36:10')
+    const at = await cell(page, '36:6')
     await page.mouse.click(at.x, at.y)
     await expect.poll(() => editorValue(page)).toBe(ACCEPTED)
   })
@@ -62,17 +67,17 @@ test.describe('a placed note is only written where the document keeps it (#1333)
 
     // The positive half FIRST, in this same render: the row takes a click one cell away.
     // Without it the assertion below is satisfied by any broken gesture.
-    const ok = await cell(page, '36:10')
+    const ok = await cell(page, '36:6')
     await page.mouse.click(ok.x, ok.y)
     await expect
-      .poll(() => editorValue(page), { message: 'the row must accept a click at column 10' })
+      .poll(() => editorValue(page), { message: 'the row must accept a click at column 6' })
       .toBe(ACCEPTED)
 
     // Back to the original, so the refusal is measured against a known document.
     await seedCode(page, CODE)
     await expect.poll(() => editorValue(page)).toBe(CODE)
 
-    const refused = await cell(page, '36:11')
+    const refused = await cell(page, '36:7')
     await page.mouse.click(refused.x, refused.y)
 
     // Ungated this wrote a re-spelled pattern that does not contain the placed note.
@@ -119,7 +124,7 @@ test.describe('a refused roll gesture is reported, not swallowed (#1336)', () =>
   }) => {
     await openRoll(page, CODE)
 
-    const refused = await cell(page, '36:11')
+    const refused = await cell(page, '36:7')
     await page.mouse.click(refused.x, refused.y)
     // The refusal is the thing being reported, so pin it first: an unchanged document,
     // or "one warning" could be describing some other failure entirely.
@@ -133,7 +138,7 @@ test.describe('a refused roll gesture is reported, not swallowed (#1336)', () =>
   }) => {
     await openRoll(page, CODE)
 
-    const ok = await cell(page, '36:10')
+    const ok = await cell(page, '36:6')
     await page.mouse.click(ok.x, ok.y)
     // PRECONDITION, not an independent pin: if the click never landed, "no warning was
     // raised" would be satisfied by a gesture that did nothing at all.

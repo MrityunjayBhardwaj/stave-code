@@ -5,11 +5,11 @@
     {
       "cap": 6,
       "A": {
-        "asks": 1180,
+        "asks": 1179,
         "opened": 146,
         "leafOpened": 55,
         "transfers": 97,
-        "noView": 1034,
+        "noView": 1033,
         "noProbe": 49,
         "viewCorrupts": 0,
         "leafStructured": 55,
@@ -17,11 +17,11 @@
         "leafProbed": 362
       },
       "B": {
-        "asks": 453,
+        "asks": 454,
         "opened": 417,
         "leafOpened": 18,
         "transfers": 371,
-        "noView": 36,
+        "noView": 37,
         "noProbe": 46,
         "viewCorrupts": 0,
         "leafStructured": 17,
@@ -32,11 +32,11 @@
     {
       "cap": 8,
       "A": {
-        "asks": 1180,
+        "asks": 1179,
         "opened": 156,
         "leafOpened": 65,
         "transfers": 98,
-        "noView": 1024,
+        "noView": 1023,
         "noProbe": 58,
         "viewCorrupts": 0,
         "leafStructured": 65,
@@ -44,11 +44,11 @@
         "leafProbed": 475
       },
       "B": {
-        "asks": 453,
+        "asks": 454,
         "opened": 429,
         "leafOpened": 30,
         "transfers": 383,
-        "noView": 24,
+        "noView": 25,
         "noProbe": 46,
         "viewCorrupts": 0,
         "leafStructured": 28,
@@ -59,11 +59,11 @@
     {
       "cap": 12,
       "A": {
-        "asks": 1180,
+        "asks": 1179,
         "opened": 157,
         "leafOpened": 66,
         "transfers": 98,
-        "noView": 1023,
+        "noView": 1022,
         "noProbe": 59,
         "viewCorrupts": 0,
         "leafStructured": 66,
@@ -71,11 +71,11 @@
         "leafProbed": 487
       },
       "B": {
-        "asks": 453,
+        "asks": 454,
         "opened": 433,
         "leafOpened": 34,
         "transfers": 386,
-        "noView": 20,
+        "noView": 21,
         "noProbe": 47,
         "viewCorrupts": 0,
         "leafStructured": 32,
@@ -87,11 +87,11 @@
   "companion": {
     "cap": 4,
     "A": {
-      "asks": 1180,
+      "asks": 1179,
       "opened": 145,
       "leafOpened": 54,
       "transfers": 97,
-      "noView": 1035,
+      "noView": 1034,
       "noProbe": 48,
       "viewCorrupts": 0,
       "leafStructured": 54,
@@ -99,11 +99,11 @@
       "leafProbed": 349
     },
     "B": {
-      "asks": 453,
+      "asks": 454,
       "opened": 415,
       "leafOpened": 16,
       "transfers": 369,
-      "noView": 38,
+      "noView": 39,
       "noProbe": 46,
       "viewCorrupts": 0,
       "leafStructured": 15,

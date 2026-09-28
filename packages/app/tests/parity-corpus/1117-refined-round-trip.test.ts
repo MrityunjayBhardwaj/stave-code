@@ -60,6 +60,7 @@ import {
   serializePianoRoll,
 } from '../../../editor/src/visualEdit/notation/serialize'
 import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
+import { toUniformGrid, toUniformRoll } from '../../../editor/src/visualEdit/notation/perBar'
 import { toggleCell, placeNote } from '../../../editor/src/visualEdit/notation/place'
 import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import type {
@@ -342,10 +343,28 @@ function assertClean(byShape: Map<string, Tally>, label: string) {
   }
 }
 
+/**
+ * The DOCUMENT's model, in the columns a refined view is measured against.
+ *
+ * A refined view is always one shared column grid. A document whose bars' step counts do
+ * not nest is drawn per bar at ×1 (#1827) — `<c2*2 g2*5 [a g]>` as 2 + 5 + 2 cells — and
+ * a per-bar model's columns are drawn columns, so comparing it cell for cell with a
+ * collapsed refined view compares two different rulers (the sweep reported both such
+ * units as "changed what plays" while every hap was identical). `toUniform*` is the
+ * exact map back to the shared grid, which for these units is the model this file was
+ * written against; every other unit comes back untouched.
+ */
+function shared<M>(parse: (mini: string, k?: number) => { ok: true; model: M } | { ok: false }, toShared: (m: M) => M) {
+  return (mini: string, k?: number) => {
+    const r = parse(mini, k)
+    return r.ok && k === undefined ? { ok: true as const, model: toShared(r.model) } : r
+  }
+}
+
 describe('#1117 — coming back from a refined view', () => {
   it('grid: content, width and spelling survive, and an edit spells the same either way', () => {
     const byShape = sweep<StepGridModel>(
-      parseStepGrid as never,
+      shared(parseStepGrid as never, toUniformGrid),
       collapseStepGridToDocument,
       serializeStepGrid,
       gridContentKey,
@@ -358,7 +377,7 @@ describe('#1117 — coming back from a refined view', () => {
 
   it('roll: content, width and spelling survive, and an edit spells the same either way', () => {
     const byShape = sweep<PianoRollModel>(
-      parsePianoRoll as never,
+      shared(parsePianoRoll as never, toUniformRoll),
       collapsePianoRollToDocument,
       serializePianoRoll,
       rollContentKey,

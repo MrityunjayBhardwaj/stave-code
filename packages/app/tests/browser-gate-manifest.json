@@ -443,6 +443,10 @@
     "runs": "gate",
     "why": "collected by the gate — it runs the whole chromium project"
   },
+  "per-bar-steps.spec.ts": {
+    "runs": "gate",
+    "why": "collected by the gate — it runs the whole chromium project"
+  },
   "grid-gesture-commands.spec.ts": {
     "runs": "gate",
     "why": "collected by the gate — it runs the whole chromium project"

@@ -2735,7 +2735,7 @@ a5 e5 c#5
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
     "mini": "<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>",
-    "roll": "the pattern needs more than 64 steps",
+    "roll": "ok",
   },
   {
     "grid": "the pattern plays numbers, which the piano roll shows, not the step grid",
@@ -3714,7 +3714,7 @@ a5 e5 c#5
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },
   {
-    "grid": "the pattern needs more than 64 steps",
+    "grid": "ok",
     "mini": "<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>",
     "roll": "the pattern plays sound names, which the step grid shows, not the piano roll",
   },

@@ -29843,6 +29843,144 @@ function clampPartAtOnset(lanes, part, column) {
 }
 __name(clampPartAtOnset, "clampPartAtOnset");
 
+// src/visualEdit/notation/perBar.ts
+var MAX_SHARED_STEPS = 4096;
+var EPS = 1e-9;
+function gcd(a, b) {
+  while (b) [a, b] = [b, a % b];
+  return a;
+}
+__name(gcd, "gcd");
+function lcmOf(ns) {
+  return ns.reduce((l, n) => l / gcd(l, n) * n, 1);
+}
+__name(lcmOf, "lcmOf");
+function perBarLayout(counts) {
+  if (counts.length < 2) return null;
+  if (counts.some((n) => !Number.isInteger(n) || n < 1)) return null;
+  const most = Math.max(...counts);
+  return counts.every((n) => most % n === 0) ? null : [...counts];
+}
+__name(perBarLayout, "perBarLayout");
+function tidy(x) {
+  const r = Math.round(x);
+  return Math.abs(x - r) < EPS ? r : x;
+}
+__name(tidy, "tidy");
+function barStarts(barSteps) {
+  const out = [0];
+  for (const s of barSteps) out.push(out[out.length - 1] + s);
+  return out;
+}
+__name(barStarts, "barStarts");
+function sharedAt(d, barSteps) {
+  const P = lcmOf(barSteps);
+  let at = 0;
+  for (let b = 0; b < barSteps.length; b++) {
+    const s = barSteps[b];
+    if (d <= at + s + EPS || b === barSteps.length - 1) return tidy(b * P + (d - at) * P / s);
+    at += s;
+  }
+  return barSteps.length * P;
+}
+__name(sharedAt, "sharedAt");
+function drawnAt(u, barSteps) {
+  const P = lcmOf(barSteps);
+  const b = Math.min(barSteps.length - 1, Math.max(0, Math.floor((u + EPS) / P)));
+  const starts = barStarts(barSteps);
+  return tidy(starts[b] + (u - b * P) * barSteps[b] / P);
+}
+__name(drawnAt, "drawnAt");
+function barOfDrawn(d, barSteps) {
+  const starts = barStarts(barSteps);
+  for (let b = barSteps.length - 1; b >= 0; b--) if (d + EPS >= starts[b]) return b;
+  return 0;
+}
+__name(barOfDrawn, "barOfDrawn");
+function mapNote(n, f) {
+  const start = f(n.start);
+  return { ...n, start, duration: tidy(f(n.start + n.duration) - start) };
+}
+__name(mapNote, "mapNote");
+function toDrawnRoll(model, barSteps) {
+  const bars = model.bars ?? 1;
+  if (bars !== barSteps.length || model.steps !== bars * lcmOf(barSteps)) return null;
+  const notes = model.notes.map((n) => mapNote(n, (u) => drawnAt(u, barSteps)));
+  if (notes.some((n) => !Number.isInteger(n.start))) return null;
+  return { ...model, steps: barSteps.reduce((a, b) => a + b, 0), barSteps, notes };
+}
+__name(toDrawnRoll, "toDrawnRoll");
+function toUniformRoll(model) {
+  const barSteps = model.barSteps;
+  if (!barSteps) return model;
+  const { barSteps: _drop, ...rest } = model;
+  return {
+    ...rest,
+    steps: barSteps.length * lcmOf(barSteps),
+    notes: model.notes.map((n) => mapNote(n, (d) => sharedAt(d, barSteps)))
+  };
+}
+__name(toUniformRoll, "toUniformRoll");
+function mapCells(cells, length, f) {
+  const out = Array.from({ length }, () => false);
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    if (!c) continue;
+    const at = f(i);
+    if (!Number.isInteger(at) || at < 0 || at >= length) return null;
+    out[at] = { ...c, duration: tidy(f(i + c.duration) - at) };
+  }
+  return out;
+}
+__name(mapCells, "mapCells");
+function toDrawnGrid(model, barSteps) {
+  const bars = model.bars ?? 1;
+  if (bars !== barSteps.length || model.steps !== bars * lcmOf(barSteps) || model.gains) return null;
+  const steps = barSteps.reduce((a, b) => a + b, 0);
+  const lanes = [];
+  for (const lane of model.lanes) {
+    const cells = mapCells(lane.cells, steps, (u) => drawnAt(u, barSteps));
+    if (cells === null) return null;
+    lanes.push({ ...lane, cells });
+  }
+  return { ...model, steps, barSteps, lanes };
+}
+__name(toDrawnGrid, "toDrawnGrid");
+function toUniformGrid(model) {
+  const barSteps = model.barSteps;
+  if (!barSteps) return model;
+  const { barSteps: _drop, ...rest } = model;
+  const steps = barSteps.length * lcmOf(barSteps);
+  return {
+    ...rest,
+    steps,
+    // A drawn cell always lands on the shared grid (each shared bar is a multiple of
+    // every drawn one), so this cannot decline; the fallback is unreachable by design.
+    lanes: model.lanes.map((l) => ({ ...l, cells: mapCells(l.cells, steps, (d) => sharedAt(d, barSteps)) ?? l.cells }))
+  };
+}
+__name(toUniformGrid, "toUniformGrid");
+function drawnLayout(model, cols) {
+  const bs = model.barSteps;
+  if (bs) {
+    const most = Math.max(...bs);
+    const starts = barStarts(bs);
+    return {
+      weight: /* @__PURE__ */ __name((c) => most / bs[barOfDrawn(c, bs)], "weight"),
+      barStart: /* @__PURE__ */ __name((c) => c > 0 && starts.includes(c), "barStart"),
+      lastBarCols: bs[bs.length - 1]
+    };
+  }
+  const bars = model.bars ?? 1;
+  const perBar2 = bars > 1 && Number.isInteger(cols / bars) ? cols / bars : 0;
+  return {
+    weight: /* @__PURE__ */ __name(() => 1, "weight"),
+    barStart: /* @__PURE__ */ __name((c) => perBar2 > 0 && c > 0 && c % perBar2 === 0, "barStart"),
+    lastBarCols: perBar2 || cols
+  };
+}
+__name(drawnLayout, "drawnLayout");
+
 // src/visualEdit/notation/serialize.ts
 function altSourceFits(a, steps) {
   return !!a && a.perBar * a.bars === steps;
@@ -29864,7 +30002,9 @@ function ifRollSpellable(input, next) {
   return serializePianoRoll(next) === null ? input : next;
 }
 __name(ifRollSpellable, "ifRollSpellable");
-function serializeStepGridWithExtent(model) {
+function serializeStepGridWithExtent(drawn) {
+  const model = toUniformGrid(drawn);
+  const respell = drawn.barSteps;
   const spans = model.leafSource ?? model.surgical?.spans();
   if (spans) {
     const surgical = spliceByLeaf(model, spans);
@@ -29873,7 +30013,7 @@ function serializeStepGridWithExtent(model) {
   }
   if (altSourceFits(model.altSource, model.steps))
     return { mini: spliceAltGrid(model), extent: { path: "alt" } };
-  const spliced = spliceGrid(model);
+  const spliced = spliceGrid(model, respell);
   if (spliced === "decline") return { mini: null, extent: { path: "declined" } };
   if (spliced !== "rebuild")
     return {
@@ -29885,7 +30025,7 @@ function serializeStepGridWithExtent(model) {
         rebuiltParts: spliced.rebuiltParts
       }
     };
-  return { mini: rebuildGrid(model), extent: { path: "rebuild" } };
+  return { mini: rebuildGrid(respell ? drawn : model), extent: { path: "rebuild" } };
 }
 __name(serializeStepGridWithExtent, "serializeStepGridWithExtent");
 function serializeStepGrid(model) {
@@ -29894,7 +30034,7 @@ function serializeStepGrid(model) {
 __name(serializeStepGrid, "serializeStepGrid");
 function rebuildGrid(model) {
   const bars = model.bars ?? 1;
-  if (bars > 1) return gridBars(model, bars);
+  if (bars > 1) return gridBars(model, barBounds(model));
   const parts = [...new Set(model.lanes.map((l) => l.part ?? 0))].sort((a, b) => a - b);
   if (parts.length <= 1) return gridColumns(model.lanes, model.steps)?.join(" ") ?? null;
   const lines = parts.map(
@@ -29906,7 +30046,7 @@ function rebuildGrid(model) {
   return lines.some((l) => l === void 0) ? null : lines.join(", ");
 }
 __name(rebuildGrid, "rebuildGrid");
-function spliceGrid(model) {
+function spliceGrid(model, respell) {
   const src = model.source;
   if (!src || src.parts.length === 0) return "rebuild";
   let regionsReemitted = 0;
@@ -29939,7 +30079,7 @@ function spliceGrid(model) {
         }
         reemitted++;
         const div = sole ? 1 : p.div * growth;
-        const re = reemitRegion(now2, div, model.viewScale !== void 0);
+        const re = (respell && growth === 1 ? respellBar(now2, r, div, respell) : null) ?? reemitRegion(now2, div, model.viewScale !== void 0);
         if (re !== null) {
           body += r.leading + re + r.trailing;
           continue;
@@ -30157,6 +30297,29 @@ function noteReach(cols, from, to) {
   return reach;
 }
 __name(noteReach, "noteReach");
+function respellBar(cols, r, div, barSteps) {
+  const P = lcmOf(barSteps);
+  if (r.to - r.from !== P || r.from % P !== 0 || div !== P) return null;
+  const own = barSteps[r.from / P];
+  const k = P / own;
+  if (k <= 1) return null;
+  const packed = [];
+  for (let i = 0; i < cols.length; i++) {
+    if (i % k !== 0) {
+      if (cols[i].length) return null;
+      continue;
+    }
+    const col = [];
+    for (const c of cols[i]) {
+      const d = c.duration / k;
+      if (Math.abs(d - Math.round(d)) > 1e-9) return null;
+      col.push({ ...c, duration: Math.round(d) });
+    }
+    packed.push(col);
+  }
+  return reemitRegion(packed, own);
+}
+__name(respellBar, "respellBar");
 function reemitRegion(cols, div, refined = false) {
   const spelled = sustainTokens(cols, div);
   if (spelled === null) return refined ? stackedRegion(cols, div) : null;
@@ -30255,20 +30418,35 @@ function serializeStepGain(model) {
   return { kind: "write", value: mini, quoted: true };
 }
 __name(serializeStepGain, "serializeStepGain");
-function gridBars(model, bars) {
-  const perBar2 = model.steps / bars;
+function gridBars(model, bounds) {
   const cols = gridColumns(model.lanes, model.steps);
   if (cols === null) return null;
   const slots = [];
-  for (let b = 0; b < bars; b++) {
-    const bar2 = cols.slice(b * perBar2, (b + 1) * perBar2);
+  for (let b = 0; b + 1 < bounds.length; b++) {
+    const bar2 = cols.slice(bounds[b], bounds[b + 1]);
     if (bar2.every((c) => c === "~")) slots.push("~");
-    else if (perBar2 === 1) slots.push(bar2[0]);
+    else if (bar2.length === 1) slots.push(bar2[0]);
     else slots.push(`[${bar2.join(" ")}]`);
   }
   return `<${slots.join(" ")}>`;
 }
 __name(gridBars, "gridBars");
+function barBounds(model) {
+  if (model.barSteps) return barStarts(model.barSteps);
+  const bars = model.bars ?? 1;
+  const perBar2 = model.steps / bars;
+  return Array.from({ length: bars + 1 }, (_, b) => b * perBar2);
+}
+__name(barBounds, "barBounds");
+function heldBars(bounds, b, duration) {
+  for (let k = 1; b + k < bounds.length; k++) {
+    const span = bounds[b + k] - bounds[b];
+    if (Math.abs(span - duration) < 1e-9) return k;
+    if (span > duration) break;
+  }
+  return 0;
+}
+__name(heldBars, "heldBars");
 var groupBody = /* @__PURE__ */ __name((g) => g.pitches.length === 1 ? g.pitches[0] : `[${g.pitches.join(",")}]`, "groupBody");
 var weightToken = /* @__PURE__ */ __name((n) => String(Number(n.toPrecision(12))), "weightToken");
 var groupToken = /* @__PURE__ */ __name((g) => g.duration === 1 ? groupBody(g) : `${groupBody(g)}@${weightToken(g.duration)}`, "groupToken");
@@ -30294,7 +30472,9 @@ function buildGroups(model) {
   return groups;
 }
 __name(buildGroups, "buildGroups");
-function serializePianoRollWithExtent(model) {
+function serializePianoRollWithExtent(drawn) {
+  const model = toUniformRoll(drawn);
+  const respell = drawn.barSteps;
   const spans = model.leafSource ?? model.surgical?.spans();
   if (spans) {
     const surgical = spliceRollByLeaf(model, spans);
@@ -30303,14 +30483,16 @@ function serializePianoRollWithExtent(model) {
   }
   if (altSourceFits(model.altSource, model.steps))
     return { mini: spliceAltRoll(model), extent: { path: "alt" } };
-  const spliced = spliceRoll(model);
+  const spliced = spliceRoll(model, respell);
   if (spliced !== null) return { mini: spliced, extent: { path: "splice" } };
   const bars = model.bars ?? 1;
   if (bars > 1) {
-    const groups = buildGroups(model);
-    const flat = groups === null ? null : rollBars(groups, model.steps, bars);
+    const src = respell ? drawn : model;
+    const bounds = barBounds(src);
+    const groups = buildGroups(src);
+    const flat = groups === null ? null : rollBars(groups, bounds);
     if (flat !== null) return { mini: flat, extent: { path: "rebuild" } };
-    return { mini: rollBarLanes(model, bars), extent: { path: "rebuild" } };
+    return { mini: rollBarLanes(src, bounds), extent: { path: "rebuild" } };
   }
   return { mini: serializeRollLanes(model), extent: { path: "rebuild" } };
 }
@@ -30345,7 +30527,7 @@ function assignNotes(model, src) {
   return mine;
 }
 __name(assignNotes, "assignNotes");
-function spliceRoll(model) {
+function spliceRoll(model, respell) {
   const src = model.source;
   if (!src || src.parts.length === 0) return null;
   const covers = src.parts.every((p) => {
@@ -30375,7 +30557,7 @@ function spliceRoll(model) {
         continue;
       }
       if (!integral) return null;
-      const re = reemitRollRegion(now2, r.from, r.to, p.div);
+      const re = (respell ? respellRollBar(now2, r, p.div, respell) : null) ?? reemitRollRegion(now2, r.from, r.to, p.div);
       body = re === null ? null : body + r.leading + re + r.trailing;
     }
     if (body === null) {
@@ -30494,6 +30676,23 @@ function reemitRollRegionFlat(notes, from, to, div) {
   return tokens.join(" ");
 }
 __name(reemitRollRegionFlat, "reemitRollRegionFlat");
+function respellRollBar(notes, r, div, barSteps) {
+  const P = lcmOf(barSteps);
+  if (r.to - r.from !== P || r.from % P !== 0 || div !== P) return null;
+  const own = barSteps[r.from / P];
+  const k = P / own;
+  if (k <= 1) return null;
+  const whole = /* @__PURE__ */ __name((x) => Math.abs(x - Math.round(x)) < 1e-9, "whole");
+  const packed = [];
+  for (const n of notes) {
+    const start = (n.start - r.from) / k;
+    const duration = n.duration / k;
+    if (!whole(start) || !whole(duration)) return null;
+    packed.push({ ...n, start: Math.round(start), duration: Math.round(duration) });
+  }
+  return reemitRollRegion(packed, 0, own, own);
+}
+__name(respellRollBar, "respellRollBar");
 function reemitRollRegion(notes, from, to, div) {
   const flat = reemitRollRegionFlat(notes, from, to, div);
   if (flat !== null) return flat;
@@ -30603,18 +30802,19 @@ function serializeRollLanes(model) {
   return strings.join(", ");
 }
 __name(serializeRollLanes, "serializeRollLanes");
-function rollBars(groups, steps, bars) {
-  const perBar2 = steps / bars;
-  if (!Number.isInteger(perBar2)) return null;
+function rollBars(groups, bounds) {
+  if (!bounds.every((x) => Number.isInteger(x))) return null;
+  const bars = bounds.length - 1;
   const starts = [...groups.keys()].sort((a, b2) => a - b2);
   const slots = [];
   let b = 0;
   while (b < bars) {
-    const barStart = b * perBar2;
-    const barEnd = barStart + perBar2;
+    const barStart = bounds[b];
+    const barEnd = bounds[b + 1];
+    const perBar2 = barEnd - barStart;
     const atStart = groups.get(barStart);
-    if (atStart && atStart.duration % perBar2 === 0) {
-      const k = atStart.duration / perBar2;
+    const k = atStart ? heldBars(bounds, b, atStart.duration) : 0;
+    if (atStart && k >= 1) {
       const heldEnd = barStart + atStart.duration;
       if (starts.some((s) => s > barStart && s < heldEnd)) return null;
       slots.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
@@ -30648,9 +30848,9 @@ function rollBars(groups, steps, bars) {
   return `<${slots.join(" ")}>`;
 }
 __name(rollBars, "rollBars");
-function rollBarLanes(model, bars) {
-  const perBar2 = model.steps / bars;
-  if (!Number.isInteger(perBar2)) return null;
+function rollBarLanes(model, bounds) {
+  if (!bounds.every((x) => Number.isInteger(x))) return null;
+  const bars = bounds.length - 1;
   const E = 1e-9;
   const notes = [...model.notes].sort((a, b2) => a.start - b2.start || a.duration - b2.duration);
   for (const n of notes)
@@ -30658,8 +30858,9 @@ function rollBarLanes(model, bars) {
   const slots = [];
   let b = 0;
   while (b < bars) {
-    const barStart = b * perBar2;
-    const barEnd = barStart + perBar2;
+    const barStart = bounds[b];
+    const barEnd = bounds[b + 1];
+    const perBar2 = barEnd - barStart;
     const over = notes.filter((n) => n.start < barEnd - E && n.start + n.duration > barStart + E);
     if (over.length === 0) {
       slots.push("~");
@@ -30688,8 +30889,8 @@ function rollBarLanes(model, bars) {
     if (held2.length === 0 || held2.length !== over.length) return null;
     const dur = held2[0].duration;
     if (held2.some((n) => Math.abs(n.duration - dur) > E)) return null;
-    const k = dur / perBar2;
-    if (!Number.isInteger(k) || k < 1) return null;
+    const k = heldBars(bounds, b, dur);
+    if (k < 1) return null;
     if (notes.some((n) => n.start > barStart + E && n.start < barStart + dur - E)) return null;
     const body = groupBody({ pitches: held2.map((n) => n.pitch), duration: dur });
     slots.push(k === 1 ? body : `${body}@${k}`);
@@ -30773,7 +30974,7 @@ var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => allowNumeric || !N
 var MAX_STEPS = 64;
 var ONSET_GRID = 2882880;
 var OVER_CAP = MAX_VIEW_STEPS + 1;
-var gcd = /* @__PURE__ */ __name((a, b) => {
+var gcd2 = /* @__PURE__ */ __name((a, b) => {
   while (b !== 0) {
     const r = a % b;
     a = b;
@@ -30783,7 +30984,7 @@ var gcd = /* @__PURE__ */ __name((a, b) => {
 }, "gcd");
 var lcm = /* @__PURE__ */ __name((a, b) => {
   if (a >= OVER_CAP || b >= OVER_CAP) return OVER_CAP;
-  const r = a / gcd(a, b) * b;
+  const r = a / gcd2(a, b) * b;
   return r >= OVER_CAP ? OVER_CAP : r;
 }, "lcm");
 var stepUnits = /* @__PURE__ */ __name((s) => s.sub ? s.sub.reduce((n, slot) => n + slot.units, 0) : 1, "stepUnits");
@@ -31818,11 +32019,15 @@ function leafExpected(cols, perBar2, bars, span, text) {
   return out;
 }
 __name(leafExpected, "leafExpected");
+function overlayWidth(model) {
+  return model.barSteps ? model.barSteps.length * lcmOf(model.barSteps) : documentSteps(model);
+}
+__name(overlayWidth, "overlayWidth");
 function withSurgery(mini, r) {
   if (!r.ok) return r;
   return {
     ok: true,
-    model: { ...r.model, surgical: lazyGridLeaf(mini, documentSteps(r.model)) }
+    model: { ...r.model, surgical: lazyGridLeaf(mini, overlayWidth(r.model)) }
   };
 }
 __name(withSurgery, "withSurgery");
@@ -31919,32 +32124,39 @@ function gridFromAlternation(inner, viewScale = UNREFINED) {
     return { ok: false, reason: "elongation is beyond the drum-grid subset" };
   }
   const documentDiv = division(tok.steps);
-  if (tok.steps.length * documentDiv > MAX_STEPS) {
+  const perBar2 = perBarLayout(tok.steps.map(stepUnits));
+  const layout = viewScale === UNREFINED ? perBar2 : null;
+  const tooWide = layout ? layout.some((n) => n > MAX_STEPS) || tok.steps.length * documentDiv > MAX_SHARED_STEPS : tok.steps.length * documentDiv > MAX_STEPS;
+  if (tooWide) {
+    if (perBar2 && !layout) {
+      return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
+    }
     return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` };
   }
-  if (!viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
+  if (!layout && !viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
     return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
   }
   const div = documentDiv * viewScale;
   const cells = toCells(tok.steps, div);
   const src = inner.trim();
   const parts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)));
-  return {
-    ok: true,
-    model: {
-      steps: cells.length,
-      bars: tok.steps.length,
-      ...viewScale === UNREFINED ? {} : { viewScale },
-      lanes: lanesFromCells(cells),
-      ...parts ? {
-        source: {
-          parts,
-          prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
-          suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
-        }
-      } : {}
-    }
+  const model = {
+    steps: cells.length,
+    bars: tok.steps.length,
+    ...viewScale === UNREFINED ? {} : { viewScale },
+    lanes: lanesFromCells(cells),
+    ...parts ? {
+      source: {
+        parts,
+        prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
+        suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
+      }
+    } : {}
   };
+  if (!layout) return { ok: true, model };
+  const drawn = toDrawnGrid(model, layout);
+  if (drawn) return { ok: true, model: drawn };
+  return cells.length > MAX_STEPS ? { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` } : { ok: true, model };
 }
 __name(gridFromAlternation, "gridFromAlternation");
 function gridFromStack(parts, viewScale = UNREFINED) {
@@ -32503,7 +32715,7 @@ function withRollSurgery(mini, r) {
   if (!r.ok) return r;
   return {
     ok: true,
-    model: { ...r.model, surgical: lazyRollLeaf(mini, documentSteps(r.model)) }
+    model: { ...r.model, surgical: lazyRollLeaf(mini, overlayWidth(r.model)) }
   };
 }
 __name(withRollSurgery, "withRollSurgery");
@@ -32562,10 +32774,16 @@ function parsePianoRollCore(mini, viewScale = UNREFINED) {
   if (alt !== null && tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
   const documentDiv = division(tok.steps);
   const bars = tok.steps.reduce((b, s) => b + s.elongation, 0);
-  if ((documentDiv > 1 || alt !== null) && bars * documentDiv > MAX_STEPS) {
+  const perBar2 = alt !== null && tok.steps.every((st) => st.elongation === 1) ? perBarLayout(tok.steps.map(stepUnits)) : null;
+  const layout = viewScale === UNREFINED ? perBar2 : null;
+  const tooWide = layout ? layout.some((n) => n > MAX_STEPS) || bars * documentDiv > MAX_SHARED_STEPS : (documentDiv > 1 || alt !== null) && bars * documentDiv > MAX_STEPS;
+  if (tooWide) {
+    if (perBar2 && !layout) {
+      return { ok: false, reason: gateReason("view-resolution", "roll"), gate: "view-resolution" };
+    }
     return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` };
   }
-  if (!viewScaleFits(documentDiv, bars, viewScale)) {
+  if (!layout && !viewScaleFits(documentDiv, bars, viewScale)) {
     return { ok: false, reason: gateReason("view-resolution", "roll"), gate: "view-resolution" };
   }
   const div = documentDiv * viewScale;
@@ -32595,23 +32813,24 @@ function parsePianoRollCore(mini, viewScale = UNREFINED) {
   }
   const src = (alt ?? mini).trim();
   const parts = singlePart(src, tok.elements, div, col, rollContent(notes));
-  return {
-    ok: true,
-    model: {
-      steps: col,
-      ...alt !== null ? { bars } : {},
-      ...viewScale === UNREFINED ? {} : { viewScale },
-      notes,
-      ...sawNumeric ? { numeric: true } : {},
-      ...parts ? {
-        source: {
-          parts,
-          prefix: alt !== null ? "<" + (/^\s*/.exec(alt)?.[0] ?? "") : "",
-          suffix: alt !== null ? (/\s*$/.exec(alt)?.[0] ?? "") + ">" : ""
-        }
-      } : {}
-    }
+  const model = {
+    steps: col,
+    ...alt !== null ? { bars } : {},
+    ...viewScale === UNREFINED ? {} : { viewScale },
+    notes,
+    ...sawNumeric ? { numeric: true } : {},
+    ...parts ? {
+      source: {
+        parts,
+        prefix: alt !== null ? "<" + (/^\s*/.exec(alt)?.[0] ?? "") : "",
+        suffix: alt !== null ? (/\s*$/.exec(alt)?.[0] ?? "") + ">" : ""
+      }
+    } : {}
   };
+  if (!layout) return { ok: true, model };
+  const drawn = toDrawnRoll(model, layout);
+  if (drawn) return { ok: true, model: drawn };
+  return col > MAX_STEPS ? { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` } : { ok: true, model };
 }
 __name(parsePianoRollCore, "parsePianoRollCore");
 function parseRollLanes(parts, viewScale = UNREFINED) {
@@ -32948,26 +33167,34 @@ function readCurrentCycle() {
 __name(readCurrentCycle, "readCurrentCycle");
 
 // src/visualEdit/panels/usePlayingStep.ts
-function cycleToStep(cycle, steps, bars, cols) {
+function cycleToStep(cycle, steps, bars, cols, barSteps) {
   if (cycle === null || !Number.isFinite(cycle) || steps <= 0 || cols <= 0) return null;
   const b = bars > 0 ? bars : 1;
   const phase = (cycle % b + b) % b;
+  if (barSteps && barSteps.length === b) {
+    const bar2 = Math.min(b - 1, Math.floor(phase));
+    const before = barSteps.slice(0, bar2).reduce((a, n) => a + n, 0);
+    const step2 = before + Math.floor((phase - bar2) * barSteps[bar2]);
+    return Math.max(0, Math.min(cols - 1, step2));
+  }
   const step = Math.floor(phase / b * steps);
   return Math.max(0, Math.min(cols - 1, step));
 }
 __name(cycleToStep, "cycleToStep");
-function usePlayingStep(steps, bars, cols) {
+function usePlayingStep(steps, bars, cols, barSteps) {
   const [step, setStep] = React38.useState(null);
+  const layoutKey = barSteps?.join(",") ?? "";
   React38.useEffect(() => {
     let raf = 0;
+    const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
     const tick = /* @__PURE__ */ __name(() => {
-      const next = cycleToStep(readCurrentCycle(), steps, bars, cols);
+      const next = cycleToStep(readCurrentCycle(), steps, bars, cols, counts);
       setStep((prev) => prev === next ? prev : next);
       raf = requestAnimationFrame(tick);
     }, "tick");
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [steps, bars, cols]);
+  }, [steps, bars, cols, layoutKey]);
   return step;
 }
 __name(usePlayingStep, "usePlayingStep");
@@ -33238,6 +33465,9 @@ function moveNote(base, fromPitch, fromStart, toPitch, toStart, opts = {}) {
   const rebuilt = {
     steps: base.steps,
     ...base.bars != null ? { bars: base.bars } : {},
+    // Not a source: the RULER the notes are measured in. A roll drawn per bar (#1827)
+    // holds drawn columns, and without its counts the writer reads them as shared ones.
+    ...base.barSteps ? { barSteps: base.barSteps } : {},
     ...base.numeric ? { numeric: true } : {},
     notes
   };
@@ -34871,7 +35101,7 @@ function setColumnGain(model, stepIndex, gain) {
 }
 __name(setColumnGain, "setColumnGain");
 var CLICK_SLOP_PX = 4;
-function ExtendHandle({ length, gridRef, cellAttr, cols }) {
+function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
   const selfRef = React38.useRef(null);
   const [frame, setFrame] = React38.useState(null);
   const [added, setAdded] = React38.useState(0);
@@ -34909,7 +35139,7 @@ function ExtendHandle({ length, gridRef, cellAttr, cols }) {
     ro.observe(grid);
     return () => ro.disconnect();
   }, [gridRef, measure]);
-  const perBar2 = Math.max(1, Math.round(cols / length.bars));
+  const perBar2 = Math.max(1, lastBarCols ?? Math.round(cols / length.bars));
   const barsFor = /* @__PURE__ */ __name((n) => Math.ceil(n / perBar2), "barsFor");
   const verdict = engaged ? length.verdict() : null;
   const blocked = verdict && !verdict.duplicate.ok ? verdict.duplicate.reason : null;
@@ -35565,7 +35795,8 @@ function SequencerGrid({ onResolution } = {}) {
   const playingStep = usePlayingStep(
     model?.steps ?? 0,
     model?.bars ?? 1,
-    model ? columnCount(model) : 0
+    model ? columnCount(model) : 0,
+    model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
   const gestureRef = React38.useRef(null);
@@ -35822,7 +36053,7 @@ function SequencerGrid({ onResolution } = {}) {
       icon: "symbol-array"
     });
   }
-  const barSize = model.bars ? model.steps / model.bars : 0;
+  const layout = drawnLayout(model, model.steps);
   const tabCell = liveCursor ?? { row: 0, col: 0 };
   return /* @__PURE__ */ jsx(
     "div",
@@ -35947,11 +36178,11 @@ function SequencerGrid({ onResolution } = {}) {
                         "aria-selected": isCursor,
                         style: {
                           display: "flex",
-                          flex: "1 1 0",
-                          minWidth: 16,
-                          maxWidth: 56,
+                          flex: `${layout.weight(stepIndex)} ${layout.weight(stepIndex)} 0`,
+                          minWidth: 16 * layout.weight(stepIndex),
+                          maxWidth: 56 * layout.weight(stepIndex),
                           // subtle gap at each bar boundary
-                          marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0
+                          marginLeft: layout.barStart(stepIndex) ? 8 : 0
                         },
                         children: /* @__PURE__ */ jsxs(
                           "button",
@@ -36085,7 +36316,7 @@ function SequencerGrid({ onResolution } = {}) {
             `${lane.sound}:${lane.part ?? 0}`
           );
         }) }),
-        /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef, cellAttr: "data-seq-cell", cols: model.steps }),
+        /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef, cellAttr: "data-seq-cell", cols: model.steps, lastBarCols: layout.lastBarCols }),
         !isChordChart && /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 4 }, children: [
           /* @__PURE__ */ jsx("span", { style: { width: 72, flex: "0 0 auto" } }),
           /* @__PURE__ */ jsxs(
@@ -36129,7 +36360,8 @@ var DIVISIONS = [
   { value: "1/16T", label: "1/16 T", notesPerBar: 24 }
 ];
 var DEFAULT_DIVISION = "grid";
-function stepsPerBar(steps, bars) {
+function stepsPerBar(steps, bars, barSteps) {
+  if (barSteps) return 0;
   return bars && bars > 0 ? Math.round(steps / bars) : steps;
 }
 __name(stepsPerBar, "stepsPerBar");
@@ -36271,7 +36503,8 @@ function PianoRollGrid({
   const playingStep = usePlayingStep(
     model?.steps ?? 0,
     model?.bars ?? 1,
-    model ? columnCount(model) : 0
+    model ? columnCount(model) : 0,
+    model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
   const [hoveredMidi, setHoveredMidi] = React38.useState(null);
@@ -36485,7 +36718,7 @@ function PianoRollGrid({
   const onCellEnter = /* @__PURE__ */ __name((midi, step) => {
     const d = dragRef.current;
     if (!d || !model) return;
-    const interval = snapInterval(stepsPerBar(model.steps, model.bars), division2);
+    const interval = snapInterval(stepsPerBar(model.steps, model.bars, model.barSteps), division2);
     if (d.mode === "resize") {
       let dur = step - d.origStart + 1;
       if (interval) dur = Math.max(interval, snapColumn(d.origStart + dur, interval) - d.origStart);
@@ -36581,7 +36814,7 @@ function PianoRollGrid({
   });
   const editNote = /* @__PURE__ */ __name((note, edit, dryRun) => {
     if (!model) return false;
-    const step = snapInterval(stepsPerBar(model.steps, model.bars), division2) ?? 1;
+    const step = snapInterval(stepsPerBar(model.steps, model.bars, model.barSteps), division2) ?? 1;
     const head = headColumn(note);
     const midi = pitchToMidi(note.pitch);
     if (midi === null) return false;
@@ -36690,8 +36923,12 @@ function PianoRollGrid({
     });
   }
   const tabCell = cursorCell() ?? defaultCell();
-  const barCols = model.bars && model.bars > 1 && Number.isInteger(cols / model.bars) ? cols / model.bars : 0;
-  const barLine = /* @__PURE__ */ __name((c) => barCols && c > 0 && c % barCols === 0 ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0, "barLine");
+  const layout = drawnLayout(model, cols);
+  const barLine = /* @__PURE__ */ __name((c) => layout.barStart(c) ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0, "barLine");
+  const cellBox = /* @__PURE__ */ __name((c) => {
+    const w = layout.weight(c);
+    return { flex: `${w} ${w} 0`, minWidth: 12 * w, maxWidth: 44 * w };
+  }, "cellBox");
   return /* @__PURE__ */ jsxs(
     "div",
     {
@@ -36873,7 +37110,7 @@ function PianoRollGrid({
                                     {
                                       role: "gridcell",
                                       "aria-selected": isSel,
-                                      style: { display: "flex", flex: "1 1 0", minWidth: 12, maxWidth: 44, boxShadow: barLine(step) },
+                                      style: { display: "flex", ...cellBox(step), boxShadow: barLine(step) },
                                       children: /* @__PURE__ */ jsxs(
                                         "button",
                                         {
@@ -37074,7 +37311,7 @@ function PianoRollGrid({
                       })
                     }
                   ),
-                  /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef, cellAttr: "data-roll-cell", cols }),
+                  /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef, cellAttr: "data-roll-cell", cols, lastBarCols: layout.lastBarCols }),
                   gainInScope2(model) && /* @__PURE__ */ jsxs(
                     "div",
                     {
@@ -37113,9 +37350,7 @@ function PianoRollGrid({
                               } : void 0,
                               style: {
                                 position: "relative",
-                                flex: "1 1 0",
-                                minWidth: 12,
-                                maxWidth: 44,
+                                ...cellBox(col),
                                 boxShadow: barLine(col),
                                 height: "100%",
                                 borderRadius: 2,
@@ -39004,7 +39239,7 @@ __name(knobsFromChunk, "knobsFromChunk");
 function rollStepsPerBar(chunk) {
   if (!chunk || chunk.miniString === null || !isRollChunk(chunk)) return null;
   const parsed = parsePianoRoll(chunk.miniString);
-  return parsed.ok ? stepsPerBar(parsed.model.steps, parsed.model.bars) : null;
+  return parsed.ok ? stepsPerBar(parsed.model.steps, parsed.model.bars, parsed.model.barSteps) : null;
 }
 __name(rollStepsPerBar, "rollStepsPerBar");
 function DivisionSelect({

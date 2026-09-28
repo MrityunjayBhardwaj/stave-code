@@ -171,7 +171,11 @@ const rollSurface: Surface<PianoRollModel> = {
 // population — `[-7 2,<4 5 6>]*8`. The grid is untouched. `respelled` and `play-changed`
 // stay at 0 on both surfaces, which is this file's actual property: the arrival brought
 // asks, not a notation move.
-const ASKED = { grid: 1012, roll: 594 }
+// ⚠ 1012/594 -> 1013/595 at #1827 (each bar drawn at its own step count): the two units
+// that used to exceed 64 shared columns now open per bar — `<~ ~ bd*3 bd*4 …>` on the
+// grid and `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` on the roll. Population, not
+// notation: `respelled` and `play-changed` stay at 0.
+const ASKED = { grid: 1013, roll: 595 }
 
 describe('#1123 — a velocity drag leaves the notation alone', () => {
   it('grid', () => {

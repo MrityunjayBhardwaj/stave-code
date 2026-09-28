@@ -214,7 +214,10 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       'element path — 1,748 → 31 refused, the causes #1064 did not name',
     // ⚠ asks 15054 -> 17116 at #1242 (corpus 1535 -> 1633). `refused` UNMOVED at 31:
     // 2,062 new element-path placements, every one of them admitted.
-    ).toEqual({ asks: 17116, refused: 31 })
+      // ⚠ asks 17116 -> 17034 at #1827, `refused` UNMOVED at 31: `<c2*2 g2*5 [a g]>` is
+      // drawn per bar as 2 + 5 + 2 cells instead of 30 columns, so each lane offers 9
+      // cells, not 30 (the newly opened drum grid adds its own cells on the source path).
+    ).toEqual({ asks: 17034, refused: 31 })
     // ⚠ 3834 → 3842 IN #1235, AND THE 8 WERE NEVER PLACEMENTS. The leaf writer used to
     // compare TOKENS only, so it could not see that `clampLane` had SHORTENED a note
     // sustaining through the clicked column — it wrote the rest's bytes for the new sound
@@ -246,7 +249,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       { leaf: by.leaf.units, alt: by.alt.units, element: by.element.units },
       'parseable units per path',
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    ).toEqual({ leaf: 86, alt: 61, element: 874 })
+      // ⚠ element 874 -> 875 at #1827 (each bar drawn at its own step count): the newly opened drum grid.
+    ).toEqual({ leaf: 86, alt: 61, element: 875 })
 
     // The residual's SHAPE is asserted in its own test below, not here — an assertion
     // that sits after a failing one never runs, so bundling it into this body would
@@ -549,7 +553,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     expect(
       [nonLeafWithAnAsk, nonLeafWithSomeOffer],
       'non-leaf grids with any empty cell, and of those the ones that still take a note',
-    ).toEqual([508, 508])
+      // ⚠ 508 -> 509 at #1827: the newly opened drum grid, which takes a note too.
+    ).toEqual([509, 509])
   })
 
   /**
@@ -720,13 +725,17 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // guards is UNMOVED: `disagreements` is still empty, so the cheap probe and the whole
     // drawn surface still answer alike over the wider population.
     expect({ rolls, saidNothing, probeAsks, fullSurfaceAsks }).toEqual({
-      rolls: 598,
+      // ⚠ rolls 598 -> 599 at #1827 (the newly opened `<[36 48]*2 …>`). `probeAsks`
+      // +20 and `fullSurfaceAsks` −223 together: the arrival's own cells, and
+      // `<c2*2 g2*5 [a g]>` / `<0 [0 1] 0 [0 1 0]>` drawn per bar with far fewer cells
+      // than their shared grids had. `saidNothing` and the disagreements are UNMOVED.
+      rolls: 599,
       // ⚠ 57 -> 56 at #1312 — the same single view as the arm above, seen from the probe
       // side. `rolls`, `probeAsks` and `fullSurfaceAsks` are UNMOVED: this widening opened
       // no new document, it only let an existing one accept a placement.
       saidNothing: 56,
-      probeAsks: 46375,
-      fullSurfaceAsks: 135108,
+      probeAsks: 46395,
+      fullSurfaceAsks: 134885,
     })
   })
 })

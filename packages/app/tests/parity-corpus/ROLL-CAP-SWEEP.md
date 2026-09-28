@@ -51,8 +51,8 @@ A flat at 75 across all caps, B 347 → 360.
 > observations committed in `ROLL-CAP-SWEEP.json`, re-taken by `node scripts/cap-sweep.mjs 4 6 8 12`.
 
 Both populations, all 4 caps, the real shipped writers at each value —
-**A** = core-REFUSED (1180 roll asks, what production reaches today),
-**B** = core-SERVED (453 roll asks, what #1012 would inherit).
+**A** = core-REFUSED (1179 roll asks, what production reaches today),
+**B** = core-SERVED (454 roll asks, what #1012 would inherit).
 
 | | **4** (shipped) | 6 | 8 | 12 |
 |---|---|---|---|---|
@@ -149,19 +149,19 @@ mechanism arriving where it was predicted to arrive.
 > applies to it.** These figures are current for the tree they are committed with.
 
 At roll cap **12**, with the syntactic core deleted (#1012) — over 1633 corpus
-units, 1273 core-served asks (820 grid / 453 roll):
+units, 1275 core-served asks (821 grid / 454 roll):
 
 | | cap 4 (shipped) | cap 12 |
 |---|---|---|
-| untransferable asks, both surfaces | 68 | 50 |
-| roll untransferable | 38 | 20 |
-| **the set that actually blocks deleting the core** | 51 | 35 |
-| …of it, grid | 18 | 18 |
-| …of it, roll | 33 | 17 |
+| untransferable asks, both surfaces | 70 | 52 |
+| roll untransferable | 39 | 21 |
+| **the set that actually blocks deleting the core** | 53 | 37 |
+| …of it, grid | 19 | 19 |
+| …of it, roll | 34 | 18 |
 
-**The cap's own contribution is 16 asks** (51 − 35), all of it on the roll: 33 − 17 = 16.
+**The cap's own contribution is 16 asks** (53 − 37), all of it on the roll: 34 − 18 = 16.
 
-**The grid is the control arm** and it is identical to the digit at both caps — 820 asks / 727 transfers / 30 untransferable / blocker 18 at cap 4, and 820 / 727 / 30 / 18 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
+**The grid is the control arm** and it is identical to the digit at both caps — 821 asks / 727 transfers / 31 untransferable / blocker 19 at cap 4, and 821 / 727 / 31 / 19 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
 
 The cap-4 column is DERIVED from this run. The cap-12 column is an OBSERVATION taken by `node scripts/p6-cap-census.mjs 12`, which sets the module constant exactly as a ship would; it carries the cap-4 column from its own run as an expiry stamp, and `writer-census.test.ts` reddens when that stamp stops matching this tree.
 

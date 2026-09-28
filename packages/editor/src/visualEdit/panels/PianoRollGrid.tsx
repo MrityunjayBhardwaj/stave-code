@@ -21,6 +21,7 @@ import * as React from 'react'
 import { parsePianoRoll, applyRollGain } from '../notation/parse'
 import { serializePianoRoll, serializeRollGain } from '../notation/serialize'
 import type { PianoRollModel, RollNote, ColumnOverlap } from '../notation/model'
+import { drawnLayout } from '../notation/perBar'
 import {
   columnCount,
   columnOverlap,
@@ -352,6 +353,7 @@ export function PianoRollGrid({
     model?.steps ?? 0,
     model?.bars ?? 1,
     model ? columnCount(model) : 0,
+    model?.barSteps,
   )
   const [colorMode] = useNoteColorMode()
   // Pitch row the pointer is over → highlight its key on the keyboard (#430).
@@ -815,7 +817,7 @@ export function PianoRollGrid({
     // Snap interval in columns for the active division (#432 Slice 2); null when
     // the division is the native grid or doesn't divide this grid evenly — then
     // move/resize land on the raw hovered column, exactly as before.
-    const interval = snapInterval(stepsPerBar(model.steps, model.bars), division)
+    const interval = snapInterval(stepsPerBar(model.steps, model.bars, model.barSteps), division)
     if (d.mode === 'resize') {
       // duration = columns from the note start through the hovered column;
       // snap the END edge to the division line (min one division when snapping).
@@ -1017,7 +1019,7 @@ export function PianoRollGrid({
   // snaps to (Stave has no separate nudge value).
   const editNote = (note: RollNote, edit: NoteEdit, dryRun: boolean): boolean => {
     if (!model) return false
-    const step = snapInterval(stepsPerBar(model.steps, model.bars), division) ?? 1
+    const step = snapInterval(stepsPerBar(model.steps, model.bars, model.barSteps), division) ?? 1
     const head = headColumn(note)
     const midi = pitchToMidi(note.pitch)
     if (midi === null) return false
@@ -1153,9 +1155,17 @@ export function PianoRollGrid({
   // which put a cell's centre on its note's 8px resize handle — a grab-to-move became a
   // resize (roll-move-readback went red). A roll's cells are flexible and already narrow;
   // a bar marker must not take width from them.
-  const barCols = model.bars && model.bars > 1 && Number.isInteger(cols / model.bars) ? cols / model.bars : 0
+  //
+  // Each bar may hold its own count of cells (#1827); `drawnLayout` says where bars start
+  // and how wide a cell is, so every bar is drawn the same width whatever its count.
+  const layout = drawnLayout(model, cols)
   const barLine = (c: number): string | undefined =>
-    barCols && c > 0 && c % barCols === 0 ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined
+    layout.barStart(c) ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined
+  /** a cell's flex box: weighted so a bar of 3 is as wide as a bar of 4 */
+  const cellBox = (c: number): React.CSSProperties => {
+    const w = layout.weight(c)
+    return { flex: `${w} ${w} 0`, minWidth: 12 * w, maxWidth: 44 * w }
+  }
 
   return (
     <div
@@ -1373,7 +1383,7 @@ export function PianoRollGrid({
                       key={step}
                       role="gridcell"
                       aria-selected={isSel}
-                      style={{ display: 'flex', flex: '1 1 0', minWidth: 12, maxWidth: 44, boxShadow: barLine(step) }}
+                      style={{ display: 'flex', ...cellBox(step), boxShadow: barLine(step) }}
                     >
                     <button
                       type="button"
@@ -1611,7 +1621,7 @@ export function PianoRollGrid({
           )
         })}
           </div>
-        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-roll-cell" cols={cols} />
+        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-roll-cell" cols={cols} lastBarCols={layout.lastBarCols} />
         {gainInScope(model) && (
           <div
             data-roll-velocity-lane
@@ -1694,9 +1704,7 @@ export function PianoRollGrid({
                     }
                     style={{
                       position: 'relative',
-                      flex: '1 1 0',
-                      minWidth: 12,
-                      maxWidth: 44,
+                      ...cellBox(col),
                       boxShadow: barLine(col),
                       height: '100%',
                       borderRadius: 2,

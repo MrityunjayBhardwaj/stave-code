@@ -33,6 +33,15 @@ so the move is attributable to the population and to nothing else:
 | …core edit VERIFIED ok | 49 | **53** | +4 |
 | **the P6 blocker set** | **48** (grid 18 + roll 30) | **51** (grid 18 + roll 33) | **+3, ENTIRELY ON THE ROLL** |
 
+> **MOVED AT #1827 (each bar drawn at its own step count): untransferable 68 → 70, core-served
+> asks 1273 → 1275, transfers and unverified unmoved.** Two corpus patterns whose bars hold
+> step counts that do not nest — `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` (grid) and
+> `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` (roll) — used to need 96 shared columns and were
+> refused; the core now draws them one bar at a time. The derived projections still cap at
+> 64 shared columns, so both arrive as `core-structured` untransferable asks. Structural
+> untransferable 59 → 61, core view has STRUCTURE 53 → 55, core edit VERIFIED ok 53 → 55, and
+> so the P6 blocker set 51 → 53 (grid 18 → 19, roll 33 → 34): the core writes both faithfully.
+
 > ⚠⚠ **THE "54" THIS DOCUMENT QUOTES BELOW IS TWO CHANGES BEHIND THE GATE, AND WAS
 > ALREADY WRONG BEFORE #1242 TOUCHED ANYTHING.** Re-measured on `studio_v0.2.0` over
 > the unchanged 1535-row corpus, the blocker reads **48**, not 54.
@@ -577,19 +586,19 @@ both populations separately. At 12, with the core deleted:
 > applies to it.** These figures are current for the tree they are committed with.
 
 At roll cap **12**, with the syntactic core deleted (#1012) — over 1633 corpus
-units, 1273 core-served asks (820 grid / 453 roll):
+units, 1275 core-served asks (821 grid / 454 roll):
 
 | | cap 4 (shipped) | cap 12 |
 |---|---|---|
-| untransferable asks, both surfaces | 68 | 50 |
-| roll untransferable | 38 | 20 |
-| **the set that actually blocks deleting the core** | 51 | 35 |
-| …of it, grid | 18 | 18 |
-| …of it, roll | 33 | 17 |
+| untransferable asks, both surfaces | 70 | 52 |
+| roll untransferable | 39 | 21 |
+| **the set that actually blocks deleting the core** | 53 | 37 |
+| …of it, grid | 19 | 19 |
+| …of it, roll | 34 | 18 |
 
-**The cap's own contribution is 16 asks** (51 − 35), all of it on the roll: 33 − 17 = 16.
+**The cap's own contribution is 16 asks** (53 − 37), all of it on the roll: 34 − 18 = 16.
 
-**The grid is the control arm** and it is identical to the digit at both caps — 820 asks / 727 transfers / 30 untransferable / blocker 18 at cap 4, and 820 / 727 / 30 / 18 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
+**The grid is the control arm** and it is identical to the digit at both caps — 821 asks / 727 transfers / 31 untransferable / blocker 19 at cap 4, and 821 / 727 / 31 / 19 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
 
 The cap-4 column is DERIVED from this run. The cap-12 column is an OBSERVATION taken by `node scripts/p6-cap-census.mjs 12`, which sets the module constant exactly as a ship would; it carries the cap-4 column from its own run as an expiry stamp, and `writer-census.test.ts` reddens when that stamp stops matching this tree.
 

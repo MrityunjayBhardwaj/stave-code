@@ -11665,6 +11665,14 @@ interface StepGridModel {
     /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
     bars?: number;
     /**
+     * Each bar's OWN column count, when the bars' counts do not nest (#1827): `[3, 4]`
+     * for `<[a b c] [a b c d]>`. Present → `steps` is their sum and every column this
+     * model holds is a DRAWN column, bar b's cells each one `1/barSteps[b]` of a cycle.
+     * Absent → the uniform layout, `steps / bars` columns per bar. Writers see the
+     * shared grid only, through `toUniform*` in `perBar.ts`.
+     */
+    barSteps?: number[];
+    /**
      * How much finer than the DOCUMENT this model is drawn (#1055, #1116). Absent =
      * `UNREFINED` — the document's own resolution, which is what every path that does
      * not apply a scale reports. That default is what makes `documentSteps(model)`
@@ -11819,6 +11827,14 @@ interface PianoRollModel {
     surgical?: LazyRollLeafSource;
     /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
     bars?: number;
+    /**
+     * Each bar's OWN column count, when the bars' counts do not nest (#1827): `[3, 4]`
+     * for `<[a b c] [a b c d]>`. Present → `steps` is their sum and every column this
+     * model holds is a DRAWN column, bar b's cells each one `1/barSteps[b]` of a cycle.
+     * Absent → the uniform layout, `steps / bars` columns per bar. Writers see the
+     * shared grid only, through `toUniform*` in `perBar.ts`.
+     */
+    barSteps?: number[];
     /**
      * How much finer than the DOCUMENT this model is drawn — the roll's half of
      * `StepGridModel.viewScale`, with the same meaning and the same default (#1055,

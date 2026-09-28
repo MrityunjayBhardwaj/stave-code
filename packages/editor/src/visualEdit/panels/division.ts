@@ -45,8 +45,13 @@ export const DIVISIONS: DivisionOption[] = [
 
 export const DEFAULT_DIVISION: Division = 'grid'
 
-/** columns per bar from a model's total `steps` across `bars` (≥1, defaults 1). */
-export function stepsPerBar(steps: number, bars?: number): number {
+/**
+ * columns per bar from a model's total `steps` across `bars` (≥1, defaults 1) — or 0
+ * when each bar has its own count (#1827), where a note value is a different number of
+ * cells in every bar, so only the native cell snaps.
+ */
+export function stepsPerBar(steps: number, bars?: number, barSteps?: readonly number[]): number {
+  if (barSteps) return 0
   return bars && bars > 0 ? Math.round(steps / bars) : steps
 }
 

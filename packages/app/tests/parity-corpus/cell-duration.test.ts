@@ -49,6 +49,7 @@ import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { parseStepGrid, parseStepGridCore } from '../../../editor/src/visualEdit/notation/parse'
 import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
 import type { StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+import { barRuler, columnAt } from './engineEditOracle'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -59,12 +60,16 @@ const minis = [...new Set(corpus.minis.map((o) => o.mini.trim()).filter((m) => m
 /** hap bounds are Fraction→float: a note lasting its column arrives as 0.999…8 too */
 const EPS = 1e-9
 
-/** what the ENGINE played: per column index, per token, the lengths in columns */
+/**
+ * what the ENGINE played: per column index, per token, the lengths in columns — measured
+ * with the shared `barRuler`, since a column is not one width across bars when the model
+ * is drawn per bar (#1827). Uniform models: the old arithmetic exactly.
+ */
 function playedLengths(
   mini: string,
-  perBar: number,
-  bars: number,
+  ruler: { widths: number[]; starts: number[] },
 ): Map<string, number[]> | null {
+  const bars = ruler.widths.length
   let pat: unknown
   try {
     pat = reifyMini(mini)
@@ -73,6 +78,7 @@ function playedLengths(
   }
   const out = new Map<string, number[]>()
   for (let cyc = 0; cyc < bars; cyc++) {
+    const perBar = ruler.widths[cyc]
     let haps: Array<{
       hasOnset?: () => boolean
       whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
@@ -90,7 +96,7 @@ function playedLengths(
       const token =
         typeof v === 'string' ? v : Array.isArray(v) ? v.join(':') : typeof v === 'number' ? null : null
       if (token === null) continue
-      const col = cyc * perBar + Math.round((h.whole.begin.valueOf() - cyc) * perBar)
+      const col = Math.round(columnAt(ruler, cyc, h.whole.begin.valueOf()))
       const len = (h.whole.end.valueOf() - h.whole.begin.valueOf()) * perBar
       const key = `${col} ${token}`
       out.set(key, [...(out.get(key) ?? []), len])
@@ -158,8 +164,9 @@ for (const mini of minis) {
   if (!r.ok) continue
   const bars = Math.max(1, r.model.bars ?? 1)
   const perBar = r.model.steps / bars
-  if (!Number.isInteger(perBar) || perBar <= 0) continue
-  const played = playedLengths(mini, perBar, bars)
+  const ruler = barRuler(r.model)
+  if (ruler === null) continue
+  const played = playedLengths(mini, ruler)
   if (played === null) continue
   units.push({
     mini,
@@ -230,7 +237,8 @@ describe('the step cell carries a length the engine actually played', () => {
     // ⚠ 973 -> 1013 at #1242 — the corpus widened 1535 -> 1633 units
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
-    expect(units.length).toBe(1013)
+    // ⚠ 1013 -> 1014 at #1827 (each bar drawn at its own step count): `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` now opens.
+    expect(units.length).toBe(1014)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     // Folded so the whole split reports in one run: the three paths must sum to
     // `units`, and asserting them apart means a population change reports the
@@ -240,7 +248,8 @@ describe('the step cell carries a length the engine actually played', () => {
       derived: byPath.get('derived'),
       'derived+leaf': byPath.get('derived+leaf'),
       cells,
-    }).toEqual({ syntactic: 812, derived: 115, 'derived+leaf': 86, cells: 5685 })
+      // ⚠ syntactic 812 -> 813, cells 5685 -> 5707 at #1827 (each bar drawn at its own step count): the newly opened drum grid's 22 hits.
+    }).toEqual({ syntactic: 813, derived: 115, 'derived+leaf': 86, cells: 5707 })
   })
 
   it('CONTROL: a reader that returns 1 for every length is caught', () => {
@@ -253,7 +262,7 @@ describe('the step cell carries a length the engine actually played', () => {
     const r = parseStepGrid('bd [sd sd sd]')
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    const played = playedLengths('bd [sd sd sd]', r.model.steps, 1)!
+    const played = playedLengths('bd [sd sd sd]', barRuler(r.model)!)!
     expect(check(r.model, played)).toEqual([])
     expect(check(r.model, played, 1).map((m) => m.sound)).toEqual(['bd'])
   })
