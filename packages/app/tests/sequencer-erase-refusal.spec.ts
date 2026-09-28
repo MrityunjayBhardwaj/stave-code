@@ -115,6 +115,33 @@ test.describe('a refused erase is said before the click where nothing else is of
   })
 })
 
+/**
+ * THE KEYS. A title is invisible to someone on the keyboard, and the grid swallows a
+ * bound key before asking the op, so an inert cell alone would leave Delete on it doing
+ * nothing and saying nothing — the bug on the other input device. Same grid, same
+ * twin: the refused key is reported, the accepted one writes and stays quiet.
+ */
+test.describe('a refused erase by key is reported (#1836)', () => {
+  test('Delete on a hit the grid cannot remove leaves the code alone and says so', async ({ page }) => {
+    await openSequencer(page, TWO_BARS)
+    const cell = await litCell(page, TWO_BARS_REFUSED)
+    await cell.loc.focus()
+    await page.keyboard.press('Delete')
+    await page.waitForTimeout(700)
+    expect(await editorValue(page), 'a refused key erase must not write').toBe(TWO_BARS)
+    await expectRefusalReported(page, "Couldn't remove that hit")
+  })
+
+  test('Delete on a removable hit erases it and stays quiet', async ({ page }) => {
+    await openSequencer(page, TWO_BARS)
+    const cell = await litCell(page, TWO_BARS_ACCEPTED)
+    await cell.loc.focus()
+    await page.keyboard.press('Delete')
+    await expect.poll(() => editorValue(page), { message: 'the accepted key erase must write' }).toBe(TWO_BARS_AFTER)
+    await expectNoRefusalReported(page)
+  })
+})
+
 test.describe('a refused erase is reported at the click where the cell stays pressable (#1836)', () => {
   test('the refused hit keeps its velocity drag, and a plain click is reported, not swallowed', async ({
     page,

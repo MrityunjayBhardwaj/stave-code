@@ -540,6 +540,16 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     return true
   }
 
+  // A key on a cell whose toggle is refused (#1836). The pointer is told before it
+  // presses — the cell is inert and titled — but a key user never sees a title, and
+  // the handler has already swallowed the key, so without this the key does nothing
+  // and says nothing: the very bug, one input device over. A dry run (the palette
+  // asking whether the command applies) stays quiet and just answers no.
+  const refuseKey = (on: boolean, dryRun: boolean): false => {
+    if (!dryRun) reportRefusal(on ? "Couldn't remove that hit" : "Couldn't add that hit")
+    return false
+  }
+
   // The sequencer's keys (#1802), through the same command path as the roll's
   // (#1801). `fromKey`: a key on the grid's tab stop before any cursor exists
   // acts on that cell (the top-left); the palette, with no cursor, acts nowhere.
@@ -561,14 +571,15 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
         // Exactly what a click does: the cell flips where the writer takes it
         // (`toggleable`, the same gate that makes the cell inert to the pointer —
         // an ON cell included, #1836); a column a note sounds through is inert.
-        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return false
+        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return refuseKey(on, dryRun)
         if (!dryRun) {
           if (!cursorRef.current) setCursor(at)
           paintByKey(at.row, at.col, !on)
         }
         return true
       case 'remove':
-        if (!on || !(toggleable?.[at.row]?.[at.col] ?? false)) return false
+        if (!on) return false // nothing under the cursor: nothing asked, nothing to say
+        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return refuseKey(on, dryRun)
         if (!dryRun) paintByKey(at.row, at.col, false)
         return true
       default:

@@ -36055,6 +36055,10 @@ function SequencerGrid({ onResolution } = {}) {
     }
     return true;
   }, "resizeByKey");
+  const refuseKey = /* @__PURE__ */ __name((on, dryRun) => {
+    if (!dryRun) reportRefusal(on ? "Couldn't remove that hit" : "Couldn't add that hit");
+    return false;
+  }, "refuseKey");
   const runGesture = /* @__PURE__ */ __name((action, dryRun, fromKey = false) => {
     if (!model || rowsN === 0 || colsN === 0) return false;
     const at = cursorRef.current ?? (fromKey ? { row: 0, col: 0 } : null);
@@ -36070,14 +36074,15 @@ function SequencerGrid({ onResolution } = {}) {
     const on = cell !== void 0 && isCellOn(cell);
     switch (action) {
       case "toggle":
-        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return false;
+        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return refuseKey(on, dryRun);
         if (!dryRun) {
           if (!cursorRef.current) setCursor(at);
           paintByKey(at.row, at.col, !on);
         }
         return true;
       case "remove":
-        if (!on || !(toggleable?.[at.row]?.[at.col] ?? false)) return false;
+        if (!on) return false;
+        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return refuseKey(on, dryRun);
         if (!dryRun) paintByKey(at.row, at.col, false);
         return true;
       default:

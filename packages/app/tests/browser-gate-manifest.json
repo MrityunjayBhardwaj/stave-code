@@ -741,7 +741,7 @@
   },
   "sequencer-erase-refusal.spec.ts": {
     "runs": "gate",
-    "why": "A lit sequencer cell whose erase the writer refuses must say so: inert and titled where nothing else is offered, reported as a warning at the click where it stays pressable for velocity (#1836). Before, every lit cell looked clickable and 285 of the corpus's erase clicks did nothing silently."
+    "why": "A lit sequencer cell whose erase the writer refuses must say so: inert and titled where nothing else is offered, reported as a warning at the click where it stays pressable for velocity, and reported for a key, which never sees a title (#1836). Before, every lit cell looked clickable and 285 of the corpus's erase clicks did nothing silently."
   },
   "roll-move-decline-reported.spec.ts": {
     "runs": "gate",
