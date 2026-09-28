@@ -108,6 +108,13 @@ test.describe('piano roll', () => {
     await expectNoRefusalReported(page)
   })
 
+  test('click + continues a melody in thirds (equal bars compare equal whatever the split)', async ({ page }) => {
+    const roll = await open(page, '$: note("c3 e3 g3")', ROLL, '[data-roll-cell="48:0"]')
+    await roll.locator('[data-extend-handle]').click()
+    await expect.poll(() => editorValue(page), { timeout: 5_000 }).toBe('$: note("<[c3 e3 g3] [c3 e3 g3]>")')
+    await expectNoRefusalReported(page)
+  })
+
   test('REFUSES a pattern that changes from cycle to cycle, says so on the handle and in the Console', async ({ page }) => {
     const code = '$: note("c3 <e3 g3>")'
     const roll = await open(page, code, ROLL, '[data-roll-cell="48:0"]')
