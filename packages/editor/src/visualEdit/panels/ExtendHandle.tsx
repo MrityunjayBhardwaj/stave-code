@@ -29,6 +29,8 @@ export interface ExtendHandleProps {
   cellAttr: string
   /** drawn columns (the model's `steps`) */
   cols: number
+  /** cells in the last bar, when bars hold different counts (#1827) */
+  lastBarCols?: number
 }
 
 interface Frame {
@@ -42,7 +44,7 @@ interface Frame {
   maxRight: number
 }
 
-export function ExtendHandle({ length, gridRef, cellAttr, cols }: ExtendHandleProps): React.ReactElement | null {
+export function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }: ExtendHandleProps): React.ReactElement | null {
   const selfRef = React.useRef<HTMLButtonElement | null>(null)
   const [frame, setFrame] = React.useState<Frame | null>(null)
   const [added, setAdded] = React.useState(0)
@@ -87,7 +89,8 @@ export function ExtendHandle({ length, gridRef, cellAttr, cols }: ExtendHandlePr
     return () => ro.disconnect()
   }, [gridRef, measure])
 
-  const perBar = Math.max(1, Math.round(cols / length.bars))
+  // a new bar is appended after the LAST one, so its columns are what one bar holds
+  const perBar = Math.max(1, lastBarCols ?? Math.round(cols / length.bars))
   const barsFor = (n: number): number => Math.ceil(n / perBar)
   const verdict = engaged ? length.verdict() : null
   const blocked = verdict && !verdict.duplicate.ok ? verdict.duplicate.reason : null

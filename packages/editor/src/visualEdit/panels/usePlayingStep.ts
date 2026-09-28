@@ -28,27 +28,44 @@ export function cycleToStep(
   steps: number,
   bars: number,
   cols: number,
+  barSteps?: readonly number[],
 ): number | null {
   if (cycle === null || !Number.isFinite(cycle) || steps <= 0 || cols <= 0) return null
   const b = bars > 0 ? bars : 1
   const phase = ((cycle % b) + b) % b // 0..b, robust to negatives
+  // Each bar at its own count (#1827): the bar is the whole cycles, and the cell is the
+  // fraction of THAT bar times its own count — a column is not one width across bars.
+  if (barSteps && barSteps.length === b) {
+    const bar = Math.min(b - 1, Math.floor(phase))
+    const before = barSteps.slice(0, bar).reduce((a, n) => a + n, 0)
+    const step = before + Math.floor((phase - bar) * barSteps[bar])
+    return Math.max(0, Math.min(cols - 1, step))
+  }
   const step = Math.floor((phase / b) * steps)
   return Math.max(0, Math.min(cols - 1, step))
 }
 
-export function usePlayingStep(steps: number, bars: number, cols: number): number | null {
+export function usePlayingStep(
+  steps: number,
+  bars: number,
+  cols: number,
+  barSteps?: readonly number[],
+): number | null {
   const [step, setStep] = React.useState<number | null>(null)
+  // a fresh array every parse — keyed by value so the loop is not restarted per render
+  const layoutKey = barSteps?.join(',') ?? ''
 
   React.useEffect(() => {
     let raf = 0
+    const counts = layoutKey ? layoutKey.split(',').map(Number) : undefined
     const tick = (): void => {
-      const next = cycleToStep(readCurrentCycle(), steps, bars, cols)
+      const next = cycleToStep(readCurrentCycle(), steps, bars, cols, counts)
       setStep((prev) => (prev === next ? prev : next))
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [steps, bars, cols])
+  }, [steps, bars, cols, layoutKey])
 
   return step
 }

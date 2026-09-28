@@ -54,6 +54,7 @@ import { cellOn, gridCellKey, isCellOn } from './model'
 import { MAX_VIEW_STEPS, UNREFINED, documentSteps, viewScaleFits } from './viewResolution'
 import type { ViewScale } from './viewResolution'
 import { pitchToMidi } from './pitch'
+import { MAX_SHARED_STEPS, perBarLayout, toDrawnGrid, toDrawnRoll } from './perBar'
 
 /**
  * A bare integer (`60`, `0`, `-7`) — a numeric note value for the roll (#469).
@@ -2794,10 +2795,16 @@ function gridFromAlternation(
   // the DOCUMENT's ceiling on the unscaled expansion, then the VIEW's own on what is
   // drawn — here each of `tok.steps.length` bars owns `div` columns (#1055, #1116)
   const documentDiv = division(tok.steps)
-  if (tok.steps.length * documentDiv > MAX_STEPS) {
+  // Bars whose counts do not nest are drawn each at its own count (#1827) — see the
+  // roll's alternation path, which asks the same two ceilings for the same reason.
+  const layout = viewScale === UNREFINED ? perBarLayout(tok.steps.map(stepUnits)) : null
+  const tooWide = layout
+    ? layout.some((n) => n > MAX_STEPS) || tok.steps.length * documentDiv > MAX_SHARED_STEPS
+    : tok.steps.length * documentDiv > MAX_STEPS
+  if (tooWide) {
     return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` }
   }
-  if (!viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
+  if (!layout && !viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
     // one gate, one sentence (#1132): this is the VIEW's ceiling, the same refusal
     // `gateReason` already words — it was simply spelled a second way here.
     return { ok: false, reason: gateReason('view-resolution', 'grid'), gate: 'view-resolution' }
@@ -2806,24 +2813,27 @@ function gridFromAlternation(
   const cells = toCells(tok.steps, div)
   const src = inner.trim()
   const parts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)))
-  return {
-    ok: true,
-    model: {
-      steps: cells.length,
-      bars: tok.steps.length,
-      ...(viewScale === UNREFINED ? {} : { viewScale }),
-      lanes: lanesFromCells(cells),
-      ...(parts
-        ? {
-            source: {
-              parts,
-              prefix: '<' + (/^\s*/.exec(inner)?.[0] ?? ''),
-              suffix: (/\s*$/.exec(inner)?.[0] ?? '') + '>',
-            },
-          }
-        : {}),
-    },
+  const model: StepGridModel = {
+    steps: cells.length,
+    bars: tok.steps.length,
+    ...(viewScale === UNREFINED ? {} : { viewScale }),
+    lanes: lanesFromCells(cells),
+    ...(parts
+      ? {
+          source: {
+            parts,
+            prefix: '<' + (/^\s*/.exec(inner)?.[0] ?? ''),
+            suffix: (/\s*$/.exec(inner)?.[0] ?? '') + '>',
+          },
+        }
+      : {}),
   }
+  if (!layout) return { ok: true, model }
+  const drawn = toDrawnGrid(model, layout)
+  if (drawn) return { ok: true, model: drawn }
+  return cells.length > MAX_STEPS
+    ? { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` }
+    : { ok: true, model }
 }
 
 /**
@@ -3875,13 +3885,26 @@ export function parsePianoRollCore(
   // view refine does not cause (#1055, #1116, [[P412]]).
   const documentDiv = division(tok.steps)
   const bars = tok.steps.reduce((b, s) => b + s.elongation, 0)
-  if ((documentDiv > 1 || alt !== null) && bars * documentDiv > MAX_STEPS) {
+  // BARS WHOSE STEP COUNTS DO NOT NEST are drawn each at its own count (#1827), so the
+  // ceiling is asked of what is DRAWN — each bar's own count — with a separate, much
+  // higher one on the shared grid the writers still spell from. Only one entry per
+  // bar (no `@n` spanning bars), and only unrefined: a refine multiplies one global
+  // grid, which is exactly what this layout does not have.
+  const layout =
+    alt !== null && viewScale === UNREFINED && tok.steps.every((st) => st.elongation === 1)
+      ? perBarLayout(tok.steps.map(stepUnits))
+      : null
+  const tooWide = layout
+    ? layout.some((n) => n > MAX_STEPS) || bars * documentDiv > MAX_SHARED_STEPS
+    : (documentDiv > 1 || alt !== null) && bars * documentDiv > MAX_STEPS
+  if (tooWide) {
     return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` }
   }
   // …and the VIEW's ceiling, asked of what would actually be drawn. The columns this
   // path emits are `bars × div` — each step contributes `elongation × div` across its
-  // slots — so the drawn width is exactly `bars × documentDiv × viewScale`.
-  if (!viewScaleFits(documentDiv, bars, viewScale)) {
+  // slots — so the drawn width is exactly `bars × documentDiv × viewScale`. A per-bar
+  // layout draws its own counts, already held to the cap above.
+  if (!layout && !viewScaleFits(documentDiv, bars, viewScale)) {
     // one gate, one sentence (#1132): this is the VIEW's ceiling, the same refusal
     // `gateReason` already words — it was simply spelled a second way here.
     return { ok: false, reason: gateReason('view-resolution', 'roll'), gate: 'view-resolution' }
@@ -3924,25 +3947,30 @@ export function parsePianoRollCore(
   // exactly as in the grid's `<...>` path.
   const src = (alt ?? mini).trim()
   const parts = singlePart(src, tok.elements, div, col, rollContent(notes))
-  return {
-    ok: true,
-    model: {
-      steps: col,
-      ...(alt !== null ? { bars } : {}),
-      ...(viewScale === UNREFINED ? {} : { viewScale }),
-      notes,
-      ...(sawNumeric ? { numeric: true } : {}),
-      ...(parts
-        ? {
-            source: {
-              parts,
-              prefix: alt !== null ? '<' + (/^\s*/.exec(alt)?.[0] ?? '') : '',
-              suffix: alt !== null ? (/\s*$/.exec(alt)?.[0] ?? '') + '>' : '',
-            },
-          }
-        : {}),
-    },
+  const model: PianoRollModel = {
+    steps: col,
+    ...(alt !== null ? { bars } : {}),
+    ...(viewScale === UNREFINED ? {} : { viewScale }),
+    notes,
+    ...(sawNumeric ? { numeric: true } : {}),
+    ...(parts
+      ? {
+          source: {
+            parts,
+            prefix: alt !== null ? '<' + (/^\s*/.exec(alt)?.[0] ?? '') : '',
+            suffix: alt !== null ? (/\s*$/.exec(alt)?.[0] ?? '') + '>' : '',
+          },
+        }
+      : {}),
   }
+  if (!layout) return { ok: true, model }
+  // Built on the shared grid like every other roll, then drawn per bar LAST, so every
+  // line above is the path it always was.
+  const drawn = toDrawnRoll(model, layout)
+  if (drawn) return { ok: true, model: drawn }
+  return col > MAX_STEPS
+    ? { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` }
+    : { ok: true, model }
 }
 
 /**

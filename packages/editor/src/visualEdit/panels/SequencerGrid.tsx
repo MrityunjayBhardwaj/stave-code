@@ -30,6 +30,7 @@ import { parseStepGrid, applyStepGain } from '../notation/parse'
 import { serializeStepGrid, serializeStepGain } from '../notation/serialize'
 import { columnCount, isCellOn, laneCoverage } from '../notation/model'
 import type { StepGridModel } from '../notation/model'
+import { drawnLayout } from '../notation/perBar'
 import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID } from './tabs'
 import { opensStepGrid } from './surfaceRoute'
@@ -128,6 +129,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     model?.steps ?? 0,
     model?.bars ?? 1,
     model ? columnCount(model) : 0,
+    model?.barSteps,
   )
   const [colorMode] = useNoteColorMode()
 
@@ -551,7 +553,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     })
   }
 
-  const barSize = model.bars ? model.steps / model.bars : 0
+  // Each bar may hold its own count of cells (#1827) — the roll's `drawnLayout`, so the
+  // two grids agree on where bars start and how wide a cell is.
+  const layout = drawnLayout(model, model.steps)
   const tabCell = liveCursor ?? { row: 0, col: 0 }
 
   return (
@@ -729,11 +733,11 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     aria-selected={isCursor}
                     style={{
                       display: 'flex',
-                      flex: '1 1 0',
-                      minWidth: 16,
-                      maxWidth: 56,
+                      flex: `${layout.weight(stepIndex)} ${layout.weight(stepIndex)} 0`,
+                      minWidth: 16 * layout.weight(stepIndex),
+                      maxWidth: 56 * layout.weight(stepIndex),
                       // subtle gap at each bar boundary
-                      marginLeft: barSize && stepIndex % barSize === 0 && stepIndex !== 0 ? 8 : 0,
+                      marginLeft: layout.barStart(stepIndex) ? 8 : 0,
                     }}
                   >
                   <button
@@ -912,7 +916,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
           )
         })}
         </div>
-        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-seq-cell" cols={model.steps} />
+        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-seq-cell" cols={model.steps} lastBarCols={layout.lastBarCols} />
         {/* The drum catalogue is the wrong menu for a chord chart — it would
             offer Kick and Snare as things to add to a progression. Withdrawn
             rather than restocked: a chord picker is a different feature, and

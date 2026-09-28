@@ -12,6 +12,7 @@
 import type {
   AltSource,
   GainWrite,
+  GridCell,
   GridCells,
   LeafSource,
   LeafSpan,
@@ -24,6 +25,7 @@ import type {
   StepLane,
 } from './model'
 import { cellLengthKey, columnSplit, gridCellKey, isCellOn } from './model'
+import { lcmOf, toUniformGrid, toUniformRoll } from './perBar'
 
 /**
  * An `altSource` still describes a model only while its single-cycle width times
@@ -161,10 +163,14 @@ export type GridWriteExtent =
  * the extent cannot describe a write the caller did not get ([[PV200]]: one
  * authority, never two that agree the day they are written).
  */
-export function serializeStepGridWithExtent(model: StepGridModel): {
+export function serializeStepGridWithExtent(drawn: StepGridModel): {
   mini: string | null
   extent: GridWriteExtent
 } {
+  // A grid drawn per bar (#1827) holds DRAWN columns; every writer below slices bars
+  // as equal runs of the SHARED grid its regions were captured in, so it gets that.
+  const model = toUniformGrid(drawn)
+  const respell = drawn.barSteps
   // A leaf-anchored grid (#986) is written by byte surgery at each note's own
   // span and NEVER rebuilt: its notation is precisely what no re-emit of ours can
   // spell, so a rebuild would destroy the pattern the projection opened. An edit
@@ -240,7 +246,7 @@ export function serializeStepGridWithExtent(model: StepGridModel): {
   // The last MUST NOT fall through to `rebuildGrid`: the rebuild is exactly the
   // re-derivation that drops the length, so falling through would turn a refusal
   // back into the silent corruption it exists to prevent.
-  const spliced = spliceGrid(model)
+  const spliced = spliceGrid(model, respell)
   if (spliced === 'decline') return { mini: null, extent: { path: 'declined' } }
   if (spliced !== 'rebuild')
     return {
@@ -458,6 +464,8 @@ function rebuildGrid(model: StepGridModel): string | null {
  */
 function spliceGrid(
   model: StepGridModel,
+  /** the bars' own counts when the grid is drawn per bar (#1827) */
+  respell?: readonly number[],
 ):
   | { out: string; regions: number; regionsReemitted: number; rebuiltParts: number[] }
   | 'rebuild'
@@ -587,7 +595,9 @@ function spliceGrid(
         // case 3 · 480 deletes = NONE OF THE THREE → #1295. Reaching is not
         // answering: a re-emit here can still return null and hand the part to the
         // rebuild below.
-        const re = reemitRegion(now, div, model.viewScale !== undefined)
+        const re =
+          (respell && growth === 1 ? respellBar(now, r, div, respell) : null) ??
+          reemitRegion(now, div, model.viewScale !== undefined)
         if (re !== null) {
           body += r.leading + re + r.trailing
           continue
@@ -1238,6 +1248,45 @@ function noteReach(cols: GridCells, from: number, to: number): number {
  * top-level steps, which is exactly the flattening that pushed `hh*2`'s
  * neighbours out of position.
  */
+/**
+ * AN EDITED BAR OF A PER-BAR GRID, SPELLED AT ITS OWN COUNT (#1827).
+ *
+ * The shared grid is the least common multiple of the bars' counts, so without this a
+ * hi-hat added to the 3-step bar of `<[bd sd hh] [bd sd hh oh]>` came back as
+ * `[[bd,hh] _ _ _ sd _ _ _ hh _ _ _]` — twelve slots, the same haps, and a bar the user
+ * would not recognise. When the region is exactly one bar and everything in it sits on
+ * that bar's own columns, it is re-emitted at that count instead. Anything that does not
+ * fit (a length off the bar's grid) returns null and the shared-grid spelling answers,
+ * exactly as it did before, so this can only make a spelling shorter.
+ */
+function respellBar(
+  cols: GridCells,
+  r: { from: number; to: number },
+  div: number,
+  barSteps: readonly number[],
+): string | null {
+  const P = lcmOf(barSteps)
+  if (r.to - r.from !== P || r.from % P !== 0 || div !== P) return null
+  const own = barSteps[r.from / P]
+  const k = P / own
+  if (k <= 1) return null
+  const packed: GridCells = []
+  for (let i = 0; i < cols.length; i++) {
+    if (i % k !== 0) {
+      if (cols[i].length) return null
+      continue
+    }
+    const col: GridCell[] = []
+    for (const c of cols[i]) {
+      const d = c.duration / k
+      if (Math.abs(d - Math.round(d)) > 1e-9) return null
+      col.push({ ...c, duration: Math.round(d) })
+    }
+    packed.push(col)
+  }
+  return reemitRegion(packed, own)
+}
+
 function reemitRegion(cols: GridCells, div: number, refined = false): string | null {
   const spelled = sustainTokens(cols, div)
   if (spelled === null) return refined ? stackedRegion(cols, div) : null
@@ -1557,10 +1606,14 @@ export type RollWriteExtent = { path: 'leaf' | 'alt' | 'splice' | 'rebuild' }
  * regions it had to re-emit, because only the grid reports them. Giving the roll a
  * `regions: 0` would state a measurement nobody took.
  */
-export function serializePianoRollWithExtent(model: PianoRollModel): {
+export function serializePianoRollWithExtent(drawn: PianoRollModel): {
   mini: string | null
   extent: RollWriteExtent
 } {
+  // A roll drawn per bar (#1827) holds DRAWN columns; the writers below get the shared
+  // grid their regions were captured in.
+  const model = toUniformRoll(drawn)
+  const respell = drawn.barSteps
   // BYTE SURGERY FIRST, WHEREVER SPANS EXIST (#1010 P4e) — the roll's half of the
   // grid's overlay, and the same two fields reach it, differing in what a REFUSAL
   // means. That difference is the whole of the safety argument:
@@ -1633,7 +1686,7 @@ export function serializePianoRollWithExtent(model: PianoRollModel): {
   // ⚠ AND THAT NULL IS NOT A REFUSAL, unlike the two paths above. It is a
   // fall-through, so it is reported as the path that ACTUALLY answered — the
   // rebuild — rather than as a splice that wrote nothing.
-  const spliced = spliceRoll(model)
+  const spliced = spliceRoll(model, respell)
   if (spliced !== null) return { mini: spliced, extent: { path: 'splice' } }
 
   const bars = model.bars ?? 1
@@ -1727,7 +1780,11 @@ function assignNotes(
  * Returns null when the regions no longer describe these notes — then the caller
  * rebuilds from the model, which is lossy and always was.
  */
-function spliceRoll(model: PianoRollModel): string | null {
+function spliceRoll(
+  model: PianoRollModel,
+  /** the bars' own counts when the roll is drawn per bar (#1827) */
+  respell?: readonly number[],
+): string | null {
   const src = model.source
   if (!src || src.parts.length === 0) return null
   // ⚠ THE ROLL'S HALF OF THE SAME REFUTED GUARD (#1123), and it was NOT assumed to be
@@ -1799,7 +1856,9 @@ function spliceRoll(model: PianoRollModel): string | null {
       // is 0 of 156), because the roll's atom carries its `@n` in the bytes the
       // anchor covers. So case 3 is irreducible on this surface only where the
       // length cannot be said at the note's own span.
-      const re = reemitRollRegion(now, r.from, r.to, p.div)
+      const re =
+        (respell ? respellRollBar(now, r, p.div, respell) : null) ??
+        reemitRollRegion(now, r.from, r.to, p.div)
       body = re === null ? null : body + r.leading + re + r.trailing
     }
     if (body === null) {
@@ -2035,6 +2094,35 @@ function reemitRollRegionFlat(
  * it re-emits, and a held note with another starting inside it is its commonest shape.
  * Routing EVERY null here, rather than one named one, is what makes the rung complete.
  */
+/**
+ * The roll's half of `respellBar` (#1827): an edited bar of a per-bar roll written at
+ * its own count, so deleting e3 from `[c3 e3 g3]` gives `[c3 ~ g3]` rather than the
+ * shared grid's `[c3@4 ~ ~ ~ ~ g3@4]` — which plays the same but reopens as a bar of
+ * twelve, and so as a different layout. Null when the region is not exactly one bar or
+ * a note leaves that bar's columns; the shared-grid spelling then answers as before.
+ */
+function respellRollBar(
+  notes: RollNote[],
+  r: { from: number; to: number },
+  div: number,
+  barSteps: readonly number[],
+): string | null {
+  const P = lcmOf(barSteps)
+  if (r.to - r.from !== P || r.from % P !== 0 || div !== P) return null
+  const own = barSteps[r.from / P]
+  const k = P / own
+  if (k <= 1) return null
+  const whole = (x: number): boolean => Math.abs(x - Math.round(x)) < 1e-9
+  const packed: RollNote[] = []
+  for (const n of notes) {
+    const start = (n.start - r.from) / k
+    const duration = n.duration / k
+    if (!whole(start) || !whole(duration)) return null
+    packed.push({ ...n, start: Math.round(start), duration: Math.round(duration) })
+  }
+  return reemitRollRegion(packed, 0, own, own)
+}
+
 function reemitRollRegion(
   notes: RollNote[],
   from: number,
