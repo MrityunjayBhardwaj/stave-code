@@ -385,7 +385,9 @@ const NEWLY_ADMITTED = { coreServed: 32, transfers: 22, untransferable: 1, unver
  * the sibling's own movement visible from this side, which is the failure that
  * started this — 965/1217 sat here across three merges of someone else's change.
  */
-const MINI_CORPUS_ARM = { transfers: 1096, asks: 1273 }
+// ⚠ asks 1273 -> 1275 at #1827, transfers UNMOVED: the two units the core newly serves
+// drawn per bar are untransferable (the derived projections still cap at 64 columns).
+const MINI_CORPUS_ARM = { transfers: 1096, asks: 1275 }
 // ⚠ MOVED 1041/1204 -> 1096/1273 at #1242, when the harvest gained the product's own
 // resolver and the corpus went 1535 -> 1633 units. The pin FIRED again, which is what
 // it is for: +69 asks and +55 transfers, both upward, so the rate falls 86.5% -> 86.1%

@@ -466,9 +466,15 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // the product's own resolver (98 arrivals, 0 departures). Same warning as #1037
     // below: every figure in this file is over a wider population than a pre-#1242 one
     // and the two must never be quoted side by side.
-    expect(grid.length).toBe(1633 - 813)
+    // ⚠ 813 -> 812 core-refused grid units at #1827 (each bar drawn at its own step
+    // count): `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` used to exceed 64 shared columns and
+    // is now served by the core, drawn per bar. Likewise 1180 -> 1179 on the roll, for
+    // `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>`. The derived projections still cap at
+    // 64 shared columns, so both arrive UNTRANSFERABLE (core-structured), which is the
+    // +1/+1 the P6 table shows.
+    expect(grid.length).toBe(1633 - 812)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    expect(roll.length).toBe(1633 - 1180)
+    expect(roll.length).toBe(1633 - 1179)
 
     // A BAND, NOT A FLOOR. This is a measurement, so a move in EITHER direction is
     // a finding and should turn this red rather than pass quietly upward.
@@ -980,11 +986,13 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // ⚠ 1204 -> 1273 at #1242 — the corpus widened 1535 -> 1633 units
       // (98 arrivals, 0 departures): the harvest gained the product's own
       // resolver, so every figure here is over a wider population. Upward only.
-      expect(checked).toBe(1273)
+      // ⚠ 1273 -> 1275 at #1827: the two units the core newly serves per bar (see the
+      // population pins above).
+      expect(checked).toBe(1275)
       // the field the comparison above is allowed to ignore must be on EVERY one of them —
       // otherwise "identical apart from `surgical`" is satisfied by never attaching it
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-      expect(overlaid, 'the overlay is not reaching the core-served asks').toBe(1273)
+      expect(overlaid, 'the overlay is not reaching the core-served asks').toBe(1275)
     }, 900_000)
 
     it('RED TEST: the census distinguishes the two writers — it is not measuring one twice', () => {
