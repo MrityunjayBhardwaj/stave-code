@@ -215,8 +215,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // leaf-read grids, where the writer never writes velocity anyway (#1839).
   //
   // Memoized on the model, so the serialize-per-cell is paid once per edit rather
-  // than once per render. Lit cells add one ask each — about a fifth more asks than
-  // the empty cells alone, by the corpus's click counts (5,707 erase vs 25,434 place).
+  // than once per render. Asking the lit cells too was TIMED, not estimated ([[P380]]):
+  // over the 1,014 corpus grids (best of 3, Node) p50 0.0042 → 0.0111ms, p99 6.23 →
+  // 6.52ms, worst 14.5 → 21.1ms, total +15%.
   const toggleable = React.useMemo(
     () =>
       model
