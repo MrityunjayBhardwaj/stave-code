@@ -82,23 +82,35 @@ async function openSequencer(page: Page) {
 
 test.describe('byte surgery keeps the user’s own spelling (#1233)', () => {
   /**
-   * `<bd*3 [sd hh]>` — two branches, so the bar is 6 columns wide (3 from `bd*3`,
-   * 2 from `[sd hh]`, lcm 6). Deleting the `sd` touches only the `[sd hh]` group.
+   * `[bd sd] [lt mt ht]` — one bar whose two groups divide it by 2 and by 3, so the
+   * grid draws it 12 columns wide (lcm 6 per half). Deleting the `sd` touches only
+   * the `[bd sd]` group.
+   *
+   * ⚠ THIS FIXTURE REPLACED `<bd*3 [sd hh]>` (#1837). That one was two bars, and once
+   * each bar was drawn at its own step count (#1827) its `sd` moved from column 6 to
+   * column 3 — and, worse, the element writer stopped blowing it open: with the bar no
+   * longer 6 wide it writes `<bd*3 [~ hh]>` too, so the arm would have passed with the
+   * overlay unwired. A one-bar fixture keeps the lcm inside the bar, where per-bar
+   * drawing cannot dissolve it. Re-swept: 444 core-opened deletes still differ between
+   * the two writers; this is the drum-named twin of the corpus's `[C Eb] [G Bb] [D2 F A]`.
+   *
+   * The cell is found by what it holds — the one lit `sd` — not by a column number,
+   * so the next change to column meaning cannot silently point this at nothing.
    */
   test('deleting one note of a group does not blow the group open', async ({ page }) => {
     await boot(page)
-    await setStrudelCode(page, '$: s("<bd*3 [sd hh]>")')
+    await setStrudelCode(page, '$: s("[bd sd] [lt mt ht]")')
     const drawer = await openSequencer(page)
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
     await expect(grid).toHaveCount(1)
 
-    // lane 1 is `sd`, and in bar 1 it occupies the first half of the bar — column 6
-    await expect(grid.locator('[data-seq-cell="1:6"]')).toHaveAttribute('aria-pressed', 'true')
-    await grid.locator('[data-seq-cell="1:6"]').click()
+    const sd = grid.locator('[data-seq-cell][aria-pressed="true"][aria-label^="sd step "]')
+    await expect(sd, 'exactly one lit `sd` hit').toHaveCount(1)
+    await sd.click()
     await page.waitForTimeout(120)
 
-    // the element writer's answer for this gesture is `<bd*3 [~ ~ ~ hh _ _]>`
-    expect(await strudelValue(page)).toBe('$: s("<bd*3 [~ hh]>")')
+    // the element writer's answer for this gesture is `[bd _ _ ~ ~ ~] [lt mt ht]`
+    expect(await strudelValue(page)).toBe('$: s("[bd ~] [lt mt ht]")')
   })
 
   /**
@@ -128,7 +140,7 @@ test.describe('byte surgery keeps the user’s own spelling (#1233)', () => {
    */
   test('CONTROL: opening these patterns writes nothing', async ({ page }) => {
     await boot(page)
-    for (const src of ['$: s("<bd*3 [sd hh]>")', '$: s("<[bd,hh] [sd,cp]>")']) {
+    for (const src of ['$: s("[bd sd] [lt mt ht]")', '$: s("<[bd,hh] [sd,cp]>")']) {
       await setStrudelCode(page, src)
       const drawer = await openSequencer(page)
       await expect(drawer.locator('[data-bottom-panel-tab="sequencer"]')).toHaveCount(1)
