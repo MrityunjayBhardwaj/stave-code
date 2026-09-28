@@ -81,8 +81,8 @@ through the writer would measure a path production never takes.
 > observations committed in `GRID-CAP-SWEEP.json`, re-taken by `node scripts/cap-sweep.mjs grid 4 6 8 10 12`.
 
 Both populations, all 5 caps, the real shipped writers at each value —
-**A** = core-REFUSED (813 grid asks, what production reaches today),
-**B** = core-SERVED (820 grid asks, what #1012 would inherit).
+**A** = core-REFUSED (812 grid asks, what production reaches today),
+**B** = core-SERVED (821 grid asks, what #1012 would inherit).
 
 | | 4 | 6 | 8 | 10 | **12** (shipped) |
 |---|---|---|---|---|---|

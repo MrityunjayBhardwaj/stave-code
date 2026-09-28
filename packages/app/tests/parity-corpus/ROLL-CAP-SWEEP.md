@@ -51,8 +51,8 @@ A flat at 75 across all caps, B 347 → 360.
 > observations committed in `ROLL-CAP-SWEEP.json`, re-taken by `node scripts/cap-sweep.mjs 4 6 8 12`.
 
 Both populations, all 4 caps, the real shipped writers at each value —
-**A** = core-REFUSED (1180 roll asks, what production reaches today),
-**B** = core-SERVED (453 roll asks, what #1012 would inherit).
+**A** = core-REFUSED (1179 roll asks, what production reaches today),
+**B** = core-SERVED (454 roll asks, what #1012 would inherit).
 
 | | **4** (shipped) | 6 | 8 | 12 |
 |---|---|---|---|---|
