@@ -35294,6 +35294,73 @@ function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
   ] });
 }
 __name(ExtendHandle, "ExtendHandle");
+
+// src/visualEdit/panels/writtenSteps.ts
+function sharedSteps(m) {
+  return m.barSteps ? m.barSteps.length * lcmOf(m.barSteps) : m.steps;
+}
+__name(sharedSteps, "sharedSteps");
+function toDrawn(u, m) {
+  const d = m.barSteps ? drawnAt(u, m.barSteps) : u;
+  return Number.isInteger(d) ? d : null;
+}
+__name(toDrawn, "toDrawn");
+function writtenStepStarts(m) {
+  const out = /* @__PURE__ */ new Map();
+  const shared = sharedSteps(m);
+  const put = /* @__PURE__ */ __name((part, us) => {
+    const cols = /* @__PURE__ */ new Set();
+    for (const u of us) {
+      const d = toDrawn(u, m);
+      if (d !== null) cols.add(d);
+    }
+    out.set(part, [...cols].sort((a2, b) => a2 - b));
+  }, "put");
+  if (m.source) {
+    for (const p of m.source.parts) {
+      const last = p.regions[p.regions.length - 1];
+      if (!last || last.to * p.factor !== shared) continue;
+      put(
+        p.part,
+        p.regions.map((r) => r.from * p.factor)
+      );
+    }
+    return out;
+  }
+  const a = m.altSource;
+  if (a && a.perBar * a.bars === shared) {
+    const us = [];
+    for (let b = 0; b < a.bars; b++) for (const r of a.regions) us.push(b * a.perBar + r.from);
+    put(0, us);
+  }
+  return out;
+}
+__name(writtenStepStarts, "writtenStepStarts");
+function drawnBarStarts(m, cols) {
+  const layout = drawnLayout(m, cols);
+  const out = [0];
+  for (let c = 1; c < cols; c++) if (layout.barStart(c)) out.push(c);
+  out.push(cols);
+  return out;
+}
+__name(drawnBarStarts, "drawnBarStarts");
+function rulerLabels(m, cols, starts) {
+  const bars = drawnBarStarts(m, cols);
+  const labels = /* @__PURE__ */ new Map();
+  for (let b = 0; b + 1 < bars.length; b++) {
+    const from = bars[b];
+    const to = bars[b + 1];
+    labels.set(from, String(b + 1));
+    let k = 1;
+    for (const c of starts ?? []) {
+      if (c <= from || c >= to) continue;
+      k++;
+      labels.set(c, `${b + 1}.${k}`);
+    }
+  }
+  return labels;
+}
+__name(rulerLabels, "rulerLabels");
 function unwrapAlternation2(mini) {
   const t = mini.trim();
   if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
@@ -35844,6 +35911,12 @@ function SequencerGrid({ onResolution } = {}) {
     () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,
     [model]
   );
+  const stepStarts = React38__namespace.useMemo(() => {
+    if (!model) return null;
+    const out = /* @__PURE__ */ new Map();
+    for (const [part, cols] of writtenStepStarts(model)) out.set(part, new Set(cols));
+    return out;
+  }, [model]);
   const resizable = React38__namespace.useMemo(() => {
     if (!model) return null;
     return model.lanes.map((lane, li) => {
@@ -36099,6 +36172,8 @@ function SequencerGrid({ onResolution } = {}) {
   }
   const layout = drawnLayout(model, model.steps);
   const tabCell = liveCursor ?? { row: 0, col: 0 };
+  const rulerPart = model.lanes[liveCursor?.row ?? 0]?.part ?? 0;
+  const ruler = rulerLabels(model, model.steps, [...stepStarts?.get(rulerPart) ?? []]);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
     {
@@ -36149,217 +36224,266 @@ function SequencerGrid({ onResolution } = {}) {
             children: "Edits the notes already here \u2014 to add one, use the code view."
           }
         ),
-        /* @__PURE__ */ jsxRuntime.jsx("div", { ref: gridRef, role: "grid", "aria-label": "Step sequencer", style: { display: "flex", flexDirection: "column", gap: 4 }, children: model.lanes.map((lane, laneIndex) => {
-          const voice = sampleVoice(lane.sound);
-          return /* @__PURE__ */ jsxRuntime.jsxs(
-            "div",
-            {
-              role: "row",
-              style: { display: "flex", alignItems: "center", gap: 8 },
-              children: [
-                /* @__PURE__ */ jsxRuntime.jsxs("div", { role: "rowheader", style: { display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }, children: [
-                  /* @__PURE__ */ jsxRuntime.jsx(
+        /* @__PURE__ */ jsxRuntime.jsxs("div", { ref: gridRef, role: "grid", "aria-label": "Step sequencer", style: { display: "flex", flexDirection: "column", gap: 4 }, children: [
+          /* @__PURE__ */ jsxRuntime.jsxs("div", { "data-seq-ruler": true, "aria-hidden": "true", style: { display: "flex", alignItems: "flex-end", gap: 8, height: 12 }, children: [
+            /* @__PURE__ */ jsxRuntime.jsx("div", { style: { width: 96, flex: "0 0 auto" } }),
+            /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: Array.from({ length: model.steps }, (_, c) => {
+              const label = ruler.get(c);
+              const isBar = label !== void 0 && !label.includes(".");
+              return /* @__PURE__ */ jsxRuntime.jsx(
+                "div",
+                {
+                  style: {
+                    flex: `${layout.weight(c)} ${layout.weight(c)} 0`,
+                    minWidth: 16 * layout.weight(c),
+                    maxWidth: 56 * layout.weight(c),
+                    marginLeft: layout.barStart(c) ? 8 : 0,
+                    position: "relative",
+                    height: "100%"
+                  },
+                  children: label !== void 0 && /* @__PURE__ */ jsxRuntime.jsx(
                     "span",
                     {
-                      "data-seq-voice": lane.sound,
+                      "data-seq-ruler-label": c,
                       style: {
-                        width: 72,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "flex-end",
-                        fontSize: 11,
-                        color: "var(--foreground, #e6e6ea)",
-                        overflow: "hidden",
-                        whiteSpace: "nowrap"
+                        position: "absolute",
+                        left: 0,
+                        bottom: 0,
+                        fontSize: 9,
+                        lineHeight: "10px",
+                        whiteSpace: "nowrap",
+                        fontVariantNumeric: "tabular-nums",
+                        fontWeight: isBar ? 600 : 400,
+                        color: isBar ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)"
                       },
-                      title: lane.sound,
-                      children: /* @__PURE__ */ jsxRuntime.jsx("span", { style: { overflow: "hidden", textOverflow: "ellipsis" }, children: voice.label })
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntime.jsx(
-                    "button",
-                    {
-                      type: "button",
-                      "aria-label": `remove ${lane.sound}`,
-                      "data-seq-remove-voice": lane.sound,
-                      title: `Remove ${lane.sound}`,
-                      onClick: () => removeVoice(lane.sound),
-                      style: {
-                        width: 16,
-                        height: 16,
-                        flex: "0 0 auto",
-                        padding: 0,
-                        lineHeight: "14px",
-                        fontSize: 12,
-                        borderRadius: 3,
-                        border: "1px solid var(--border, #3a3a42)",
-                        background: "transparent",
-                        color: "var(--foreground-muted, #a0a0aa)",
-                        cursor: "pointer"
-                      },
-                      children: "\xD7"
+                      children: label
                     }
                   )
-                ] }),
-                /* @__PURE__ */ jsxRuntime.jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((cell, stepIndex) => {
-                  const on = isCellOn(cell);
-                  const cov = coverage?.[laneIndex]?.[stepIndex];
-                  const held2 = cov !== void 0 && cov.start !== stepIndex;
-                  const isTail = cov !== void 0 && coverage?.[laneIndex]?.[stepIndex + 1]?.start !== cov.start;
-                  const resizeStart = cov !== void 0 && isTail && resizable?.[laneIndex]?.has(cov.start) ? cov.start : null;
-                  const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
-                  const isPlaying = stepIndex === playingStep;
-                  const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true;
-                  const isCursor = liveCursor?.row === laneIndex && liveCursor.col === stepIndex;
-                  const isTab = tabCell.row === laneIndex && tabCell.col === stepIndex;
-                  return (
-                    // A gridcell holding one toggle button — `aria-pressed` stays on the
-                    // button, which may carry it; the cursor is the cell's `aria-selected`.
+                },
+                c
+              );
+            }) })
+          ] }),
+          model.lanes.map((lane, laneIndex) => {
+            const voice = sampleVoice(lane.sound);
+            return /* @__PURE__ */ jsxRuntime.jsxs(
+              "div",
+              {
+                role: "row",
+                style: { display: "flex", alignItems: "center", gap: 8 },
+                children: [
+                  /* @__PURE__ */ jsxRuntime.jsxs("div", { role: "rowheader", style: { display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }, children: [
                     /* @__PURE__ */ jsxRuntime.jsx(
-                      "div",
+                      "span",
                       {
-                        role: "gridcell",
-                        "aria-selected": isCursor,
+                        "data-seq-voice": lane.sound,
                         style: {
+                          width: 72,
                           display: "flex",
-                          flex: `${layout.weight(stepIndex)} ${layout.weight(stepIndex)} 0`,
-                          minWidth: 16 * layout.weight(stepIndex),
-                          maxWidth: 56 * layout.weight(stepIndex),
-                          // subtle gap at each bar boundary
-                          marginLeft: layout.barStart(stepIndex) ? 8 : 0
+                          alignItems: "center",
+                          justifyContent: "flex-end",
+                          fontSize: 11,
+                          color: "var(--foreground, #e6e6ea)",
+                          overflow: "hidden",
+                          whiteSpace: "nowrap"
                         },
-                        children: /* @__PURE__ */ jsxRuntime.jsxs(
-                          "button",
-                          {
-                            type: "button",
-                            tabIndex: isTab ? 0 : -1,
-                            onFocus: () => {
-                              if (!isCursor) setCursor({ row: laneIndex, col: stepIndex });
-                            },
-                            "aria-pressed": on,
-                            "aria-label": held2 ? `${lane.sound} step ${stepIndex + 1}, held from step ${cov.start + 1}` : `${lane.sound} step ${stepIndex + 1}`,
-                            "data-seq-cell": `${laneIndex}:${stepIndex}`,
-                            "data-gain": on && gainScoped ? gain : void 0,
-                            "data-playing": isPlaying ? "true" : void 0,
-                            "data-seq-cell-inert": canToggle ? void 0 : "true",
-                            "aria-disabled": canToggle ? void 0 : true,
-                            title: canToggle ? void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
-                            onPointerDown: (e) => {
-                              e.preventDefault();
-                              setCursor({ row: laneIndex, col: stepIndex });
-                              if (resizeStart !== null) {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                const barW = clamp012(cov.extent) * rect.width;
-                                const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
-                                if (e.clientX - rect.left >= barW - zone) {
-                                  onResizeDown(laneIndex, resizeStart);
-                                  return;
-                                }
-                              }
-                              if (!canToggle) return;
-                              onCellDown(laneIndex, stepIndex, on, e);
-                            },
-                            onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
-                            style: {
-                              position: "relative",
-                              width: "100%",
-                              height: 22,
-                              padding: 0,
-                              overflow: "hidden",
-                              border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-                              borderRadius: 3,
-                              background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-                              cursor: !canToggle ? "default" : gainScoped && on ? "ns-resize" : "pointer"
-                            },
-                            children: [
-                              cov && // Two orthogonal axes on one bar, which is how a DAW draws a
-                              // note: WIDTH is how much of this column the note sounds for
-                              // (#1056), HEIGHT is velocity, bottom-anchored and full when
-                              // neutral — so a length-1 note at neutral gain is the same
-                              // solid square it has always been. The hue is the voice
-                              // colour (#471), or a velocity ramp when View ▸ Note Color =
-                              // Velocity (#428).
-                              //
-                              // A carried column is dimmed rather than drawn solid, the
-                              // vocabulary the piano roll already ships for the same fact
-                              // (`opacity: on && !isHead ? 0.7 : 1`) — one held note reads
-                              // as one note, and never as a second trigger.
-                              /* @__PURE__ */ jsxRuntime.jsx(
-                                "span",
-                                {
-                                  "data-seq-fill": true,
-                                  "data-seq-sustain": held2 ? "true" : void 0,
-                                  "data-seq-extent": cov.extent !== 1 ? cov.extent.toFixed(4) : void 0,
-                                  style: {
-                                    position: "absolute",
-                                    left: 0,
-                                    bottom: 0,
-                                    // `minWidth` is a floor on the PIXEL, not on the datum: a
-                                    // note whose length rounds to nothing still has to be
-                                    // visible, or the grid would silently lose a trigger it
-                                    // can spell.
-                                    width: `${clamp012(cov.extent) * 100}%`,
-                                    minWidth: held2 ? 0 : 2,
-                                    height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
-                                    background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
-                                    opacity: held2 ? 0.7 : 1,
-                                    pointerEvents: "none"
-                                  }
-                                }
-                              ),
-                              resizeStart !== null && // THE LENGTH HANDLE (#1053) — the axis #1056 made visible, made
-                              // settable. Same shape as the roll's, because this is the same
-                              // gesture on the other surface and the issue asks the two to agree.
-                              //
-                              // It sits at the BAR's trailing edge rather than the cell's, so a
-                              // note that stops mid-column carries its handle on its own end
-                              // instead of floating in the empty background past it. Width is
-                              // clamped to the bar for the same reason the roll clamps it: a
-                              // handle wider than the note would overhang backwards past the
-                              // note's own start. What that costs a very short note — a very
-                              // small handle — is paid back by the invisible grab zone above.
-                              //
-                              // RENDERED ONLY WHERE A DRAG WOULD DO SOMETHING (`resizable`),
-                              // which is the panel's standing rule for every affordance it draws
-                              // (#1064/#1070): a handle on a note whose every length the writer
-                              // declines is a control the user can press to no effect, and this
-                              // project ranks that worse than not offering it at all.
-                              /* @__PURE__ */ jsxRuntime.jsx(
-                                "span",
-                                {
-                                  "data-seq-resize": `${laneIndex}:${resizeStart}`,
-                                  "aria-label": `resize ${lane.sound} step ${resizeStart + 1}`,
-                                  onPointerDown: (e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    onResizeDown(laneIndex, resizeStart);
-                                  },
-                                  style: {
-                                    position: "absolute",
-                                    top: 0,
-                                    bottom: 0,
-                                    right: `${(1 - clamp012(cov.extent)) * 100}%`,
-                                    width: `min(${RESIZE_ZONE_PX}px, ${clamp012(cov.extent) * 100}%)`,
-                                    cursor: "ew-resize",
-                                    background: "var(--foreground, #e6e6ea)",
-                                    opacity: 0.45,
-                                    borderRadius: "0 2px 2px 0"
-                                  }
-                                }
-                              )
-                            ]
-                          }
-                        )
-                      },
-                      stepIndex
+                        title: lane.sound,
+                        children: /* @__PURE__ */ jsxRuntime.jsx("span", { style: { overflow: "hidden", textOverflow: "ellipsis" }, children: voice.label })
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntime.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        "aria-label": `remove ${lane.sound}`,
+                        "data-seq-remove-voice": lane.sound,
+                        title: `Remove ${lane.sound}`,
+                        onClick: () => removeVoice(lane.sound),
+                        style: {
+                          width: 16,
+                          height: 16,
+                          flex: "0 0 auto",
+                          padding: 0,
+                          lineHeight: "14px",
+                          fontSize: 12,
+                          borderRadius: 3,
+                          border: "1px solid var(--border, #3a3a42)",
+                          background: "transparent",
+                          color: "var(--foreground-muted, #a0a0aa)",
+                          cursor: "pointer"
+                        },
+                        children: "\xD7"
+                      }
                     )
-                  );
-                }) })
-              ]
-            },
-            `${lane.sound}:${lane.part ?? 0}`
-          );
-        }) }),
+                  ] }),
+                  /* @__PURE__ */ jsxRuntime.jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((cell, stepIndex) => {
+                    const on = isCellOn(cell);
+                    const cov = coverage?.[laneIndex]?.[stepIndex];
+                    const held2 = cov !== void 0 && cov.start !== stepIndex;
+                    const isTail = cov !== void 0 && coverage?.[laneIndex]?.[stepIndex + 1]?.start !== cov.start;
+                    const resizeStart = cov !== void 0 && isTail && resizable?.[laneIndex]?.has(cov.start) ? cov.start : null;
+                    const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
+                    const isPlaying = stepIndex === playingStep;
+                    const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true;
+                    const isCursor = liveCursor?.row === laneIndex && liveCursor.col === stepIndex;
+                    const isTab = tabCell.row === laneIndex && tabCell.col === stepIndex;
+                    const stepStart = stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex);
+                    return (
+                      // A gridcell holding one toggle button — `aria-pressed` stays on the
+                      // button, which may carry it; the cursor is the cell's `aria-selected`.
+                      /* @__PURE__ */ jsxRuntime.jsx(
+                        "div",
+                        {
+                          role: "gridcell",
+                          "aria-selected": isCursor,
+                          "data-seq-step-start": stepStart ? "true" : void 0,
+                          style: {
+                            display: "flex",
+                            flex: `${layout.weight(stepIndex)} ${layout.weight(stepIndex)} 0`,
+                            minWidth: 16 * layout.weight(stepIndex),
+                            maxWidth: 56 * layout.weight(stepIndex),
+                            // subtle gap at each bar boundary
+                            marginLeft: layout.barStart(stepIndex) ? 8 : 0,
+                            // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
+                            // step fills the 2px gap before it with a line; a plain column
+                            // leaves that gap empty. Drawn as a shadow INTO the gap rather than
+                            // as extra width, because rows of different parts start steps at
+                            // different columns and a real gap would push their columns apart.
+                            boxShadow: stepStart ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
+                          },
+                          children: /* @__PURE__ */ jsxRuntime.jsxs(
+                            "button",
+                            {
+                              type: "button",
+                              tabIndex: isTab ? 0 : -1,
+                              onFocus: () => {
+                                if (!isCursor) setCursor({ row: laneIndex, col: stepIndex });
+                              },
+                              "aria-pressed": on,
+                              "aria-label": held2 ? `${lane.sound} step ${stepIndex + 1}, held from step ${cov.start + 1}` : `${lane.sound} step ${stepIndex + 1}`,
+                              "data-seq-cell": `${laneIndex}:${stepIndex}`,
+                              "data-gain": on && gainScoped ? gain : void 0,
+                              "data-playing": isPlaying ? "true" : void 0,
+                              "data-seq-cell-inert": canToggle ? void 0 : "true",
+                              "aria-disabled": canToggle ? void 0 : true,
+                              title: canToggle ? void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
+                              onPointerDown: (e) => {
+                                e.preventDefault();
+                                setCursor({ row: laneIndex, col: stepIndex });
+                                if (resizeStart !== null) {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  const barW = clamp012(cov.extent) * rect.width;
+                                  const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
+                                  if (e.clientX - rect.left >= barW - zone) {
+                                    onResizeDown(laneIndex, resizeStart);
+                                    return;
+                                  }
+                                }
+                                if (!canToggle) return;
+                                onCellDown(laneIndex, stepIndex, on, e);
+                              },
+                              onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
+                              style: {
+                                position: "relative",
+                                width: "100%",
+                                height: 22,
+                                padding: 0,
+                                overflow: "hidden",
+                                border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
+                                borderRadius: 3,
+                                background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
+                                cursor: !canToggle ? "default" : gainScoped && on ? "ns-resize" : "pointer"
+                              },
+                              children: [
+                                cov && // Two orthogonal axes on one bar, which is how a DAW draws a
+                                // note: WIDTH is how much of this column the note sounds for
+                                // (#1056), HEIGHT is velocity, bottom-anchored and full when
+                                // neutral — so a length-1 note at neutral gain is the same
+                                // solid square it has always been. The hue is the voice
+                                // colour (#471), or a velocity ramp when View ▸ Note Color =
+                                // Velocity (#428).
+                                //
+                                // A carried column is dimmed rather than drawn solid, the
+                                // vocabulary the piano roll already ships for the same fact
+                                // (`opacity: on && !isHead ? 0.7 : 1`) — one held note reads
+                                // as one note, and never as a second trigger.
+                                /* @__PURE__ */ jsxRuntime.jsx(
+                                  "span",
+                                  {
+                                    "data-seq-fill": true,
+                                    "data-seq-sustain": held2 ? "true" : void 0,
+                                    "data-seq-extent": cov.extent !== 1 ? cov.extent.toFixed(4) : void 0,
+                                    style: {
+                                      position: "absolute",
+                                      left: 0,
+                                      bottom: 0,
+                                      // `minWidth` is a floor on the PIXEL, not on the datum: a
+                                      // note whose length rounds to nothing still has to be
+                                      // visible, or the grid would silently lose a trigger it
+                                      // can spell.
+                                      width: `${clamp012(cov.extent) * 100}%`,
+                                      minWidth: held2 ? 0 : 2,
+                                      height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
+                                      background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
+                                      opacity: held2 ? 0.7 : 1,
+                                      pointerEvents: "none"
+                                    }
+                                  }
+                                ),
+                                resizeStart !== null && // THE LENGTH HANDLE (#1053) — the axis #1056 made visible, made
+                                // settable. Same shape as the roll's, because this is the same
+                                // gesture on the other surface and the issue asks the two to agree.
+                                //
+                                // It sits at the BAR's trailing edge rather than the cell's, so a
+                                // note that stops mid-column carries its handle on its own end
+                                // instead of floating in the empty background past it. Width is
+                                // clamped to the bar for the same reason the roll clamps it: a
+                                // handle wider than the note would overhang backwards past the
+                                // note's own start. What that costs a very short note — a very
+                                // small handle — is paid back by the invisible grab zone above.
+                                //
+                                // RENDERED ONLY WHERE A DRAG WOULD DO SOMETHING (`resizable`),
+                                // which is the panel's standing rule for every affordance it draws
+                                // (#1064/#1070): a handle on a note whose every length the writer
+                                // declines is a control the user can press to no effect, and this
+                                // project ranks that worse than not offering it at all.
+                                /* @__PURE__ */ jsxRuntime.jsx(
+                                  "span",
+                                  {
+                                    "data-seq-resize": `${laneIndex}:${resizeStart}`,
+                                    "aria-label": `resize ${lane.sound} step ${resizeStart + 1}`,
+                                    onPointerDown: (e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      onResizeDown(laneIndex, resizeStart);
+                                    },
+                                    style: {
+                                      position: "absolute",
+                                      top: 0,
+                                      bottom: 0,
+                                      right: `${(1 - clamp012(cov.extent)) * 100}%`,
+                                      width: `min(${RESIZE_ZONE_PX}px, ${clamp012(cov.extent) * 100}%)`,
+                                      cursor: "ew-resize",
+                                      background: "var(--foreground, #e6e6ea)",
+                                      opacity: 0.45,
+                                      borderRadius: "0 2px 2px 0"
+                                    }
+                                  }
+                                )
+                              ]
+                            }
+                          )
+                        },
+                        stepIndex
+                      )
+                    );
+                  }) })
+                ]
+              },
+              `${lane.sound}:${lane.part ?? 0}`
+            );
+          })
+        ] }),
         /* @__PURE__ */ jsxRuntime.jsx(ExtendHandle, { length, gridRef, cellAttr: "data-seq-cell", cols: model.steps, lastBarCols: layout.lastBarCols }),
         !isChordChart && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 4 }, children: [
           /* @__PURE__ */ jsxRuntime.jsx("span", { style: { width: 72, flex: "0 0 auto" } }),
@@ -36505,6 +36629,23 @@ function reportRefusal2(attempted, outcome = LEFT_UNCHANGED) {
   });
 }
 __name(reportRefusal2, "reportRefusal");
+function rollSteps(model, cols) {
+  const byPart = writtenStepStarts(model);
+  let part = 0;
+  if (model.source && model.source.parts.length > 1) {
+    let most = -1;
+    for (const p of model.source.parts) {
+      const n = p.regions.reduce((sum, r) => sum + r.content.length, 0);
+      if (n > most) {
+        most = n;
+        part = p.part;
+      }
+    }
+  }
+  const starts = byPart.get(part) ?? [];
+  return { stepStarts: new Set(starts), ruler: rulerLabels(model, cols, starts) };
+}
+__name(rollSteps, "rollSteps");
 function overlapAt(model, midi, step) {
   for (const n of model.notes) {
     if (pitchToMidi(n.pitch) !== midi) continue;
@@ -36968,7 +37109,8 @@ function PianoRollGrid({
   }
   const tabCell = cursorCell() ?? defaultCell();
   const layout = drawnLayout(model, cols);
-  const barLine = /* @__PURE__ */ __name((c) => layout.barStart(c) ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0, "barLine");
+  const { stepStarts, ruler } = rollSteps(model, cols);
+  const barLine = /* @__PURE__ */ __name((c) => layout.barStart(c) ? "-2px 0 0 0 var(--foreground, #e6e6ea)" : c > 0 && stepStarts.has(c) ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0, "barLine");
   const cellBox = /* @__PURE__ */ __name((c) => {
     const w = layout.weight(c);
     return { flex: `${w} ${w} 0`, minWidth: 12 * w, maxWidth: 44 * w };
@@ -37036,6 +37178,31 @@ function PianoRollGrid({
                 style: { position: "relative", display: "flex", flexDirection: "column", gap: 1, width: "100%", paddingRight: 28, boxSizing: "border-box" },
                 onPointerLeave: () => setHoveredMidi(null),
                 children: [
+                  /* @__PURE__ */ jsxRuntime.jsxs("div", { "data-roll-ruler": true, "aria-hidden": "true", style: { display: "flex", alignItems: "flex-end", gap: 6, height: 12 }, children: [
+                    /* @__PURE__ */ jsxRuntime.jsx("div", { style: { width: model.numeric ? 36 : 40, flex: "0 0 auto" } }),
+                    /* @__PURE__ */ jsxRuntime.jsx("div", { style: { display: "flex", gap: 1, flex: 1, minWidth: 0 }, children: Array.from({ length: cols }, (_, c) => {
+                      const label = ruler.get(c);
+                      const isBar = label !== void 0 && !label.includes(".");
+                      return /* @__PURE__ */ jsxRuntime.jsx("div", { style: { ...cellBox(c), position: "relative", height: "100%" }, children: label !== void 0 && /* @__PURE__ */ jsxRuntime.jsx(
+                        "span",
+                        {
+                          "data-roll-ruler-label": c,
+                          style: {
+                            position: "absolute",
+                            left: 0,
+                            bottom: 0,
+                            fontSize: 9,
+                            lineHeight: "10px",
+                            whiteSpace: "nowrap",
+                            fontVariantNumeric: "tabular-nums",
+                            fontWeight: isBar ? 600 : 400,
+                            color: isBar ? "var(--foreground, #e6e6ea)" : "var(--foreground-muted, #a0a0aa)"
+                          },
+                          children: label
+                        }
+                      ) }, c);
+                    }) })
+                  ] }),
                   /* @__PURE__ */ jsxRuntime.jsx(
                     "div",
                     {
@@ -37154,6 +37321,7 @@ function PianoRollGrid({
                                     {
                                       role: "gridcell",
                                       "aria-selected": isSel,
+                                      "data-roll-step-start": step > 0 && !layout.barStart(step) && stepStarts.has(step) ? "true" : void 0,
                                       style: { display: "flex", ...cellBox(step), boxShadow: barLine(step) },
                                       children: /* @__PURE__ */ jsxRuntime.jsxs(
                                         "button",

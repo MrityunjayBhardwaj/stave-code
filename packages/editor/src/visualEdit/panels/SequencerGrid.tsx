@@ -54,6 +54,7 @@ import {
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
+import { rulerLabels, writtenStepStarts } from './writtenSteps'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
 import {
@@ -246,6 +247,16 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     () => (model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null),
     [model],
   )
+
+  // WHERE EACH STEP AS WRITTEN BEGINS, per `,`-part (#1841) — the parser's own regions
+  // in drawn columns, so `bd [~ bd] sd ~` shows four steps over its eight columns. A
+  // row draws its own part's lines; a part with no current regions draws none.
+  const stepStarts = React.useMemo(() => {
+    if (!model) return null
+    const out = new Map<number, Set<number>>()
+    for (const [part, cols] of writtenStepStarts(model)) out.set(part, new Set(cols))
+    return out
+  }, [model])
 
   // PROVE BEFORE OFFER, at the length handle (#1053) — the same rule the cell already
   // applies, asked of `resizeCell` itself so the handle cannot promise a drag the writer
@@ -615,6 +626,10 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // two grids agree on where bars start and how wide a cell is.
   const layout = drawnLayout(model, model.steps)
   const tabCell = liveCursor ?? { row: 0, col: 0 }
+  // The ruler counts the steps of the row you're on — the first row until a cursor
+  // exists — because rows from different `,`-parts can split a bar differently (#1841).
+  const rulerPart = model.lanes[liveCursor?.row ?? 0]?.part ?? 0
+  const ruler = rulerLabels(model, model.steps, [...(stepStarts?.get(rulerPart) ?? [])])
 
   return (
     <div
@@ -694,6 +709,51 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
         {/* The voices are the grid (#1802, ARIA grid pattern): a row per voice, a
             gridcell per step, one tab stop that moves with the cursor. */}
         <div ref={gridRef} role="grid" aria-label="Step sequencer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {/* THE RULER (#1841): counts the written steps of the cursor's row, `1, 1.2, …, 2`.
+            Laid out exactly like a row — the header's width, the same weights and bar
+            gaps — so each label sits over its own column. Visual only: hidden from the
+            accessibility tree, where every cell already names its step. */}
+        <div data-seq-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 12 }}>
+          <div style={{ width: 96, flex: '0 0 auto' }} />
+          <div style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
+            {Array.from({ length: model.steps }, (_, c) => {
+              const label = ruler.get(c)
+              const isBar = label !== undefined && !label.includes('.')
+              return (
+                <div
+                  key={c}
+                  style={{
+                    flex: `${layout.weight(c)} ${layout.weight(c)} 0`,
+                    minWidth: 16 * layout.weight(c),
+                    maxWidth: 56 * layout.weight(c),
+                    marginLeft: layout.barStart(c) ? 8 : 0,
+                    position: 'relative',
+                    height: '100%',
+                  }}
+                >
+                  {label !== undefined && (
+                    <span
+                      data-seq-ruler-label={c}
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        bottom: 0,
+                        fontSize: 9,
+                        lineHeight: '10px',
+                        whiteSpace: 'nowrap',
+                        fontVariantNumeric: 'tabular-nums',
+                        fontWeight: isBar ? 600 : 400,
+                        color: isBar ? 'var(--foreground, #e6e6ea)' : 'var(--foreground-muted, #a0a0aa)',
+                      }}
+                    >
+                      {label}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
         {model.lanes.map((lane, laneIndex) => {
           const voice = sampleVoice(lane.sound)
           return (
@@ -783,6 +843,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                 const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true
                 const isCursor = liveCursor?.row === laneIndex && liveCursor.col === stepIndex
                 const isTab = tabCell.row === laneIndex && tabCell.col === stepIndex
+                // A written step begins here, and it is not a bar line (those keep their gap)
+                const stepStart =
+                  stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex)
                 return (
                   // A gridcell holding one toggle button — `aria-pressed` stays on the
                   // button, which may carry it; the cursor is the cell's `aria-selected`.
@@ -790,6 +853,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     key={stepIndex}
                     role="gridcell"
                     aria-selected={isCursor}
+                    data-seq-step-start={stepStart ? 'true' : undefined}
                     style={{
                       display: 'flex',
                       flex: `${layout.weight(stepIndex)} ${layout.weight(stepIndex)} 0`,
@@ -797,6 +861,12 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                       maxWidth: 56 * layout.weight(stepIndex),
                       // subtle gap at each bar boundary
                       marginLeft: layout.barStart(stepIndex) ? 8 : 0,
+                      // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
+                      // step fills the 2px gap before it with a line; a plain column
+                      // leaves that gap empty. Drawn as a shadow INTO the gap rather than
+                      // as extra width, because rows of different parts start steps at
+                      // different columns and a real gap would push their columns apart.
+                      boxShadow: stepStart ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined,
                     }}
                   >
                   <button
