@@ -72,6 +72,7 @@ import {
 } from './gridGestures'
 import { readChainMethod } from './chainMethod'
 import { ExtendHandle } from './ExtendHandle'
+import { rulerLabels, writtenStepStarts } from './writtenSteps'
 import { usePatternLength } from './usePatternLength'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
@@ -185,6 +186,33 @@ function reportRefusal(attempted: string, outcome: string = LEFT_UNCHANGED): voi
     runtime: 'stave',
     message: `${attempted} — writing it would change the pattern in ways you didn't ask for, ${outcome}.`,
   })
+}
+
+/**
+ * The roll's written steps and ruler (#1841), from the parser's own regions. A stack's
+ * parts can split a bar differently; the roll has no "part being edited" yet, so it
+ * follows the part holding the most notes — usually the melody or the chords rather than
+ * the bass — counted from the notes each part's regions already carry. Ties go to the
+ * part written first. Its lines are drawn for every row; the other parts draw none.
+ */
+function rollSteps(
+  model: PianoRollModel,
+  cols: number,
+): { stepStarts: Set<number>; ruler: Map<number, string> } {
+  const byPart = writtenStepStarts(model)
+  let part = 0
+  if (model.source && model.source.parts.length > 1) {
+    let most = -1
+    for (const p of model.source.parts) {
+      const n = p.regions.reduce((sum, r) => sum + r.content.length, 0)
+      if (n > most) {
+        most = n
+        part = p.part
+      }
+    }
+  }
+  const starts = byPart.get(part) ?? []
+  return { stepStarts: new Set(starts), ruler: rulerLabels(model, cols, starts) }
 }
 
 /**
@@ -1159,8 +1187,16 @@ export function PianoRollGrid({
   // Each bar may hold its own count of cells (#1827); `drawnLayout` says where bars start
   // and how wide a cell is, so every bar is drawn the same width whatever its count.
   const layout = drawnLayout(model, cols)
+  const { stepStarts, ruler } = rollSteps(model, cols)
+  // THREE LINE WEIGHTS, all in that same gap (#1841): a bar line, then a lighter line
+  // where a step AS WRITTEN begins, then a plain column. Colour carries the difference,
+  // never width, for the reason above.
   const barLine = (c: number): string | undefined =>
-    layout.barStart(c) ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined
+    layout.barStart(c)
+      ? '-2px 0 0 0 var(--foreground, #e6e6ea)'
+      : c > 0 && stepStarts.has(c)
+        ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)'
+        : undefined
   /** a cell's flex box: weighted so a bar of 3 is as wide as a bar of 4 */
   const cellBox = (c: number): React.CSSProperties => {
     const w = layout.weight(c)
@@ -1249,6 +1285,47 @@ export function PianoRollGrid({
           style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 1, width: '100%', paddingRight: 28, boxSizing: 'border-box' }}
           onPointerLeave={() => setHoveredMidi(null)}
         >
+          {/* THE RULER (#1841): counts the written steps, `1, 1.2, …, 2`, laid out like a
+              row — the key bed's width, the same weights — so each label sits over its
+              column. Visual only, hidden from the accessibility tree.
+
+              ⚠ IT SITS IN THE SCROLL AREA'S TOP PADDING, TAKING NO HEIGHT. As a plain
+              row it pushed every pitch row down 13px (its 12 + the 1px row gap), which
+              cost the roll most of a visible row and put `snap-division`'s c3 row past
+              the bottom of a 720px viewport, where the drag's press landed on nothing.
+              The padding is 16px, so the -13px margin keeps the rows exactly where they
+              were before the ruler existed. */}
+          <div data-roll-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 12, marginTop: -13 }}>
+            <div style={{ width: model.numeric ? 36 : 40, flex: '0 0 auto' }} />
+            <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
+              {Array.from({ length: cols }, (_, c) => {
+                const label = ruler.get(c)
+                const isBar = label !== undefined && !label.includes('.')
+                return (
+                  <div key={c} style={{ ...cellBox(c), position: 'relative', height: '100%' }}>
+                    {label !== undefined && (
+                      <span
+                        data-roll-ruler-label={c}
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          bottom: 0,
+                          fontSize: 9,
+                          lineHeight: '10px',
+                          whiteSpace: 'nowrap',
+                          fontVariantNumeric: 'tabular-nums',
+                          fontWeight: isBar ? 600 : 400,
+                          color: isBar ? 'var(--foreground, #e6e6ea)' : 'var(--foreground-muted, #a0a0aa)',
+                        }}
+                      >
+                        {label}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
           {/* The pitch rows are the grid (#1802); the velocity lane below is not a row of it. */}
           <div
             ref={gridRef}
@@ -1383,6 +1460,7 @@ export function PianoRollGrid({
                       key={step}
                       role="gridcell"
                       aria-selected={isSel}
+                      data-roll-step-start={step > 0 && !layout.barStart(step) && stepStarts.has(step) ? 'true' : undefined}
                       style={{ display: 'flex', ...cellBox(step), boxShadow: barLine(step) }}
                     >
                     <button

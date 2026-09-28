@@ -739,6 +739,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "pattern-step-lines.spec.ts": {
+    "runs": "gate",
+    "why": "Stage 1 of the pattern grid (#1841): both grids draw a line where each step as written begins, and a ruler counting those steps, from the regions the parser already records. Pins line positions, that a plain column draws none, that a bar line differs from a step line, and that the sequencer's ruler follows the cursor row when parts split the bar differently."
+  },
   "sequencer-erase-refusal.spec.ts": {
     "runs": "gate",
     "why": "A lit sequencer cell whose erase the writer refuses must say so: inert and titled for the pointer, and reported as a warning for a key, which never sees a title (#1836). Before, every lit cell looked clickable and 285 of the corpus's erase clicks did nothing silently."
