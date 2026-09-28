@@ -35774,6 +35774,14 @@ function gainInScope(model) {
   return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1;
 }
 __name(gainInScope, "gainInScope");
+function reportRefusal(attempted) {
+  emitLog({
+    level: "warn",
+    runtime: "stave",
+    message: `${attempted} \u2014 writing it would change the pattern in ways you didn't ask for, so it was left unchanged.`
+  });
+}
+__name(reportRefusal, "reportRefusal");
 function SequencerGrid({ onResolution } = {}) {
   const [viewScale, setViewScale] = React38.useState(UNREFINED);
   const { chunk, model, mutate, writeMini, beginGesture, endGesture } = useGridModel({
@@ -35807,10 +35815,8 @@ function SequencerGrid({ onResolution } = {}) {
     () => chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
     [laneKey]
   );
-  const placeable = React38.useMemo(
-    () => model ? model.lanes.map(
-      (lane, li) => lane.cells.map((c, si) => isCellOn(c) ? true : canToggleCell(model, li, si, true))
-    ) : null,
+  const toggleable = React38.useMemo(
+    () => model ? model.lanes.map((lane, li) => lane.cells.map((c, si) => canToggleCell(model, li, si, !isCellOn(c)))) : null,
     [model]
   );
   const coverage = React38.useMemo(
@@ -35831,15 +35837,27 @@ function SequencerGrid({ onResolution } = {}) {
   }, [model]);
   const paintCell = React38.useCallback(
     (laneIndex, stepIndex, value) => {
+      let refused2 = false;
       mutate((prev) => {
         const lane = prev.lanes[laneIndex];
         if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) {
           return prev;
         }
-        return toggleCell(prev, laneIndex, stepIndex, value);
+        const next = toggleCell(prev, laneIndex, stepIndex, value);
+        refused2 = next === prev;
+        return next;
       });
+      return refused2;
     },
     [mutate]
+  );
+  const paintOne = React38.useCallback(
+    (laneIndex, stepIndex, value) => {
+      if (paintCell(laneIndex, stepIndex, value)) {
+        reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit");
+      }
+    },
+    [paintCell]
   );
   const addVoice = React38.useCallback(
     (sound) => {
@@ -35888,7 +35906,7 @@ function SequencerGrid({ onResolution } = {}) {
           g.mode = "velocity";
         } else if (Math.abs(dx) > DRAG_THRESHOLD) {
           g.mode = "paint";
-          paintCell(g.lane, g.step, g.paintValue);
+          paintOne(g.lane, g.step, g.paintValue);
           return;
         } else {
           return;
@@ -35903,7 +35921,7 @@ function SequencerGrid({ onResolution } = {}) {
       const g = gestureRef.current;
       if (!g) return;
       gestureRef.current = null;
-      if (g.mode === "pending") paintCell(g.lane, g.step, false);
+      if (g.mode === "pending") paintOne(g.lane, g.step, false);
       endGesture();
     }, "onUp");
     window.addEventListener("pointermove", onMove);
@@ -35912,7 +35930,7 @@ function SequencerGrid({ onResolution } = {}) {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [mutate, paintCell, endGesture, gainScoped]);
+  }, [mutate, paintOne, endGesture, gainScoped]);
   const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current4, e) => {
     beginGesture();
     if (current4) {
@@ -35935,7 +35953,7 @@ function SequencerGrid({ onResolution } = {}) {
         mode: "paint",
         paintValue: true
       };
-      paintCell(laneIndex, stepIndex, true);
+      paintOne(laneIndex, stepIndex, true);
     }
   }, "onCellDown");
   const onResizeDown = /* @__PURE__ */ __name((laneIndex, startCol) => {
@@ -35983,7 +36001,7 @@ function SequencerGrid({ onResolution } = {}) {
   });
   const paintByKey = /* @__PURE__ */ __name((laneIndex, stepIndex, value) => {
     beginGesture();
-    paintCell(laneIndex, stepIndex, value);
+    paintOne(laneIndex, stepIndex, value);
     endGesture();
   }, "paintByKey");
   const resizeByKey = /* @__PURE__ */ __name((at, action, dryRun) => {
@@ -36026,14 +36044,14 @@ function SequencerGrid({ onResolution } = {}) {
     const on = cell !== void 0 && isCellOn(cell);
     switch (action) {
       case "toggle":
-        if (!on && !(placeable?.[at.row]?.[at.col] ?? false)) return false;
+        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return false;
         if (!dryRun) {
           if (!cursorRef.current) setCursor(at);
           paintByKey(at.row, at.col, !on);
         }
         return true;
       case "remove":
-        if (!on) return false;
+        if (!on || !(toggleable?.[at.row]?.[at.col] ?? false)) return false;
         if (!dryRun) paintByKey(at.row, at.col, false);
         return true;
       default:
@@ -36165,7 +36183,8 @@ function SequencerGrid({ onResolution } = {}) {
                   const resizeStart = cov !== void 0 && isTail && resizable?.[laneIndex]?.has(cov.start) ? cov.start : null;
                   const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
                   const isPlaying = stepIndex === playingStep;
-                  const canPlace = on || (placeable?.[laneIndex]?.[stepIndex] ?? true);
+                  const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true;
+                  const pressable2 = canToggle || on && gainScoped;
                   const isCursor = liveCursor?.row === laneIndex && liveCursor.col === stepIndex;
                   const isTab = tabCell.row === laneIndex && tabCell.col === stepIndex;
                   return (
@@ -36197,9 +36216,9 @@ function SequencerGrid({ onResolution } = {}) {
                             "data-seq-cell": `${laneIndex}:${stepIndex}`,
                             "data-gain": on && gainScoped ? gain : void 0,
                             "data-playing": isPlaying ? "true" : void 0,
-                            "data-seq-cell-inert": canPlace ? void 0 : "true",
-                            "aria-disabled": canPlace ? void 0 : true,
-                            title: canPlace ? void 0 : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
+                            "data-seq-cell-inert": pressable2 ? void 0 : "true",
+                            "aria-disabled": pressable2 ? void 0 : true,
+                            title: canToggle ? void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
                             onPointerDown: (e) => {
                               e.preventDefault();
                               setCursor({ row: laneIndex, col: stepIndex });
@@ -36212,7 +36231,7 @@ function SequencerGrid({ onResolution } = {}) {
                                   return;
                                 }
                               }
-                              if (!canPlace) return;
+                              if (!pressable2) return;
                               onCellDown(laneIndex, stepIndex, on, e);
                             },
                             onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
@@ -36225,7 +36244,7 @@ function SequencerGrid({ onResolution } = {}) {
                               border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
                               borderRadius: 3,
                               background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-                              cursor: !canPlace ? "default" : gainScoped && on ? "ns-resize" : "pointer"
+                              cursor: !pressable2 ? "default" : gainScoped && on ? "ns-resize" : "pointer"
                             },
                             children: [
                               cov && // Two orthogonal axes on one bar, which is how a DAW draws a
@@ -36453,14 +36472,14 @@ __name(gainInScope2, "gainInScope");
 var tokenForRow = /* @__PURE__ */ __name((numeric, midi) => numeric ? String(midi) : midiToPitch(midi), "tokenForRow");
 var LEFT_UNCHANGED = "so it was left unchanged";
 var STAYED_AT_LAST_ACCEPTED = "so it stayed at the last spot it could go";
-function reportRefusal(attempted, outcome = LEFT_UNCHANGED) {
+function reportRefusal2(attempted, outcome = LEFT_UNCHANGED) {
   emitLog({
     level: "warn",
     runtime: "stave",
     message: `${attempted} \u2014 writing it would change the pattern in ways you didn't ask for, ${outcome}.`
   });
 }
-__name(reportRefusal, "reportRefusal");
+__name(reportRefusal2, "reportRefusal");
 function overlapAt(model, midi, step) {
   for (const n of model.notes) {
     if (pitchToMidi(n.pitch) !== midi) continue;
@@ -36553,7 +36572,7 @@ function PianoRollGrid({
           refused2 = next === prev;
           return next;
         });
-        if (refused2) reportRefusal("Couldn't delete that note");
+        if (refused2) reportRefusal2("Couldn't delete that note");
       }
       if (d.mode === "resize" && d.moved && d.askedDur != null) {
         const asked = d.askedDur;
@@ -36563,7 +36582,7 @@ function PianoRollGrid({
         const refused2 = settled === d.base;
         if (refused2) settle(d.base);
         else mutate(() => settled);
-        if (refused2) reportRefusal("Couldn't set that length");
+        if (refused2) reportRefusal2("Couldn't set that length");
       }
       if (d.mode === "move" && d.moved) {
         let wentHome = false;
@@ -36577,9 +36596,9 @@ function PianoRollGrid({
           if (wentHome) settle(d.base);
           else mutate(() => settled);
         }
-        if (wentHome) reportRefusal("Couldn't move that note there");
+        if (wentHome) reportRefusal2("Couldn't move that note there");
         else if (d.dropRefused)
-          reportRefusal(
+          reportRefusal2(
             "Couldn't move that note there",
             d.askedPitch != null ? STAYED_AT_LAST_ACCEPTED : LEFT_UNCHANGED
           );
@@ -36701,7 +36720,7 @@ function PianoRollGrid({
       refused2 = next === prev;
       return next;
     });
-    if (refused2) reportRefusal("Couldn't add that note");
+    if (refused2) reportRefusal2("Couldn't add that note");
   }, "placeAt");
   const onResizeDown = /* @__PURE__ */ __name((note) => {
     if (!model) return;
@@ -36747,7 +36766,7 @@ function PianoRollGrid({
       refused2 = next === prev;
       return next;
     });
-    if (refused2) reportRefusal("Couldn't delete that note");
+    if (refused2) reportRefusal2("Couldn't delete that note");
   }, "deleteNote");
   const copyNote = /* @__PURE__ */ __name((note) => {
     setNoteClip({ pitch: note.pitch, duration: note.duration, gain: note.gain ?? 1 });
@@ -36765,7 +36784,7 @@ function PianoRollGrid({
       }
       return setGroupGain(pasted, sel.start, clip2.gain);
     });
-    if (pasteRefused) reportRefusal("Couldn't paste that note");
+    if (pasteRefused) reportRefusal2("Couldn't paste that note");
   }, "pasteClip");
   const canDrawView = useViewProver(chunk?.miniString, parsePianoRoll);
   const scaleToSlots = /* @__PURE__ */ __name((target) => {
@@ -36830,7 +36849,7 @@ function PianoRollGrid({
       if (dryRun) return true;
       const settled2 = resizeNote(model, note.start, note.pitch, dur, { readback: true });
       if (settled2 === model) {
-        reportRefusal("Couldn't set that length");
+        reportRefusal2("Couldn't set that length");
         return true;
       }
       mutate(() => settled2);
@@ -36865,7 +36884,7 @@ function PianoRollGrid({
     const toPitch = tokenForRow(!!model.numeric, toMidi);
     const settled = moveNote(model, note.pitch, note.start, toPitch, toStart, { readback: true });
     if (settled === model) {
-      reportRefusal("Couldn't move that note there");
+      reportRefusal2("Couldn't move that note there");
       return true;
     }
     mutate(() => settled);

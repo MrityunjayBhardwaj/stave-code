@@ -54,6 +54,7 @@ import {
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
+import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
 import {
   GRID_SCOPE,
@@ -88,6 +89,21 @@ const clamp01 = (v: number): number => Math.max(0, Math.min(1, v))
 function gainInScope(model: StepGridModel): boolean {
   if (model.gainForeign || (model.bars ?? 1) > 1) return false
   return new Set(model.lanes.map((l) => l.part ?? 0)).size === 1
+}
+
+/**
+ * Say that a toggle the user asked for was not made (#1836) — the roll's
+ * `reportRefusal` sentence, on this surface. A refused cell is normally inert and
+ * titled before anyone presses it; this is for the presses that still reach the
+ * op: a lit cell kept pressable for its velocity drag, and the keys. `emitLog`
+ * coalesces identical rows, so a repeated attempt ticks one row up.
+ */
+function reportRefusal(attempted: string): void {
+  emitLog({
+    level: 'warn',
+    runtime: 'stave',
+    message: `${attempted} — writing it would change the pattern in ways you didn't ask for, so it was left unchanged.`,
+  })
 }
 
 export interface SequencerGridProps {
@@ -163,7 +179,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // used to be creation-incapable by construction; since rests carry a span
   // (#1154) some leaf grids take a note and most still do not, so the honest
   // answer is per view and only the view can give it. Memoized for the same
-  // reason `placeable` is: `mutate` fires every pointermove of a drag.
+  // reason `toggleable` is: `mutate` fires every pointermove of a drag.
   const placesNotes = React.useMemo(() => (model ? viewPlacesNotes(model) : false), [model])
 
   // Is this a CHORD CHART rather than a drum kit (#1241)? Asked of the lane
@@ -180,19 +196,24 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
 
   // PROVE BEFORE OFFER, at the cell — the gesture this panel exists for.
   // `canToggleCell` runs the real op and asks the real writer, so it cannot
-  // drift from what a click actually does ([[PV241]]). Only the OFF→ON direction
-  // is gated: an ON cell still carries its delete and its velocity drag, which
-  // are different ops with their own write paths, and narrowing those is not
-  // what #1070 decided.
+  // drift from what a click actually does ([[PV241]]).
   //
-  // Memoized on the model, so the serialize-per-empty-cell is paid once per
-  // edit rather than once per render.
-  const placeable = React.useMemo(
+  // ⚠ BOTH DIRECTIONS ARE ASKED (#1836). This map used to answer `true` for every
+  // ON cell, on the reasoning that a lit cell's erase and velocity drag are other
+  // ops with their own write paths. The erase is not: it is this same op with
+  // `false`, and on a leaf grid it refuses whenever the hit's token plays in more
+  // than one box of the view (`hh` outside `< >` over two bars) — 285 of the
+  // 5,707 erase clicks the corpus offers. Answering `true` for those made the
+  // cell look pressable and do nothing, with nothing said. The velocity drag is
+  // still a different op; the render keeps it reachable (see `pressable`).
+  //
+  // Memoized on the model, so the serialize-per-cell is paid once per edit rather
+  // than once per render. Lit cells add one ask each — about a fifth more asks than
+  // the empty cells alone, by the corpus's click counts (5,707 erase vs 25,434 place).
+  const toggleable = React.useMemo(
     () =>
       model
-        ? model.lanes.map((lane, li) =>
-            lane.cells.map((c, si) => (isCellOn(c) ? true : canToggleCell(model, li, si, true))),
-          )
+        ? model.lanes.map((lane, li) => lane.cells.map((c, si) => canToggleCell(model, li, si, !isCellOn(c))))
         : null,
     [model],
   )
@@ -202,13 +223,14 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // `bd _ sd ~` and `bd ~ sd ~` were the same picture — a length the parser reads
   // and the printer preserves that no user could see ([[PV245]]).
   //
-  // Memoized alongside `placeable` and for the same reason: `mutate` fires every
+  // Memoized alongside `toggleable` and for the same reason: `mutate` fires every
   // pointermove of a drag, so anything derived per cell is recomputed per frame
   // unless it hangs off the model ([[P380]] — where the comment claiming a per-cell
   // map was cheap predated any measurement, so this one carries the number).
   //
   // MEASURED over the 958 corpus models, same shape as that entry: p50 0.0006ms,
-  // p99 0.0063ms, worst 0.0985ms — against `placeable`'s p99 2.25ms and worst
+  // p99 0.0063ms, worst 0.0985ms — against the cell map's (then `placeable`, asking empty
+  // cells only — #1836 added the lit ones) p99 2.25ms and worst
   // 13.10ms on the same run, i.e. 0.86% of its total. The carry loop breaks at the
   // next onset, so a lane costs one pass over its own cells however long the notes
   // are. It rides along with the expensive memo rather than adding a frame cost.
@@ -229,15 +251,15 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // offered the nearest whole lengths rather than a fraction it could not be dragged to.
   //
   // Keyed by the note's HEAD column, so a two-column note asks once rather than once per
-  // column it covers. Memoized on the model beside `placeable`/`coverage` and for the
+  // column it covers. Memoized on the model beside `toggleable`/`coverage` and for the
   // same reason ([[P380]]): `mutate` fires every pointermove, so anything derived per
   // cell is recomputed per frame unless it hangs off the model.
   //
   // MEASURED over the 966 corpus models, because [[P380]] is precisely the entry where a
   // comment called a per-cell map cheap before anyone had timed one: p50 0.0022ms, p99
-  // 0.357ms, worst 1.26ms — against `placeable`'s p50 0.0047ms, p99 2.54ms, worst 14.4ms
+  // 0.357ms, worst 1.26ms — against the cell map's (then `placeable`) p50 0.0047ms, p99 2.54ms, worst 14.4ms
   // on the same run, i.e. **16.1% of its total**. It costs less than the map beside it
-  // despite serializing, because it asks once per NOTE while `placeable` asks once per
+  // despite serializing, because it asks once per NOTE while that map then asked once per
   // EMPTY cell, and grids have far more of those.
   const resizable = React.useMemo(() => {
     if (!model) return null
@@ -252,17 +274,34 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     })
   }, [model])
 
+  // Returns whether the writer REFUSED the toggle — `toggleCell` handing back the
+  // model it was given — as distinct from a cell already in the asked state, which
+  // is no refusal. The caller decides whether to say so: a single press or key does
+  // (`paintOne`), a paint drag brushing across inert cells does not.
   const paintCell = React.useCallback(
-    (laneIndex: number, stepIndex: number, value: boolean): void => {
+    (laneIndex: number, stepIndex: number, value: boolean): boolean => {
+      let refused = false
       mutate((prev) => {
         const lane = prev.lanes[laneIndex]
         if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) {
           return prev // no change → useGridModel skips the write
         }
-        return toggleCell(prev, laneIndex, stepIndex, value)
+        const next = toggleCell(prev, laneIndex, stepIndex, value)
+        refused = next === prev
+        return next
       })
+      return refused
     },
     [mutate],
+  )
+  /** One deliberate toggle — a press or a key — which says so when it is refused. */
+  const paintOne = React.useCallback(
+    (laneIndex: number, stepIndex: number, value: boolean): void => {
+      if (paintCell(laneIndex, stepIndex, value)) {
+        reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit")
+      }
+    },
+    [paintCell],
   )
 
   // Add a new drum voice (#516). The new lane is all-rest, so it stages in the
@@ -339,7 +378,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
           g.mode = 'velocity'
         } else if (Math.abs(dx) > DRAG_THRESHOLD) {
           g.mode = 'paint'
-          paintCell(g.lane, g.step, g.paintValue) // toggle the start cell off
+          paintOne(g.lane, g.step, g.paintValue) // toggle the start cell off
           return
         } else {
           return
@@ -359,7 +398,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
       // click empty turns a step on, click it again turns it off). A vertical/
       // horizontal drag already ran as velocity / paint-off and left mode !=
       // 'pending'.
-      if (g.mode === 'pending') paintCell(g.lane, g.step, false)
+      if (g.mode === 'pending') paintOne(g.lane, g.step, false)
       endGesture()
     }
     window.addEventListener('pointermove', onMove)
@@ -368,7 +407,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
-  }, [mutate, paintCell, endGesture, gainScoped])
+  }, [mutate, paintOne, endGesture, gainScoped])
 
   const onCellDown = (laneIndex: number, stepIndex: number, current: boolean, e: React.PointerEvent): void => {
     beginGesture()
@@ -396,7 +435,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
         mode: 'paint',
         paintValue: true,
       }
-      paintCell(laneIndex, stepIndex, true)
+      paintOne(laneIndex, stepIndex, true)
     }
   }
 
@@ -467,7 +506,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // One edit, bracketed the way the click brackets it — one undo step, one re-eval.
   const paintByKey = (laneIndex: number, stepIndex: number, value: boolean): void => {
     beginGesture()
-    paintCell(laneIndex, stepIndex, value)
+    paintOne(laneIndex, stepIndex, value)
     endGesture()
   }
 
@@ -519,17 +558,17 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     const on = cell !== undefined && isCellOn(cell)
     switch (action) {
       case 'toggle':
-        // Exactly what a click does: an ON cell turns off; an empty cell turns on
-        // where the writer takes it (`placeable`, the same gate that makes the
-        // cell inert to the pointer); a column a note sounds through is inert.
-        if (!on && !(placeable?.[at.row]?.[at.col] ?? false)) return false
+        // Exactly what a click does: the cell flips where the writer takes it
+        // (`toggleable`, the same gate that makes the cell inert to the pointer —
+        // an ON cell included, #1836); a column a note sounds through is inert.
+        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return false
         if (!dryRun) {
           if (!cursorRef.current) setCursor(at)
           paintByKey(at.row, at.col, !on)
         }
         return true
       case 'remove':
-        if (!on) return false
+        if (!on || !(toggleable?.[at.row]?.[at.col] ?? false)) return false
         if (!dryRun) paintByKey(at.row, at.col, false)
         return true
       default:
@@ -718,10 +757,15 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                 // halfway through. Same rule the roll's velocity lane already uses.
                 const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1
                 const isPlaying = stepIndex === playingStep
-                // An empty cell is offered only where the writer will take it.
+                // A cell is offered only where the writer will take its toggle.
                 // Where it will not, the cell is inert AND says so, instead of
-                // swallowing the click the way it did before (#1064/#1070).
-                const canPlace = on || (placeable?.[laneIndex]?.[stepIndex] ?? true)
+                // swallowing the click the way it did before (#1064/#1070) — for a
+                // lit cell's erase too (#1836).
+                const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true
+                // A lit cell whose erase is refused can still take a velocity drag,
+                // a different op; where velocity is in scope it stays pressable and
+                // a plain click reports the refusal (`paintOne`) instead.
+                const pressable = canToggle || (on && gainScoped)
                 const isCursor = liveCursor?.row === laneIndex && liveCursor.col === stepIndex
                 const isTab = tabCell.row === laneIndex && tabCell.col === stepIndex
                 return (
@@ -761,8 +805,8 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     data-seq-cell={`${laneIndex}:${stepIndex}`}
                     data-gain={on && gainScoped ? gain : undefined}
                     data-playing={isPlaying ? 'true' : undefined}
-                    data-seq-cell-inert={canPlace ? undefined : 'true'}
-                    aria-disabled={canPlace ? undefined : true}
+                    data-seq-cell-inert={pressable ? undefined : 'true'}
+                    aria-disabled={pressable ? undefined : true}
                     // WHY THIS CELL IS INERT, and the two reasons are not
                     // interchangeable. On the element and alt paths every
                     // remaining refusal is part-relative — a sound sustaining
@@ -779,12 +823,20 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     // was. The affordance is decided by the op; only the sentence
                     // is decided here, and it reads the path because the path is
                     // what makes the two reasons different.
+                    //
+                    // A LIT cell's reason is its own (#1836): on a leaf grid a hit
+                    // whose text plays in more than one box has no replacement that
+                    // removes only this box — all 285 refused erases in the corpus.
                     title={
-                      canPlace
+                      canToggle
                         ? undefined
-                        : model.leafSource
-                          ? 'This pattern edits its existing notes — add steps in the code view.'
-                          : 'Adding a step here would change how long another sound plays — the grid has no way to write that.'
+                        : on
+                          ? model.leafSource
+                            ? 'This hit comes from text that plays in more than one box here — remove it in the code view.'
+                            : 'Removing this hit would change the pattern in other places too — the grid has no way to write that.'
+                          : model.leafSource
+                            ? 'This pattern edits its existing notes — add steps in the code view.'
+                            : 'Adding a step here would change how long another sound plays — the grid has no way to write that.'
                     }
                     onPointerDown={(e) => {
                       e.preventDefault()
@@ -792,7 +844,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                       // RESIZE INTENT IS DECIDED FIRST, and before the placement guard.
                       // The grab zone runs inward from the BAR's trailing edge, which on
                       // a held note is a column the placement gate has already made inert
-                      // (a hit cannot be painted under a sustain) — so a `!canPlace`
+                      // (a hit cannot be painted under a sustain) — so a `!pressable`
                       // return above this would leave every note longer than one column
                       // with a handle that is drawn and cannot be pressed.
                       //
@@ -811,7 +863,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                           return
                         }
                       }
-                      if (!canPlace) return
+                      if (!pressable) return
                       onCellDown(laneIndex, stepIndex, on, e)
                     }}
                     onPointerEnter={() => onCellEnter(laneIndex, stepIndex)}
@@ -828,7 +880,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                       background: isPlaying
                         ? 'var(--background, #34343c)'
                         : 'var(--background-elevated, #26262c)',
-                      cursor: !canPlace ? 'default' : gainScoped && on ? 'ns-resize' : 'pointer',
+                      cursor: !pressable ? 'default' : gainScoped && on ? 'ns-resize' : 'pointer',
                     }}
                   >
                     {cov && (

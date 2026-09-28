@@ -739,6 +739,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "sequencer-erase-refusal.spec.ts": {
+    "runs": "gate",
+    "why": "A lit sequencer cell whose erase the writer refuses must say so: inert and titled where nothing else is offered, reported as a warning at the click where it stays pressable for velocity (#1836). Before, every lit cell looked clickable and 285 of the corpus's erase clicks did nothing silently."
+  },
   "roll-move-decline-reported.spec.ts": {
     "runs": "gate",
     "why": "A move drop the writer declines must be reported and must leave the note at the last accepted frame (#1452). The message existed and was unreachable for this whole class; nothing was looking, which is why it survived. Both outcome clauses are pinned because a declined drop rests in two different places."
