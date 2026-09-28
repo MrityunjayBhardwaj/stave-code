@@ -55,10 +55,15 @@ const corpus: { minis: { mini: string }[] } = JSON.parse(
 const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 
 /** measured 2026-08-24 on studio_v0.2.0 + the scoped placement cap */
-const ROLL_UNITS = 596
-const ROLL_ASKS = 131103
+// ⚠ #1827 (each bar drawn at its own step count) moved every population here by one unit,
+// `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>`, and re-drew two others per bar
+// (`<c2*2 g2*5 [a g]>`, `<0 [0 1] 0 [0 1 0]>`). A whole-corpus A/B of every place,
+// resize, delete and move shows every OTHER unit's answer byte-identical, so the
+// aggregates below moved by those three alone.
+const ROLL_UNITS = 597
+const ROLL_ASKS = 131277
 const ROLL_REFUSED = 17710
-const ROLL_ANSWERS = '0b706083df7ec0d5'
+const ROLL_ANSWERS = '9bb87049a5a8d3a2'
 
 /** the durations are the axis the previous instrument lacked — see the header */
 const DURATIONS = [1, 2, 4]
@@ -119,9 +124,9 @@ const aggregate = (answers: Map<string, string>): string => {
 }
 
 /** measured 2026-08-24 on the same tree, resizing every note the roll holds */
-const RESIZE_UNITS = 595
-const RESIZE_ASKS = 16440
-const RESIZE_ANSWERS = '35db149654f900c6'
+const RESIZE_UNITS = 596
+const RESIZE_ASKS = 16506
+const RESIZE_ANSWERS = '07b83a9c647196e3'
 
 /**
  * ⚠ THE PLURAL CONTRACT, PINNED — NOT A DEFECT (#1321). Twenty asks move a second note,
@@ -380,8 +385,8 @@ describe('surface isolation — the roll, every placement it can be asked', () =
 })
 
 /** measured 2026-08-24 on studio_v0.2.0 + the delete writer */
-const DELETE_UNITS = 595
-const DELETE_ASKS = 5480
+const DELETE_UNITS = 596
+const DELETE_ASKS = 5502
 
 /**
  * ⚠ PINNED WITH ITS ARGUMENT, because a bare number here reads as a defect and is not one.
@@ -397,7 +402,7 @@ const DELETE_ASKS = 5480
  */
 const DELETE_REFUSED = 382
 
-const DELETE_ANSWERS = '7f3696bdde0bb4ee'
+const DELETE_ANSWERS = '078472cd05f5318e'
 
 interface DeleteSweep extends Sweep {
   /** asks whose written bytes serialize to null — must be 0, the whole point of the op */
@@ -559,11 +564,13 @@ describe('surface isolation — the roll, every delete it can be asked', () => {
  * asks the writer for gestures the panel cannot make — and doing so is what made an
  * earlier measurement read 1,176 lost writes that no user could ever have performed.
  */
-const MOVE_UNITS = 595
-const MOVE_ASKS = 172185
-const MOVE_REFUSED = 3652
-const MOVE_REBUILDS = 168533
-const MOVE_ANSWERS = '0c199f19f63db9e2'
+const MOVE_UNITS = 596
+const MOVE_ASKS = 172515
+// ⚠ 3652 -> 3559 at #1827 (each bar drawn at its own step count): fewer refusals — the two re-drawn units have no half-cells
+// left to drop a note on, net of the arrival's own refusals.
+const MOVE_REFUSED = 3559
+const MOVE_REBUILDS = 168956
+const MOVE_ANSWERS = '2a90c4278c4e5777'
 
 interface MoveSweep extends Sweep {
   unspellable: number
@@ -700,8 +707,8 @@ describe('surface isolation — the roll, every move a pointer can make', () => 
 
 
 /** measured 2026-08-25 on `f60985dc`, over the same units every other roll sweep uses */
-const OFFER_UNITS = 595
-const OFFER_NOTES = 5480
+const OFFER_UNITS = 596
+const OFFER_NOTES = 5502
 /**
  * ⚠ THIS PIN IS A THIRD OF THE SURFACE, AND #1322 WAS FILED AT 93.
  *
@@ -716,7 +723,9 @@ const OFFER_NOTES = 5480
  * can). Deliberate changes to `resizeNote`'s reach WILL move it — say which change moved
  * it and why, then re-pin.
  */
-const OFFER_INERT = 1861
+// ⚠ 1861 -> 1881 at #1827 (each bar drawn at its own step count): 20 of the arrival's notes cannot lengthen without running
+// into the next note, and a drag can resize none of them.
+const OFFER_INERT = 1881
 
 /**
  * The exhaustive form of the question the panel asks cheaply: is there ANY column the

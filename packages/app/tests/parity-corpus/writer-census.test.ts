@@ -531,7 +531,11 @@ describe('writer census — how much of the syntactic core transfers to the deri
         unverified: all.filter((r) => r.outcome === 'no-probe').length,
       },
       'the census partition' + why,
-    ).toEqual({ transfers: 1096, untransferable: 68, unverified: 109 })
+      // ⚠ untransferable 68 -> 70 at #1827 (each bar drawn at its own step count), the other
+      // two UNMOVED. The mechanism is `core-structured`: two units the core now serves drawn
+      // per bar (`<~ ~ bd*3 bd*4 …>`, `<[36 48]*2 [34 46]*3 …>`) need 96 shared columns, and
+      // the derived projections still cap at 64, so neither has a derived view to transfer to.
+    ).toEqual({ transfers: 1096, untransferable: 70, unverified: 109 })
     // The reclassification is asserted by MECHANISM as well as by total, so that a
     // future change cannot hold the totals steady while moving asks between buckets.
     // ⚠ 11 → 0 at #1010 P4c. The printer preserves lengths, so nothing in the census
@@ -641,7 +645,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // Folded into one array assertion so BOTH columns report in a single run —
     // `expect` aborts a test at its first failure, and the whole point of this
     // pair is the split between the columns, which one value cannot show.
-    expect([p6.both.arrayValue, p6.both.structural]).toEqual([9, 59])
+    // ⚠ structural 59 -> 61 at #1827 (each bar drawn at its own step count): the two core-served units that need 96 shared columns.
+    expect([p6.both.arrayValue, p6.both.structural]).toEqual([9, 61])
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
     // structured core view" and "45 have a verified core edit" are different
@@ -730,7 +735,11 @@ describe('writer census — how much of the syntactic core transfers to the deri
       coreStructured: p6.both.coreStructured,
       coreEdits: p6.both.coreEdits,
       both: p6.both.blocker,
-    }).toEqual({ coreStructured: 53, coreEdits: 53, both: 51 })
+      // ⚠ 53/53/51 -> 55/55/53 at #1827 (each bar drawn at its own step count): the two units the
+      // core newly serves per bar have structure AND a core edit the engine oracle verifies —
+      // once the oracle measures a per-bar model with its own ruler (`barRuler`). Before
+      // that fix the drum grid's edit was filed `corrupt`: the probe deleted the wrong cell.
+    }).toEqual({ coreStructured: 55, coreEdits: 55, both: 53 })
 
     // …and the split the whole conjunction exists to keep visible. Asserted here rather
     // than left to the generated document, because the document is an OUTPUT of this run

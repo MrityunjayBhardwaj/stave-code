@@ -42,10 +42,14 @@ const corpus: { minis: { mini: string }[] } = JSON.parse(
 const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 
 /** measured 2026-08-23 on studio_v0.2.0 + #1314, and identical on the build before it */
-const GRID_UNITS = 1021
-const GRID_ASKS = 62424
+// ⚠ 1021 -> 1022 at #1827 (each bar drawn at its own step count): `<~ ~ bd*3 bd*4 …>` now opens; every other unit's answers are
+// byte-identical (checked by a whole-corpus A/B of every toggle), so ANSWERS moved by it alone.
+const GRID_UNITS = 1022
+// ⚠ 62424 -> 62304 at #1827: the drum grid's cells arrive, and `<c2*2 g2*5 [a g]>` drawn per
+// bar offers 9 cells per lane instead of 30.
+const GRID_ASKS = 62304
 const GRID_REFUSED = 4899
-const GRID_ANSWERS = 'be66ed01e4467421'
+const GRID_ANSWERS = '7f183771c6b8d832'
 
 const shortHash = (s: string): string =>
   crypto.createHash('sha1').update(s).digest('hex').slice(0, 12)

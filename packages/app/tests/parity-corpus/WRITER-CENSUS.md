@@ -33,6 +33,15 @@ so the move is attributable to the population and to nothing else:
 | …core edit VERIFIED ok | 49 | **53** | +4 |
 | **the P6 blocker set** | **48** (grid 18 + roll 30) | **51** (grid 18 + roll 33) | **+3, ENTIRELY ON THE ROLL** |
 
+> **MOVED AT #1827 (each bar drawn at its own step count): untransferable 68 → 70, core-served
+> asks 1273 → 1275, transfers and unverified unmoved.** Two corpus patterns whose bars hold
+> step counts that do not nest — `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` (grid) and
+> `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` (roll) — used to need 96 shared columns and were
+> refused; the core now draws them one bar at a time. The derived projections still cap at
+> 64 shared columns, so both arrive as `core-structured` untransferable asks. Structural
+> untransferable 59 → 61, core view has STRUCTURE 53 → 55, core edit VERIFIED ok 53 → 55, and
+> so the P6 blocker set 51 → 53 (grid 18 → 19, roll 33 → 34): the core writes both faithfully.
+
 > ⚠⚠ **THE "54" THIS DOCUMENT QUOTES BELOW IS TWO CHANGES BEHIND THE GATE, AND WAS
 > ALREADY WRONG BEFORE #1242 TOUCHED ANYTHING.** Re-measured on `studio_v0.2.0` over
 > the unchanged 1535-row corpus, the blocker reads **48**, not 54.

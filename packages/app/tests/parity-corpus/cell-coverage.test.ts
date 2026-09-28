@@ -54,6 +54,7 @@ import { scaleStepGrid } from '../../../editor/src/visualEdit/notation/resolutio
 import { setGroupGain } from '../../../editor/src/visualEdit/panels/inspector'
 import { isCellOn, laneCoverage, columnCount, columnOverlap, headColumn, tailColumn, sequentialColumnGroups } from '../../../editor/src/visualEdit/notation/model'
 import type { StepCell, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+import { barRuler, columnAt } from './engineEditOracle'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(
@@ -65,16 +66,16 @@ const minis = [...new Set(corpus.minis.map((o) => o.mini.trim()).filter((m) => m
 const EPS = 1e-9
 
 /**
- * what the ENGINE sounded: per token, the [begin, end) intervals in COLUMNS.
- *
- * `barSteps` is each bar's own column count. A column is not one width across bars when
- * the model is drawn per bar (#1827) — `<c2*2 g2*5 [a g]>` is 2 + 5 + 2 — so the time→
- * column map is taken bar by bar: bar b starts after the columns of the bars before it,
- * and a time `t` into it lands `t × barSteps[b]` columns in. Uniform models pass the same
- * count for every bar, which is exactly the old `cyc × perBar + t × perBar`.
+ * what the ENGINE sounded: per token, the [begin, end) intervals in COLUMNS, measured with
+ * the shared `barRuler` — a column is not one width across bars when the model is drawn
+ * per bar (#1827), `<c2*2 g2*5 [a g]>` being 2 + 5 + 2. For a uniform model this is exactly
+ * the old `cyc × perBar + t × perBar`.
  */
-function playedSpans(mini: string, barSteps: readonly number[]): Map<string, [number, number][]> | null {
-  const bars = barSteps.length
+function playedSpans(
+  mini: string,
+  ruler: { widths: number[]; starts: number[] },
+): Map<string, [number, number][]> | null {
+  const bars = ruler.widths.length
   let pat: unknown
   try {
     pat = reifyMini(mini)
@@ -82,8 +83,7 @@ function playedSpans(mini: string, barSteps: readonly number[]): Map<string, [nu
     return null
   }
   const out = new Map<string, [number, number][]>()
-  for (let cyc = 0, before = 0; cyc < bars; before += barSteps[cyc], cyc++) {
-    const perBar = barSteps[cyc]
+  for (let cyc = 0; cyc < bars; cyc++) {
     let haps: Array<{
       hasOnset?: () => boolean
       whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
@@ -100,8 +100,8 @@ function playedSpans(mini: string, barSteps: readonly number[]): Map<string, [nu
       // the token as the reader spells it: a string, or a `:`-variant's ARRAY (#1019)
       const token = typeof v === 'string' ? v : Array.isArray(v) ? v.join(':') : null
       if (token === null) continue
-      const begin = (h.whole.begin.valueOf() - cyc) * perBar + before
-      const end = (h.whole.end.valueOf() - cyc) * perBar + before
+      const begin = columnAt(ruler, cyc, h.whole.begin.valueOf())
+      const end = columnAt(ruler, cyc, h.whole.end.valueOf())
       out.set(token, [...(out.get(token) ?? []), [begin, end]])
     }
   }
@@ -137,9 +137,9 @@ for (const mini of minis) {
   if (!r.ok) continue
   const bars = Math.max(1, r.model.bars ?? 1)
   const perBar = r.model.steps / bars
-  const barSteps = r.model.barSteps ?? Array.from({ length: bars }, () => perBar)
-  if (!r.model.barSteps && (!Number.isInteger(perBar) || perBar <= 0)) continue
-  const spans = playedSpans(mini, barSteps)
+  const ruler = barRuler(r.model)
+  if (ruler === null) continue
+  const spans = playedSpans(mini, ruler)
   if (spans === null) continue
   units.push({
     mini,

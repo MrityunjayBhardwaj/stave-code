@@ -438,7 +438,10 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
       // newly opens (`[-7 2,<4 5 6>]*8`) — and `refused` stays ZERO. The accepting paths
       // grew by exactly what the refusing path shed, which is the shape this control
       // exists to make visible. The third mover went to `source`, pinned below.
-      gridSource: { asks: 4443, refused: 0 },
+      // ⚠ gridSource 4443 -> 4465 at #1827 (each bar drawn at its own step count): the
+      // newly opened `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` brings its 22 hits, and
+      // `refused` stays ZERO on every accepting path.
+      gridSource: { asks: 4465, refused: 0 },
       gridAlt: { asks: 619, refused: 0 },
       rollAlt: { asks: 874, refused: 0 },
     })
@@ -456,6 +459,7 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // were judged against this file's own standard by a per-ask diff across the two builds:
     // 2 of 2 remove haps of the deleted pitch and touch nothing else, 0 went written ->
     // refused, and 0 of the previously written deletes changed a single byte.
-    expect({ asks: rs.asks, refused: rs.refused }).toEqual({ asks: 3968, refused: 29 })
+    // ⚠ asks 3968 -> 3990 at #1827 (each bar drawn at its own step count), `refused` UNMOVED at 29: the newly opened roll's 22 notes.
+    expect({ asks: rs.asks, refused: rs.refused }).toEqual({ asks: 3990, refused: 29 })
   })
 })

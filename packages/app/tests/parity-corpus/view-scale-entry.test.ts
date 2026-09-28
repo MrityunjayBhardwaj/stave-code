@@ -275,7 +275,9 @@ describe('#1116 the view scale, through the public entries', () => {
       rolls.filter((m) => parsePianoRollCore(m).ok).length,
       // ⚠ roll 596 -> 597 at #1310: the widened writer lets the parser open one more
       // roll document. The grid figures are untouched — this is the roll writer alone.
-    ]).toEqual([1013, 597, 812, 452])
+      // ⚠ grid 1013 -> 1014, roll 597 -> 598 at #1827 (each bar drawn at its own step count) — the two units that now open, and
+      // both are refused a refine (multi-bar views are drawn per bar only at ×1).
+    ]).toEqual([1014, 598, 813, 453])
 
     expect(
       grids.filter((m) => JSON.stringify(parseStepGrid(m, 1)) !== JSON.stringify(parseStepGrid(m))),
@@ -313,7 +315,8 @@ describe('#1116 the view scale, through the public entries', () => {
     // between ×2 and ×4 on this surface — which is the roll's story, not the
     // grid's, and stays visible only because the two scales are pinned apart.
     expect([honoured.get(2), refused.get(2), honoured.get(4), refused.get(4)]).toEqual([
-      927, 86, 927, 86,
+      // ⚠ refused 86 -> 87 at both scales at #1827 (each bar drawn at its own step count): the newly opened drum grid, as `view-resolution`.
+      927, 87, 927, 87,
     ])
   })
 
@@ -336,7 +339,8 @@ describe('#1116 the view scale, through the public entries', () => {
     // and the ×2/×4 gap is still exactly ONE — the VIEW ceiling doing its job, which is
     // the property this pin is really guarding.
     expect([honoured.get(2), refused.get(2), honoured.get(4), refused.get(4)]).toEqual([
-      543, 54, 542, 55,
+      // ⚠ refused +1 at both scales at #1827 (each bar drawn at its own step count): the newly opened roll, as `view-resolution`.
+      543, 55, 542, 56,
     ])
   })
 

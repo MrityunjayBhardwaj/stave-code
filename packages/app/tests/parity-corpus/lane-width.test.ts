@@ -261,7 +261,8 @@ describe('the roll writer emits what the model says, on whole columns and off th
     // ⚠ 596 -> 597 at #1310 — the one roll unit the widened writer lets the parser open.
     // `flat.length` and `fractionalRolls` below are unmoved: the arrival is neither flat
     // nor fractional, so the reason this arm cannot fire is exactly what it was.
-    expect(rolls).toBe(597)
+    // ⚠ 597 -> 598 at #1827 (each bar drawn at its own step count): `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` now opens.
+    expect(rolls).toBe(598)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     expect(flat.length).toBe(98)
     expect(fractionalRolls).toBe(4) // and NONE of the 4 is flat — see the next arm

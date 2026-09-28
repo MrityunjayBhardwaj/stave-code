@@ -278,6 +278,34 @@ export const ROLL_SURFACE: Surface = {
  * in a DIFFERENT writer's model for the same mini, which is the whole
  * counterfactual.
  */
+/**
+ * THE RULER: where each bar of a model starts and how many columns it holds.
+ *
+ * A column is not one width across bars when the model is drawn per bar (#1827) —
+ * `<~ ~ bd*3 bd*4 …>` is 1 + 1 + 3 + 4 + … cells — so every "cycle → column" question in
+ * these gates is asked of this, never of `steps / bars`. That quotient was computed in four
+ * places; on the drum pattern it came out a whole 3, so nothing refused, the probe deleted
+ * the wrong cell and filed the model as `corrupt`. Uniform models get one width per bar,
+ * which is the old arithmetic exactly; null when that width is not a whole number.
+ */
+export function barRuler(model: { steps: number; bars?: number; barSteps?: readonly number[] }): {
+  widths: number[]
+  starts: number[]
+} | null {
+  const bars = Math.max(1, model.bars ?? 1)
+  const widths = model.barSteps
+    ? [...model.barSteps]
+    : Array.from({ length: bars }, () => model.steps / bars)
+  if (!widths.every((w) => Number.isInteger(w) && w > 0)) return null
+  const starts = widths.map((_, b) => widths.slice(0, b).reduce((a, w) => a + w, 0))
+  return { widths, starts }
+}
+
+/** the column a time `t` (absolute cycles) lands on, in bar `bar` of `ruler` */
+export function columnAt(ruler: { widths: number[]; starts: number[] }, bar: number, t: number): number {
+  return ruler.starts[bar] + (t - bar) * ruler.widths[bar]
+}
+
 export function probeEdit(
   mini: string,
   model: StepGridModel & PianoRollModel,
@@ -289,8 +317,7 @@ export function probeEdit(
   // the multi-cycle loss this gate exists to catch, and comparing cycle 0 alone
   // would call it a pass.
   const bars = model.bars ?? 1
-  const perBar = model.steps / bars
-  if (!Number.isInteger(perBar)) return { verdict: 'no-probe', why: 'non-integer-per-bar' }
+  if (barRuler(model) === null) return { verdict: 'no-probe', why: 'non-integer-per-bar' }
 
   // THE PROBE ADVANCES PAST SILENT BARS (#1022). It used to read cycle 0 and nothing
   // else, so an alternation whose first arm is a rest — `<- c5>`, `<~ sd ~ sd ~>` — came
@@ -336,7 +363,8 @@ export function probeEdit(
  *
  * `bar` is the model bar the delete targets and `pos` is the note's position in the
  * ABSOLUTE frame `enginePlayedCycle` reports — cycle 2's downbeat is `2`, not `0`. The
- * column is therefore `bar * perBar + round((pos - bar) * perBar)`: the cycle offset
+ * column is therefore `starts[bar] + round((pos - bar) * widths[bar])` from `barRuler` — for a
+ * uniform model `bar * perBar + round((pos - bar) * perBar)`: the cycle offset
  * has to come out before scaling and go back in as whole bars, because on a
  * bar-expanded model `steps` spans every bar. At `bar = 0` this is exactly
  * `round(pos * perBar)`, which is what `probeEdit` has always computed.
@@ -349,9 +377,9 @@ export function probeDeleteAt(
   pos: number,
 ): EditProbe {
   const bars = model.bars ?? 1
-  const perBar = model.steps / bars
-  if (!Number.isInteger(perBar)) return { verdict: 'no-probe', why: 'non-integer-per-bar' }
-  const out = s.del(model, bar * perBar + Math.round((pos - bar) * perBar))
+  const ruler = barRuler(model)
+  if (ruler === null) return { verdict: 'no-probe', why: 'non-integer-per-bar' }
+  const out = s.del(model, ruler.starts[bar] + Math.round((pos - bar) * ruler.widths[bar]))
   if (out === null) return { verdict: 'no-probe', why: 'writer-declined' }
 
   for (let b = 0; b < bars; b++) {
@@ -395,8 +423,7 @@ export function liveness(
   s: Surface,
 ): { alive: number; probed: number; corrupt: number } | null {
   const bars = model.bars ?? 1
-  const perBar = model.steps / bars
-  if (!Number.isInteger(perBar)) return null
+  if (barRuler(model) === null) return null
   let alive = 0
   let probed = 0
   let corrupt = 0
