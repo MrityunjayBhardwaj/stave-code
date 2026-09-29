@@ -54,7 +54,7 @@ import {
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
-import { rulerLabels, writtenStepStarts } from './writtenSteps'
+import { rulerLabels, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
 import {
@@ -612,6 +612,11 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     [],
   )
 
+  // labels that would run together on narrow steps are hidden, bar numbers first (#1843).
+  // Above the no-model return: a hook runs on every render or not at all.
+  const rulerRef = React.useRef<HTMLDivElement>(null)
+  useRulerFit(rulerRef, 'data-seq-ruler-label')
+
   if (!model) {
     return React.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
@@ -713,7 +718,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             Laid out exactly like a row — the header's width, the same weights and bar
             gaps — so each label sits over its own column. Visual only: hidden from the
             accessibility tree, where every cell already names its step. */}
-        <div data-seq-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 12 }}>
+        <div ref={rulerRef} data-seq-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 12 }}>
           <div style={{ width: 96, flex: '0 0 auto' }} />
           <div style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
             {Array.from({ length: model.steps }, (_, c) => {
@@ -734,6 +739,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                   {label !== undefined && (
                     <span
                       data-seq-ruler-label={c}
+                      data-ruler-bar={isBar ? '' : undefined}
                       style={{
                         position: 'absolute',
                         left: 0,

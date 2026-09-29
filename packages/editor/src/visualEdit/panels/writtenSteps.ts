@@ -20,6 +20,7 @@
  * same covers-check the writers use before they trust these spans. A leaf-read model
  * carries no written-step regions at all, and gets the same bar-and-column answer.
  */
+import * as React from 'react'
 import type { AltSource, NotationSource } from '../notation/model'
 import { drawnAt, drawnLayout, lcmOf } from '../notation/perBar'
 
@@ -132,4 +133,89 @@ export function rulerLabels(
     }
   }
   return labels
+}
+
+/**
+ * The space a shown ruler label keeps clear of its neighbours, in px. At 1440px wide, 32
+ * steps leave 3.8px between `1.10` and `1.11`, which reads cleanly; at 1024px they overlap
+ * by 2.4px (#1843).
+ */
+const LABEL_GAP = 3
+
+/**
+ * Which ruler labels fit (#1843): given each label's drawn box, in order, the ones to show.
+ *
+ * Every label is drawn at its column's left edge and is wider than a narrow column, so
+ * past a point `1.10`, `1.11` … run together. The rule is a DAW ruler's as it zooms out:
+ * bar numbers first, then a step label only where it clears the label shown before it
+ * AND the next bar number. Nothing moves; a hidden label's step line is still drawn.
+ */
+export function fitLabels(boxes: readonly { left: number; right: number; bar: boolean }[]): boolean[] {
+  const show = boxes.map(() => false)
+  // bar numbers, left to right, each clear of the last bar number shown
+  let lastBarRight = -Infinity
+  boxes.forEach((b, i) => {
+    if (b.bar && (lastBarRight === -Infinity || b.left >= lastBarRight + LABEL_GAP)) {
+      show[i] = true
+      lastBarRight = b.right
+    }
+  })
+  // step labels, each clear of the label shown before it and of the next bar number shown
+  let prevRight = -Infinity
+  boxes.forEach((b, i) => {
+    if (b.bar) {
+      if (show[i]) prevRight = b.right
+      return
+    }
+    let nextBar = Infinity
+    for (let j = i + 1; j < boxes.length; j++) {
+      if (boxes[j].bar && show[j]) {
+        nextBar = boxes[j].left
+        break
+      }
+    }
+    if (b.left >= prevRight + LABEL_GAP && b.right + LABEL_GAP <= nextBar) {
+      show[i] = true
+      prevRight = b.right
+    }
+  })
+  return show
+}
+
+/**
+ * Hide the ruler labels that would collide (#1843), measured where they are drawn: on
+ * every render and whenever the ruler's width changes (`ExtendHandle`'s measure pattern).
+ * Labels are found by `labelAttr`; a bar number carries `data-ruler-bar`. Hiding uses
+ * `visibility`, so every label keeps its box and the next measurement is unchanged.
+ */
+export function useRulerFit(rulerRef: React.RefObject<HTMLElement | null>, labelAttr: string): void {
+  const fit = React.useCallback(() => {
+    const root = rulerRef.current
+    if (!root) return
+    const els = [...root.querySelectorAll<HTMLElement>(`[${labelAttr}]`)]
+    const boxes = els.map((e) => {
+      const r = e.getBoundingClientRect()
+      return { left: r.left, right: r.right, bar: e.hasAttribute('data-ruler-bar') }
+    })
+    const show = fitLabels(boxes)
+    els.forEach((e, i) => {
+      e.style.visibility = show[i] ? '' : 'hidden'
+    })
+  }, [rulerRef, labelAttr])
+  // The observer follows the ruler ELEMENT, attached from the every-render layout effect:
+  // a grid renders before its pattern has loaded, with no ruler yet, so an effect that
+  // looked once would find nothing and never look again.
+  const observed = React.useRef<{ el: HTMLElement; ro: ResizeObserver } | null>(null)
+  React.useLayoutEffect(() => {
+    fit()
+    const root = rulerRef.current
+    if (observed.current?.el === root) return
+    observed.current?.ro.disconnect()
+    observed.current = null
+    if (!root || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => fit())
+    ro.observe(root)
+    observed.current = { el: root, ro }
+  })
+  React.useEffect(() => () => observed.current?.ro.disconnect(), [])
 }

@@ -72,7 +72,7 @@ import {
 } from './gridGestures'
 import { readChainMethod } from './chainMethod'
 import { ExtendHandle } from './ExtendHandle'
-import { rulerLabels, writtenStepStarts } from './writtenSteps'
+import { rulerLabels, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { usePatternLength } from './usePatternLength'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
@@ -1163,6 +1163,11 @@ export function PianoRollGrid({
     [],
   )
 
+  // labels that would run together on narrow steps are hidden, bar numbers first (#1843).
+  // Above the no-model return: a hook runs on every render or not at all.
+  const rulerRef = React.useRef<HTMLDivElement>(null)
+  useRulerFit(rulerRef, 'data-roll-ruler-label')
+
   if (!model) {
     return React.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
@@ -1295,7 +1300,7 @@ export function PianoRollGrid({
               the bottom of a 720px viewport, where the drag's press landed on nothing.
               The padding is 16px, so the -13px margin keeps the rows exactly where they
               were before the ruler existed. */}
-          <div data-roll-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 12, marginTop: -13 }}>
+          <div ref={rulerRef} data-roll-ruler aria-hidden="true" style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 12, marginTop: -13 }}>
             <div style={{ width: model.numeric ? 36 : 40, flex: '0 0 auto' }} />
             <div style={{ display: 'flex', gap: 1, flex: 1, minWidth: 0 }}>
               {Array.from({ length: cols }, (_, c) => {
@@ -1306,6 +1311,7 @@ export function PianoRollGrid({
                     {label !== undefined && (
                       <span
                         data-roll-ruler-label={c}
+                        data-ruler-bar={isBar ? '' : undefined}
                         style={{
                           position: 'absolute',
                           left: 0,
