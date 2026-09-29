@@ -238,7 +238,8 @@ describe('the step cell carries a length the engine actually played', () => {
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
     // ⚠ 1013 -> 1014 at #1827 (each bar drawn at its own step count): `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` now opens.
-    expect(units.length).toBe(1014)
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(units.length).toBe(1017)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     // Folded so the whole split reports in one run: the three paths must sum to
     // `units`, and asserting them apart means a population change reports the
@@ -249,7 +250,8 @@ describe('the step cell carries a length the engine actually played', () => {
       'derived+leaf': byPath.get('derived+leaf'),
       cells,
       // ⚠ syntactic 812 -> 813, cells 5685 -> 5707 at #1827 (each bar drawn at its own step count): the newly opened drum grid's 22 hits.
-    }).toEqual({ syntactic: 813, derived: 115, 'derived+leaf': 86, cells: 5707 })
+      // ⚠ syntactic 813 -> 820, derived+leaf 86 -> 82, cells 5707 -> 5739 at #1849: the stacks it opens on the core, every ON cell still agreeing with the engine.
+    }).toEqual({ syntactic: 820, derived: 115, 'derived+leaf': 82, cells: 5739 })
   })
 
   it('CONTROL: a reader that returns 1 for every length is caught', () => {

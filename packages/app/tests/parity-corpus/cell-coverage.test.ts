@@ -242,7 +242,8 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // cells, every note is exactly its own cell and carries none. The grid unit that
     // newly opens (`<~ ~ bd*3 bd*4 …>`) is all one-cell hits and adds none. `partial` is
     // unmoved.
-    expect(carried).toBe(2059)
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(carried).toBe(2141)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     expect(partial).toBe(15)
   })
@@ -622,7 +623,8 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // drawing: every zero below is unmoved.
     // ⚠ 5505 -> 5527 at #1827: the one roll unit that newly opens per bar,
     // `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>`, brings its own 22 notes (4+6+8+4).
-    expect(integral).toBe(5527)
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(integral).toBe(5539)
     expect(invisible).toBe(0)
     expect(misdrawn).toBe(0)
     expect(affected.size).toBe(0)
@@ -678,14 +680,16 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // as an admissibility oracle, so a writer that can spell more opens one more roll
     // unit — `[-7 2,<4 5 6>]*8` — and it brings its own 72 notes. Population, not
     // drawing: every zero below is unmoved.
-    expect(notes).toBe(5527) // +22 at #1827 — see `integral` above
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(notes).toBe(5539) // +22 at #1827, +12 at #1849 — see `integral` above
     expect(silent).toBe(0)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     // ⚠ 5433 -> 5505 at #1310 (region-local parallel lanes): `parse.ts` uses the writer
     // as an admissibility oracle, so a writer that can spell more opens one more roll
     // unit — `[-7 2,<4 5 6>]*8` — and it brings its own 72 notes. Population, not
     // drawing: every zero below is unmoved.
-    expect(checked).toBe(5527) // +22 at #1827 — see `integral` above
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(checked).toBe(5539) // +22 at #1827, +12 at #1849 — see `integral` above
     expect(headBad).toBe(0)
     expect(tailBad).toBe(0)
   })
@@ -756,7 +760,8 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // resolver, so every figure here is over a wider population. Upward only.
     // ⚠ 596 -> 597 at #1310 — the one roll unit the widened writer lets the parser open.
     // ⚠ 597 -> 598 at #1827 — the one roll unit that newly opens per bar.
-    expect(models).toBe(598)
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(models).toBe(601)
     expect(fractional).toBe(0)
     expect(uncovered).toEqual([])
   })
@@ -816,9 +821,11 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // ⚠ 424 -> 464 at #1242 — the corpus widened 1535 -> 1633 units
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
-    expect(models).toBe(464)
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(models).toBe(467)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    expect(cols).toBe(4470)
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(cols).toBe(4489)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     // THE REACH. Before this, 2503 of 2508 groups owned a bar; the 5 that did not all
     // began mid-column and all sat in a column another group headed. Every one is now
@@ -827,7 +834,8 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // Folded so both report in one run, and so the EQUALITY between them is the
     // thing on the page: every group the wider corpus adds owns a bar too, which
     // is the reach claim holding over material it was not measured on.
-    expect([groups, represented]).toEqual([2751, 2751])
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect([groups, represented]).toEqual([2758, 2758])
     // THE BOUND. Only the sequential columns split; the 129 polyphonic ones are #1088.
     //
     // THREE minis, not two — and the difference is the point rather than a typo. TWO minis
@@ -882,16 +890,22 @@ describe('the step grid draws a note across the columns it covers (#1056)', () =
     // ⚠ 424 -> 464 at #1242 — the corpus widened 1535 -> 1633 units
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
-    expect(inScope).toBe(464)
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(inScope).toBe(467)
     // THE REACH, and it is the point of the fix: 305 columns across 33 patterns offered a
     // `ns-resize` cursor and a pointer handler for a write that was always declined.
-    expect(skips).toBe(33)
-    expect(inertCols).toBe(305)
+    // ⚠ 33 -> 30 at #1849: FEWER declined — three rolls that were leaf-read (the gain writer declined them) now open on the core, whose gain it writes.
+    expect(skips).toBe(30)
+    // ⚠ 305 -> 313 at #1849: the declined set changes members (three rolls leave it for the core,
+    // the rolls it opens bring their own columns) — each one a drag correctly WITHHELD.
+    expect(inertCols).toBe(313)
     // …and the population it must NOT touch — every column whose drag really writes.
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    expect(writable).toBe(431)
+    // ⚠ 431 -> 437 at #1849: +3 in scope and three fewer declined — six more rolls whose velocity drag writes.
+    expect(writable).toBe(437)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    expect(liveCols).toBe(3434)
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(liveCols).toBe(3445)
     // THE LICENCE for asking the current model instead of the post-drag one.
     expect(predicateDiffers).toBe(0)
   })

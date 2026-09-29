@@ -322,13 +322,15 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     // (`<~ ~ bd*3 bd*4 …>` now opens), +6 asks, +2 coarsen skips, +6 no-offer. `measured`
     // is UNMOVED and `unwritable` / `hapsUnevaluable` stay ZERO — a multi-bar grid is
     // never offered a refine, so everything it brings is `no-offer`.
+    // ⚠ MOVED at #1849: +3 units (the grids it opens), +16 asks, 13 `no-offer` become
+    // `measured` — `unwritable` and `hapsUnevaluable` stay ZERO.
     }).toEqual({
-      units: 1014,
-      asks: 7592,
-      coarsenSkipped: 1274,
-      'no-offer': 1087,
+      units: 1017,
+      asks: 7608,
+      coarsenSkipped: 1281,
+      'no-offer': 1074,
       unwritable: 0,
-      measured: 6505,
+      measured: 6534,
       hapsUnevaluable: 0,
     })
     // TODAY'S ANSWER. Every grid refine that reaches the writer rewrites the document —
@@ -338,10 +340,11 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     // appears — the widening added asks to the axes that already existed rather
     // than reaching a combination the taxonomy had never seen.
     expect(grid.triples).toEqual({
-      'lossless (doc,layout,----)': 2852,
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      'lossless (doc,layout,----)': 2861,
       'lossless (doc,layout,haps)': 230,
       'quantize (doc,layout,----)': 101,
-      'quantize (doc,layout,haps)': 3322,
+      'quantize (doc,layout,haps)': 3342,
     })
   })
 
@@ -361,18 +364,20 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     // ⚠ MOVED at #1827 (each bar drawn at its own step count): +1 unit
     // (`<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` now opens), +10 asks, all `no-offer`
     // (819 below) — `measured` UNMOVED at 2961, `unwritable` still ZERO.
+    // ⚠ MOVED at #1849: +3 units, +20 asks, and 107 `no-offer` become `measured` — the rolls
+    // it moves off the leaf reading can now be refined. `unwritable` stays ZERO.
     }).toEqual({
-      units: 598,
-      asks: 3780,
-      coarsenSkipped: 1100,
+      units: 601,
+      asks: 3800,
+      coarsenSkipped: 1105,
       // ⚠ MOVED at #1312 (per-bar lanes + the region ladder): six asks move from `no-offer`
       // to `measured`, 815 -> 809 and 2955 -> 2961. They are the same six — the writer now
       // has an answer where it previously had none — so `units` and `asks` do not move at
       // all. `unwritable` stays ZERO, which is the arm that matters: the widening turned
       // silence into measurements, not into failures.
-      'no-offer': 819,
+      'no-offer': 712,
       unwritable: 0,
-      measured: 2961,
+      measured: 3088,
       hapsUnevaluable: 0,
     })
     // A FINDING, not a prediction — this key was written expecting `[]` and the corpus
@@ -398,10 +403,11 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     // document axis could move at all.
     expect(roll.triples).toEqual({
       'lossless (---,layout,----)': 92,
-      'lossless (doc,layout,----)': 1185,
-      'lossless (doc,layout,haps)': 87,
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      'lossless (doc,layout,----)': 1230,
+      'lossless (doc,layout,haps)': 92,
       'quantize (doc,layout,----)': 5,
-      'quantize (doc,layout,haps)': 1592,
+      'quantize (doc,layout,haps)': 1669,
     })
   })
 

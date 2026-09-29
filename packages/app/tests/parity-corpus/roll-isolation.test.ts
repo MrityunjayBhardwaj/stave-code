@@ -60,10 +60,14 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 // (`<c2*2 g2*5 [a g]>`, `<0 [0 1] 0 [0 1 0]>`). A whole-corpus A/B of every place,
 // resize, delete and move shows every OTHER unit's answer byte-identical, so the
 // aggregates below moved by those three alone.
-const ROLL_UNITS = 597
-const ROLL_ASKS = 131277
-const ROLL_REFUSED = 17710
-const ROLL_ANSWERS = '9bb87049a5a8d3a2'
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const ROLL_UNITS = 600
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const ROLL_ASKS = 131514
+// ⚠ 17710 -> 14392 at #1849: FEWER refusals — the 18 rolls #1849 moves from the leaf reading to the core used to refuse every placement.
+const ROLL_REFUSED = 14392
+// ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
+const ROLL_ANSWERS = 'cd40e47393a72b43'
 
 /** the durations are the axis the previous instrument lacked — see the header */
 const DURATIONS = [1, 2, 4]
@@ -124,9 +128,12 @@ const aggregate = (answers: Map<string, string>): string => {
 }
 
 /** measured 2026-08-24 on the same tree, resizing every note the roll holds */
-const RESIZE_UNITS = 596
-const RESIZE_ASKS = 16506
-const RESIZE_ANSWERS = '07b83a9c647196e3'
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const RESIZE_UNITS = 599
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const RESIZE_ASKS = 16542
+// ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
+const RESIZE_ANSWERS = 'ab4edf6c547572ea'
 
 /**
  * ⚠ THE PLURAL CONTRACT, PINNED — NOT A DEFECT (#1321). Twenty asks move a second note,
@@ -144,7 +151,8 @@ const RESIZE_ANSWERS = '07b83a9c647196e3'
  * other, counted separately below so a violation of the real rule cannot hide in here.
  * ⚠ Do not "fix" this to 0 — that would strand notes. See #1321 for the decision.
  */
-const RESIZE_DUPLICATE_STRAYS = 20
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const RESIZE_DUPLICATE_STRAYS = 24
 
 /** #1324, characterized in the assertion below — pinned so it cannot grow unnoticed */
 const RESIZE_UNREOPENABLE = 119
@@ -385,8 +393,10 @@ describe('surface isolation — the roll, every placement it can be asked', () =
 })
 
 /** measured 2026-08-24 on studio_v0.2.0 + the delete writer */
-const DELETE_UNITS = 596
-const DELETE_ASKS = 5502
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const DELETE_UNITS = 599
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const DELETE_ASKS = 5514
 
 /**
  * ⚠ PINNED WITH ITS ARGUMENT, because a bare number here reads as a defect and is not one.
@@ -400,9 +410,11 @@ const DELETE_ASKS = 5502
  * something learned to spell a case it could not — good, re-pin and say which. If it RISES,
  * the writer lost reach and that is a regression.
  */
-const DELETE_REFUSED = 382
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const DELETE_REFUSED = 357
 
-const DELETE_ANSWERS = '078472cd05f5318e'
+// ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
+const DELETE_ANSWERS = 'abc11daae41289a2'
 
 interface DeleteSweep extends Sweep {
   /** asks whose written bytes serialize to null — must be 0, the whole point of the op */
@@ -564,13 +576,17 @@ describe('surface isolation — the roll, every delete it can be asked', () => {
  * asks the writer for gestures the panel cannot make — and doing so is what made an
  * earlier measurement read 1,176 lost writes that no user could ever have performed.
  */
-const MOVE_UNITS = 596
-const MOVE_ASKS = 172515
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const MOVE_UNITS = 599
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const MOVE_ASKS = 172646
 // ⚠ 3652 -> 3559 at #1827 (each bar drawn at its own step count): fewer refusals — the two re-drawn units have no half-cells
 // left to drop a note on, net of the arrival's own refusals.
 const MOVE_REFUSED = 3559
-const MOVE_REBUILDS = 168956
-const MOVE_ANSWERS = '2a90c4278c4e5777'
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const MOVE_REBUILDS = 169087
+// ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
+const MOVE_ANSWERS = '22cd306d4a0fc965'
 
 interface MoveSweep extends Sweep {
   unspellable: number
@@ -707,8 +723,10 @@ describe('surface isolation — the roll, every move a pointer can make', () => 
 
 
 /** measured 2026-08-25 on `f60985dc`, over the same units every other roll sweep uses */
-const OFFER_UNITS = 596
-const OFFER_NOTES = 5502
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const OFFER_UNITS = 599
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const OFFER_NOTES = 5514
 /**
  * ⚠ THIS PIN IS A THIRD OF THE SURFACE, AND #1322 WAS FILED AT 93.
  *
@@ -725,7 +743,8 @@ const OFFER_NOTES = 5502
  */
 // ⚠ 1861 -> 1881 at #1827 (each bar drawn at its own step count): 20 of the arrival's notes cannot lengthen without running
 // into the next note, and a drag can resize none of them.
-const OFFER_INERT = 1881
+// ⚠ 1881 -> 1782 at #1849: FEWER notes with no writable length — the leaf reading could lengthen none of the notes on the rolls #1849 moves to the core, which lengthens most.
+const OFFER_INERT = 1782
 
 /**
  * The exhaustive form of the question the panel asks cheaply: is there ANY column the
@@ -815,6 +834,7 @@ describe('surface isolation — the roll, which notes may be offered a length ha
       for (const n of u.m.notes) if (u.offer.has(n)) k.add(`${n.pitch}:${n.start}`)
       byTuple += k.size
     }
-    expect(offered - byTuple, 'offerable notes a (pitch,start) key would have merged').toBe(5)
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(offered - byTuple, 'offerable notes a (pitch,start) key would have merged').toBe(6)
   })
 })

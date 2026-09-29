@@ -277,7 +277,8 @@ describe('#1116 the view scale, through the public entries', () => {
       // roll document. The grid figures are untouched — this is the roll writer alone.
       // ⚠ grid 1013 -> 1014, roll 597 -> 598 at #1827 (each bar drawn at its own step count) — the two units that now open, and
       // both are refused a refine (multi-bar views are drawn per bar only at ×1).
-    ]).toEqual([1014, 598, 813, 453])
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    ]).toEqual([1017, 601, 820, 474])
 
     expect(
       grids.filter((m) => JSON.stringify(parseStepGrid(m, 1)) !== JSON.stringify(parseStepGrid(m))),
@@ -316,7 +317,8 @@ describe('#1116 the view scale, through the public entries', () => {
     // grid's, and stays visible only because the two scales are pinned apart.
     expect([honoured.get(2), refused.get(2), honoured.get(4), refused.get(4)]).toEqual([
       // ⚠ refused 86 -> 87 at both scales at #1827 (each bar drawn at its own step count): the newly opened drum grid, as `view-resolution`.
-      927, 87, 927, 87,
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      934, 83, 934, 83,
     ])
   })
 
@@ -340,7 +342,8 @@ describe('#1116 the view scale, through the public entries', () => {
     // the property this pin is really guarding.
     expect([honoured.get(2), refused.get(2), honoured.get(4), refused.get(4)]).toEqual([
       // ⚠ refused +1 at both scales at #1827 (each bar drawn at its own step count): the newly opened roll, as `view-resolution`.
-      543, 55, 542, 56,
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      564, 37, 563, 38,
     ])
   })
 

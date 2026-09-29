@@ -91,12 +91,14 @@ const minis = [...new Set(corpus.minis.map((o) => o.mini.trim()).filter((m) => m
  * by hand when the denominator was pinned. Two independent routes to one number.
  */
 // ⚠ 2973/1241 -> 3082/1361 at #1242 — the corpus widened 1535 -> 1633 units.
-const GRID_DENOMINATOR = 3082
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const GRID_DENOMINATOR = 3091
 // ⚠ 1361 -> 1364 at #1312: three more asks reconstruct the denominator because the roll
 // writer answers them instead of declining. The identity this arm checks — offers plus
 // refusals minus old-path declines equals the denominator — is what moved with them, and
 // it still closes exactly, which is the property rather than the number.
-const ROLL_DENOMINATOR = 1364
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const ROLL_DENOMINATOR = 1414
 
 /**
  * A grid's LAYOUT as a comparable string: what the user sees, and nothing else.

@@ -262,7 +262,8 @@ describe('the roll writer emits what the model says, on whole columns and off th
     // `flat.length` and `fractionalRolls` below are unmoved: the arrival is neither flat
     // nor fractional, so the reason this arm cannot fire is exactly what it was.
     // ⚠ 597 -> 598 at #1827 (each bar drawn at its own step count): `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` now opens.
-    expect(rolls).toBe(598)
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(rolls).toBe(601)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     expect(flat.length).toBe(98)
     expect(fractionalRolls).toBe(4) // and NONE of the 4 is flat — see the next arm

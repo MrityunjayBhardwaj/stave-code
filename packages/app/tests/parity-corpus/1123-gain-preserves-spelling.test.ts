@@ -175,7 +175,8 @@ const rollSurface: Surface<PianoRollModel> = {
 // that used to exceed 64 shared columns now open per bar — `<~ ~ bd*3 bd*4 …>` on the
 // grid and `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` on the roll. Population, not
 // notation: `respelled` and `play-changed` stay at 0.
-const ASKED = { grid: 1013, roll: 595 }
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const ASKED = { grid: 1016, roll: 598 }
 
 describe('#1123 — a velocity drag leaves the notation alone', () => {
   it('grid', () => {

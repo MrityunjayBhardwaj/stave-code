@@ -44,12 +44,16 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 /** measured 2026-08-23 on studio_v0.2.0 + #1314, and identical on the build before it */
 // ⚠ 1021 -> 1022 at #1827 (each bar drawn at its own step count): `<~ ~ bd*3 bd*4 …>` now opens; every other unit's answers are
 // byte-identical (checked by a whole-corpus A/B of every toggle), so ANSWERS moved by it alone.
-const GRID_UNITS = 1022
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const GRID_UNITS = 1025
 // ⚠ 62424 -> 62304 at #1827: the drum grid's cells arrive, and `<c2*2 g2*5 [a g]>` drawn per
 // bar offers 9 cells per lane instead of 30.
-const GRID_ASKS = 62304
-const GRID_REFUSED = 4899
-const GRID_ANSWERS = '7f183771c6b8d832'
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const GRID_ASKS = 62684
+// ⚠ 4899 -> 4646 at #1849: FEWER refusals — the leaf reading refused every placement on the stacks #1849 moves to the core, which takes many of them.
+const GRID_REFUSED = 4646
+// ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
+const GRID_ANSWERS = '74a3624a4df626da'
 
 const shortHash = (s: string): string =>
   crypto.createHash('sha1').update(s).digest('hex').slice(0, 12)

@@ -495,18 +495,23 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
    * leaf tests above, on the surface that also models DURATION — which is exactly
    * where the roll's boundary sits. All fixtures are real corpus units.
    */
+  /** A real corpus unit the leaf writer still owns: a chord with an alternation member. */
+  const LEAF_ROLL = '[0,<5@2 7@2>] -'
+
   it('leaf roll: clearing a chord member edits only that member`s bytes', () => {
-    // a `,`-stack of nested groups — no element re-emit can spell it, so it reaches
-    // the leaf writer. Clearing the `0` touches the `0` and nothing else: every
-    // bracket, comma, `-` rest and sibling pitch rides back byte-for-byte.
-    const src = '- [0,3,7], [- [-2,1]] -'
+    // a chord whose second member is an alternation — no element re-emit can spell
+    // it, so it reaches the leaf writer. Clearing the `5` touches the `5` and nothing
+    // else: every bracket, comma, `<`, `@2` and sibling pitch rides back byte-for-byte.
+    // (This was `- [0,3,7], [- [-2,1]] -`, which #1849 opened on the core: each of its
+    // `,`-parts is read as it would be alone.)
+    const src = LEAF_ROLL
     const r = parsePianoRoll(src)
     expect(r.ok, `${src} should leaf-project`).toBe(true)
     if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
     const m = r.model
-    const target = m.notes.find((n) => n.pitch === '0')!
+    const target = m.notes.find((n) => n.pitch === '5')!
     const out = serializePianoRoll({ ...m, notes: m.notes.filter((n) => n !== target) })
-    expect(out).toBe('- [~,3,7], [- [-2,1]] -')
+    expect(out).toBe('[0,<~@2 7@2>] -')
   })
 
   /**
@@ -544,24 +549,25 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
    * Refusing is not a limitation to fix later; it is the adapter boundary holding.
    */
   it('leaf roll: clearing a held note keeps its `@n` verbatim', () => {
-    const src = '6@8, 4!, 7, 13@2'
+    // (was `6@8, 4!, 7, 13@2`, which #1849 opened on the core)
+    const src = LEAF_ROLL
     const r = parsePianoRoll(src)
     expect(r.ok, `${src} should leaf-project`).toBe(true)
     if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
     const m = r.model
-    const held = m.notes.find((n) => n.pitch === '6')!
+    const held = m.notes.find((n) => n.pitch === '7')!
     expect(serializePianoRoll({ ...m, notes: m.notes.filter((n) => n !== held) })).toBe(
-      '~@8, 4!, 7, 13@2',
+      '[0,<5@2 ~@2>] -',
     )
   })
 
   it('leaf roll: a duration change is refused — no `@n` span to splice', () => {
-    const src = '6@8, 4!, 7, 13@2'
+    const src = LEAF_ROLL
     const r = parsePianoRoll(src)
     expect(r.ok).toBe(true)
     if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
     const m = r.model
-    const held = m.notes.find((n) => n.pitch === '6')!
+    const held = m.notes.find((n) => n.pitch === '5')!
     // longer than anything at its column…
     expect(
       serializePianoRoll({
@@ -605,7 +611,7 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
     // That is strictly stronger than the old assertion, so it is asserted as identity and
     // the old mechanism is checked too: serializing what the op returned gives the source
     // back verbatim, i.e. the document is untouched — which was always the point.
-    const src = '- [0,3,7], [- [-2,1]] -'
+    const src = LEAF_ROLL
     const r = parsePianoRoll(src)
     expect(r.ok).toBe(true)
     if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
@@ -616,7 +622,7 @@ describe('edit locality — an edit must not touch what it did not edit', () => 
   })
 
   it('leaf roll: a moved note is refused — no leaf spells a new position', () => {
-    const src = '- [0,3,7], [- [-2,1]] -'
+    const src = LEAF_ROLL
     const r = parsePianoRoll(src)
     expect(r.ok).toBe(true)
     if (!r.ok || !r.model.leafSource) throw new Error('expected a leaf-anchored roll')
