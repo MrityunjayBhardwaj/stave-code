@@ -42,6 +42,19 @@ so the move is attributable to the population and to nothing else:
 > untransferable 59 → 61, core view has STRUCTURE 53 → 55, core edit VERIFIED ok 53 → 55, and
 > so the P6 blocker set 51 → 53 (grid 18 → 19, roll 33 → 34): the core writes both faithfully.
 
+> **MOVED AT #1849 (a `,`-part is read the way it is read alone): core-served asks 1275 → 1303,
+> transfers 1096 → 1106, untransferable 70 → 76, unverified 109 → 121, structured transfers
+> 684 → 694.** A `,`-pattern whose part the flat reading refused (`bd@3 sd, hh!6`), or whose roll
+> parts differ in width, used to fall to the leaf reading as a whole; the stack now asks that
+> part the lone-part chain and keeps its answer when it is one flat part. 7 grid and 21 roll
+> units move to the core (4 + 18 that were leaf-read, 3 + 3 that were refused), bringing 28
+> asks: 10 transfer (all structured), 6 are `no-leaf-anchor` untransferable — the leaf writer
+> cannot anchor a `,`-stack, the same bound as the rest of the residual — and 12 have no probe.
+> Array-value residual 9 → 12, all three the newly opened grids, all `no-leaf-anchor`.
+> Structural untransferable 61 → 64, STRUCTURE 55 → 58, VERIFIED ok 55 → 56, and the P6
+> blocker set 53 → 54 (grid 19, roll 34 → 35). The two new structural rows without a verified
+> core edit are the rolls `0,.1` and `0,.1,7, 6.9` (`no-probe`: decimal `n` values).
+
 > ⚠⚠ **THE "54" THIS DOCUMENT QUOTES BELOW IS TWO CHANGES BEHIND THE GATE, AND WAS
 > ALREADY WRONG BEFORE #1242 TOUCHED ANYTHING.** Re-measured on `studio_v0.2.0` over
 > the unchanged 1535-row corpus, the blocker reads **48**, not 54.
@@ -586,19 +599,19 @@ both populations separately. At 12, with the core deleted:
 > applies to it.** These figures are current for the tree they are committed with.
 
 At roll cap **12**, with the syntactic core deleted (#1012) — over 1633 corpus
-units, 1275 core-served asks (821 grid / 454 roll):
+units, 1303 core-served asks (828 grid / 475 roll):
 
 | | cap 4 (shipped) | cap 12 |
 |---|---|---|
-| untransferable asks, both surfaces | 70 | 52 |
-| roll untransferable | 39 | 21 |
-| **the set that actually blocks deleting the core** | 53 | 37 |
+| untransferable asks, both surfaces | 76 | 58 |
+| roll untransferable | 42 | 24 |
+| **the set that actually blocks deleting the core** | 54 | 38 |
 | …of it, grid | 19 | 19 |
-| …of it, roll | 34 | 18 |
+| …of it, roll | 35 | 19 |
 
-**The cap's own contribution is 16 asks** (53 − 37), all of it on the roll: 34 − 18 = 16.
+**The cap's own contribution is 16 asks** (54 − 38), all of it on the roll: 35 − 19 = 16.
 
-**The grid is the control arm** and it is identical to the digit at both caps — 821 asks / 727 transfers / 31 untransferable / blocker 19 at cap 4, and 821 / 727 / 31 / 19 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
+**The grid is the control arm** and it is identical to the digit at both caps — 828 asks / 729 transfers / 34 untransferable / blocker 19 at cap 4, and 828 / 729 / 34 / 19 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
 
 The cap-4 column is DERIVED from this run. The cap-12 column is an OBSERVATION taken by `node scripts/p6-cap-census.mjs 12`, which sets the module constant exactly as a ship would; it carries the cap-4 column from its own run as an expiry stamp, and `writer-census.test.ts` reddens when that stamp stops matching this tree.
 

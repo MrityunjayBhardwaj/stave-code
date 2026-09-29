@@ -198,9 +198,11 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // that used to exceed 64 shared columns now opens per bar,
       // `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` (1+1+3+4+3+4+4+4 cells, 96 shared). Its
       // refined view has to be one shared grid, so it is the new `view-resolution` below.
-      expect(s.opensAtDocument, `k=${k} opens`).toBe(1014)
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      expect(s.opensAtDocument, `k=${k} opens`).toBe(1017)
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-      expect(s.admitsFinerView, `k=${k} admits`).toBe(927)
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      expect(s.admitsFinerView, `k=${k} admits`).toBe(934)
       // Two refusal gates, each saying why by name. `no-finer-view` is the leaf path: a
       // leaf model anchors each note to its own source span, so there is no span to
       // subdivide, and the entry refuses a refine rather than quietly drawing the
@@ -209,7 +211,8 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // ceiling. 1014 = 927 + 86 + 1: nothing unaccounted for.
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
       expect([...s.refusesFinerView.entries()], `k=${k} gates`).toEqual([
-        ['no-finer-view', 86],
+        // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+        ['no-finer-view', 82],
         ['view-resolution', 1],
       ])
       // IDENTICAL AT EVERY SCALE, and that is the point rather than a coincidence:
@@ -220,10 +223,11 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // measurement, the split must sum to the total, and asserting them apart
       // means a population change reports the total and hides which path took it.
       expect({ asks: s.asks.length, ...pathCounts(s) }, `k=${k} asks by path`).toEqual({
-        asks: 26112,
-        splice: 21547,
+        // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+        asks: 26666,
+        splice: 22076,
         alt: 4553,
-        declined: 12,
+        declined: 37,
       })
     }
   })
@@ -235,8 +239,10 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       expect(unspellable, `k=${k}: accepted but unwritable`).toEqual([])
       // and the op's refusals are a bounded, named set rather than a rate
       const declined = s.asks.filter((a) => !a.accepted)
-      expect(declined.length, `k=${k} declines`).toBe(12)
-      expect([...new Set(declined.map((d) => d.mini))].length, `k=${k} declining units`).toBe(5)
+      // ⚠ 12 -> 37 at #1849: the op declines 25 more placements, all on the stacks it newly opens — a hit inside a held `bd@3` or between `hh!6`'s steps has no spelling at ×2. Declined, never accepted-then-unwritable (the assertion above).
+      expect(declined.length, `k=${k} declines`).toBe(37)
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      expect([...new Set(declined.map((d) => d.mini))].length, `k=${k} declining units`).toBe(8)
     }
   })
 
@@ -256,7 +262,8 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
         `k=${k}: a second element re-emitted`,
       ).toEqual([])
       expect(nonLocal.every((a) => a.rebuiltParts!.length > 0), `k=${k}: all part-rebuilds`).toBe(true)
-      expect(nonLocal.length, `k=${k} non-local asks`).toBe(16)
+      // ⚠ 16 -> 22 at #1849: six whole-part rebuilds on the stacks it newly opens — the same single mechanism (a `,`-part re-spelled, no second region), now reaching more `,`-patterns.
+      expect(nonLocal.length, `k=${k} non-local asks`).toBe(22)
 
       // pinned BY UNIT, so a fix to #1137 reads as a named delta and a regression
       // cannot hide inside a rate
@@ -264,7 +271,8 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // ⚠ 19088 -> 21531 at #1242 — the corpus widened 1535 -> 1633 units
       // (98 arrivals, 0 departures): the harvest gained the product's own
       // resolver, so every figure here is over a wider population. Upward only.
-      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(21531)
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(22054)
     }
   })
 
@@ -609,7 +617,10 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
  * which this class of fix has nothing to offer, which is why the writer stops rather than
  * reading them finer. The arm above pins that nothing BUT that shape is left.
  */
+// ⚠ +1 at #1849: `[a4,c#4,e4],[a5@2 b5 c#6@3]`, a stack #1849 opens on the core — the
+// same whole-part rebuild, one element per part, now reaching one more `,`-pattern.
 const NON_LOCAL_UNITS: string[] = [
+  "[a4,c#4,e4],[a5@2 b5 c#6@3]",
   "[b4,d4,f#4],b5*3 c#6*2",
   "c2, eb3 g3 [bb3 c4 c3]",
   "c2, eb3 g3 [bb3 c4]",
@@ -632,7 +643,8 @@ const NON_LOCAL_UNITS: string[] = [
  * earlier version of this gate inferred it from the model instead and took the
  * minimum across ALL parts, which is the wrong part whenever they differ in size.
  */
-const SINGLE_ELEMENT_PART_VOIDS = 16
+// ⚠ 16 -> 22 at #1849 — the six non-local asks it adds (PROPERTY 3), every one single-element.
+const SINGLE_ELEMENT_PART_VOIDS = 22
 
 /**
  * The units whose write #1137 CHANGED — the pre-fix non-local set, kept by name.
@@ -750,10 +762,12 @@ describe('#1058 — the roll, gated separately', () => {
       // ⚠ These were first moved with a comment claiming `admits` and the leaf refusals
       // were UNMOVED. That was inferred from the arrival's shape and never measured, and
       // it was wrong by 3. The figures above are read off a run.
-      expect(opens, `k=${k} opens`).toBe(596)
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      expect(opens, `k=${k} opens`).toBe(599)
       expect(gates.get('view-resolution'), `k=${k} view refusals`).toBe(k === 2 ? 1 : 2)
-      expect(admits, `k=${k} admits`).toBe(k === 2 ? 541 : 540)
-      expect(gates.get('no-finer-view'), `k=${k} leaf refusals`).toBe(54)
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      expect(admits, `k=${k} admits`).toBe(k === 2 ? 562 : 561)
+      expect(gates.get('no-finer-view'), `k=${k} leaf refusals`).toBe(36)
       expect(asks, `k=${k} asks`).toBeGreaterThan(4000)
       // the roll's notes carry a duration natively, so a finer column is never
       // unspellable for it the way a `_` run can be for the grid

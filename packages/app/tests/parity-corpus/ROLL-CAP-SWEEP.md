@@ -51,21 +51,21 @@ A flat at 75 across all caps, B 347 → 360.
 > observations committed in `ROLL-CAP-SWEEP.json`, re-taken by `node scripts/cap-sweep.mjs 4 6 8 12`.
 
 Both populations, all 4 caps, the real shipped writers at each value —
-**A** = core-REFUSED (1179 roll asks, what production reaches today),
-**B** = core-SERVED (454 roll asks, what #1012 would inherit).
+**A** = core-REFUSED (1158 roll asks, what production reaches today),
+**B** = core-SERVED (475 roll asks, what #1012 would inherit).
 
 | | **4** (shipped) | 6 | 8 | 12 |
 |---|---|---|---|---|
-| **A** reach (transfers) | 97 | 97 | 98 | 98 |
-| **B** transfers | 369 | 371 | 383 | 386 |
-| A views opened by the leaf writer | 54 | 55 | 65 | 66 |
-| B views opened by the leaf writer | 16 | 18 | 30 | 34 |
-| A leaf notes live | 145/349 41.5% | 148/362 40.9% | 207/475 43.6% | 211/487 43.3% |
-| B leaf notes live | 5/5 100.0% | 40/40 100.0% | 176/200 88.0% | 217/252 86.1% |
+| **A** reach (transfers) | 89 | 89 | 90 | 90 |
+| **B** transfers | 377 | 379 | 391 | 394 |
+| A views opened by the leaf writer | 36 | 37 | 47 | 48 |
+| B views opened by the leaf writer | 34 | 36 | 48 | 52 |
+| A leaf notes live | 110/294 37.4% | 113/307 36.8% | 172/420 41.0% | 176/432 40.7% |
+| B leaf notes live | 40/60 66.7% | 75/95 78.9% | 211/255 82.7% | 252/307 82.1% |
 | views that CORRUPT (must be 0) | 0 | 0 | 0 | 0 |
 
-- **Population A's reach moves by 1 ask across the whole range** (97 → 97 → 98 → 98). It is the population production reaches today, and it is the reason the cap has not been raised: the gain there is a rounding error.
-- **Population B gains 17 transfers** (369 → 371 → 383 → 386), every one served by the leaf writer, which is the writer this cap governs. B is a counterfactual until the core is deleted.
+- **Population A's reach moves by 1 ask across the whole range** (89 → 89 → 90 → 90). It is the population production reaches today, and it is the reason the cap has not been raised: the gain there is a rounding error.
+- **Population B gains 17 transfers** (377 → 379 → 391 → 394), every one served by the leaf writer, which is the writer this cap governs. B is a counterfactual until the core is deleted.
 - **Zero views corrupt on either population at any cap**, and zero asks moved to a worse outcome per ask — checked against the shipped-cap rows rather than by netting totals, since an ask lost and an ask gained sum to no change.
 
 The ceiling is 12 and not a round number: `detectPeriod` confirms a period `p` only
@@ -149,19 +149,19 @@ mechanism arriving where it was predicted to arrive.
 > applies to it.** These figures are current for the tree they are committed with.
 
 At roll cap **12**, with the syntactic core deleted (#1012) — over 1633 corpus
-units, 1275 core-served asks (821 grid / 454 roll):
+units, 1303 core-served asks (828 grid / 475 roll):
 
 | | cap 4 (shipped) | cap 12 |
 |---|---|---|
-| untransferable asks, both surfaces | 70 | 52 |
-| roll untransferable | 39 | 21 |
-| **the set that actually blocks deleting the core** | 53 | 37 |
+| untransferable asks, both surfaces | 76 | 58 |
+| roll untransferable | 42 | 24 |
+| **the set that actually blocks deleting the core** | 54 | 38 |
 | …of it, grid | 19 | 19 |
-| …of it, roll | 34 | 18 |
+| …of it, roll | 35 | 19 |
 
-**The cap's own contribution is 16 asks** (53 − 37), all of it on the roll: 34 − 18 = 16.
+**The cap's own contribution is 16 asks** (54 − 38), all of it on the roll: 35 − 19 = 16.
 
-**The grid is the control arm** and it is identical to the digit at both caps — 821 asks / 727 transfers / 31 untransferable / blocker 19 at cap 4, and 821 / 727 / 31 / 19 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
+**The grid is the control arm** and it is identical to the digit at both caps — 828 asks / 729 transfers / 34 untransferable / blocker 19 at cap 4, and 828 / 729 / 34 / 19 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
 
 The cap-4 column is DERIVED from this run. The cap-12 column is an OBSERVATION taken by `node scripts/p6-cap-census.mjs 12`, which sets the module constant exactly as a ship would; it carries the cap-4 column from its own run as an expiry stamp, and `writer-census.test.ts` reddens when that stamp stops matching this tree.
 

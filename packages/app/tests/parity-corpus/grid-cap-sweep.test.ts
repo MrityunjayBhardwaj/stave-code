@@ -165,7 +165,8 @@ describe(`the grid's leaf period cap at ${CAP}, on both populations it governs`,
     // pinned to its observation rather than sitting above a comfortable margin. Slack does
     // not weaken a floor by a proportion; it removes one named catch, and which one is not
     // recoverable from the margin ([[P593]]).
-    expect(transfers(rowsA), 'population A reach fell below the committed grid floor').toBeGreaterThanOrEqual(161)
+    // ⚠ LOWERED 161 -> 159 at #1849, and not by slack: the population moved. Four grids whose `,`-parts the flat reading refused now open through the core, so they left population A (A.opened 201 -> 197) and their asks with them — A.transfers 161 -> 159, B.transfers 727 -> 729, conserved. RE-PROVED as a paired differential on this tree (`cap-sweep.mjs grid`): cap 12 (shipped) 159, 10 -> 158, 8 -> 153, 6 and 4 -> 142 — every lower cap reddens at 159.
+    expect(transfers(rowsA), 'population A reach fell below the committed grid floor').toBeGreaterThanOrEqual(159)
 
     // Population B's is what the core's deletion would inherit (#1012). It is a floor and
     // not a target: it only becomes user-facing when the core stops answering first.

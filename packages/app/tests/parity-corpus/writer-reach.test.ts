@@ -178,8 +178,10 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
  *     its own terms. The step arm reads 161 at roll 4, 3, 2 and 1 alike, so the control
  *     closes in both directions.
  */
-const FLOOR_STEP = 161
-const FLOOR_ROLL = 95
+// ⚠ LOWERED 161 -> 159 at #1849, and not by slack: the population moved. Four grids whose `,`-parts the flat reading refused now open through the core, so they left population A (A.opened 201 -> 197) and their asks with them — A.transfers 161 -> 159, B.transfers 727 -> 729, conserved. RE-PROVED as a paired differential on this tree (`cap-sweep.mjs grid`): cap 12 (shipped) 159, 10 -> 158, 8 -> 153, 6 and 4 -> 142 — every lower cap reddens at 159.
+const FLOOR_STEP = 159
+// ⚠ LOWERED 95 -> 89 at #1849, and not by slack: the population moved. Eighteen rolls whose `,`-parts the flat reading refused, or whose parts differ in width, now open through the core, so they left population A (A.opened 145 -> 127) and their asks with them — A.transfers 97 -> 89, B.transfers 369 -> 377, conserved. RE-PROVED as a paired differential on this tree (`cap-sweep.mjs`): cap 4 (shipped) 89, 3 -> 87, 1 -> 84 — every lower cap reddens at 89.
+const FLOOR_ROLL = 89
 
 /**
  * THE OTHER HALF OF THE SCORE: how many deletes are written as BYTE SURGERY (#1010 P4d).

@@ -2867,6 +2867,8 @@ function gridFromStack(
   const partCells: ColumnNotes[] = []
   const divs: number[] = []
   const elements: ElementSpan[][] = []
+  // a part read by the lone-part chain brings its own regions (#1849)
+  const given: (SourceRegion<GridCells>[] | null)[] = []
   // The DOCUMENT's own shared width, needed for the unscaled ceiling below. Every
   // part's column count scales by exactly `viewScale`, and `lcm(k·a, k·b) = k·lcm(a, b)`,
   // so the shared total scales by the same factor — which is why the guard can be
@@ -2875,10 +2877,27 @@ function gridFromStack(
   for (const part of parts) {
     if (part.trim() === '') return { ok: false, reason: 'empty stack part' }
     const tok = tokenize(part)
-    if (!tok.ok) return tok
-    if (gridHasElongation(tok.steps)) {
-      return { ok: false, reason: 'elongation is beyond the drum-grid subset' }
+    const flatRefusal: { ok: false; reason: string } | null = !tok.ok
+      ? tok
+      : gridHasElongation(tok.steps)
+        ? { ok: false, reason: 'elongation is beyond the drum-grid subset' }
+        : null
+    if (flatRefusal || !tok.ok) {
+      // THE PART ALONE, ASKED THE WHOLE CHAIN (#1849). A part the flat reading turns
+      // away — `bd@3 sd`, `d6*2@2 f#6 e6` — is exactly what the lone-part chain was
+      // built to read, and it already answers when that part is written by itself.
+      // Only its flat-shaped answer fits a stack part: one part, no wrapper, not
+      // bar-wise. Anything else refuses as before.
+      const lone = loneGridPart(part.trim(), viewScale)
+      if (!lone) return flatRefusal ?? { ok: false, reason: 'unsupported mini-notation syntax' }
+      documentTotal = lcm(documentTotal, lone.steps / viewScale)
+      divs.push(lone.div)
+      elements.push([])
+      partCells.push(lone.cells)
+      given.push(lone.regions)
+      continue
     }
+    given.push(null)
     const documentDiv = division(tok.steps)
     documentTotal = lcm(documentTotal, tok.steps.length * documentDiv || 1)
     const div = documentDiv * viewScale
@@ -2916,9 +2935,35 @@ function gridFromStack(
       steps: total,
       ...(viewScale === UNREFINED ? {} : { viewScale }),
       lanes,
-      ...(stackSource(parts, divs, elements, partCells, total) ?? {}),
+      ...(stackSource(parts, divs, elements, partCells, total, given) ?? {}),
     },
   }
+}
+
+/**
+ * A `,`-part the flat reading turned away, read the way the same text is read on its
+ * own (#1849) — `parseStepGrid`, the whole chain — and kept only when its answer has
+ * the shape a stack part holds: one flat part of regions, no `<`…`>` wrapper, one bar,
+ * at the scale asked. Returns the part's own columns (the `ColumnNotes` the flat
+ * reading would have produced, rebuilt from the lanes it drew) and its regions.
+ */
+function loneGridPart(
+  part: string,
+  viewScale: ViewScale,
+): { steps: number; div: number; cells: ColumnNotes; regions: SourceRegion<GridCells>[] } | null {
+  const r = parseStepGrid(part, viewScale)
+  if (!r.ok) return null
+  const m = r.model
+  const src = m.source
+  if (!src || src.parts.length !== 1 || src.prefix !== '' || src.suffix !== '') return null
+  if (m.altSource || (m.bars ?? 1) !== 1 || (m.viewScale ?? UNREFINED) !== viewScale) return null
+  const cells: ColumnNotes = Array.from({ length: m.steps }, (_, c) =>
+    m.lanes.flatMap((l) => {
+      const cell = l.cells[c]
+      return isCellOn(cell) ? [{ token: l.sound, duration: cell.duration }] : []
+    }),
+  )
+  return { steps: m.steps, div: src.parts[0].div, cells, regions: src.parts[0].regions }
 }
 
 /**
@@ -2931,13 +2976,14 @@ function stackSource(
   elements: ElementSpan[][],
   partCells: ColumnNotes[],
   total: number,
+  given: (SourceRegion<GridCells>[] | null)[] = [],
 ): { source: NotationSource<GridCells> } | null {
   const out: SourcePart<GridCells>[] = []
   for (let i = 0; i < parts.length; i++) {
     const raw = parts[i]
     const leading = /^\s*/.exec(raw)?.[0] ?? ''
     const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? ''
-    const regions = buildRegions(
+    const regions = given[i] ?? buildRegions(
       raw.trim(),
       elements[i],
       divs[i],
@@ -4004,24 +4050,63 @@ function parseRollLanes(
   parts: string[],
   viewScale: ViewScale = UNREFINED,
 ): ParseResult<PianoRollModel> {
-  const models: PianoRollModel[] = []
+  let models: PianoRollModel[] = []
   for (const part of parts) {
     // a comma-part stays on the core path — projecting individual lanes is out of
     // scope, the same way `projectStepGrid`/`projectPianoRoll` decline `,`-stacks.
     // The scale rides down with it: every part is refined by the same factor, so the
     // shared-width check below is asked of like against like, and a part that cannot
     // honour the scale refuses here and takes the whole stack with it (#1116).
-    const r = parsePianoRollCore(part.trim(), viewScale)
-    if (!r.ok) return r
+    let r = parsePianoRollCore(part.trim(), viewScale)
+    if (!r.ok) {
+      // the grid's rule (#1849): the part alone, asked the whole chain, kept only when
+      // its answer is one flat part — see `loneGridPart`
+      const lone = parsePianoRoll(part.trim(), viewScale)
+      const src = lone.ok ? lone.model.source : undefined
+      const flat =
+        lone.ok &&
+        !!src &&
+        src.parts.length === 1 &&
+        src.prefix === '' &&
+        src.suffix === '' &&
+        !lone.model.altSource &&
+        lone.model.bars == null &&
+        (lone.model.viewScale ?? UNREFINED) === viewScale
+      if (!flat) return r
+      r = lone
+    }
     if (r.model.bars != null) {
       return { ok: false, reason: 'multi-bar parallel note lanes are beyond the editable subset' }
     }
     models.push(r.model)
   }
-  const steps = models[0].steps
-  if (!models.every((m) => m.steps === steps)) {
-    return { ok: false, reason: 'parallel note lanes must share a step grid' }
+  // PARTS OF DIFFERENT WIDTHS SHARE THE FINEST GRID (#1849), as the grid's stack does:
+  // Strudel fits every `,`-part to the cycle, so `c3 e3 g3, c5 [d5 e5] f5 g5 a5` is 3
+  // and 10 columns over one bar — 30 shared. The roll's writer indexes every part in
+  // ONE column space (`rollStackSource`), so a narrower part is scaled INTO it here —
+  // its notes, its regions and its `div` — rather than carrying a `factor` the writer
+  // does not read. Asked of the document's own widths, the ceiling the grid uses.
+  //
+  // ⚠ ONLY WHOLE WIDTHS SHARE A GRID. A roll's width can be fractional (`c4@1.5 e4@1.2`
+  // is 2.7 columns), and the writer lays a moved note across comma-lanes of exactly that
+  // width — `~ c4@1.5 ~@0.2, ~ ~@0.5 e4@1.2` — which the gesture then reads back. There
+  // is no common multiple of 2.7 and 2.7 to build, so equal widths pass untouched, as
+  // they always did, and unequal fractional ones are refused as before. Caught by
+  // `piano-roll-fractional-width.spec.ts`: the lcm came back huge, the read-back refused,
+  // and the drag was declined.
+  const widths = models.map((m) => m.steps / viewScale)
+  if (!widths.every((w) => w === widths[0])) {
+    if (!widths.every((w) => Number.isInteger(w))) {
+      return { ok: false, reason: 'parallel note lanes must share a step grid' }
+    }
+    const documentTotal = widths.reduce((l, w) => lcm(l, Math.max(1, w)), 1)
+    if (documentTotal > MAX_STEPS) {
+      return { ok: false, reason: `the stack expands the roll past ${MAX_STEPS} steps` }
+    }
+    const shared = documentTotal * viewScale
+    models = models.map((m) => scaleRoll(m, shared / m.steps))
   }
+  const steps = models[0].steps
   const numeric = models.some((m) => m.numeric)
   if (numeric && models.some((m) => !m.numeric && m.notes.length > 0)) {
     return { ok: false, reason: 'mixed numeric and note-name lanes are beyond the editable subset' }
@@ -4036,6 +4121,29 @@ function parseRollLanes(
       ...(numeric ? { numeric: true } : {}),
       ...(rollStackSource(parts, models) ?? {}),
     },
+  }
+}
+
+/** a roll part drawn `f` times finer: every column-valued field times `f` (#1849) */
+function scaleRoll(m: PianoRollModel, f: number): PianoRollModel {
+  if (f === 1) return m
+  const note = (n: RollNote): RollNote => ({ ...n, start: n.start * f, duration: n.duration * f })
+  return {
+    ...m,
+    steps: m.steps * f,
+    notes: m.notes.map(note),
+    ...(m.source
+      ? {
+          source: {
+            ...m.source,
+            parts: m.source.parts.map((p) => ({
+              ...p,
+              div: p.div * f,
+              regions: p.regions.map((r) => ({ ...r, from: r.from * f, to: r.to * f, content: r.content.map(note) })),
+            })),
+          },
+        }
+      : {}),
   }
 }
 

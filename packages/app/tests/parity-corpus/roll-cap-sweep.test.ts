@@ -165,7 +165,8 @@ describe(`the roll's leaf period cap at ${CAP}, on both populations it governs`,
     // it to: LEAF_PROJECT_BARS.roll 4 -> 3 or 2 gives **93**, and 4 -> 1 gives **89** —
     // every one of them PASSES at the old 85 and REDDENS at the new 95. Raised in the
     // same change as the measurement that found the gap.
-    expect(transfers(rowsA), 'population A reach fell below the committed roll floor').toBeGreaterThanOrEqual(95)
+    // ⚠ LOWERED 95 -> 89 at #1849, and not by slack: the population moved. Eighteen rolls whose `,`-parts the flat reading refused, or whose parts differ in width, now open through the core, so they left population A (A.opened 145 -> 127) and their asks with them — A.transfers 97 -> 89, B.transfers 369 -> 377, conserved. RE-PROVED as a paired differential on this tree (`cap-sweep.mjs`): cap 4 (shipped) 89, 3 -> 87, 1 -> 84 — every lower cap reddens at 89.
+    expect(transfers(rowsA), 'population A reach fell below the committed roll floor').toBeGreaterThanOrEqual(89)
 
     // Population B's is what the core's deletion would inherit (#1012). It is a floor
     // and not a target: it only becomes user-facing when the core stops answering first.

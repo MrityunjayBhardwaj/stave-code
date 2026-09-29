@@ -341,7 +341,9 @@ const POPULATION = {
   // view opens on this unit". Reading the old spelling forward would have grown
   // this set by 154 and reported a reach regression from a change that touched
   // no resolver. Left at 220, verified in the same run as the wiring.
-  newlyAdmitted: 220,
+  // ⚠ 220 -> 217 at #1849: three units on which no view opened now open (the stacks it reads
+  // part by part), so they leave the set of units only evaluation admits.
+  newlyAdmitted: 217,
 }
 
 /**
@@ -353,7 +355,8 @@ const POPULATION = {
  * changed. The sibling arm's equivalent move is +9 over its 1204 asks — a different
  * number over a different population, as it should be, and neither is the other's check.
  */
-const ALL_RESOLVED = { coreServed: 500, transfers: 435, untransferable: 25, unverified: 40 }
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const ALL_RESOLVED = { coreServed: 507, transfers: 438, untransferable: 28, unverified: 41 }
 
 /**
  * the counterfactual over ONLY the slice `mini-corpus.json` does not contain
@@ -387,7 +390,8 @@ const NEWLY_ADMITTED = { coreServed: 32, transfers: 22, untransferable: 1, unver
  */
 // ⚠ asks 1273 -> 1275 at #1827, transfers UNMOVED: the two units the core newly serves
 // drawn per bar are untransferable (the derived projections still cap at 64 columns).
-const MINI_CORPUS_ARM = { transfers: 1096, asks: 1275 }
+// ⚠ 1096/1275 -> 1106/1303 at #1849 — writer-census.test.ts's own figures, which this arm must equal.
+const MINI_CORPUS_ARM = { transfers: 1106, asks: 1303 }
 // ⚠ MOVED 1041/1204 -> 1096/1273 at #1242, when the harvest gained the product's own
 // resolver and the corpus went 1535 -> 1633 units. The pin FIRED again, which is what
 // it is for: +69 asks and +55 transfers, both upward, so the rate falls 86.5% -> 86.1%

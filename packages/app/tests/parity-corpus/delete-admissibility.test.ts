@@ -294,9 +294,10 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // leaf units bring 42 asks and 10 refusals, which is the same shared-leaf branch,
     // not a new one — the arm below re-derives every refusal from the source.
     expect({ units: t.units, asks: t.asks, refused: t.refused }).toEqual({
-      units: 86,
-      asks: 623,
-      refused: 285,
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      units: 82,
+      asks: 590,
+      refused: 267,
     })
   })
 
@@ -319,9 +320,10 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // was not needed — parallel lanes CAN say two things at once, which is the one
     // thing the old writer could not do and the whole reason this branch refuses.
     expect({ units: t.units, asks: t.asks, refused: t.refused }).toEqual({
-      units: 54,
-      asks: 635,
-      refused: 362,
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+      units: 36,
+      asks: 519,
+      refused: 337,
     })
   })
 
@@ -343,7 +345,8 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // writer's own count (362). The 7 that vanished left with their units, so no new
     // refusal branch appeared — had the writer started guessing inside the population,
     // these two numbers would have parted.
-    expect({ grid: g.refusedShared, roll: r.refusedShared }).toEqual({ grid: 285, roll: 362 })
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect({ grid: g.refusedShared, roll: r.refusedShared }).toEqual({ grid: 267, roll: 337 })
   })
 
   it('GRID: sharing is not merely necessary but SUFFICIENT — an exact iff, no residue', () => {
@@ -413,7 +416,8 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // units that left the leaf projection (90/506 -> 87/502). The ratio the design call
     // rests on is unmoved at 15%, and the grid is untouched — this widening is the
     // roll writer's alone.
-    expect(split).toEqual({ gridOn: 81, gridOff: 306, rollOn: 87, rollOff: 502 })
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+    expect(split).toEqual({ gridOn: 71, gridOff: 298, rollOn: 68, rollOff: 496 })
   })
 
   it('POSITIVE CONTROL — the non-leaf paths take the same gesture', () => {
@@ -441,7 +445,8 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
       // ⚠ gridSource 4443 -> 4465 at #1827 (each bar drawn at its own step count): the
       // newly opened `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` brings its 22 hits, and
       // `refused` stays ZERO on every accepting path.
-      gridSource: { asks: 4465, refused: 0 },
+      // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused). Still refused 0.
+      gridSource: { asks: 4530, refused: 0 },
       gridAlt: { asks: 619, refused: 0 },
       rollAlt: { asks: 874, refused: 0 },
     })
@@ -460,6 +465,7 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // 2 of 2 remove haps of the deleted pitch and touch nothing else, 0 went written ->
     // refused, and 0 of the previously written deletes changed a single byte.
     // ⚠ asks 3968 -> 3990 at #1827 (each bar drawn at its own step count), `refused` UNMOVED at 29: the newly opened roll's 22 notes.
-    expect({ asks: rs.asks, refused: rs.refused }).toEqual({ asks: 3990, refused: 29 })
+    // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused). `refused` UNMOVED at 29.
+    expect({ asks: rs.asks, refused: rs.refused }).toEqual({ asks: 4118, refused: 29 })
   })
 })

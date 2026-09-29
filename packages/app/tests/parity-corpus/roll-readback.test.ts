@@ -44,12 +44,16 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 // ⚠ units 595 -> 596 at #1827 (each bar drawn at its own step count): `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` now opens. Its
 // 18 lengthenings that would overlap the next note are lossy under the cheap rule and
 // refused by the strict one (1099 -> 1117 both); no other unit's answer moved.
-const UNITS = 596
-const ASKS = 11004
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const UNITS = 599
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const ASKS = 11028
 /** what the CHEAP rule ships today: writes whose reopen holds different notes (#1331) */
-const LOSSY_UNDER_DEFAULT = 1117
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const LOSSY_UNDER_DEFAULT = 1146
 /** of those, the ones the writer cannot express faithfully at all — it declines */
-const READBACK_REFUSALS = 1117
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const READBACK_REFUSALS = 1146
 /**
  * of those, the ones a DIFFERENT rung rescues — measured at ZERO, and the zero is the
  * finding.
@@ -208,12 +212,15 @@ describe('the roll reopens as what it wrote (#1331)', () => {
 // ⚠ 35601 -> 35675 and lossy 4376 -> 4306 at #1827 (each bar drawn at its own step count): the arrival's own cells, and
 // `<c2*2 g2*5 [a g]>` / `<0 [0 1] 0 [0 1 0]>` drawn per bar — no half-cells left to
 // place a note the document cannot keep, so 70 fewer lossy placements.
-const PLACE_ASKS = 35675
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const PLACE_ASKS = 35699
 const PLACE_LOSSY_UNDER_DEFAULT = 4306
 /** pastes over a cell that already holds a note — the case placement does not cover */
-const PASTE_ASKS = 5502
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const PASTE_ASKS = 5514
 /** 3 that do not parse + 83 that lose notes + 1 rescale */
-const PASTE_LOSSY_UNDER_DEFAULT = 87
+// ⚠ 87 -> 88 at #1849: one more paste the REJECTED cheap rule would ship lossy — the control arm, so it only has to stay above zero; the shipped rule refuses it.
+const PASTE_LOSSY_UNDER_DEFAULT = 88
 
 /** verbatim from PianoRollGrid.tsx — the resolver the panel gates placement on */
 function overlapAt(model: PianoRollModel, midi: number, step: number): RollNote | undefined {
@@ -329,12 +336,14 @@ describe('placement and paste reopen as what they wrote (#1333)', () => {
 
 /** measured 2026-08-26 on `33c6c166`, one delete per note */
 // ⚠ 5480 -> 5502 at #1827 (each bar drawn at its own step count): the arrival's 22 notes.
-const DELETE_ASKS = 5502
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const DELETE_ASKS = 5514
 /** what the CHEAP rule ships: deletes whose reopen holds different notes */
 const DELETE_LOSSY_UNDER_DEFAULT = 5
 /** measured 2026-08-26, each note dragged one column either way and one semitone either way */
 // ⚠ 20587 -> 20671 at #1827 (each bar drawn at its own step count): the arrival's moves.
-const MOVE_ASKS = 20671
+// ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+const MOVE_ASKS = 20704
 /** what the CHEAP rule ships: moves whose reopen holds different notes */
 const MOVE_LOSSY_UNDER_DEFAULT = 14
 

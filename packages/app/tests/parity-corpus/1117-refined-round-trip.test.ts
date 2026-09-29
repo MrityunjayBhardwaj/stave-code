@@ -417,7 +417,8 @@ describe('#1117 — coming back from a refined view', () => {
 const GRID_PINS: Record<string, [number, number, number]> = {
   'alt-element': [61, 61, 0],
   'alt-whole': [85, 85, 0],
-  element: [781, 780, 0],
+  // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+  element: [788, 787, 0],
 }
 const ROLL_PINS: Record<string, [number, number, number]> = {
   // ⚠ MOVED at #1310 (region-local parallel lanes). The two units that stopped needing
@@ -432,7 +433,8 @@ const ROLL_PINS: Record<string, [number, number, number]> = {
   // by being excluded. `alt-whole` and `element` are untouched.
   'alt-element': [58, 40, 0],
   'alt-whole': [106, 54, 2],
-  element: [379, 136, 2],
+  // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
+  element: [400, 149, 2],
 }
 /*
  * WHY THE ROLL COMPARES FEWER UNITS THAN THE GRID (201 of 490, against 868 of 869).

@@ -209,11 +209,44 @@ test.describe('the piano roll keeps its track chip clear of the grid (#1844)', (
   })
 
   test('the edit-only statement shares the chip’s line, beside it', async ({ page }) => {
-    const roll = await open(page, '$: note("c3 e3 g3, c5 [d5 e5] f5 g5 a5").s("sawtooth")', 'piano-roll')
+    // still read leaf by leaf — an `@` beside a `<…>` element — so it cannot take a new
+    // note (this was `c3 e3 g3, c5 [d5 e5] f5 g5 a5`, which #1849 opened with its steps)
+    const roll = await open(page, '$: note("c4 e4 g4 <d5 e5> ~ g4@2").s("sawtooth")', 'piano-roll')
     const g = await geometry(roll)
     expect(g.hint, 'this melody can only be edited in place').not.toBeNull()
     expect(g.hint!.left).toBeGreaterThanOrEqual(g.chip!.right)
     expect(g.hint!.bottom).toBeLessThanOrEqual(g.scroll!.top)
     expect(g.scroll!.bottom).toBeLessThanOrEqual(g.panel!.bottom + 0.5)
+  })
+})
+
+/**
+ * A pattern made of parts keeps its written steps when one part needs more than the flat
+ * reading (#1849). Each part below opened with step lines alone, and together they used to
+ * fall to the leaf reading: no step lines, and edit-only.
+ */
+test.describe('parts that need more than the flat reading keep their steps (#1849)', () => {
+  test('grid: `bd@3 sd, hh!6` draws each part its own steps, and is not edit-only', async ({ page }) => {
+    const seq = await open(page, '$: s("bd@3 sd, hh!6")', 'sequencer')
+    // rows bd, sd (part 0: bd held three steps, then sd) and hh (part 1: six steps)
+    const starts = await seq
+      .locator('[role="gridcell"][data-seq-step-start="true"] > [data-seq-cell]')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('data-seq-cell')))
+    expect(starts).toEqual(['0:3', '0:6', '0:9', '1:3', '1:6', '1:9', '2:2', '2:4', '2:6', '2:8', '2:10'])
+    expect(await ruler(seq, 'data-seq-ruler-label')).toEqual(['0=1', '3=1.2', '6=1.3', '9=1.4'])
+    await expect(seq.locator('[data-seq-no-placement]')).toHaveCount(0)
+  })
+
+  test('roll: parts of different widths share one grid, the lines follow the part with most notes', async ({
+    page,
+  }) => {
+    // 3 and 5 written steps over one bar → 30 shared columns; `c5 [d5 e5] f5 g5 a5` has more notes
+    const roll = await open(page, '$: note("c3 e3 g3, c5 [d5 e5] f5 g5 a5").s("piano")', 'piano-roll')
+    expect(await ruler(roll, 'data-roll-ruler-label')).toEqual(['0=1', '6=1.2', '12=1.3', '18=1.4', '24=1.5'])
+    const cols = await roll
+      .locator('[role="gridcell"][data-roll-step-start="true"] > [data-roll-cell]')
+      .evaluateAll((els) => [...new Set(els.map((e) => e.getAttribute('data-roll-cell')!.split(':')[1]))])
+    expect(cols).toEqual(['6', '12', '18', '24'])
+    await expect(roll.locator('[data-roll-no-placement]')).toHaveCount(0)
   })
 })
