@@ -178,3 +178,42 @@ test.describe('ruler labels that do not fit are hidden, never run together (#184
     expect(touching(ls)).toEqual([])
   })
 })
+
+test.describe('the piano roll keeps its track chip clear of the grid (#1844)', () => {
+  async function geometry(roll: Locator) {
+    return roll.evaluate((el) => {
+      const box = (e: Element | null | undefined) => {
+        if (!e) return null
+        const b = e.getBoundingClientRect()
+        return { left: b.left, top: b.top, right: b.right, bottom: b.bottom }
+      }
+      const header = el.querySelector('[data-roll-header]')
+      return {
+        panel: box(el),
+        chip: box(header?.firstElementChild),
+        hint: box(el.querySelector('[data-roll-no-placement]')),
+        scroll: box(el.querySelector('[data-pattern-scroll]')),
+        firstCell: box(el.querySelector('[data-roll-cell]')),
+      }
+    })
+  }
+
+  test('the chip sits above the first pitch row, not on it', async ({ page }) => {
+    const roll = await open(page, '$: note("[0 ~] [2 [0 2]] [4 4*2] [[4 ~] [2 ~] 0@2]").s("sawtooth")', 'piano-roll')
+    const g = await geometry(roll)
+    expect(g.chip, 'the track chip is shown').not.toBeNull()
+    expect(g.chip!.bottom).toBeLessThanOrEqual(g.scroll!.top)
+    expect(g.chip!.bottom).toBeLessThanOrEqual(g.firstCell!.top)
+    // and the scroll area ends inside the panel, so the bottom rows are not cut off
+    expect(g.scroll!.bottom).toBeLessThanOrEqual(g.panel!.bottom + 0.5)
+  })
+
+  test('the edit-only statement shares the chip’s line, beside it', async ({ page }) => {
+    const roll = await open(page, '$: note("c3 e3 g3, c5 [d5 e5] f5 g5 a5").s("sawtooth")', 'piano-roll')
+    const g = await geometry(roll)
+    expect(g.hint, 'this melody can only be edited in place').not.toBeNull()
+    expect(g.hint!.left).toBeGreaterThanOrEqual(g.chip!.right)
+    expect(g.hint!.bottom).toBeLessThanOrEqual(g.scroll!.top)
+    expect(g.scroll!.bottom).toBeLessThanOrEqual(g.panel!.bottom + 0.5)
+  })
+})

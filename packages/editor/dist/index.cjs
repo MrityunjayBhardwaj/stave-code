@@ -37205,43 +37205,35 @@ function PianoRollGrid({
       style: {
         position: "relative",
         height: "100%",
+        // a column: the header line, then the scroll area taking what is left (#1844)
+        display: "flex",
+        flexDirection: "column",
         outline: "none",
         // focusable for the Delete key (#432); scroll is on the inner div (#518)
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: "none"
       },
       children: [
-        /* @__PURE__ */ jsxRuntime.jsx(
-          "div",
-          {
-            style: {
-              position: "absolute",
-              top: 0,
-              left: 0,
-              zIndex: 3,
-              display: "flex",
-              alignItems: "center"
-            },
-            children: /* @__PURE__ */ jsxRuntime.jsx(PatternTrackChip, {})
-          }
-        ),
-        !placesNotes && /* @__PURE__ */ jsxRuntime.jsx(
-          "div",
-          {
-            "data-roll-no-placement": true,
-            style: {
-              fontSize: 11,
-              color: "var(--foreground-muted, #a0a0aa)",
-              padding: "0 8px 4px"
-            },
-            children: "Edits the notes already here \u2014 to add one, use the code view."
-          }
-        ),
+        /* @__PURE__ */ jsxRuntime.jsxs("div", { "data-roll-header": true, style: { display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }, children: [
+          /* @__PURE__ */ jsxRuntime.jsx(PatternTrackChip, {}),
+          !placesNotes && /* @__PURE__ */ jsxRuntime.jsx(
+            "div",
+            {
+              "data-roll-no-placement": true,
+              style: {
+                fontSize: 11,
+                color: "var(--foreground-muted, #a0a0aa)",
+                padding: "0 8px 0 0"
+              },
+              children: "Edits the notes already here \u2014 to add one, use the code view."
+            }
+          )
+        ] }),
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
             "data-pattern-scroll": true,
-            style: { padding: 16, height: "100%", overflow: "auto", boxSizing: "border-box" },
+            style: { padding: 16, flex: 1, minHeight: 0, overflow: "auto", boxSizing: "border-box" },
             children: /* @__PURE__ */ jsxRuntime.jsxs(
               "div",
               {
