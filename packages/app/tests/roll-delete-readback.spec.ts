@@ -49,7 +49,16 @@ async function cell(page: Page, key: string): Promise<{ x: number; y: number }> 
   await loc.scrollIntoViewIfNeeded()
   const b = await loc.boundingBox()
   if (!b) throw new Error(`roll cell ${key} has no box`)
-  return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+  const at = { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+  // …and prove the press will land ON it. "The document is byte-identical" is also what
+  // a click on nothing leaves, so without this the refused-delete arm stays green with
+  // no gesture at all — it did, when #1850 moved g4 above the view.
+  const hit = await page.evaluate(
+    ({ x, y }) => (document.elementFromPoint(x, y) as HTMLElement | null)?.closest('[data-roll-cell]')?.getAttribute('data-roll-cell') ?? null,
+    at,
+  )
+  expect(hit, `a press at roll cell ${key}'s centre must land on it`).toBe(key)
+  return at
 }
 
 test.describe('a note is only deleted where the document keeps the rest (#1340)', () => {
