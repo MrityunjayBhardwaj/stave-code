@@ -783,7 +783,7 @@ function buildRegions<C>(
     const leading = /^\s*/.exec(raw)?.[0] ?? ''
     const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? ''
     const to = col + el.weight * div
-    regions.push({ raw, leading, trailing, from: col, to, content: content(col, to) })
+    regions.push({ raw, leading, trailing, from: col, to, weight: el.weight, content: content(col, to) })
     col = to
   }
   if (col !== total) return null

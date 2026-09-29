@@ -10,6 +10,10 @@ import { parsePianoRoll, parseStepGrid } from '../../notation/parse'
 import { columnCount } from '../../notation/model'
 import { UNREFINED } from '../../notation/viewResolution'
 import { drawnBarStarts, rulerLabels, writtenStepStarts } from '../writtenSteps'
+import { mini as reifyMini } from '@strudel/mini/mini.mjs'
+
+/** Strudel's own step count for an element's bytes (`Pattern._steps`, a Fraction) */
+const strudelSteps = (raw: string): number => Number((reifyMini(raw.trim()) as { _steps?: unknown })._steps)
 
 const grid = (mini: string, scale = UNREFINED) => {
   const r = parseStepGrid(mini, scale)
@@ -80,6 +84,67 @@ describe('written-step starts, in drawn columns', () => {
   it('the piano roll reads the same regions', () => {
     expect(starts(roll('c4 [e4 g4] a4 b4'))).toEqual({ 0: [0, 2, 4, 6] })
     expect(starts(roll('<[c3 e3 g3] [c3 e3 g3 b3]>'))).toEqual({ 0: [0, 3] })
+  })
+})
+
+describe('an element Strudel counts as several steps begins that many (#1845)', () => {
+  it('`@` weights count as steps: `bd@3 sd` is four', () => {
+    const m = grid('bd@3 sd')
+    expect(starts(m)).toEqual({ 0: [0, 1, 2, 3] })
+    expect(labels(m)).toEqual({ 0: '1', 1: '1.2', 2: '1.3', 3: '1.4' })
+  })
+
+  it('`!` replicas count as steps: `hh!6` is six', () => {
+    expect(starts(grid('hh!6'))).toEqual({ 0: [0, 1, 2, 3, 4, 5] })
+    // each replica is one step even when it plays several hits
+    expect(starts(grid('bd*3!2'))).toEqual({ 0: [0, 3] })
+  })
+
+  it('a weighted group splits on its weight, not on its contents', () => {
+    expect(starts(grid('[bd sd]@2 hh'))).toEqual({ 0: [0, 1, 2] })
+    expect(starts(roll('c4 [e4 g4]@2'))).toEqual({ 0: [0, 2, 4] })
+  })
+
+  it('a `,`-part splits in its own columns, then stretches by its factor', () => {
+    // `bd!2 sd` is 3 steps stretched ×4 onto `hh*4`'s 12 shared columns
+    expect(starts(grid('bd!2 sd, hh*4'))).toEqual({ 0: [0, 4, 8], 1: [0] })
+  })
+
+  it('`*n`, Euclid and `<…>` stay one step each, as Strudel counts them', () => {
+    expect(starts(grid('hh*8'))).toEqual({ 0: [0] })
+    expect(starts(grid('bd(3,8)'))).toEqual({ 0: [0] })
+    expect(starts(grid('[~ hh]*4'))).toEqual({ 0: [0] })
+  })
+
+  it('the piano roll splits the same way', () => {
+    expect(starts(roll('c4@2 e4 g4'))).toEqual({ 0: [0, 1, 2, 3] })
+    expect(starts(roll('c4!2 e4'))).toEqual({ 0: [0, 1, 2] })
+  })
+
+  it('a region without a weight stays one step', () => {
+    const m = grid('bd@3 sd')
+    const bare = {
+      ...m,
+      source: { ...m.source!, parts: m.source!.parts.map((p) => ({ ...p, regions: p.regions.map(({ weight: _w, ...r }) => r) })) },
+    }
+    expect(starts(bare)).toEqual({ 0: [0, 3] })
+  })
+
+  it('every region’s weight is the step count Strudel gives its bytes', () => {
+    // agreement with Strudel, checked here — the drawing never calls Strudel
+    const cases = ['bd@3 sd', 'hh!6', '[bd sd]@2 hh', 'bd!2 sd, hh*4', 'hh*8', 'bd(3,8)', 'bd*3!2', 'bd [~ bd] sd ~']
+    for (const c of cases) {
+      for (const p of grid(c).source!.parts) {
+        for (const r of p.regions) {
+          expect(r.weight, `${c}: ${r.raw}`).toBe(strudelSteps(r.raw))
+        }
+      }
+    }
+    for (const c of ['c4@2 e4 g4', 'c4!2 e4', 'c4 [e4 g4]@2']) {
+      for (const r of roll(c).source!.parts[0].regions) {
+        expect(r.weight, `${c}: ${r.raw}`).toBe(strudelSteps(r.raw))
+      }
+    }
   })
 })
 
