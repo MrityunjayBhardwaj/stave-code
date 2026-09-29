@@ -202,20 +202,33 @@ export function useRulerFit(rulerRef: React.RefObject<HTMLElement | null>, label
       e.style.visibility = show[i] ? '' : 'hidden'
     })
   }, [rulerRef, labelAttr])
-  // The observer follows the ruler ELEMENT, attached from the every-render layout effect:
-  // a grid renders before its pattern has loaded, with no ruler yet, so an effect that
-  // looked once would find nothing and never look again.
+  useLayoutFollow(rulerRef, fit)
+}
+
+/**
+ * Run `run` after every render AND whenever `ref`'s element changes size.
+ *
+ * The observer follows the ELEMENT, attached from the every-render layout effect: a
+ * grid renders before its pattern has loaded, with no ruler yet, so an effect that
+ * looked once would find nothing and never look again (the ruler's resize bug). The
+ * size arm is what a closed drawer needs: a grid can mount and read its pattern with
+ * no height at all, and opening the drawer resizes it without a render (#1850).
+ * `run` is called through a ref, so it always sees the latest render's values.
+ */
+export function useLayoutFollow(ref: React.RefObject<HTMLElement | null>, run: () => void): void {
+  const runRef = React.useRef(run)
+  runRef.current = run
   const observed = React.useRef<{ el: HTMLElement; ro: ResizeObserver } | null>(null)
   React.useLayoutEffect(() => {
-    fit()
-    const root = rulerRef.current
-    if (observed.current?.el === root) return
+    runRef.current()
+    const el = ref.current
+    if (observed.current?.el === el) return
     observed.current?.ro.disconnect()
     observed.current = null
-    if (!root || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => fit())
-    ro.observe(root)
-    observed.current = { el: root, ro }
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => runRef.current())
+    ro.observe(el)
+    observed.current = { el, ro }
   })
   React.useEffect(() => () => observed.current?.ro.disconnect(), [])
 }
