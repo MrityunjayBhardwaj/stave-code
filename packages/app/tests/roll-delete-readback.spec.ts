@@ -42,9 +42,23 @@ async function openRoll(page: Page, code: string) {
 async function cell(page: Page, key: string): Promise<{ x: number; y: number }> {
   const loc = page.locator(`[data-bottom-panel-tab="piano-roll"] [data-roll-cell="${key}"]`)
   await expect(loc, `roll cell ${key} must be drawn`).toHaveCount(1)
+  // The roll opens on its notes (#1850), and this fixture spans c1..g4 — taller than the
+  // view — so g4 starts above it. Scroll to the cell first, as a user would; a centre
+  // read off-screen is a click on nothing, which the byte-identical arm cannot tell
+  // from a refused delete.
+  await loc.scrollIntoViewIfNeeded()
   const b = await loc.boundingBox()
   if (!b) throw new Error(`roll cell ${key} has no box`)
-  return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+  const at = { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+  // …and prove the press will land ON it. "The document is byte-identical" is also what
+  // a click on nothing leaves, so without this the refused-delete arm stays green with
+  // no gesture at all — it did, when #1850 moved g4 above the view.
+  const hit = await page.evaluate(
+    ({ x, y }) => (document.elementFromPoint(x, y) as HTMLElement | null)?.closest('[data-roll-cell]')?.getAttribute('data-roll-cell') ?? null,
+    at,
+  )
+  expect(hit, `a press at roll cell ${key}'s centre must land on it`).toBe(key)
+  return at
 }
 
 test.describe('a note is only deleted where the document keeps the rest (#1340)', () => {
