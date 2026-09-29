@@ -49,6 +49,13 @@ export interface SourceRegion<C> {
   from: number
   to: number
   /**
+   * The element's weight as the parser read it (`ElementSpan.weight`: `bd` 1, `bd@3` 3,
+   * `bd!3` 3, `[a b]` 1, `hh*8` 1) — the number that sized `[from, to)`. Strudel counts
+   * the element as this many steps, so the Pattern tab's ruler does too (#1845). Absent
+   * on a region built without one: it then counts as a single step.
+   */
+  weight?: number
+  /**
    * What the VIEW showed for these columns at parse time — the basis for "did
    * the user change this region?". Deliberately the model's own view rather
    * than the raw atoms: `[sd,sd]` is one lane to a grid that has one lane per

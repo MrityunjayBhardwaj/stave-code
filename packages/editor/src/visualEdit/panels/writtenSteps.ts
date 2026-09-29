@@ -44,6 +44,22 @@ function toDrawn(u: number, m: WrittenStepsModel): number | null {
 }
 
 /**
+ * Where the steps of ONE written element begin, in the region's own column space.
+ *
+ * Strudel counts an element as its weight in steps — `bd@3` 3, `hh!6` 6, while `hh*8`,
+ * `bd(3,8)` and `[a b]` are 1 (#1845). The region carries that weight from the parser
+ * (`ElementSpan.weight`, the number that sized it as `weight × div` columns), so the
+ * steps fall every `(to − from) / weight` columns. A region with no weight, or whose
+ * columns the weight does not divide, stays one step.
+ */
+function regionStepStarts(r: { from: number; to: number; weight?: number }): number[] {
+  const w = r.weight ?? 1
+  const span = r.to - r.from
+  if (!Number.isInteger(w) || w <= 1 || span % w !== 0) return [r.from]
+  return Array.from({ length: w }, (_, k) => r.from + (k * span) / w)
+}
+
+/**
  * Drawn columns where a written step begins, per `,`-part index (`StepLane.part`).
  * Sorted, deduplicated, and including column 0. A part the model has no current
  * regions for is absent from the map.
@@ -65,7 +81,7 @@ export function writtenStepStarts(m: WrittenStepsModel): Map<number, number[]> {
       if (!last || last.to * p.factor !== shared) continue // stale: no longer tiles the model
       put(
         p.part,
-        p.regions.map((r) => r.from * p.factor),
+        p.regions.flatMap(regionStepStarts).map((c) => c * p.factor),
       )
     }
     return out

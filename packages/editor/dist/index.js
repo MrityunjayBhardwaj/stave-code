@@ -31309,7 +31309,7 @@ function buildRegions(src, elements, div, total, content) {
     const leading = /^\s*/.exec(raw)?.[0] ?? "";
     const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
     const to = col + el.weight * div;
-    regions.push({ raw, leading, trailing, from: col, to, content: content(col, to) });
+    regions.push({ raw, leading, trailing, from: col, to, weight: el.weight, content: content(col, to) });
     col = to;
   }
   if (col !== total) return null;
@@ -35279,6 +35279,13 @@ function toDrawn(u, m) {
   return Number.isInteger(d) ? d : null;
 }
 __name(toDrawn, "toDrawn");
+function regionStepStarts(r) {
+  const w = r.weight ?? 1;
+  const span = r.to - r.from;
+  if (!Number.isInteger(w) || w <= 1 || span % w !== 0) return [r.from];
+  return Array.from({ length: w }, (_, k) => r.from + k * span / w);
+}
+__name(regionStepStarts, "regionStepStarts");
 function writtenStepStarts(m) {
   const out = /* @__PURE__ */ new Map();
   const shared = sharedSteps(m);
@@ -35296,7 +35303,7 @@ function writtenStepStarts(m) {
       if (!last || last.to * p.factor !== shared) continue;
       put(
         p.part,
-        p.regions.map((r) => r.from * p.factor)
+        p.regions.flatMap(regionStepStarts).map((c) => c * p.factor)
       );
     }
     return out;

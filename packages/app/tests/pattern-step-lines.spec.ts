@@ -68,6 +68,16 @@ test.describe('sequencer: step lines and a step ruler (#1841)', () => {
     await expect.poll(() => ruler(seq, 'data-seq-ruler-label')).toEqual(['0=1', '2=1.2', '4=1.3'])
   })
 
+  test('`@` counts as steps the way Strudel does: `bd@3 sd` is four (#1845)', async ({ page }) => {
+    const seq = await open(page, '$: s("bd@3 sd")', 'sequencer')
+    expect(await ruler(seq, 'data-seq-ruler-label')).toEqual(['0=1', '1=1.2', '2=1.3', '3=1.4'])
+    // a step line inside the held kick, as well as before the snare
+    const starts = await seq
+      .locator('[role="gridcell"][data-seq-step-start="true"] > [data-seq-cell]')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('data-seq-cell')))
+    expect(starts).toEqual(['0:1', '0:2', '0:3', '1:1', '1:2', '1:3'])
+  })
+
   test('a leaf-read pattern has no written-step regions: bar numbers only, no step lines', async ({ page }) => {
     const seq = await open(page, '$: s("<bd [~ bd]>@2 hh@2 bd <bd ~> [hh bd] [~ hh]")', 'sequencer')
     expect(await ruler(seq, 'data-seq-ruler-label')).toEqual(['0=1', '16=2'])
