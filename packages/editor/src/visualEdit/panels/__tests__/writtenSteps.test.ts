@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { parsePianoRoll, parseStepGrid } from '../../notation/parse'
 import { columnCount } from '../../notation/model'
 import { UNREFINED } from '../../notation/viewResolution'
-import { drawnBarStarts, rulerLabels, writtenStepStarts } from '../writtenSteps'
+import { drawnBarStarts, fitLabels, rulerLabels, writtenStepStarts } from '../writtenSteps'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 
 /** Strudel's own step count for an element's bytes (`Pattern._steps`, a Fraction) */
@@ -154,5 +154,30 @@ describe('bar starts come from the panels’ own layout', () => {
     expect(drawnBarStarts(two, columnCount(two))).toEqual([0, 2, 4])
     const perBar = grid('<bd*3 [sd hh]>')
     expect(drawnBarStarts(perBar, columnCount(perBar))).toEqual([0, 3, 5])
+  })
+})
+
+describe('ruler labels that do not fit are hidden, bar numbers first (#1843)', () => {
+  // a label box: drawn at `left`, `w` px wide
+  const box = (left: number, w: number, bar = false) => ({ left, right: left + w, bar })
+
+  it('labels with room all show', () => {
+    expect(fitLabels([box(0, 6, true), box(40, 14), box(80, 14), box(120, 6, true)])).toEqual([true, true, true, true])
+  })
+
+  it('a step label that would touch the one before it is hidden, and the next one that clears is shown', () => {
+    // 18px columns, labels 18px wide: each would sit flush against the last
+    const steps = [box(0, 6, true), box(18, 18), box(36, 18), box(54, 18), box(72, 18)]
+    expect(fitLabels(steps)).toEqual([true, true, false, true, false])
+  })
+
+  it('a step label is hidden rather than crowd the next bar number', () => {
+    expect(fitLabels([box(0, 6, true), box(30, 18), box(50, 6, true)])).toEqual([true, false, true])
+  })
+
+  it('bar numbers win over step labels, and crowd only each other', () => {
+    // bars every 10px: `10` would touch `9`
+    const bars = [box(0, 6, true), box(10, 6, true), box(20, 11, true), box(30, 11, true)]
+    expect(fitLabels(bars)).toEqual([true, true, true, false])
   })
 })

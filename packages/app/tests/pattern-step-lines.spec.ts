@@ -112,3 +112,69 @@ test.describe('piano roll: step lines and a step ruler (#1841)', () => {
     expect(plain).toBe('none')
   })
 })
+
+test.describe('ruler labels that do not fit are hidden, never run together (#1843)', () => {
+  /** each label: its text, whether it is shown, and its box */
+  async function labelBoxes(panel: Locator, attr: string) {
+    return panel.locator(`[${attr}]`).evaluateAll((els) =>
+      els.map((e) => {
+        const r = e.getBoundingClientRect()
+        return { text: e.textContent ?? '', shown: getComputedStyle(e).visibility !== 'hidden', left: r.left, right: r.right }
+      }),
+    )
+  }
+  const touching = (ls: { text: string; shown: boolean; left: number; right: number }[]) => {
+    const shown = ls.filter((l) => l.shown)
+    return shown.slice(1).flatMap((l, i) => (l.left < shown[i].right ? [`${shown[i].text}|${l.text}`] : []))
+  }
+  const hh32 = Array(32).fill('hh').join(' ')
+  // an alternation used as a step: twelve bars of four steps, crowded at 1024px
+  const bars = 'bd hh hh <sd hh cp oh lt mt ht rim cb cr rd sh>'
+
+  test('narrow steps: the shown labels never touch, and the hidden ones sit between them', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    for (const [code, tab, attr] of [
+      [`$: s("${hh32}")`, 'sequencer', 'data-seq-ruler-label'],
+      [`$: note("${Array(32).fill('c4').join(' ')}").s("piano")`, 'piano-roll', 'data-roll-ruler-label'],
+    ] as const) {
+      const panel = await open(page, code, tab)
+      const ls = await labelBoxes(panel, attr)
+      expect(ls, `${tab}: every step keeps its label`).toHaveLength(32)
+      expect(touching(ls), `${tab}: shown labels that touch`).toEqual([])
+      expect(ls[0].shown, `${tab}: the bar number shows`).toBe(true)
+      const hidden = ls.filter((l) => !l.shown).length
+      expect(hidden, `${tab}: at 1024px some labels must give way`).toBeGreaterThan(0)
+      expect(hidden, `${tab}: and not all of them`).toBeLessThan(31)
+    }
+  })
+
+  test('bar numbers show before any step label', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 900 })
+    const seq = await open(page, `$: s("${bars}")`, 'sequencer')
+    const ls = await labelBoxes(seq, 'data-seq-ruler-label')
+    expect(touching(ls)).toEqual([])
+    const barLabels = ls.filter((l) => !l.text.includes('.'))
+    expect(barLabels.map((l) => l.text)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'])
+    expect(barLabels.every((l) => l.shown), 'every bar number shows').toBe(true)
+  })
+
+  test('narrowing the window re-fits the ruler without a re-render', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const seq = await open(page, `$: s("${hh32}")`, 'sequencer')
+    expect((await labelBoxes(seq, 'data-seq-ruler-label')).filter((l) => !l.shown)).toEqual([])
+    await page.setViewportSize({ width: 1024, height: 900 })
+    await expect.poll(async () => touching(await labelBoxes(seq, 'data-seq-ruler-label'))).toEqual([])
+    expect((await labelBoxes(seq, 'data-seq-ruler-label')).filter((l) => !l.shown).length).toBeGreaterThan(0)
+    // …and widening it again brings them all back
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await expect.poll(async () => (await labelBoxes(seq, 'data-seq-ruler-label')).filter((l) => !l.shown).length).toBe(0)
+  })
+
+  test('with room, every label shows', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const seq = await open(page, `$: s("${hh32}")`, 'sequencer')
+    const ls = await labelBoxes(seq, 'data-seq-ruler-label')
+    expect(ls.filter((l) => !l.shown).map((l) => l.text)).toEqual([])
+    expect(touching(ls)).toEqual([])
+  })
+})
