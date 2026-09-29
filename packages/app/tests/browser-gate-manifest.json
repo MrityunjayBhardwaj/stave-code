@@ -739,6 +739,10 @@
     "runs": "gate",
     "why": "collected by the gate \u2014 it runs the whole chromium project"
   },
+  "roll-opens-on-notes.spec.ts": {
+    "runs": "gate",
+    "why": "The piano roll opens on its notes (#1850): centred when they fit the view, else the lowest note at the bottom; also when the pattern was read with the drawer closed; an edit never moves the view, a new statement re-opens on its own notes. Before, every roll opened at its top row with its lowest note out of view."
+  },
   "pattern-step-lines.spec.ts": {
     "runs": "gate",
     "why": "Stage 1 of the pattern grid (#1841): both grids draw a line where each step as written begins, and a ruler counting those steps, from the regions the parser already records. Pins line positions, that a plain column draws none, that a bar line differs from a step line, and that the sequencer's ruler follows the cursor row when parts split the bar differently."

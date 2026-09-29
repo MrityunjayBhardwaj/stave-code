@@ -61,10 +61,6 @@ test.describe('Snap division (#432 Slice 2)', () => {
     await page.waitForTimeout(80)
 
     // drag c3 (step 0) to step 5 → snaps to the nearest 1/4 line (step 4).
-    // The roll opens scrolled to its top row, and in the default 720px layout the c3 row
-    // sits just below the fold since the track chip took its own line (#1844), so
-    // scroll it into view first, as a user would.
-    await grid.locator('[data-roll-cell="48:0"]').scrollIntoViewIfNeeded()
     const from = await grid.locator('[data-roll-cell="48:0"]').boundingBox()
     const to = await grid.locator('[data-roll-cell="48:5"]').boundingBox()
     if (!from || !to) throw new Error('missing cells')

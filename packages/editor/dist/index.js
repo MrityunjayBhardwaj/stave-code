@@ -3,8 +3,8 @@ import { parse as parse$1 } from '@strudel/mini/krill-parser.js';
 import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
 import { parse } from 'acorn';
 import { isControlName, getControlName } from '@strudel/core/controls.mjs';
-import * as React39 from 'react';
-import React39__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
+import * as React21 from 'react';
+import React21__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw, { loader, DiffEditor as DiffEditor$1 } from '@monaco-editor/react';
@@ -18595,8 +18595,8 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React39__default.Children.count(children);
-  const childArray = React39__default.Children.toArray(children);
+  const count = React21__default.Children.count(children);
+  const childArray = React21__default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
   const [sizes, setSizes] = useState(defaultSizes);
   const containerRef = useRef(null);
@@ -18641,7 +18641,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React39__default.useEffect(() => {
+  React21__default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -18657,7 +18657,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React39__default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxs(React21__default.Fragment, { children: [
         /* @__PURE__ */ jsx(
           "div",
           {
@@ -27980,7 +27980,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React39__default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React21__default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -28202,7 +28202,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React39__default.useMemo(() => {
+  const providerNode = React21__default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -28495,25 +28495,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React39.useMemo(
+  const changedIds = React21.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
     [commit, pickerFileIds]
   );
-  const [mode, setMode2] = React39.useState(defaultMode);
-  React39.useEffect(() => {
+  const [mode, setMode2] = React21.useState(defaultMode);
+  React21.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React39.useState(
+  const [fileId, setFileId] = React21.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React39.useRef(null);
-  const handleMount = React39.useCallback(
+  const diffEditorRef = React21.useRef(null);
+  const handleMount = React21.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -28523,7 +28523,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -28648,18 +28648,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React39.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
-  const fileIds = React39.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React39.useState(
+  const snapshot = React21.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const fileIds = React21.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React21.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React39.useCallback(
+  const handleMount = React21.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -29583,7 +29583,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React39.createElement(
+  return React21.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -29601,7 +29601,7 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React39.createElement(EmptyTimelineStub)
+  content: React21.createElement(EmptyTimelineStub)
 });
 
 // src/workspace/codeUndo.ts
@@ -29625,22 +29625,22 @@ function codeUndoForFocus(el, which) {
 }
 __name(codeUndoForFocus, "codeUndoForFocus");
 function useActiveChunk() {
-  const [editor, setEditor] = React39.useState(() => getActiveEditor());
-  const [chunk, setChunk] = React39.useState(null);
-  const writebackRef = React39.useRef(null);
-  const editorRef = React39.useRef(null);
-  const anchorRef = React39.useRef(null);
+  const [editor, setEditor] = React21.useState(() => getActiveEditor());
+  const [chunk, setChunk] = React21.useState(null);
+  const writebackRef = React21.useRef(null);
+  const editorRef = React21.useRef(null);
+  const anchorRef = React21.useRef(null);
   anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
   }, [editor]);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -29667,7 +29667,7 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React39.useCallback(
+  const applyEdit = React21.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -29682,8 +29682,8 @@ function useActiveChunk() {
     },
     []
   );
-  const beginGesture = React39.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React39.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React21.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React21.useCallback(() => writebackRef.current?.endGesture(), []);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -33046,7 +33046,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React39.createElement(
+  return React21.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -33065,12 +33065,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React39.createElement("span", {
+    icon ? React21.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React39.createElement("span", null, hint)
+    React21.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -33131,16 +33131,16 @@ function gainUnchanged(g, cur) {
 __name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React39.useState(null);
-  const modelRef = React39.useRef(null);
-  React39.useEffect(() => {
+  const [model, setModel] = React21.useState(null);
+  const modelRef = React21.useRef(null);
+  React21.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React39.useRef(opts);
+  const optsRef = React21.useRef(opts);
   optsRef.current = opts;
   const viewScale = opts.viewScale ?? UNREFINED;
-  const modelScaleRef = React39.useRef(UNREFINED);
-  React39.useEffect(() => {
+  const modelScaleRef = React21.useRef(UNREFINED);
+  React21.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -33165,7 +33165,7 @@ function useGridModel(opts) {
     modelRef.current = next;
     setModel(next);
   }, [chunk, viewScale]);
-  const writeModel = React39.useCallback(
+  const writeModel = React21.useCallback(
     (next) => {
       const o = optsRef.current;
       const atDocument = o.collapseToDocument ? o.collapseToDocument(next) : null;
@@ -33187,7 +33187,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  const mutate = React39.useCallback(
+  const mutate = React21.useCallback(
     (fn) => {
       const prev = modelRef.current;
       if (prev == null) return;
@@ -33197,8 +33197,8 @@ function useGridModel(opts) {
     },
     [writeModel]
   );
-  const settle = React39.useCallback((next) => writeModel(next), [writeModel]);
-  const writeMini = React39.useCallback(
+  const settle = React21.useCallback((next) => writeModel(next), [writeModel]);
+  const writeMini = React21.useCallback(
     (mini) => {
       applyEdit((fresh, wb) => {
         if (!fresh.miniRange) return;
@@ -33243,9 +33243,9 @@ function cycleToStep(cycle, steps, bars, cols, barSteps) {
 }
 __name(cycleToStep, "cycleToStep");
 function usePlayingStep(steps, bars, cols, barSteps) {
-  const [step, setStep] = React39.useState(null);
+  const [step, setStep] = React21.useState(null);
   const layoutKey = barSteps?.join(",") ?? "";
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     let raf = 0;
     const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
     const tick = /* @__PURE__ */ __name(() => {
@@ -33713,7 +33713,7 @@ function subscribe3(listener) {
 }
 __name(subscribe3, "subscribe");
 function useNoteColorMode() {
-  const mode = React39.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
+  const mode = React21.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -34044,20 +34044,20 @@ function rollSlotState(model, target, canDrawView) {
 }
 __name(rollSlotState, "rollSlotState");
 function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
-  const slotStateRef = React39.useRef(slotState2);
+  const slotStateRef = React21.useRef(slotState2);
   slotStateRef.current = slotState2;
-  const onScaleToRef = React39.useRef(onScaleTo);
+  const onScaleToRef = React21.useRef(onScaleTo);
   onScaleToRef.current = onScaleTo;
-  const effectRef = React39.useRef(effect);
+  const effectRef = React21.useRef(effect);
   effectRef.current = effect;
-  const stableSlotState = React39.useCallback((t) => slotStateRef.current(t), []);
-  const stableScaleTo = React39.useCallback((t) => onScaleToRef.current(t), []);
+  const stableSlotState = React21.useCallback((t) => slotStateRef.current(t), []);
+  const stableScaleTo = React21.useCallback((t) => onScaleToRef.current(t), []);
   const hasEffect = effect !== void 0;
-  const stableEffect = React39.useCallback(
+  const stableEffect = React21.useCallback(
     (t) => effectRef.current?.(t) ?? { lengthened: 0, snapped: 0, merged: 0 },
     []
   );
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (!onResolution) return;
     onResolution(
       steps == null ? null : {
@@ -34068,20 +34068,20 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
       }
     );
   }, [steps, onResolution, stableSlotState, stableScaleTo, hasEffect, stableEffect]);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     return () => onResolution?.(null);
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
 function useViewProver(mini, parse6) {
-  const cacheRef = React39.useRef({
+  const cacheRef = React21.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React39.useRef(parse6);
+  const parseRef = React21.useRef(parse6);
   parseRef.current = parse6;
   const key2 = mini ?? null;
-  return React39.useCallback(
+  return React21.useCallback(
     (scale) => {
       if (key2 == null) return false;
       const c = cacheRef.current;
@@ -34137,9 +34137,9 @@ function ResolutionControl({
   onScaleTo,
   effect
 }) {
-  const [open, setOpen] = React39.useState(false);
-  const rootRef = React39.useRef(null);
-  React39.useEffect(() => {
+  const [open, setOpen] = React21.useState(false);
+  const rootRef = React21.useRef(null);
+  React21.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       if (!rootRef.current?.contains(e.target)) setOpen(false);
@@ -34564,22 +34564,22 @@ function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
 }
 __name(jumpCursorToTrack, "jumpCursorToTrack");
 function useMixerModel() {
-  const [editor, setEditor] = React39.useState(() => getActiveEditor());
-  const [derived, setDerived] = React39.useState(EMPTY_DERIVED);
-  const editorRef = React39.useRef(null);
-  const writebackRef = React39.useRef(null);
-  const lastJumpRef = React39.useRef(null);
-  React39.useEffect(() => {
+  const [editor, setEditor] = React21.useState(() => getActiveEditor());
+  const [derived, setDerived] = React21.useState(EMPTY_DERIVED);
+  const editorRef = React21.useRef(null);
+  const writebackRef = React21.useRef(null);
+  const lastJumpRef = React21.useRef(null);
+  React21.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     editorRef.current = editor;
     const monaco = getMonacoNamespace();
     writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
     lastJumpRef.current = null;
   }, [editor]);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (!editor) {
       setDerived(EMPTY_DERIVED);
       return;
@@ -34606,7 +34606,7 @@ function useMixerModel() {
     const sub = model?.onDidChangeContent?.(rederive);
     return () => sub?.dispose?.();
   }, [editor]);
-  const applyToStrip = React39.useCallback(
+  const applyToStrip = React21.useCallback(
     (id, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -34624,7 +34624,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToStripAt = React39.useCallback(
+  const applyToStripAt = React21.useCallback(
     (anchor, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -34639,7 +34639,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToMaster = React39.useCallback(
+  const applyToMaster = React21.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -34650,7 +34650,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToMasterChunk = React39.useCallback(
+  const applyToMasterChunk = React21.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -34673,12 +34673,12 @@ function useMixerModel() {
     },
     []
   );
-  const beginGesture = React39.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React39.useCallback(() => writebackRef.current?.endGesture(), []);
-  const [selectedId, setSelectedId] = React39.useState(null);
-  const stripsRef = React39.useRef(EMPTY_DERIVED.strips);
+  const beginGesture = React21.useCallback(() => writebackRef.current?.beginGesture(), []);
+  const endGesture = React21.useCallback(() => writebackRef.current?.endGesture(), []);
+  const [selectedId, setSelectedId] = React21.useState(null);
+  const stripsRef = React21.useRef(EMPTY_DERIVED.strips);
   stripsRef.current = derived.strips;
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (!editor) {
       setSelectedId(null);
       return;
@@ -34707,7 +34707,7 @@ function useMixerModel() {
     const sub = editor.onDidChangeCursorPosition?.(recompute);
     return () => sub?.dispose?.();
   }, [editor, derived.strips]);
-  const selectTrack = React39.useCallback((id) => {
+  const selectTrack = React21.useCallback((id) => {
     const ed = editorRef.current;
     if (!ed) return;
     const model = ed.getModel?.();
@@ -34740,8 +34740,8 @@ function StripColorPopover({
   onReset,
   onClose
 }) {
-  const ref = React39.useRef(null);
-  React39.useEffect(() => {
+  const ref = React21.useRef(null);
+  React21.useEffect(() => {
     const onDown = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) onClose();
     }, "onDown");
@@ -34989,12 +34989,12 @@ __name(renameEdit, "renameEdit");
 function PatternTrackChip() {
   const { chunk } = useActiveChunk();
   const { strips, applyToStripAt } = useMixerModel();
-  const [fileId, setFileId] = React39.useState(() => getActiveFileId());
-  React39.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React21.useState(() => getActiveFileId());
+  React21.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
-  const [colorAnchor, setColorAnchor] = React39.useState(null);
-  const [renaming, setRenaming] = React39.useState(false);
-  const settledRef = React39.useRef(false);
+  const [colorAnchor, setColorAnchor] = React21.useState(null);
+  const [renaming, setRenaming] = React21.useState(false);
+  const settledRef = React21.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -35163,13 +35163,13 @@ function setColumnGain(model, stepIndex, gain) {
 __name(setColumnGain, "setColumnGain");
 var CLICK_SLOP_PX = 4;
 function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
-  const selfRef = React39.useRef(null);
-  const [frame, setFrame] = React39.useState(null);
-  const [added, setAdded] = React39.useState(0);
-  const [engaged, setEngaged] = React39.useState(false);
-  const dragRef = React39.useRef(null);
-  const swallowClick = React39.useRef(false);
-  const measure = React39.useCallback(() => {
+  const selfRef = React21.useRef(null);
+  const [frame, setFrame] = React21.useState(null);
+  const [added, setAdded] = React21.useState(0);
+  const [engaged, setEngaged] = React21.useState(false);
+  const dragRef = React21.useRef(null);
+  const swallowClick = React21.useRef(false);
+  const measure = React21.useCallback(() => {
     const grid = gridRef.current;
     const parent = selfRef.current?.offsetParent;
     if (!grid || !parent || cols < 1) return;
@@ -35192,8 +35192,8 @@ function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
       (f) => f && f.left === next.left && f.top === next.top && f.height === next.height && f.pitch === next.pitch && f.maxRight === next.maxRight ? f : next
     );
   }, [gridRef, cellAttr, cols]);
-  React39.useLayoutEffect(measure);
-  React39.useEffect(() => {
+  React21.useLayoutEffect(measure);
+  React21.useEffect(() => {
     const grid = gridRef.current;
     if (!grid || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => measure());
@@ -35433,7 +35433,7 @@ function fitLabels(boxes) {
 }
 __name(fitLabels, "fitLabels");
 function useRulerFit(rulerRef, labelAttr) {
-  const fit = React39.useCallback(() => {
+  const fit = React21.useCallback(() => {
     const root = rulerRef.current;
     if (!root) return;
     const els = [...root.querySelectorAll(`[${labelAttr}]`)];
@@ -35446,21 +35446,27 @@ function useRulerFit(rulerRef, labelAttr) {
       e.style.visibility = show[i] ? "" : "hidden";
     });
   }, [rulerRef, labelAttr]);
-  const observed = React39.useRef(null);
-  React39.useLayoutEffect(() => {
-    fit();
-    const root = rulerRef.current;
-    if (observed.current?.el === root) return;
-    observed.current?.ro.disconnect();
-    observed.current = null;
-    if (!root || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => fit());
-    ro.observe(root);
-    observed.current = { el: root, ro };
-  });
-  React39.useEffect(() => () => observed.current?.ro.disconnect(), []);
+  useLayoutFollow(rulerRef, fit);
 }
 __name(useRulerFit, "useRulerFit");
+function useLayoutFollow(ref, run) {
+  const runRef = React21.useRef(run);
+  runRef.current = run;
+  const observed = React21.useRef(null);
+  React21.useLayoutEffect(() => {
+    runRef.current();
+    const el = ref.current;
+    if (observed.current?.el === el) return;
+    observed.current?.ro.disconnect();
+    observed.current = null;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => runRef.current());
+    ro.observe(el);
+    observed.current = { el, ro };
+  });
+  React21.useEffect(() => () => observed.current?.ro.disconnect(), []);
+}
+__name(useLayoutFollow, "useLayoutFollow");
 function unwrapAlternation2(mini) {
   const t = mini.trim();
   if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
@@ -35585,7 +35591,7 @@ function usePatternLength(chunk, model, parse6, writeMini) {
   const mini = model ? chunk?.miniString ?? null : null;
   const bars = model?.bars ?? 1;
   const velocity = chunk ? hasVelocityString(chunk) : false;
-  const parseRef = React39.useRef(parse6);
+  const parseRef = React21.useRef(parse6);
   parseRef.current = parse6;
   const check = /* @__PURE__ */ __name((r, wantBars) => {
     if (!r.ok) return r;
@@ -35593,7 +35599,7 @@ function usePatternLength(chunk, model, parse6, writeMini) {
     const read5 = parseRef.current(r.mini, UNREFINED);
     return read5.ok && (read5.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
   }, "check");
-  const cache3 = React39.useRef(null);
+  const cache3 = React21.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null) return null;
     const key2 = `${bars}|${velocity}|${mini}`;
@@ -35971,7 +35977,7 @@ function reportRefusal(attempted) {
 }
 __name(reportRefusal, "reportRefusal");
 function SequencerGrid({ onResolution } = {}) {
-  const [viewScale, setViewScale] = React39.useState(UNREFINED);
+  const [viewScale, setViewScale] = React21.useState(UNREFINED);
   const { chunk, model, mutate, writeMini, beginGesture, endGesture } = useGridModel({
     source: "seq",
     eligible: opensStepGrid,
@@ -35985,7 +35991,7 @@ function SequencerGrid({ onResolution } = {}) {
   });
   const length = usePatternLength(chunk, model, parseStepGrid, writeMini);
   const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     setViewScale(UNREFINED);
   }, [chunkKey]);
   const playingStep = usePlayingStep(
@@ -35995,29 +36001,29 @@ function SequencerGrid({ onResolution } = {}) {
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
-  const gestureRef = React39.useRef(null);
-  const gainScoped = React39.useMemo(() => model ? serializeStepGain(model).kind !== "skip" : false, [model]);
-  const placesNotes = React39.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
+  const gestureRef = React21.useRef(null);
+  const gainScoped = React21.useMemo(() => model ? serializeStepGain(model).kind !== "skip" : false, [model]);
+  const placesNotes = React21.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
-  const isChordChart = React39.useMemo(
+  const isChordChart = React21.useMemo(
     () => chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
     [laneKey]
   );
-  const toggleable = React39.useMemo(
+  const toggleable = React21.useMemo(
     () => model ? model.lanes.map((lane, li) => lane.cells.map((c, si) => canToggleCell(model, li, si, !isCellOn(c)))) : null,
     [model]
   );
-  const coverage = React39.useMemo(
+  const coverage = React21.useMemo(
     () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,
     [model]
   );
-  const stepStarts = React39.useMemo(() => {
+  const stepStarts = React21.useMemo(() => {
     if (!model) return null;
     const out = /* @__PURE__ */ new Map();
     for (const [part, cols] of writtenStepStarts(model)) out.set(part, new Set(cols));
     return out;
   }, [model]);
-  const resizable = React39.useMemo(() => {
+  const resizable = React21.useMemo(() => {
     if (!model) return null;
     return model.lanes.map((lane, li) => {
       const out = /* @__PURE__ */ new Set();
@@ -36029,7 +36035,7 @@ function SequencerGrid({ onResolution } = {}) {
       return out;
     });
   }, [model]);
-  const paintCell = React39.useCallback(
+  const paintCell = React21.useCallback(
     (laneIndex, stepIndex, value) => {
       let refused2 = false;
       mutate((prev) => {
@@ -36045,7 +36051,7 @@ function SequencerGrid({ onResolution } = {}) {
     },
     [mutate]
   );
-  const paintOne = React39.useCallback(
+  const paintOne = React21.useCallback(
     (laneIndex, stepIndex, value) => {
       if (paintCell(laneIndex, stepIndex, value)) {
         reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit");
@@ -36053,20 +36059,20 @@ function SequencerGrid({ onResolution } = {}) {
     },
     [paintCell]
   );
-  const addVoice = React39.useCallback(
+  const addVoice = React21.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React39.useCallback(
+  const removeVoice = React21.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
   const canDrawView = useViewProver(chunk?.miniString, parseStepGrid);
-  const scaleToSlots = React39.useCallback(
+  const scaleToSlots = React21.useCallback(
     (target) => {
       if (!model) return;
       if (stepSlotState(model, target, canDrawView) === "view") {
@@ -36089,7 +36095,7 @@ function SequencerGrid({ onResolution } = {}) {
     // looking closer costs nothing.
     (t) => model && stepSlotState(model, t, canDrawView) !== "view" ? stepResolutionEffect(model, t) : { lengthened: 0, snapped: 0, merged: 0 }
   );
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -36172,23 +36178,23 @@ function SequencerGrid({ onResolution } = {}) {
     if (g.mode !== "paint") return;
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
-  const [cursor, setCursor] = React39.useState(null);
+  const [cursor, setCursor] = React21.useState(null);
   const rowsN = model?.lanes.length ?? 0;
   const colsN = model?.steps ?? 0;
   const liveCursor = cursor && cursor.row < rowsN && cursor.col < colsN ? cursor : null;
-  const cursorRef = React39.useRef(liveCursor);
+  const cursorRef = React21.useRef(liveCursor);
   cursorRef.current = liveCursor;
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React39.useRef(stmtId);
-  React39.useEffect(() => {
+  const stmtRef = React21.useRef(stmtId);
+  React21.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setCursor(null);
     }
   }, [stmtId]);
-  const focusCursorRef = React39.useRef(false);
-  const gridRef = React39.useRef(null);
-  React39.useEffect(() => {
+  const focusCursorRef = React21.useRef(false);
+  const gridRef = React21.useRef(null);
+  React21.useEffect(() => {
     if (!focusCursorRef.current) return;
     focusCursorRef.current = false;
     gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')?.focus();
@@ -36257,16 +36263,16 @@ function SequencerGrid({ onResolution } = {}) {
         return false;
     }
   }, "runGesture");
-  const runGestureRef = React39.useRef(runGesture);
+  const runGestureRef = React21.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React39.useEffect(
+  React21.useEffect(
     () => mountGridGestures(GRID_SCOPE.sequencer, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React39.useRef(null);
+  const rulerRef = React21.useRef(null);
   useRulerFit(rulerRef, "data-seq-ruler-label");
   if (!model) {
-    return React39.createElement(VisualEditStandby, {
+    return React21.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && opensStepGrid(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -36768,8 +36774,8 @@ function PianoRollGrid({
   division: division2 = DEFAULT_DIVISION,
   onResolution
 } = {}) {
-  const [viewScale, setViewScale] = React39.useState(UNREFINED);
-  const [declinedCell, setDeclinedCell] = React39.useState(null);
+  const [viewScale, setViewScale] = React21.useState(UNREFINED);
+  const [declinedCell, setDeclinedCell] = React21.useState(null);
   const { chunk, model, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel({
     source: "roll",
     eligible: opensPianoRoll,
@@ -36783,11 +36789,11 @@ function PianoRollGrid({
   });
   const length = usePatternLength(chunk, model, parsePianoRoll, writeMini);
   const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     setViewScale(UNREFINED);
   }, [chunkKey]);
-  const dragRef = React39.useRef(null);
-  const velRef = React39.useRef(null);
+  const dragRef = React21.useRef(null);
+  const velRef = React21.useRef(null);
   const playingStep = usePlayingStep(
     model?.steps ?? 0,
     model?.bars ?? 1,
@@ -36795,19 +36801,21 @@ function PianoRollGrid({
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
-  const [hoveredMidi, setHoveredMidi] = React39.useState(null);
-  const holdMidiRef = React39.useRef(null);
-  const holdTimerRef = React39.useRef(null);
-  const onSelectRef = React39.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React21.useState(null);
+  const holdMidiRef = React21.useRef(null);
+  const holdTimerRef = React21.useRef(null);
+  const onSelectRef = React21.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React39.useRef(selected);
+  const selectedRef = React21.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range2, setRange] = React39.useState(
+  const [range2, setRange] = React21.useState(
     () => rollContentRange({ notes: [] })
   );
-  const stmtIdRef = React39.useRef(null);
-  React39.useEffect(() => {
+  const stmtIdRef = React21.useRef(null);
+  const scrollRef = React21.useRef(null);
+  const openScrollRef = React21.useRef(false);
+  React21.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = rollContentRange(model);
@@ -36815,6 +36823,7 @@ function PianoRollGrid({
     if (stmtIdRef.current !== id) {
       stmtIdRef.current = id;
       setRange(content);
+      openScrollRef.current = true;
     } else {
       setRange((prev) => ({
         lo: Math.min(prev.lo, content.lo),
@@ -36822,14 +36831,34 @@ function PianoRollGrid({
       }));
     }
   }, [model]);
-  const placesNotes = React39.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
-  const resizable = React39.useMemo(() => model ? resizableNotes(model) : null, [model]);
+  useLayoutFollow(scrollRef, () => {
+    const sc = scrollRef.current;
+    if (!openScrollRef.current || !sc || !model || sc.clientHeight === 0) return;
+    const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
+    if (midis.length === 0) {
+      openScrollRef.current = false;
+      return;
+    }
+    const rowOf = /* @__PURE__ */ __name((midi) => sc.querySelector(`[data-roll-cell^="${midi}:"]`), "rowOf");
+    const top = rowOf(Math.max(...midis));
+    const bottom = rowOf(Math.min(...midis));
+    if (!top || !bottom) return;
+    openScrollRef.current = false;
+    const box = sc.getBoundingClientRect();
+    const pad = 16;
+    const y0 = top.getBoundingClientRect().top - box.top + sc.scrollTop;
+    const y1 = bottom.getBoundingClientRect().bottom - box.top + sc.scrollTop;
+    const room = sc.clientHeight - 2 * pad;
+    sc.scrollTop = y1 - y0 <= room ? (y0 + y1) / 2 - sc.clientHeight / 2 : y1 + pad - sc.clientHeight;
+  });
+  const placesNotes = React21.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
+  const resizable = React21.useMemo(() => model ? resizableNotes(model) : null, [model]);
   const cols = model ? columnCount(model) : 0;
-  const gainWritable = React39.useMemo(
+  const gainWritable = React21.useMemo(
     () => model ? serializeRollGain(model).kind !== "skip" : false,
     [model]
   );
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -36878,7 +36907,7 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -36933,7 +36962,7 @@ function PianoRollGrid({
       holdTimerRef.current = null;
     }
   }, "stopHold");
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     window.addEventListener("pointerup", stopHold);
     window.addEventListener("pointercancel", stopHold);
     return () => {
@@ -37091,9 +37120,9 @@ function PianoRollGrid({
     }
     return best ?? { row: 0, col: 0 };
   }, "defaultCell");
-  const focusCursorRef = React39.useRef(false);
-  const gridRef = React39.useRef(null);
-  React39.useEffect(() => {
+  const focusCursorRef = React21.useRef(false);
+  const gridRef = React21.useRef(null);
+  React21.useEffect(() => {
     if (!focusCursorRef.current) return;
     const cell = gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-roll-cell]');
     if (!cell) return;
@@ -37197,16 +37226,16 @@ function PianoRollGrid({
         return true;
     }
   }, "runGesture");
-  const runGestureRef = React39.useRef(runGesture);
+  const runGestureRef = React21.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React39.useEffect(
+  React21.useEffect(
     () => mountGridGestures(GRID_SCOPE.pianoRoll, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React39.useRef(null);
+  const rulerRef = React21.useRef(null);
   useRulerFit(rulerRef, "data-roll-ruler-label");
   if (!model) {
-    return React39.createElement(VisualEditStandby, {
+    return React21.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && opensPianoRoll(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -37268,6 +37297,7 @@ function PianoRollGrid({
           "div",
           {
             "data-pattern-scroll": true,
+            ref: scrollRef,
             style: { padding: 16, flex: 1, minHeight: 0, overflow: "auto", boxSizing: "border-box" },
             children: /* @__PURE__ */ jsxs(
               "div",
@@ -37781,13 +37811,13 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React39.useRef(null);
-  const [editing, setEditing] = React39.useState(false);
-  const [draftMin, setDraftMin] = React39.useState("");
-  const [draftMax, setDraftMax] = React39.useState("");
-  const [popupPos, setPopupPos] = React39.useState(null);
-  const sliderRef = React39.useRef(null);
-  const popupRef = React39.useRef(null);
+  const dragRef = React21.useRef(null);
+  const [editing, setEditing] = React21.useState(false);
+  const [draftMin, setDraftMin] = React21.useState("");
+  const [draftMax, setDraftMax] = React21.useState("");
+  const [popupPos, setPopupPos] = React21.useState(null);
+  const sliderRef = React21.useRef(null);
+  const popupRef = React21.useRef(null);
   const POPUP_W = 132;
   const openRangeEditor = /* @__PURE__ */ __name(() => {
     if (!onRangeChange) return;
@@ -37803,7 +37833,7 @@ function Knob({
     }
     setEditing(false);
   }, "commitRange");
-  React39.useLayoutEffect(() => {
+  React21.useLayoutEffect(() => {
     if (!editing) return;
     const r = sliderRef.current?.getBoundingClientRect();
     if (!r) return;
@@ -37818,7 +37848,7 @@ function Knob({
       )
     });
   }, [editing]);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (!editing) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -38671,12 +38701,12 @@ function AddEffectMenu({
   present,
   onToggle
 }) {
-  const [open, setOpen] = React39.useState(false);
-  const [query, setQuery] = React39.useState("");
-  const [pos, setPos] = React39.useState(null);
-  const btnRef = React39.useRef(null);
-  const menuRef = React39.useRef(null);
-  const place = React39.useCallback(() => {
+  const [open, setOpen] = React21.useState(false);
+  const [query, setQuery] = React21.useState("");
+  const [pos, setPos] = React21.useState(null);
+  const btnRef = React21.useRef(null);
+  const menuRef = React21.useRef(null);
+  const place = React21.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -38690,10 +38720,10 @@ function AddEffectMenu({
       maxHeight
     });
   }, []);
-  React39.useLayoutEffect(() => {
+  React21.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -38908,15 +38938,15 @@ function SoundPickerMenu({
   onChange,
   onAudition
 }) {
-  const [open, setOpen] = React39.useState(false);
-  const [query, setQuery] = React39.useState("");
-  const [category, setCategory] = React39.useState(null);
-  const [pos, setPos] = React39.useState(null);
-  const btnRef = React39.useRef(null);
-  const menuRef = React39.useRef(null);
+  const [open, setOpen] = React21.useState(false);
+  const [query, setQuery] = React21.useState("");
+  const [category, setCategory] = React21.useState(null);
+  const [pos, setPos] = React21.useState(null);
+  const btnRef = React21.useRef(null);
+  const menuRef = React21.useRef(null);
   const lc = label.toLowerCase();
   const currentLabel = groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder;
-  const place = React39.useCallback(() => {
+  const place = React21.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -38930,17 +38960,17 @@ function SoundPickerMenu({
       maxHeight
     });
   }, []);
-  React39.useLayoutEffect(() => {
+  React21.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (open) {
       ensureCatScrollStyle();
       setQuery("");
       setCategory(null);
     }
   }, [open]);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -39477,7 +39507,7 @@ function createCatalogStore() {
     listeners14.add(listener);
     return () => listeners14.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React39.useSyncExternalStore(subscribe7, read5, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React21.useSyncExternalStore(subscribe7, read5, () => null), "useCatalog");
   return { setAccessor, notify: notify6, read: read5, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -39609,7 +39639,7 @@ function MixerBody({
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
   const knobs = knobsFromChunk(chunk, showGain);
-  const writeKnob = React39.useCallback(
+  const writeKnob = React21.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => {
         const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
@@ -39619,7 +39649,7 @@ function MixerBody({
     },
     [applyEdit]
   );
-  const writeRange = React39.useCallback(
+  const writeRange = React21.useCallback(
     (entry, min, max) => {
       applyEdit((fresh, wb) => {
         const call = fresh.chain[entry.chainIndex];
@@ -39630,7 +39660,7 @@ function MixerBody({
     },
     [applyEdit]
   );
-  const resetRange = React39.useCallback(
+  const resetRange = React21.useCallback(
     (entry) => {
       applyEdit((fresh, wb) => {
         const call = fresh.chain[entry.chainIndex];
@@ -39641,7 +39671,7 @@ function MixerBody({
     },
     [applyEdit]
   );
-  const toggleEffect = React39.useCallback(
+  const toggleEffect = React21.useCallback(
     (e) => {
       applyEdit((fresh, wb) => {
         const names = effectNames(e);
@@ -39652,7 +39682,7 @@ function MixerBody({
     },
     [applyEdit]
   );
-  const removeMethod = React39.useCallback(
+  const removeMethod = React21.useCallback(
     (method) => {
       applyEdit((fresh, wb) => {
         const idx = fresh.chain.findIndex((c, i) => i > 0 && c.name === method);
@@ -39661,7 +39691,7 @@ function MixerBody({
     },
     [applyEdit]
   );
-  const writeChainMethod = React39.useCallback(
+  const writeChainMethod = React21.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
       applyEdit((fresh, wb) => {
@@ -39844,7 +39874,7 @@ var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function Mixer({ division: division2, onDivisionChange, resolution } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   if (!chunk || chunk.chain.length === 0) {
-    return React39.createElement(VisualEditStandby, {
+    return React21.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -39966,24 +39996,24 @@ __name(levelColor, "levelColor");
 var MIN_FRAME_MS = 1e3 / 60;
 var QUERY_WINDOW_CYCLES = 0.01;
 function useTrackMeters() {
-  const elsRef = React39.useRef(/* @__PURE__ */ new Map());
-  const stateRef = React39.useRef(/* @__PURE__ */ new Map());
-  const schedulersRef = React39.useRef(null);
-  const rafRef = React39.useRef(null);
-  const lastTsRef = React39.useRef(0);
-  const [fileId, setFileId] = React39.useState(() => getActiveFileId());
-  React39.useEffect(() => {
+  const elsRef = React21.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React21.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React21.useRef(null);
+  const rafRef = React21.useRef(null);
+  const lastTsRef = React21.useRef(0);
+  const [fileId, setFileId] = React21.useState(() => getActiveFileId());
+  React21.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React39.useCallback((captureId, els) => {
+  const register = React21.useCallback((captureId, els) => {
     if (els) elsRef.current.set(captureId, els);
     else {
       elsRef.current.delete(captureId);
       stateRef.current.delete(captureId);
     }
   }, []);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       schedulersRef.current = schedulersOf(payload);
     }) : (() => {
@@ -40074,7 +40104,7 @@ function useTrackMeters() {
       stateRef.current.clear();
     };
   }, [fileId]);
-  return React39.useMemo(() => ({ register }), [register]);
+  return React21.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
@@ -40114,8 +40144,8 @@ function subscribe4(listener) {
 }
 __name(subscribe4, "subscribe");
 function useActiveFileId() {
-  const [id, setId] = React39.useState(() => getActiveFileId());
-  React39.useEffect(() => {
+  const [id, setId] = React21.useState(() => getActiveFileId());
+  React21.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -40124,7 +40154,7 @@ function useActiveFileId() {
 __name(useActiveFileId, "useActiveFileId");
 function useSoloedIds() {
   const fileId = useActiveFileId();
-  return React39.useSyncExternalStore(
+  return React21.useSyncExternalStore(
     subscribe4,
     () => read2(fileId),
     () => EMPTY
@@ -40134,7 +40164,7 @@ __name(useSoloedIds, "useSoloedIds");
 function useSoloStrips() {
   const fileId = useActiveFileId();
   const soloed = useSoloedIds();
-  const toggle = React39.useCallback(
+  const toggle = React21.useCallback(
     (id) => {
       if (fileId) toggleSolo(fileId, id);
     },
@@ -40158,7 +40188,7 @@ function reconcileSoloMutes(strips, newSolo, prevSnapshot) {
 __name(reconcileSoloMutes, "reconcileSoloMutes");
 function useSoloMuteSync() {
   const { soloed, toggle: toggleSet } = useSoloStrips();
-  const toggle = React39.useCallback(
+  const toggle = React21.useCallback(
     (id) => {
       const fileId = getActiveFileId();
       const editor = getActiveEditor();
@@ -40203,9 +40233,9 @@ function StripMeter({
   controller,
   horizontal = false
 }) {
-  const fillRef = React39.useRef(null);
-  const peakRef = React39.useRef(null);
-  React39.useEffect(() => {
+  const fillRef = React21.useRef(null);
+  const peakRef = React21.useRef(null);
+  React21.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -40311,14 +40341,14 @@ function ChannelStrip({
   orientation = "vertical"
 }) {
   const horizontal = orientation === "horizontal";
-  const [colorAnchor, setColorAnchor] = React39.useState(null);
+  const [colorAnchor, setColorAnchor] = React21.useState(null);
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
-  const [renaming, setRenaming] = React39.useState(false);
+  const [renaming, setRenaming] = React21.useState(false);
   const bareLabel2 = strip.label ?? "";
   const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
   const renameEnabled = onRename !== void 0;
-  const settledRef = React39.useRef(false);
+  const settledRef = React21.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -40339,8 +40369,8 @@ function ChannelStrip({
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React39.useRef(null);
-  const panDrag = React39.useRef(null);
+  const faderDrag = React21.useRef(null);
+  const panDrag = React21.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -40929,17 +40959,17 @@ var MIXER_WIDTH = 220;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = chunkSurface(chunk);
-  const [selected, setSelected] = React39.useState(null);
+  const [selected, setSelected] = React21.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React39.useRef(stmtId);
-  React39.useEffect(() => {
+  const stmtRef = React21.useRef(stmtId);
+  React21.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React39.useState(DEFAULT_DIVISION);
-  const [resolution, setResolution] = React39.useState(null);
+  const [division2, setDivision] = React21.useState(DEFAULT_DIVISION);
+  const [resolution, setResolution] = React21.useState(null);
   const grid = kind === "step" ? /* @__PURE__ */ jsx(SequencerGrid, { onResolution: setResolution }) : kind === "roll" ? /* @__PURE__ */ jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2, onResolution: setResolution }) : /* @__PURE__ */ jsx(
     VisualEditStandby,
     {
@@ -41049,8 +41079,8 @@ function subscribe5(listener) {
 }
 __name(subscribe5, "subscribe");
 function useActiveFileId2() {
-  const [id, setId] = React39.useState(() => getActiveFileId());
-  React39.useEffect(() => {
+  const [id, setId] = React21.useState(() => getActiveFileId());
+  React21.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -41059,12 +41089,12 @@ function useActiveFileId2() {
 __name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId2();
-  const expanded = React39.useSyncExternalStore(
+  const expanded = React21.useSyncExternalStore(
     subscribe5,
     () => read3(fileId),
     () => EMPTY2
   );
-  const toggle = React39.useCallback(
+  const toggle = React21.useCallback(
     (id) => {
       if (fileId) toggleExpanded(fileId, id);
     },
@@ -41143,12 +41173,12 @@ function subscribe6(listener) {
 }
 __name(subscribe6, "subscribe");
 function useMixerZoom() {
-  const zoom = React39.useSyncExternalStore(subscribe6, read4, () => MIXER_ZOOM_DEFAULT);
+  const zoom = React21.useSyncExternalStore(subscribe6, read4, () => MIXER_ZOOM_DEFAULT);
   return {
     zoom,
     percent: Math.round(zoom * 100),
-    zoomIn: React39.useCallback(() => nudgeMixerZoom(1), []),
-    zoomOut: React39.useCallback(() => nudgeMixerZoom(-1), []),
+    zoomIn: React21.useCallback(() => nudgeMixerZoom(1), []),
+    zoomOut: React21.useCallback(() => nudgeMixerZoom(-1), []),
     canZoomIn: zoom < MIXER_ZOOM_MAX,
     canZoomOut: zoom > MIXER_ZOOM_MIN
   };
@@ -41222,22 +41252,22 @@ function levelColor2(frac) {
 }
 __name(levelColor2, "levelColor");
 function useMasterMeter() {
-  const elsRef = React39.useRef(null);
-  const stateRef = React39.useRef(ZERO_METER);
-  const analyserRef = React39.useRef(null);
-  const bufRef = React39.useRef(null);
-  const rafRef = React39.useRef(null);
-  const lastTsRef = React39.useRef(0);
-  const [fileId, setFileId] = React39.useState(() => getActiveFileId());
-  React39.useEffect(() => {
+  const elsRef = React21.useRef(null);
+  const stateRef = React21.useRef(ZERO_METER);
+  const analyserRef = React21.useRef(null);
+  const bufRef = React21.useRef(null);
+  const rafRef = React21.useRef(null);
+  const lastTsRef = React21.useRef(0);
+  const [fileId, setFileId] = React21.useState(() => getActiveFileId());
+  React21.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React39.useCallback((els) => {
+  const register = React21.useCallback((els) => {
     elsRef.current = els;
     if (!els) stateRef.current = ZERO_METER;
   }, []);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       analyserRef.current = analyserOf(payload);
     }) : (() => {
@@ -41311,7 +41341,7 @@ function useMasterMeter() {
       stateRef.current = ZERO_METER;
     };
   }, [fileId]);
-  return React39.useMemo(() => ({ register }), [register]);
+  return React21.useMemo(() => ({ register }), [register]);
 }
 __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
@@ -41330,9 +41360,9 @@ function MasterStrip({
   onGestureEnd
 }) {
   const meter = useMasterMeter();
-  const fillRef = React39.useRef(null);
-  const peakRef = React39.useRef(null);
-  React39.useEffect(() => {
+  const fillRef = React21.useRef(null);
+  const peakRef = React21.useRef(null);
+  React21.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -41340,7 +41370,7 @@ function MasterStrip({
     return () => meter.register(null);
   }, [meter]);
   const pos = gainToFaderPos(gain);
-  const drag = React39.useRef(null);
+  const drag = React21.useRef(null);
   const onDown = /* @__PURE__ */ __name((e) => {
     if (foreign) return;
     e.preventDefault();
@@ -41612,8 +41642,8 @@ function MixerStrips({
     selectTrack
   } = useMixerModel();
   const meters = useTrackMeters();
-  const [fileId, setFileId] = React39.useState(() => getActiveFileId());
-  React39.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React21.useState(() => getActiveFileId());
+  React21.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const { expanded, toggle } = useExpandedStrips();
   const masterExpanded = expanded.has(MASTER_EXPAND_ID);
@@ -41914,7 +41944,7 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React39.createElement(Panel)
+      content: React21.createElement(Panel)
     });
   }
 }
@@ -41928,24 +41958,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React39.useState(opts.initial);
-  const [dragging, setDragging] = React39.useState(false);
-  const startYRef = React39.useRef(0);
-  const startValueRef = React39.useRef(opts.initial);
-  const pointerIdRef = React39.useRef(null);
-  const draggingRef = React39.useRef(false);
-  const minRef = React39.useRef(opts.min);
-  const maxRef = React39.useRef(opts.max);
-  React39.useEffect(() => {
+  const [value, setValueState] = React21.useState(opts.initial);
+  const [dragging, setDragging] = React21.useState(false);
+  const startYRef = React21.useRef(0);
+  const startValueRef = React21.useRef(opts.initial);
+  const pointerIdRef = React21.useRef(null);
+  const draggingRef = React21.useRef(false);
+  const minRef = React21.useRef(opts.min);
+  const maxRef = React21.useRef(opts.max);
+  React21.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React39.useCallback((v) => {
+  const setValue = React21.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React39.useCallback(
+  const onPointerDown = React21.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -41960,7 +41990,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React39.useCallback(
+  const endDrag = React21.useCallback(
     (e, commit) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -41975,7 +42005,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React39.useCallback(
+  const onPointerMove = React21.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -41991,13 +42021,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React39.useCallback(
+  const onPointerUp = React21.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React39.useCallback(
+  const onPointerCancel = React21.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -42025,15 +42055,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React39.useState(
+  const [tabs2, setTabs] = React21.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React39.useState(readPersistedOpen);
-  const [height, setHeight] = React39.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React39.useState(
+  const [open, setOpen] = React21.useState(readPersistedOpen);
+  const [height, setHeight] = React21.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React21.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -42043,10 +42073,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -42058,25 +42088,25 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const wasOpenOnTabPressRef = React39.useRef(open);
-  const tabButtonRefs = React39.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React39.useCallback(
+  const wasOpenOnTabPressRef = React21.useRef(open);
+  const tabButtonRefs = React21.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React21.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React39.useCallback((id) => {
+  const focusTab = React21.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React39.useCallback(
+  const onTabsKeyDown = React21.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -44457,7 +44487,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                   })() : /* @__PURE__ */ jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
                     if (column.length === 1) {
                       const g = groups.get(column[0]);
-                      return /* @__PURE__ */ jsx(React39__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                      return /* @__PURE__ */ jsx(React21__default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
                     }
                     return /* @__PURE__ */ jsx(
                       SplitPane,
@@ -44465,7 +44495,7 @@ var WorkspaceShell = forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2(
                         direction: "vertical",
                         children: column.map((gid) => {
                           const g = groups.get(gid);
-                          return /* @__PURE__ */ jsx(React39__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                          return /* @__PURE__ */ jsx(React21__default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                         })
                       },
                       `col-${colIdx}-${column.join("+")}`
@@ -48131,10 +48161,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React39.useReducer((x) => x + 1, 0);
-  React39.useEffect(() => subscribeToHistory(force), []);
-  React39.useEffect(() => subscribeToRuntimeView(force), []);
-  React39.useEffect(() => {
+  const [, force] = React21.useReducer((x) => x + 1, 0);
+  React21.useEffect(() => subscribeToHistory(force), []);
+  React21.useEffect(() => subscribeToRuntimeView(force), []);
+  React21.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -48151,17 +48181,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React39.useState(null);
-  const [forkName, setForkName] = React39.useState("");
-  const [committing, setCommitting] = React39.useState(false);
-  const [commitLabel, setCommitLabel] = React39.useState("");
-  const [expanded, setExpanded] = React39.useState(null);
-  const [hovered, setHovered] = React39.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React39.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React39.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React39.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React21.useState(null);
+  const [forkName, setForkName] = React21.useState("");
+  const [committing, setCommitting] = React21.useState(false);
+  const [commitLabel, setCommitLabel] = React21.useState("");
+  const [expanded, setExpanded] = React21.useState(null);
+  const [hovered, setHovered] = React21.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React21.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React21.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React21.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -50829,13 +50859,13 @@ function silencedNamesFrom(strips, soloed) {
 __name(silencedNamesFrom, "silencedNamesFrom");
 function useSilencedTrackNames() {
   const soloed = useSoloedIds();
-  const [editor, setEditor] = React39.useState(() => getActiveEditor());
-  const [strips, setStrips] = React39.useState([]);
-  React39.useEffect(() => {
+  const [editor, setEditor] = React21.useState(() => getActiveEditor());
+  const [strips, setStrips] = React21.useState([]);
+  React21.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React39.useEffect(() => {
+  React21.useEffect(() => {
     if (!editor) {
       setStrips([]);
       return;
@@ -50859,7 +50889,7 @@ function useSilencedTrackNames() {
     const sub = model?.onDidChangeContent?.(rederive);
     return () => sub?.dispose?.();
   }, [editor]);
-  return React39.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
+  return React21.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
 }
 __name(useSilencedTrackNames, "useSilencedTrackNames");
 

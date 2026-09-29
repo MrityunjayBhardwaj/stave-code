@@ -72,7 +72,7 @@ import {
 } from './gridGestures'
 import { readChainMethod } from './chainMethod'
 import { ExtendHandle } from './ExtendHandle'
-import { rulerLabels, useRulerFit, writtenStepStarts } from './writtenSteps'
+import { rulerLabels, useLayoutFollow, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { usePatternLength } from './usePatternLength'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
@@ -408,6 +408,8 @@ export function PianoRollGrid({
     rollContentRange({ notes: [] }),
   )
   const stmtIdRef = React.useRef<number | null>(null)
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const openScrollRef = React.useRef(false)
   React.useEffect(() => {
     if (!model) return
     // Never reflow the rows mid-drag: a moved note expanding the range would
@@ -419,6 +421,7 @@ export function PianoRollGrid({
     if (stmtIdRef.current !== id) {
       stmtIdRef.current = id
       setRange(content) // new statement → reseed
+      openScrollRef.current = true // …and open on its notes (#1850)
     } else {
       setRange((prev) => ({
         lo: Math.min(prev.lo, content.lo),
@@ -436,6 +439,37 @@ export function PianoRollGrid({
     // Within-track edits still change `model` → id matches → sticky union (#391).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model])
+
+  // OPEN ON THE NOTES (#1850). The range above puts the lowest note two rows above
+  // the bottom of at least 13, and the default drawer shows 9, so a roll left at its
+  // top row opened with its lowest note out of view — every roll in the corpus did.
+  // Once per statement, when the reseed above marks it: centre the notes when they
+  // fit, else put the lowest note at the bottom (the bass reads from the floor).
+  // Never on an edit — the range is sticky within a statement so the rows don't
+  // jump while you work, and the view must not either.
+  // After every render AND on the scroll area's resize: the rows the reseed asks for
+  // exist one render later, and a grid can read its pattern while the drawer is still
+  // closed — no height to scroll, and opening it resizes without a render.
+  useLayoutFollow(scrollRef, () => {
+    const sc = scrollRef.current
+    if (!openScrollRef.current || !sc || !model || sc.clientHeight === 0) return
+    const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m): m is number => m !== null)
+    if (midis.length === 0) {
+      openScrollRef.current = false
+      return
+    }
+    const rowOf = (midi: number) => sc.querySelector<HTMLElement>(`[data-roll-cell^="${midi}:"]`)
+    const top = rowOf(Math.max(...midis))
+    const bottom = rowOf(Math.min(...midis))
+    if (!top || !bottom) return // the rows for the new range are not drawn yet
+    openScrollRef.current = false
+    const box = sc.getBoundingClientRect()
+    const pad = 16 // the scroll area's own padding, kept clear at both edges
+    const y0 = top.getBoundingClientRect().top - box.top + sc.scrollTop
+    const y1 = bottom.getBoundingClientRect().bottom - box.top + sc.scrollTop
+    const room = sc.clientHeight - 2 * pad
+    sc.scrollTop = y1 - y0 <= room ? (y0 + y1) / 2 - sc.clientHeight / 2 : y1 + pad - sc.clientHeight
+  })
 
   // The roll's half of placement admissibility (#1064/#1070) — the VIEW-level
   // question only, and that asymmetry with the grid is measured, not stylistic.
@@ -1281,6 +1315,7 @@ export function PianoRollGrid({
         // always-visible (non-overlay) scrollbar when the rows overflow the
         // panel, styled in globals.css (the editor ships no CSS) — #pattern-scrollbar.
         data-pattern-scroll
+        ref={scrollRef}
         style={{ padding: 16, flex: 1, minHeight: 0, overflow: 'auto', boxSizing: 'border-box' }}
       >
         <div
