@@ -1239,42 +1239,41 @@ export function PianoRollGrid({
       style={{
         position: 'relative',
         height: '100%',
+        // a column: the header line, then the scroll area taking what is left (#1844)
+        display: 'flex',
+        flexDirection: 'column',
         outline: 'none', // focusable for the Delete key (#432); scroll is on the inner div (#518)
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         touchAction: 'none',
       }}
     >
-      {/* Track identity (#589) — the bound track's colour dot + name, pinned
-          top-LEFT as an overlay (same no-vertical-cost reasoning as the controls
-          below). Click the dot to recolour, double-click the name to rename. */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          zIndex: 3,
-          display: 'flex',
-          alignItems: 'center',
-        }}
-      >
+      {/* THE HEADER LINE: the track chip, and beside it the one statement for a view that
+          cannot take a new note. The chip was an overlay pinned top-left, to cost no
+          height, but it sat over the first pitch row's key and over this statement's
+          first words (#1844). It takes its own line now, as the sequencer's does; the
+          statement shares that line, so a roll that shows it grows by only the chip's
+          extra few pixels. */}
+      <div data-roll-header style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '0 0 auto' }}>
+        {/* Track identity (#589) — the bound track's colour dot + name. Click the dot to
+            recolour, double-click the name to rename. */}
         <PatternTrackChip />
+        {/* ONE statement for a view that cannot take a new note (#1070) — the same
+            fact the grid states, on the surface that carries 18,386 of the corpus's
+            19,098 inert roll placements. Moving, resizing, deleting and velocity
+            all still work on the notes that are here. */}
+        {!placesNotes && (
+          <div
+            data-roll-no-placement
+            style={{
+              fontSize: 11,
+              color: 'var(--foreground-muted, #a0a0aa)',
+              padding: '0 8px 0 0',
+            }}
+          >
+            Edits the notes already here — to add one, use the code view.
+          </div>
+        )}
       </div>
-      {/* ONE statement for a view that cannot take a new note (#1070) — the same
-          fact the grid states, on the surface that carries 18,386 of the corpus's
-          19,098 inert roll placements. Moving, resizing, deleting and velocity
-          all still work on the notes that are here. */}
-      {!placesNotes && (
-        <div
-          data-roll-no-placement
-          style={{
-            fontSize: 11,
-            color: 'var(--foreground-muted, #a0a0aa)',
-            padding: '0 8px 4px',
-          }}
-        >
-          Edits the notes already here — to add one, use the code view.
-        </div>
-      )}
       {/* "Slots" moved to the Pattern inspector (#601) and the Note Color toggle
           to the editor Settings tab (#602) — the old top-right overlay is gone,
           so the piano roll keeps its full height for pitch rows. */}
@@ -1282,7 +1281,7 @@ export function PianoRollGrid({
         // always-visible (non-overlay) scrollbar when the rows overflow the
         // panel, styled in globals.css (the editor ships no CSS) — #pattern-scrollbar.
         data-pattern-scroll
-        style={{ padding: 16, height: '100%', overflow: 'auto', boxSizing: 'border-box' }}
+        style={{ padding: 16, flex: 1, minHeight: 0, overflow: 'auto', boxSizing: 'border-box' }}
       >
         <div
           // paddingRight: room for the `+` past the last column (#1824), so a long
