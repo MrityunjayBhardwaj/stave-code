@@ -34,8 +34,14 @@ const TWO_BARS_REFUSED = '0:8'
 const TWO_BARS_ACCEPTED = '0:0'
 const TWO_BARS_AFTER = '$: s("<~ [~ bd]>@2 hh@2 bd <bd ~> [hh bd] [~ hh]")'
 
-/** One bar, one part, leaf-read: the `sd` token `[- sd]*2` is drawn as two hits. */
-const ONE_BAR = '$: s("[bd - [- bd] -], [- sd]*2")'
+/**
+ * One bar, leaf-read: the `sd` token `[- sd]*2` is drawn as two hits. It sits inside a
+ * one-branch `<…>` — which plays the same — because a stack part read with a wrapper
+ * still sends the whole pattern to the leaf reading. Written plain, `[- sd]*2` is read
+ * as a part's written step since #1849, and its two hits are erasable (the region
+ * re-spells), so it would no longer be the leaf case this describe is about.
+ */
+const ONE_BAR = '$: s("[bd - [- bd] -], <[- sd]*2>")'
 
 async function openSequencer(page: Page, code: string) {
   await bootApp(page, { drawer: { tabId: 'pattern', height: 520 } })

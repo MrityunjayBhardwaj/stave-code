@@ -32189,14 +32189,23 @@ function gridFromStack(parts, viewScale = UNREFINED) {
   const partCells = [];
   const divs = [];
   const elements = [];
+  const given = [];
   let documentTotal = 1;
   for (const part of parts) {
     if (part.trim() === "") return { ok: false, reason: "empty stack part" };
     const tok = tokenize(part);
-    if (!tok.ok) return tok;
-    if (gridHasElongation(tok.steps)) {
-      return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+    const flatRefusal = !tok.ok ? tok : gridHasElongation(tok.steps) ? { ok: false, reason: "elongation is beyond the drum-grid subset" } : null;
+    if (flatRefusal || !tok.ok) {
+      const lone = loneGridPart(part.trim(), viewScale);
+      if (!lone) return flatRefusal ?? { ok: false, reason: "unsupported mini-notation syntax" };
+      documentTotal = lcm(documentTotal, lone.steps / viewScale);
+      divs.push(lone.div);
+      elements.push([]);
+      partCells.push(lone.cells);
+      given.push(lone.regions);
+      continue;
     }
+    given.push(null);
     const documentDiv = division(tok.steps);
     documentTotal = lcm(documentTotal, tok.steps.length * documentDiv || 1);
     const div = documentDiv * viewScale;
@@ -32226,18 +32235,35 @@ function gridFromStack(parts, viewScale = UNREFINED) {
       steps: total,
       ...viewScale === UNREFINED ? {} : { viewScale },
       lanes,
-      ...stackSource(parts, divs, elements, partCells, total) ?? {}
+      ...stackSource(parts, divs, elements, partCells, total, given) ?? {}
     }
   };
 }
 __name(gridFromStack, "gridFromStack");
-function stackSource(parts, divs, elements, partCells, total) {
+function loneGridPart(part, viewScale) {
+  const r = parseStepGrid(part, viewScale);
+  if (!r.ok) return null;
+  const m = r.model;
+  const src = m.source;
+  if (!src || src.parts.length !== 1 || src.prefix !== "" || src.suffix !== "") return null;
+  if (m.altSource || (m.bars ?? 1) !== 1 || (m.viewScale ?? UNREFINED) !== viewScale) return null;
+  const cells = Array.from(
+    { length: m.steps },
+    (_, c) => m.lanes.flatMap((l) => {
+      const cell = l.cells[c];
+      return isCellOn(cell) ? [{ token: l.sound, duration: cell.duration }] : [];
+    })
+  );
+  return { steps: m.steps, div: src.parts[0].div, cells, regions: src.parts[0].regions };
+}
+__name(loneGridPart, "loneGridPart");
+function stackSource(parts, divs, elements, partCells, total, given = []) {
   const out = [];
   for (let i = 0; i < parts.length; i++) {
     const raw = parts[i];
     const leading = /^\s*/.exec(raw)?.[0] ?? "";
     const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const regions = buildRegions(
+    const regions = given[i] ?? buildRegions(
       raw.trim(),
       elements[i],
       divs[i],
@@ -32860,19 +32886,34 @@ function parsePianoRollCore(mini, viewScale = UNREFINED) {
 }
 __name(parsePianoRollCore, "parsePianoRollCore");
 function parseRollLanes(parts, viewScale = UNREFINED) {
-  const models = [];
+  let models = [];
   for (const part of parts) {
-    const r = parsePianoRollCore(part.trim(), viewScale);
-    if (!r.ok) return r;
+    let r = parsePianoRollCore(part.trim(), viewScale);
+    if (!r.ok) {
+      const lone = parsePianoRoll(part.trim(), viewScale);
+      const src = lone.ok ? lone.model.source : void 0;
+      const flat = lone.ok && !!src && src.parts.length === 1 && src.prefix === "" && src.suffix === "" && !lone.model.altSource && lone.model.bars == null && (lone.model.viewScale ?? UNREFINED) === viewScale;
+      if (!flat) return r;
+      r = lone;
+    }
     if (r.model.bars != null) {
       return { ok: false, reason: "multi-bar parallel note lanes are beyond the editable subset" };
     }
     models.push(r.model);
   }
-  const steps = models[0].steps;
-  if (!models.every((m) => m.steps === steps)) {
-    return { ok: false, reason: "parallel note lanes must share a step grid" };
+  const widths = models.map((m) => m.steps / viewScale);
+  if (!widths.every((w) => w === widths[0])) {
+    if (!widths.every((w) => Number.isInteger(w))) {
+      return { ok: false, reason: "parallel note lanes must share a step grid" };
+    }
+    const documentTotal = widths.reduce((l, w) => lcm(l, Math.max(1, w)), 1);
+    if (documentTotal > MAX_STEPS) {
+      return { ok: false, reason: `the stack expands the roll past ${MAX_STEPS} steps` };
+    }
+    const shared = documentTotal * viewScale;
+    models = models.map((m) => scaleRoll(m, shared / m.steps));
   }
+  const steps = models[0].steps;
   const numeric = models.some((m) => m.numeric);
   if (numeric && models.some((m) => !m.numeric && m.notes.length > 0)) {
     return { ok: false, reason: "mixed numeric and note-name lanes are beyond the editable subset" };
@@ -32890,6 +32931,26 @@ function parseRollLanes(parts, viewScale = UNREFINED) {
   };
 }
 __name(parseRollLanes, "parseRollLanes");
+function scaleRoll(m, f) {
+  if (f === 1) return m;
+  const note = /* @__PURE__ */ __name((n) => ({ ...n, start: n.start * f, duration: n.duration * f }), "note");
+  return {
+    ...m,
+    steps: m.steps * f,
+    notes: m.notes.map(note),
+    ...m.source ? {
+      source: {
+        ...m.source,
+        parts: m.source.parts.map((p) => ({
+          ...p,
+          div: p.div * f,
+          regions: p.regions.map((r) => ({ ...r, from: r.from * f, to: r.to * f, content: r.content.map(note) }))
+        }))
+      }
+    } : {}
+  };
+}
+__name(scaleRoll, "scaleRoll");
 function rollStackSource(parts, models) {
   const out = [];
   for (let i = 0; i < parts.length; i++) {

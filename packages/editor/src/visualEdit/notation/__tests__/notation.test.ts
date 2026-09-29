@@ -1398,26 +1398,60 @@ describe('#628 parallel note lanes', () => {
       .toEqual(['c3@0:2', 'e3@0:1'])
   })
 
-  it('rejects misaligned lanes (different step widths)', () => {
-    // The LANE model requires the parts to share a step grid — 3 columns against 4
-    // has no common lane width, so the syntactic path declines. That contract is
-    // what this locks.
-    const r = parsePianoRollCore('c3 ~ ~, e3 ~ ~ ~') // 3 vs 4 columns
-    expect(r.ok).toBe(false)
-    // The leaf projection (#986 P1b) does not use the lane model at all: it shows
-    // what the pattern PLAYS on the common grid (lcm(3,4) = 12) and anchors each
-    // note to its own token, so misalignment stops being a reason to refuse the
-    // view. Verified as an edit, not just a parse — deleting either note leaves the
-    // other's bytes untouched.
-    const full = parsePianoRoll('c3 ~ ~, e3 ~ ~ ~')
-    expect(full.ok).toBe(true)
-    if (!full.ok || !full.model.leafSource) throw new Error('expected a leaf-anchored roll')
-    const m = full.model
+  it('parts of different widths share the finest grid (#1849)', () => {
+    // 3 columns against 4 used to be refused here — the lane writer indexes every part
+    // in ONE column space, and nothing put the parts in it — and the pattern opened only
+    // through the leaf reading, with no written steps. Strudel fits every `,`-part to the
+    // cycle, so the parts share lcm(3, 4) = 12 columns, as the grid's stack does, and
+    // each part's notes and regions are scaled into them.
+    const r = parsePianoRollCore('c3 ~ ~, e3 ~ ~ ~')
+    if (!r.ok || !r.model.source) throw new Error('expected the stack to open with its written steps')
+    const m = r.model
     expect(m.steps).toBe(12)
+    expect(m.notes.map((n) => `${n.pitch}@${n.start}:${n.duration}`)).toEqual(['c3@0:4', 'e3@0:3'])
+    expect(m.source!.parts.map((p) => p.regions.map((g) => `${g.raw.trim()}[${g.from},${g.to})`))).toEqual([
+      ['c3[0,4)', '~[4,8)', '~[8,12)'],
+      ['e3[0,3)', '~[3,6)', '~[6,9)', '~[9,12)'],
+    ])
+    // the write-back: every byte of the other part is untouched
+    expect(serializePianoRoll(m)).toBe('c3 ~ ~, e3 ~ ~ ~')
     const c3 = m.notes.find((n) => n.pitch === 'c3')!
-    expect(serializePianoRoll({ ...m, notes: m.notes.filter((n) => n !== c3) })).toBe(
-      '~ ~ ~, e3 ~ ~ ~',
-    )
+    expect(serializePianoRoll({ ...m, notes: m.notes.filter((n) => n !== c3) })).toBe('~ ~ ~, e3 ~ ~ ~')
+    const e3 = m.notes.find((n) => n.pitch === 'e3')!
+    expect(serializePianoRoll({ ...m, notes: m.notes.filter((n) => n !== e3) })).toBe('c3 ~ ~, ~ ~ ~ ~')
+  })
+
+  it('a part the flat reading refuses is read as it would be alone (#1849)', () => {
+    // `d6*2@2 f#6 e6` is refused by the core (`*` with `@`), and opened alone by the
+    // lone-part chain — so the stack now asks that chain, and keeps the answer: one flat
+    // part, its first written step weighted 2 as Strudel counts it.
+    const r = parsePianoRoll('[b4,d4,f#4],d6*2@2 f#6 e6')
+    if (!r.ok || !r.model.source) throw new Error('expected the stack to open with its written steps')
+    expect(r.model.source.parts).toHaveLength(2)
+    expect(r.model.source.parts[1].regions.map((g) => `${g.raw.trim()}×${g.weight ?? 1}`)).toEqual([
+      'd6*2@2×2',
+      'f#6×1',
+      'e6×1',
+    ])
+    expect(serializePianoRoll(r.model)).toBe('[b4,d4,f#4],d6*2@2 f#6 e6')
+  })
+
+  it('lanes of the same fractional width still read back — a moved note is written that way (#1849)', () => {
+    // the writer spells a moved note on `c4@1.5 e4@1.2` (2.7 columns) as two comma-lanes
+    // of that width, and the gesture reads it back; a common multiple of 2.7 does not exist
+    const r = parsePianoRollCore('~ c4@1.5 ~@0.2, ~ ~@0.5 e4@1.2')
+    if (!r.ok) throw new Error(r.reason)
+    expect(r.model.steps).toBeCloseTo(2.7)
+    // unequal fractional widths are refused, as they were
+    expect(parsePianoRollCore('c4@1.5, e4@1.2').ok).toBe(false)
+  })
+
+  it('a part whose own reading is bar-wise still refuses the stack (#1849 control)', () => {
+    // `<G4 A4 Bb4 A4>` alone opens bar by bar, with a `<`…`>` wrapper — a shape a stack
+    // part cannot hold — so the stack stays with the leaf reading
+    const r = parsePianoRoll('<G4 A4 Bb4 A4>,Bb3,D3')
+    if (!r.ok) throw new Error('expected the roll to open')
+    expect(r.model.source).toBeUndefined()
   })
 })
 
@@ -1601,5 +1635,46 @@ describe('#994 — patterns the probe marker used to refuse', () => {
       l === first ? { ...l, cells: l.cells.map((): StepCell => false) } : l,
     )
     expect(serializeStepGrid({ ...r.model, lanes })).toBe('<~ piano folkharp square>/3')
+  })
+})
+
+/**
+ * #1849 — a `,`-part the flat reading refuses is read as it would be alone.
+ *
+ * `gridFromStack` used to read each part with the flat tokenizer only, so one `@` or `!`
+ * group in any part sent the WHOLE pattern to the leaf reading: no written steps, and
+ * edit-only — though each part, written alone, opened with both. The stack now asks the
+ * lone-part chain for such a part and keeps its answer when it is one flat part.
+ */
+describe('#1849 grid stack parts read as they would be alone', () => {
+  it('`bd@3 sd, hh!6` opens with both parts and their weights', () => {
+    const r = parseStepGrid('bd@3 sd, hh!6')
+    if (!r.ok || !r.model.source) throw new Error('expected the stack to open with its written steps')
+    const parts = r.model.source.parts
+    expect(r.model.steps).toBe(12)
+    expect(parts.map((p) => p.factor)).toEqual([3, 2])
+    expect(parts.map((p) => p.regions.map((g) => `${g.raw.trim()}×${g.weight ?? 1}`))).toEqual([
+      ['bd@3×3', 'sd×1'],
+      ['hh!6×6'],
+    ])
+    expect(serializeStepGrid(r.model)).toBe('bd@3 sd, hh!6')
+    // an edit in one part leaves the other's bytes alone
+    const lanes = r.model.lanes.map((l) =>
+      l.sound === 'sd' ? { ...l, cells: l.cells.map(() => false as StepCell) } : l,
+    )
+    expect(serializeStepGrid({ ...r.model, lanes })).toBe('bd@3 ~, hh!6')
+  })
+
+  it('a flat-read stack is unchanged (control)', () => {
+    const r = parseStepGrid('bd sd, hh*4')
+    if (!r.ok || !r.model.source) throw new Error('expected the stack to open with its written steps')
+    expect(r.model.source.parts.map((p) => p.factor)).toEqual([2, 1])
+    expect(serializeStepGrid(r.model)).toBe('bd sd, hh*4')
+  })
+
+  it('a part whose own reading has a `<`…`>` wrapper still refuses the stack (control)', () => {
+    const r = parseStepGrid('<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd, hh*8')
+    if (!r.ok) throw new Error('expected the grid to open')
+    expect(r.model.source).toBeUndefined()
   })
 })
