@@ -51,21 +51,21 @@ A flat at 75 across all caps, B 347 → 360.
 > observations committed in `ROLL-CAP-SWEEP.json`, re-taken by `node scripts/cap-sweep.mjs 4 6 8 12`.
 
 Both populations, all 4 caps, the real shipped writers at each value —
-**A** = core-REFUSED (1179 roll asks, what production reaches today),
-**B** = core-SERVED (454 roll asks, what #1012 would inherit).
+**A** = core-REFUSED (1158 roll asks, what production reaches today),
+**B** = core-SERVED (475 roll asks, what #1012 would inherit).
 
 | | **4** (shipped) | 6 | 8 | 12 |
 |---|---|---|---|---|
-| **A** reach (transfers) | 97 | 97 | 98 | 98 |
-| **B** transfers | 369 | 371 | 383 | 386 |
-| A views opened by the leaf writer | 54 | 55 | 65 | 66 |
-| B views opened by the leaf writer | 16 | 18 | 30 | 34 |
-| A leaf notes live | 145/349 41.5% | 148/362 40.9% | 207/475 43.6% | 211/487 43.3% |
-| B leaf notes live | 5/5 100.0% | 40/40 100.0% | 176/200 88.0% | 217/252 86.1% |
+| **A** reach (transfers) | 89 | 89 | 90 | 90 |
+| **B** transfers | 377 | 379 | 391 | 394 |
+| A views opened by the leaf writer | 36 | 37 | 47 | 48 |
+| B views opened by the leaf writer | 34 | 36 | 48 | 52 |
+| A leaf notes live | 110/294 37.4% | 113/307 36.8% | 172/420 41.0% | 176/432 40.7% |
+| B leaf notes live | 40/60 66.7% | 75/95 78.9% | 211/255 82.7% | 252/307 82.1% |
 | views that CORRUPT (must be 0) | 0 | 0 | 0 | 0 |
 
-- **Population A's reach moves by 1 ask across the whole range** (97 → 97 → 98 → 98). It is the population production reaches today, and it is the reason the cap has not been raised: the gain there is a rounding error.
-- **Population B gains 17 transfers** (369 → 371 → 383 → 386), every one served by the leaf writer, which is the writer this cap governs. B is a counterfactual until the core is deleted.
+- **Population A's reach moves by 1 ask across the whole range** (89 → 89 → 90 → 90). It is the population production reaches today, and it is the reason the cap has not been raised: the gain there is a rounding error.
+- **Population B gains 17 transfers** (377 → 379 → 391 → 394), every one served by the leaf writer, which is the writer this cap governs. B is a counterfactual until the core is deleted.
 - **Zero views corrupt on either population at any cap**, and zero asks moved to a worse outcome per ask — checked against the shipped-cap rows rather than by netting totals, since an ask lost and an ask gained sum to no change.
 
 The ceiling is 12 and not a round number: `detectPeriod` confirms a period `p` only

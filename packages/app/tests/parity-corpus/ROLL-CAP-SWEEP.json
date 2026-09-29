@@ -5,110 +5,110 @@
     {
       "cap": 6,
       "A": {
-        "asks": 1179,
-        "opened": 146,
-        "leafOpened": 55,
-        "transfers": 97,
-        "noView": 1033,
-        "noProbe": 49,
+        "asks": 1158,
+        "opened": 128,
+        "leafOpened": 37,
+        "transfers": 89,
+        "noView": 1030,
+        "noProbe": 39,
         "viewCorrupts": 0,
-        "leafStructured": 55,
-        "leafAlive": 148,
-        "leafProbed": 362
+        "leafStructured": 37,
+        "leafAlive": 113,
+        "leafProbed": 307
       },
       "B": {
-        "asks": 454,
-        "opened": 417,
-        "leafOpened": 18,
-        "transfers": 371,
-        "noView": 37,
-        "noProbe": 46,
+        "asks": 475,
+        "opened": 435,
+        "leafOpened": 36,
+        "transfers": 379,
+        "noView": 40,
+        "noProbe": 56,
         "viewCorrupts": 0,
-        "leafStructured": 17,
-        "leafAlive": 40,
-        "leafProbed": 40
+        "leafStructured": 35,
+        "leafAlive": 75,
+        "leafProbed": 95
       }
     },
     {
       "cap": 8,
       "A": {
-        "asks": 1179,
-        "opened": 156,
-        "leafOpened": 65,
-        "transfers": 98,
-        "noView": 1023,
-        "noProbe": 58,
+        "asks": 1158,
+        "opened": 138,
+        "leafOpened": 47,
+        "transfers": 90,
+        "noView": 1020,
+        "noProbe": 48,
         "viewCorrupts": 0,
-        "leafStructured": 65,
-        "leafAlive": 207,
-        "leafProbed": 475
+        "leafStructured": 47,
+        "leafAlive": 172,
+        "leafProbed": 420
       },
       "B": {
-        "asks": 454,
-        "opened": 429,
-        "leafOpened": 30,
-        "transfers": 383,
-        "noView": 25,
-        "noProbe": 46,
+        "asks": 475,
+        "opened": 447,
+        "leafOpened": 48,
+        "transfers": 391,
+        "noView": 28,
+        "noProbe": 56,
         "viewCorrupts": 0,
-        "leafStructured": 28,
-        "leafAlive": 176,
-        "leafProbed": 200
+        "leafStructured": 46,
+        "leafAlive": 211,
+        "leafProbed": 255
       }
     },
     {
       "cap": 12,
       "A": {
-        "asks": 1179,
-        "opened": 157,
-        "leafOpened": 66,
-        "transfers": 98,
-        "noView": 1022,
-        "noProbe": 59,
+        "asks": 1158,
+        "opened": 139,
+        "leafOpened": 48,
+        "transfers": 90,
+        "noView": 1019,
+        "noProbe": 49,
         "viewCorrupts": 0,
-        "leafStructured": 66,
-        "leafAlive": 211,
-        "leafProbed": 487
+        "leafStructured": 48,
+        "leafAlive": 176,
+        "leafProbed": 432
       },
       "B": {
-        "asks": 454,
-        "opened": 433,
-        "leafOpened": 34,
-        "transfers": 386,
-        "noView": 21,
-        "noProbe": 47,
+        "asks": 475,
+        "opened": 451,
+        "leafOpened": 52,
+        "transfers": 394,
+        "noView": 24,
+        "noProbe": 57,
         "viewCorrupts": 0,
-        "leafStructured": 32,
-        "leafAlive": 217,
-        "leafProbed": 252
+        "leafStructured": 50,
+        "leafAlive": 252,
+        "leafProbed": 307
       }
     }
   ],
   "companion": {
     "cap": 4,
     "A": {
-      "asks": 1179,
-      "opened": 145,
-      "leafOpened": 54,
-      "transfers": 97,
-      "noView": 1034,
-      "noProbe": 48,
+      "asks": 1158,
+      "opened": 127,
+      "leafOpened": 36,
+      "transfers": 89,
+      "noView": 1031,
+      "noProbe": 38,
       "viewCorrupts": 0,
-      "leafStructured": 54,
-      "leafAlive": 145,
-      "leafProbed": 349
+      "leafStructured": 36,
+      "leafAlive": 110,
+      "leafProbed": 294
     },
     "B": {
-      "asks": 454,
-      "opened": 415,
-      "leafOpened": 16,
-      "transfers": 369,
-      "noView": 39,
-      "noProbe": 46,
+      "asks": 475,
+      "opened": 433,
+      "leafOpened": 34,
+      "transfers": 377,
+      "noView": 42,
+      "noProbe": 56,
       "viewCorrupts": 0,
-      "leafStructured": 15,
-      "leafAlive": 5,
-      "leafProbed": 5
+      "leafStructured": 33,
+      "leafAlive": 40,
+      "leafProbed": 60
     }
   }
 }
