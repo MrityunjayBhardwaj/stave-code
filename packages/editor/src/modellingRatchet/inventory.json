@@ -1,0 +1,2845 @@
+{
+ "about": "The site inventory (#1298, #1866). siteInventory.ts FINDS every site that could be re-modelling Strudel; each row here CLASSIFIES one, in the open. Classes: authoring (builds Strudel/mini text from a model), hand-grammar (decides Strudel/mini syntax meaning by hand), js-grammar (decides JavaScript structure by hand), surgery (re-spells one leaf at a named span, or copies the user's bytes), boundary (locates whitespace/delimiters, decides nothing), other-text (not Strudel or JS source). authoring, hand-grammar and js-grammar are ratcheted in ledger.json. First classified 2026-10-01 by reading each site; the reasons are one line each.",
+ "sites": {
+  "packages/app/src/assetLibrary/RecordTakeButton.tsx#keepTake|regex|/[:.]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/assetLibrary/soundsProvider.ts#soundfontLabel|regex|/^gm_/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Formats sound/soundfont names for UI labels."
+  },
+  "packages/app/src/assetLibrary/vizLibrary.ts#baseNameOf|regex|/\\.[^.]+$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/assetLibrary/vizLibrary.ts#planVizLibFiles|template|`vizlib_${item.id}_${sanitize(f.relPath)}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/assetLibrary/vizLibrary.ts#sanitize|regex|/[^a-zA-Z0-9]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/assetLibrary/vizProvider.ts#primaryFile|regex|/\\.[^.]+$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/commands/keybindings.ts#formatKeybinding|regex|/Mac/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Keyboard platform/key-code token handling."
+  },
+  "packages/app/src/commands/keybindings.ts#keybindingTokens|regex|/Mac/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Keyboard platform/key-code token handling."
+  },
+  "packages/app/src/components/CommandPalette.tsx#fuzzyScore|regex|/\\s|[\\-_.:]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Search query tokenising for a UI palette."
+  },
+  "packages/app/src/components/ConsolePanel.tsx#ConsolePanel|template|` [try ${e.suggestion.name}]`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Console log line formatting."
+  },
+  "packages/app/src/components/ConsolePanel.tsx#ConsolePanel|template|`[${ts}] [${e.level.toUpperCase()}] [${rt}]${src} ${e.message}${sug}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Console log line formatting."
+  },
+  "packages/app/src/components/CropPopup.tsx#createBackdropCropAdapter|regex|/\\.[^.]+$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/DocsSearchPalette.tsx#filter|regex|/\\s+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Search query tokenising for a UI palette."
+  },
+  "packages/app/src/components/FileTree.tsx#<module>|template|`file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`": {
+   "count": 2,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/FileTree.tsx#<module>|template|`file_${Date.now()}_keep`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/IRInspectorChrome.ts#summarize|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Renders developer inspector summary labels (factor=, n=, counts) from an IR node; not Strudel code; unsure: other-text vs authoring."
+  },
+  "packages/app/src/components/IRInspectorChrome.ts#summarize|template|`[literal: ${node.via.raw}]`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Developer inspector label wrapping a literal node raw source verbatim."
+  },
+  "packages/app/src/components/StaveApp.tsx#StaveApp|regex|/:(hydra|glsl)$/i": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Parses a renderer qualifier suffix (:hydra/:glsl) from a viz id."
+  },
+  "packages/app/src/components/StaveApp.tsx#StaveApp|regex|/\\.[^.]+$/": {
+   "count": 4,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/StaveApp.tsx#StaveApp|regex|/^.*\\//": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/StaveApp.tsx#norm|regex|/[\\s\\-_:]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/StaveApp.tsx#norm|regex|/[\\s\\-_]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/StaveApp.tsx#norm|regex|/[^a-z0-9]/g": {
+   "count": 2,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/StaveApp.tsx#safeFileName|regex|/[^a-z0-9_-]+/gi": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/StrudelEditorClient.tsx#StrudelEditorClient|regex|/[^a-zA-Z0-9]/g": {
+   "count": 2,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/StrudelEditorClient.tsx#StrudelEditorClient|regex|/\\.[^.]+$/": {
+   "count": 5,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/StrudelEditorClient.tsx#baseOf|regex|/\\.[^.]+$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/StrudelEditorClient.tsx#norm|regex|/[^a-z0-9]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/components/irProjection.ts#miniSymbol|template|`*${node.factor}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells mini-notation operator symbols (@N, *N) from an IR node for a display label; display-only; unsure: authoring vs other-text."
+  },
+  "packages/app/src/components/irProjection.ts#miniSymbol|template|`@${node.factor}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells mini-notation operator symbols (@N, *N) from an IR node for a display label; display-only; unsure: authoring vs other-text."
+  },
+  "packages/app/src/components/musicalTimeline/colors.ts#<module>|regex|/^(?:bass|sub|808)/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches sample/track names to a stem colour family."
+  },
+  "packages/app/src/components/musicalTimeline/colors.ts#<module>|regex|/^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches sample/track names to a stem colour family."
+  },
+  "packages/app/src/components/musicalTimeline/colors.ts#<module>|regex|/^(?:lead|melody|synth|piano|keys|guitar)/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches sample/track names to a stem colour family."
+  },
+  "packages/app/src/components/musicalTimeline/colors.ts#<module>|regex|/^(?:pad|pads)/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches sample/track names to a stem colour family."
+  },
+  "packages/app/src/components/musicalTimeline/colors.ts#trackIndexOf|regex|/^d(\\d+)$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Parses a d{N} lane key to a palette index."
+  },
+  "packages/app/src/components/musicalTimeline/forbiddenVocabulary.ts#<module>|regex|/\\b(?:snapshot|publishIRSnapshot|captureSnapshot|IREvent|IRNode|trackId|publishIR|loc)\\b|\\bIR\\b|\\bpass\\b|\\btick\\b|\\bpin\\b|\\beval\\b/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Checks UI labels for forbidden developer vocabulary."
+  },
+  "packages/app/src/components/musicalTimeline/pitch.ts#noteStringToMidi|regex|/^([A-Ga-g])([#b]?)(-?\\d+)$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand-parses a note-name string (c#4) from an event value to MIDI for timeline display; display-only; unsure: hand-grammar vs other-text."
+  },
+  "packages/app/src/components/musicalTimeline/sectionLabel.ts#<module>|regex|/^[A-Za-z_$][\\w$]*$/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Tests whether the source text at an arrange/cat arm range is a bare JS identifier to use as section name."
+  },
+  "packages/app/src/components/musicalTimeline/timelineMarks.ts#evalTrackIdToLaneKey|regex|/^\\$(\\d+)$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Parses an engine $N track id into a lane key."
+  },
+  "packages/app/src/components/musicalTimeline/trackLabel.ts#labelAtOffset|regex|/\\s/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Skips leading whitespace before a statement start in user code."
+  },
+  "packages/app/src/components/musicalTimeline/trackLabel.ts#labelAtOffset|regex|/^([\\p{ID_Start}$_][\\p{ID_Continue}$\\u200C\\u200D]*)\\s*:/u": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over user code reading a JS labeled-statement head (name:) as the track label."
+  },
+  "packages/app/src/components/signalAliasRows.ts#<module>|regex|/^[A-Za-z_$][\\w$]*$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Validates a user-entered signal alias name as identifier-like."
+  },
+  "packages/app/src/exportProject.ts#exportProjectAsZip|regex|/[^a-z0-9_-]+/gi": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/lib/newFile.ts#promptAndCreateFile|template|`file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/shareProject.ts#fromBase64Url|regex|/-/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Base64url encoding conversion."
+  },
+  "packages/app/src/shareProject.ts#fromBase64Url|regex|/_/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Base64url encoding conversion."
+  },
+  "packages/app/src/shareProject.ts#toBase64Url|regex|/=+$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Base64url encoding conversion."
+  },
+  "packages/app/src/shareProject.ts#toBase64Url|regex|/\\+/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Base64url encoding conversion."
+  },
+  "packages/app/src/shareProject.ts#toBase64Url|regex|/\\//g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Base64url encoding conversion."
+  },
+  "packages/app/src/stemsArchive.ts#stemDisplayName|regex|/\\.wav$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Derives stem display name from a WAV file name."
+  },
+  "packages/app/src/stemsArchive.ts#stemDisplayName|regex|/^\\d+-/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Derives stem display name from a WAV file name."
+  },
+  "packages/app/src/useVizRefWatcher.ts#<module>|regex|/\\.viz\\(\\s*[\"']([^\"']+)[\"']\\s*\\)/g": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over user code to extract .viz(\"name\") call arguments."
+  },
+  "packages/app/src/useVizRefWatcher.ts#norm|regex|/[\\s\\-_]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/useVizRefWatcher.ts#resolveVizFile|regex|/[^a-zA-Z0-9]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/app/src/useVizRefWatcher.ts#resolveVizFile|regex|/\\.[^.]+$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File name / extension / id or name normalisation for workspace files and viz lookup."
+  },
+  "packages/editor/src/StrudelEditor.tsx#StrudelEditor|regex|/setcps\\s*\\(\\s*([\\d.]+)\\s*\\/\\s*([\\d.]+)\\s*\\)/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over user code to find a setcps(...) call and read its numeric args for BPM."
+  },
+  "packages/editor/src/engine/DemoEngine.ts#evaluate|regex|/\\s+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Parses the demo engine's own toy 'note:/viz:' text format, not Strudel code."
+  },
+  "packages/editor/src/engine/DemoEngine.ts#evaluate|regex|/note:/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Parses the demo engine's own toy 'note:/viz:' text format, not Strudel code."
+  },
+  "packages/editor/src/engine/DemoEngine.ts#evaluate|regex|/note:\\s*(.+)/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Parses the demo engine's own toy 'note:/viz:' text format, not Strudel code."
+  },
+  "packages/editor/src/engine/DemoEngine.ts#evaluate|regex|/viz:\\s*(\\w+)/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Parses the demo engine's own toy 'note:/viz:' text format, not Strudel code."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#<module>|regex|/^(\\w+) is not defined$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#<module>|regex|/^Can't find variable: (\\w+)$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#<module>|regex|/^ReferenceError: (\\w+) is not defined$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#<module>|regex|/no soundfont zone found/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#<module>|regex|/sound\\s+[\"']?([\\w.-]+)[\"']?\\s+not\\s+found/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#extractReferenceIdentifier|regex|/^Uncaught\\s+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#parseMessageLocation|regex|/\\((\\d+):(\\d+)\\)\\s*$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#parseStackLocation|regex|/@(?:<anonymous>|debugger eval|eval):(\\d+):(\\d+)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#parseStackLocation|regex|/^\\s*at\\s+<anonymous>:(\\d+):(\\d+)/m": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#parseStackLocation|regex|/at eval[^(]*\\(<anonymous>:(\\d+):(\\d+)\\)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#parseStackLocation|regex|/at\\s+\\S+\\s+\\(<anonymous>:(\\d+):(\\d+)\\)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/friendlyErrors.ts#parseStackLocation|regex|/eval at .+?<anonymous>:(\\d+):(\\d+)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches error messages or stack-trace frames to recover a location or friendly hint."
+  },
+  "packages/editor/src/engine/noteToMidi.ts#noteToMidi|regex|/^([a-g])(b|#)?(-?\\d+)$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Parses a note-name string (e.g. c#4) into a MIDI number by hand; unsure: hand-grammar vs other-text (it reads hap values, a job Strudel core also owns)."
+  },
+  "packages/editor/src/engine/renderPatternOffline.ts#isMissingWorkletError|regex|/AudioWorklet/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Tests an error message for the word AudioWorklet."
+  },
+  "packages/editor/src/engine/sonicpi/adapter.ts#parseVizRequests|regex|/(?:\\/\\/|#)\\s*@viz\\s+(\\w+)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Scans Sonic Pi (Ruby) code for live_loop/viz requests or strips viz lines."
+  },
+  "packages/editor/src/engine/sonicpi/adapter.ts#parseVizRequests|regex|/[{(]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Scans Sonic Pi (Ruby) code for live_loop/viz requests or strips viz lines."
+  },
+  "packages/editor/src/engine/sonicpi/adapter.ts#parseVizRequests|regex|/[})]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Scans Sonic Pi (Ruby) code for live_loop/viz requests or strips viz lines."
+  },
+  "packages/editor/src/engine/sonicpi/adapter.ts#parseVizRequests|regex|/\\bdo\\b/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Scans Sonic Pi (Ruby) code for live_loop/viz requests or strips viz lines."
+  },
+  "packages/editor/src/engine/sonicpi/adapter.ts#parseVizRequests|regex|/\\bend\\b/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Scans Sonic Pi (Ruby) code for live_loop/viz requests or strips viz lines."
+  },
+  "packages/editor/src/engine/sonicpi/adapter.ts#parseVizRequests|regex|/\\bviz\\s+:(\\w+)|viz\\s*\\(\\s*[\"':]+(\\w+)[\"']?\\s*\\)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Scans Sonic Pi (Ruby) code for live_loop/viz requests or strips viz lines."
+  },
+  "packages/editor/src/engine/sonicpi/adapter.ts#parseVizRequests|regex|/live_loop\\s*(?:\\(\\s*[\"'](\\w+)[\"']|:(\\w+)\\s)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Scans Sonic Pi (Ruby) code for live_loop/viz requests or strips viz lines."
+  },
+  "packages/editor/src/engine/sonicpi/adapter.ts#stripVizCalls|regex|/^[ \\t]*(?:\\/\\/|#)[ \\t]*@viz[ \\t]+\\w+[ \\t]*$/gm": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Scans Sonic Pi (Ruby) code for live_loop/viz requests or strips viz lines."
+  },
+  "packages/editor/src/engine/sonicpi/adapter.ts#stripVizCalls|regex|/^[ \\t]*viz[ \\t]*\\([ \\t]*[\"']\\w+[\"'][ \\t]*\\)[ \\t]*$/gm": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Scans Sonic Pi (Ruby) code for live_loop/viz requests or strips viz lines."
+  },
+  "packages/editor/src/engine/sonicpi/adapter.ts#stripVizCalls|regex|/^[ \\t]*viz[ \\t]+:\\w+[ \\t]*$/gm": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Scans Sonic Pi (Ruby) code for live_loop/viz requests or strips viz lines."
+  },
+  "packages/editor/src/engine/vizLineScan.ts#scanVizRequestLines|regex|/\\s+/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Collapses whitespace in a block to build a reorder-detection content hash key."
+  },
+  "packages/editor/src/engine/vizLineScan.ts#scanVizRequestLines|regex|/^([\\p{ID_Start}$_][\\p{ID_Continue}$\\u200C\\u200D]*)\\s*:/u": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex decides a column-0 line is a JS labeled statement (named track) to key viz requests."
+  },
+  "packages/editor/src/ir/eventValueKey.ts#eventValueKey|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a stable comparison key from an event's value slots and params."
+  },
+  "packages/editor/src/ir/fixedParameters.ts#<module>|regex|/^-?(?:\\d+\\.?\\d*|\\.\\d+)$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "NUMBER regex decides by hand whether an argument (bare or inside quotes, i.e. a mini atom) is a number."
+  },
+  "packages/editor/src/ir/fixedParameters.ts#fixedToStepsEdit|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Returns an edit that replaces a fixed argument with newly built \"<n n ...>\" mini text."
+  },
+  "packages/editor/src/ir/fixedParameters.ts#fixedToStepsEdit|template|`${q}<${Array(steps).fill(num.text).join(' ')}>${q}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Writes a new \"<n n n>\" mini alternation around the fixed value to turn it into steps."
+  },
+  "packages/editor/src/ir/nodeIdentity.ts#assignNodeId|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a node id string from loc, tag and position."
+  },
+  "packages/editor/src/ir/parameterRoutes.ts#leavesTheCycle|regex|/^_/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Strips a leading underscore from an already-parsed method name before a visualiser-name lookup; unsure: other-text vs js-grammar."
+  },
+  "packages/editor/src/ir/parameterRoutes.ts#routeKey|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds an internal map key \"id.arm/...\" from route steps."
+  },
+  "packages/editor/src/ir/parseMini.ts#buildElement|model-to-text|": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Lowers a krill element to IR, but locates \"@n\"/\"?\" modifier bytes by hand character reads; unsure: hand-grammar vs other-text (returns IR, not text)."
+  },
+  "packages/editor/src/ir/parseMini.ts#buildElement|regex|/[0-9.]/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Scans digits after \"@\" by hand to find the extent of the weight token krill did not locate."
+  },
+  "packages/editor/src/ir/parseMini.ts#firstNonWs|regex|/\\s/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Skips whitespace to find the first non-space byte of a group."
+  },
+  "packages/editor/src/ir/parseMini.ts#matchBracket|scanner|c === '<'": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Bracket-depth count over []{}<> to find the closing delimiter of a mini group."
+  },
+  "packages/editor/src/ir/parseMini.ts#matchBracket|scanner|c === '>'": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Bracket-depth count over []{}<> to find the closing delimiter of a mini group."
+  },
+  "packages/editor/src/ir/parseMini.ts#matchBracket|scanner|c === '['": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Bracket-depth count over []{}<> to find the closing delimiter of a mini group."
+  },
+  "packages/editor/src/ir/parseMini.ts#matchBracket|scanner|c === ']'": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Bracket-depth count over []{}<> to find the closing delimiter of a mini group."
+  },
+  "packages/editor/src/ir/parseMini.ts#patternToNode|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Lowers a krill pattern AST to PatternIR nodes; returns IR, not text (detector false positive); unsure: other-text vs hand-grammar."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#applyChain|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Hand-splits a \".method(args)\" JS chain and applies each method to IR."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#applyMethod|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Decides by hand what each chained JS method call and its argument text mean in IR."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#asControlParam|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Recognises a control method name and hand-parses its argument into a Param node; unsure: js-grammar vs hand-grammar."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#bareStatementsBesideLabels|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Splits source into top-level JS statements and decides which belong to $: labels."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#findMatchingParen|scanner|ch === '['": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Depth-counting scan to find the matching close paren of a JS call."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#findMatchingParen|scanner|ch === ']'": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Depth-counting scan to find the matching close paren of a JS call."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#lexStateAt|scanner|ch === '['": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Hand lexer reporting JS nesting depth and string/comment state at an index."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#lexStateAt|scanner|ch === ']'": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Hand lexer reporting JS nesting depth and string/comment state at an index."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#parseArrayLiteralElement|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Synthesises note(\"<elem>\") wrapper code around a bare array element, then hand-parses it; unsure: authoring vs js-grammar."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#parseDocument|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Splits a document into $: tracks and statements by hand and parses each to IR."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#parseExpression|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Hand parse of a Strudel/JS expression string into PatternIR."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#parseRoot|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Hand-recognises the root call of a JS chain and parses it into IR."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#parseStrudel|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Entry point of the hand parser turning JS/Strudel source into PatternIR; unsure: js-grammar vs hand-grammar."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#parseTimeSequenceRoot|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex-matches arrange/cat heads and hand-splits their JS arguments into IR."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#parseTransform|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex-matches transform text like fast(n) or arrow functions by hand into IR."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#splitArgsWithOffsets|scanner|ch === '['": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Depth-aware split of JS call arguments on commas."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#splitArgsWithOffsets|scanner|ch === ']'": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Depth-aware split of JS call arguments on commas."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#splitTopLevelStatements|scanner|ch === '['": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Depth/string/comment-aware scan splitting JS source into top-level statements."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#splitTopLevelStatements|scanner|ch === ']'": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Depth/string/comment-aware scan splitting JS source into top-level statements."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#stripParserPrelude|scanner|ch === '['": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Paren/brace/bracket depth walker over JS source to consume multi-line prelude calls."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#stripParserPrelude|scanner|ch === ']'": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Paren/brace/bracket depth walker over JS source to consume multi-line prelude calls."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#stripSideEffectStatements|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Filters JS statements by a hand regex on their head text."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#substituteBoundIdentInArg|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Replaces a bare identifier argument with the raw literal bytes the user bound it to."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#topLevelColonIndex|scanner|c === '['": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Depth scan to find the top-level \":\" of a JS object-literal entry."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#topLevelColonIndex|scanner|c === ']'": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Depth scan to find the top-level \":\" of a JS object-literal entry."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#top|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Closure that parses a top-level statement text to IR and records its raw body; unsure: js-grammar vs other-text."
+  },
+  "packages/editor/src/ir/parseStrudel.ts#wrapAsOpaque|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Wraps the user's raw method name and args bytes in an opaque Code node for verbatim re-emission; unsure: surgery vs other-text (returns IR)."
+  },
+  "packages/editor/src/ir/parseStrudelStages.ts#withBodies|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Swaps recorded bodies into Track nodes; IR to IR, no text (detector false positive)."
+  },
+  "packages/editor/src/ir/serialize.ts#patternToJSON|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "JSON-serialises the IR tree with a schema envelope."
+  },
+  "packages/editor/src/ir/serialize.ts#validateNode|template|`${path}.arms[${i}].pattern`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a JSON path string for validation error messages."
+  },
+  "packages/editor/src/ir/serialize.ts#validateNode|template|`${path}.arms[${i}]: expected object`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a JSON path string for validation error messages."
+  },
+  "packages/editor/src/ir/serialize.ts#validateNode|template|`${path}.arms[${i}]: field \"weight\" must be a number`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a JSON path string for validation error messages."
+  },
+  "packages/editor/src/ir/serialize.ts#validateNode|template|`${path}.children[${i}]`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a JSON path string for validation error messages."
+  },
+  "packages/editor/src/ir/serialize.ts#validateNode|template|`${path}.items[${i}]`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a JSON path string for validation error messages."
+  },
+  "packages/editor/src/ir/serialize.ts#validateNode|template|`${path}.tracks[${i}]`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a JSON path string for validation error messages."
+  },
+  "packages/editor/src/ir/songAnalysis.ts#cycleFingerprints|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Joins per-cycle event keys into fingerprint strings for period detection."
+  },
+  "packages/editor/src/ir/songAnalysis.ts#cycleFingerprints|template|`${laneKeyOf(ev)}@${offset}:${eventValueKey(ev)}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a per-event fingerprint key for cycle-repeat detection."
+  },
+  "packages/editor/src/ir/songAnalysis.ts#laneKeyOf|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Returns a lane key from track id or sample name."
+  },
+  "packages/editor/src/ir/steppedAutomation.ts#<module>|regex|/^-?(?:\\d+\\.?\\d*|\\.\\d+)$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "NUMBER regex decides by hand whether a krill atom's text is a number."
+  },
+  "packages/editor/src/ir/steppedAutomation.ts#stepValueEdit|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Re-spells one numeric step value at the atom span krill located."
+  },
+  "packages/editor/src/ir/toStrudel.ts#collapseToMini|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates Strudel code or mini-notation text from the IR."
+  },
+  "packages/editor/src/ir/toStrudel.ts#extractTransform|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates Strudel code or mini-notation text from the IR."
+  },
+  "packages/editor/src/ir/toStrudel.ts#genPlay|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates Strudel code or mini-notation text from the IR."
+  },
+  "packages/editor/src/ir/toStrudel.ts#gen|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates Strudel code or mini-notation text from the IR."
+  },
+  "packages/editor/src/ir/toStrudel.ts#gen|template|`${sel}.pick([${elems.join(', ')}])`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Template that wraps generated IR tokens in new Strudel/mini brackets and calls."
+  },
+  "packages/editor/src/ir/toStrudel.ts#gen|template|`[${(ir.n as readonly number[]).join(', ')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Template that wraps generated IR tokens in new Strudel/mini brackets and calls."
+  },
+  "packages/editor/src/ir/toStrudel.ts#gen|template|`[${a.weight}, ${gen(a.pattern)}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Template that wraps generated IR tokens in new Strudel/mini brackets and calls."
+  },
+  "packages/editor/src/ir/toStrudel.ts#gen|template|`note(\"<${notes.join(' ')}>\")`": {
+   "count": 2,
+   "class": "authoring",
+   "why": "Template that wraps generated IR tokens in new Strudel/mini brackets and calls."
+  },
+  "packages/editor/src/ir/toStrudel.ts#gen|template|`s(\"<${notes.join(' ')}>\")`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Template that wraps generated IR tokens in new Strudel/mini brackets and calls."
+  },
+  "packages/editor/src/ir/toStrudel.ts#miniFragment|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates Strudel code or mini-notation text from the IR."
+  },
+  "packages/editor/src/ir/toStrudel.ts#miniFragment|template|`<${parts.join(' ')}>`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Template that wraps generated IR tokens in new Strudel/mini brackets and calls."
+  },
+  "packages/editor/src/ir/toStrudel.ts#miniFragment|template|`[${parts.join(',')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Template that wraps generated IR tokens in new Strudel/mini brackets and calls."
+  },
+  "packages/editor/src/ir/toStrudel.ts#toStrudel|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates Strudel code or mini-notation text from the IR."
+  },
+  "packages/editor/src/keys/chord.ts#<module>|regex|/^[\\x21-\\x7e]$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Keyboard platform/key-code token handling."
+  },
+  "packages/editor/src/keys/chord.ts#isMacPlatform|regex|/Mac/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Keyboard platform/key-code token handling."
+  },
+  "packages/editor/src/keys/chord.ts#keyToken|regex|/^Digit[0-9]$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Keyboard platform/key-code token handling."
+  },
+  "packages/editor/src/keys/chord.ts#tokenForCode|regex|/^Digit[0-9]$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Keyboard platform/key-code token handling."
+  },
+  "packages/editor/src/keys/chord.ts#tokenForCode|regex|/^Key[A-Z]$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Keyboard platform/key-code token handling."
+  },
+  "packages/editor/src/modellingRatchet/ratchet.ts#<module>|regex|/^#\\d+\\b/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Ratchet ledger validation: issue-number/date checks and error messages."
+  },
+  "packages/editor/src/modellingRatchet/ratchet.ts#appendOnlyProblems|template|`${name}[${i}]: rewritten — origin/main has ${JSON.stringify(e)}, the tree has ${JSON.stringify(now.history[i])}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Ratchet ledger validation: issue-number/date checks and error messages."
+  },
+  "packages/editor/src/modellingRatchet/ratchet.ts#ledgerProblems|regex|/^\\d{4}-\\d{2}-\\d{2}$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Ratchet ledger validation: issue-number/date checks and error messages."
+  },
+  "packages/editor/src/modellingRatchet/ratchet.ts#ledgerProblems|template|`${name}[${i}]: date must be YYYY-MM-DD`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Ratchet ledger validation: issue-number/date checks and error messages."
+  },
+  "packages/editor/src/modellingRatchet/ratchet.ts#ledgerProblems|template|`${name}[${i}]: exemption must start with an issue number (#1234), got ${JSON.stringify(e.exemption)}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Ratchet ledger validation: issue-number/date checks and error messages."
+  },
+  "packages/editor/src/modellingRatchet/ratchet.ts#ledgerProblems|template|`${name}[${i}]: missing note`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Ratchet ledger validation: issue-number/date checks and error messages."
+  },
+  "packages/editor/src/modellingRatchet/ratchet.ts#ledgerProblems|template|`${name}[${i}]: rose ${prev.value} → ${e.value} without an exemption naming an issue`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Ratchet ledger validation: issue-number/date checks and error messages."
+  },
+  "packages/editor/src/modellingRatchet/ratchet.ts#ledgerProblems|template|`${name}[${i}]: value must be a non-negative integer`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Ratchet ledger validation: issue-number/date checks and error messages."
+  },
+  "packages/editor/src/modellingRatchet/siteInventory.ts#<module>|regex|/[[<@*!~]\\s*$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "The inventory/ratchet tool itself reading repo source or ledger fields, not user Strudel code."
+  },
+  "packages/editor/src/modellingRatchet/siteInventory.ts#<module>|regex|/^[[<{(]{2,}$|^[\\]>})]{2,}$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "The inventory/ratchet tool itself reading repo source or ledger fields, not user Strudel code."
+  },
+  "packages/editor/src/modellingRatchet/siteInventory.ts#<module>|regex|/^[[\\]<>]$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "The inventory/ratchet tool itself reading repo source or ledger fields, not user Strudel code."
+  },
+  "packages/editor/src/modellingRatchet/siteInventory.ts#<module>|regex|/^\\s*[[\\]<>@*!~]\\s*$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "The inventory/ratchet tool itself reading repo source or ledger fields, not user Strudel code."
+  },
+  "packages/editor/src/modellingRatchet/siteInventory.ts#<module>|regex|/^\\s*[\\]>@*!_]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "The inventory/ratchet tool itself reading repo source or ledger fields, not user Strudel code."
+  },
+  "packages/editor/src/modellingRatchet/siteInventory.ts#isModelDecl|regex|/__tests__/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File-path filter deciding which repo files are product source."
+  },
+  "packages/editor/src/modellingRatchet/siteInventory.ts#isProductSource|regex|/(^|\\/)__tests__\\//": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File-path filter deciding which repo files are product source."
+  },
+  "packages/editor/src/modellingRatchet/siteInventory.ts#isProductSource|regex|/\\.(test|spec)\\.tsx?$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File-path filter deciding which repo files are product source."
+  },
+  "packages/editor/src/modellingRatchet/siteInventory.ts#isProductSource|regex|/\\.(ts|tsx)$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File-path filter deciding which repo files are product source."
+  },
+  "packages/editor/src/modellingRatchet/siteInventory.ts#isProductSource|regex|/\\.d\\.ts$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "File-path filter deciding which repo files are product source."
+  },
+  "packages/editor/src/modellingRatchet/siteInventory.ts#squash|regex|/\\s+/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Collapses whitespace to build an inventory key."
+  },
+  "packages/editor/src/monaco/StrudelMonaco.tsx#provideCompletionItems|regex|/(?:^|[\\s,(])(?:s|sound)\\([\"']([^\"']*)$/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Completion trigger regex decides the cursor is inside an s(\"/sound(\" string literal; display-only."
+  },
+  "packages/editor/src/monaco/StrudelMonaco.tsx#provideCompletionItems|regex|/sample\\s+:$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Sonic Pi completion trigger after use_synth/sample."
+  },
+  "packages/editor/src/monaco/StrudelMonaco.tsx#provideCompletionItems|regex|/use_synth\\s+:$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Sonic Pi completion trigger after use_synth/sample."
+  },
+  "packages/editor/src/monaco/diagnostics.ts#<module>|regex|/\\.p\\(\\s*\"([^\"\\n\\r]*)\"\\s*\\)/g": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Lint regex scans JS text for .p(\"...\") calls with double-quoted ids to place warnings."
+  },
+  "packages/editor/src/monaco/diagnostics.ts#parseErrorLocation|regex|/at eval[^(]*\\(.*?:(\\d+):(\\d+)\\)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Extracts line/column from a V8 eval stack trace."
+  },
+  "packages/editor/src/monaco/diagnostics.ts#provideCodeActions|regex|/\\.p\\(\\s*\"([^\"\\n\\r]*)\"\\s*\\)/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex finds a .p(\"...\") call in JS text and rewrites its quotes to single quotes as a quick-fix; unsure: js-grammar vs surgery."
+  },
+  "packages/editor/src/monaco/docs/hydra.ts#<module>|regex|/^out is not (?:a function|defined)$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches a Hydra runtime error message for a docs hint."
+  },
+  "packages/editor/src/monaco/docs/providers.ts#provideCompletionItems|regex|/[)\\]\"'`\\w]\\.[\\w]*$/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Completion trigger regex decides the cursor follows a member-access dot in JS; display-only."
+  },
+  "packages/editor/src/monaco/docs/signals.ts#<module>|regex|/(?:sig\\s*\\([^)]*\\)|\\bsig|stave\\.sig|\\.track\\s*\\([^)]*\\))\\s*\\.\\w*$/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex decides the cursor follows a sig/stave.sig/.track(...) accessor dot in JS; display-only."
+  },
+  "packages/editor/src/monaco/docs/tokenizer-utils.ts#buildIdentifierAlternation|regex|/^[A-Za-z_][A-Za-z0-9_]*$/": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Filters doc names to identifiers / escapes them to build a Monaco regex alternation."
+  },
+  "packages/editor/src/monaco/docs/tokenizer-utils.ts#escapeForRegex|regex|/[.*+?^${}()|[\\]\\\\]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Filters doc names to identifiers / escapes them to build a Monaco regex alternation."
+  },
+  "packages/editor/src/monaco/docs/types.ts#validateMistakes|template|`${label}[${idx}] must be an object`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Validation error message for a docs mistake entry."
+  },
+  "packages/editor/src/monaco/docs/types.ts#validateMistakes|template|`${label}[${idx}] requires non-empty string \"hint\"`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Validation error message for a docs mistake entry."
+  },
+  "packages/editor/src/monaco/docs/types.ts#validateMistakes|template|`${label}[${idx}] requires object \"detect\"`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Validation error message for a docs mistake entry."
+  },
+  "packages/editor/src/monaco/docs/types.ts#validateMistakes|template|`${label}[${idx}].detect (${detect.kind}) requires string|RegExp \"match\"`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Validation error message for a docs mistake entry."
+  },
+  "packages/editor/src/monaco/docs/types.ts#validateMistakes|template|`${label}[${idx}].detect (identifier) requires non-empty string \"alias\"`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Validation error message for a docs mistake entry."
+  },
+  "packages/editor/src/monaco/docs/types.ts#validateMistakes|template|`${label}[${idx}].detect.kind must be \"message\" | \"code\" | \"identifier\"`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Validation error message for a docs mistake entry."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/\"/": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/#.*$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/#/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/#\\{/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/'/": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/0x[\\da-fA-F]+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/:\\w+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/=>|<=>|==|!=|<=|>=|&&|\\|\\||\\.\\.\\.?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/[+\\-*/%&|^~]=?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/[;,.]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/[=!<>]=?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/[^\"#\\\\]+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/[^'\\\\]+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/[a-zA-Z_][\\w]*/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/[{}()[\\]]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/\\\\./": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/\\b(do|end|if|else|elsif|unless|loop|while|until|for|in|true|false|nil|and|or|not|begin|rescue|ensure|return|yield|then|when|case|break|next|redo|retry|module|c": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/\\b[a-gA-G][bs#]?\\d\\b/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/\\b[a-z_]\\w*:/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/\\d+(\\.\\d+)?([eE][+-]?\\d+)?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerSonicPiLanguage|regex|/\\}/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monaco tokenizer rule for Sonic Pi (Ruby) highlighting."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\"/": {
+   "count": 2,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript double-quote string open/close; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/'/": {
+   "count": 2,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript single-quote string open/close; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/(\\.)([a-zA-Z_$][\\w$]*)(?=\\s*\\()/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript chained method call; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/(\\.)([a-zA-Z_$][\\w$]*)/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript member access; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/[,;]/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript separators; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/[/*]/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript block comment chars; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/[=+\\-*/%<>!&|?:~^]+/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript operators; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/[^\"]/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Mini-notation string fallback char rule; display-only; unsure: hand-grammar vs js-grammar."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/[^']/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Mini-notation string fallback char rule; display-only; unsure: hand-grammar vs js-grammar."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/[^/*]+/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript block comment body; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/[^`$]/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Backtick mini-notation string fallback char rule; display-only; unsure: hand-grammar vs js-grammar."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/[a-gA-G][b#]?\\d?/": {
+   "count": 3,
+   "class": "hand-grammar",
+   "why": "Mini-notation tokenizer rule classing note names inside strings; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/[a-zA-Z][\\w]*/": {
+   "count": 3,
+   "class": "hand-grammar",
+   "why": "Mini-notation tokenizer rule classing sample/word names inside strings; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/[~*!%?@<>\\[\\]{}|,_:.\\-]/": {
+   "count": 3,
+   "class": "hand-grammar",
+   "why": "Mini-notation tokenizer rule classing operator characters inside strings; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Lone $ inside backtick mini-notation string; display-only; unsure: hand-grammar vs js-grammar."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\$\\s*:/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Highlights the Strudel $: pattern-start marker; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\$\\{/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript template interpolation start; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\*\\//": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript block comment end; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\/\\*/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript block comment start; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\/\\/.*$/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript line comment; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\b([a-zA-Z_$][\\w$]*)(?=\\s*\\()/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript bare function call; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\b[a-gA-G][b#]?\\d\\b/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Highlights bare note names as Strudel notes in code; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\b[a-zA-Z_$][\\w$]*\\b/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript identifiers/keywords; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\b\\d+(\\.\\d+)?\\b/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript numbers; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\bsetcps\\b|\\bsetCps\\b/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Highlights Strudel setcps tempo calls; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\d+(\\.\\d+)?/": {
+   "count": 3,
+   "class": "hand-grammar",
+   "why": "Mini-notation tokenizer rule classing numbers inside strings; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\s+/": {
+   "count": 3,
+   "class": "hand-grammar",
+   "why": "Mini-notation tokenizer rule splitting whitespace between mini tokens; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/\\}/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript template interpolation end; display-only."
+  },
+  "packages/editor/src/monaco/language.ts#registerStrudelLanguage|regex|/`/": {
+   "count": 2,
+   "class": "js-grammar",
+   "why": "Monaco tokenizer rule for JavaScript template string open/close; display-only."
+  },
+  "packages/editor/src/monaco/strudelCompletions.ts#provideCompletionItems|regex|/(?:^|[\\s,(.])note\\([\"']([^\"']*)$/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Completion trigger regex decides the cursor is inside a note(\"  string literal; display-only."
+  },
+  "packages/editor/src/monaco/strudelCompletions.ts#provideCompletionItems|regex|/[)\\]\"'`\\w]\\.$/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Completion trigger regex decides the cursor follows a member-access dot in JS; display-only."
+  },
+  "packages/editor/src/monaco/strudelCompletions.ts#provideCompletionItems|template|`${doc.description}\\n\\n**Example:** \\`${doc.example}\\``": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds markdown documentation text for a completion item."
+  },
+  "packages/editor/src/monaco/strudelDocs.ts#<module>|regex|/\\bevery\\b[^\\n]*\\bis not a function\\b/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches a runtime error message to offer a friendly hint."
+  },
+  "packages/editor/src/monaco/strudelDocs.ts#<module>|regex|/^(bd|sd|hh|oh|cp|cb|rim|tom|cy|kick|snare|hat|clap|crash|ride) is not defined$/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches a runtime error message to offer a friendly hint."
+  },
+  "packages/editor/src/monaco/strudelDocs.ts#<module>|regex|/^[a-g][s#b]?\\d? is not defined$/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches a runtime error message to offer a friendly hint."
+  },
+  "packages/editor/src/visualEdit/arrange/parts.ts#listSectionParts|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Lists top-level variable names found by acorn, offered as the user's own part names."
+  },
+  "packages/editor/src/visualEdit/arrange/rename.ts#<module>|regex|/^[A-Za-z_$][A-Za-z0-9_$]*$/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Tests whether an arrange arm's text or a new name is a bare JS identifier by hand regex."
+  },
+  "packages/editor/src/visualEdit/arrange/rename.ts#armIdentifier|model-to-text|": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Returns the arm's text only if a hand regex says it is a JS identifier; unsure: js-grammar vs surgery."
+  },
+  "packages/editor/src/visualEdit/arrange/rename.ts#renameSection|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Re-spells acorn-found identifier references, expanding shorthand properties into new old: new pairs; unsure: authoring vs surgery."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#armText|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Copies an arm's source bytes verbatim from the doc."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#insertArm|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Inserts a caller-built arm with new comma separators into the call."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#insertSilenceArm|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Adds a new silence arm to the arrangement."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#insertSilenceArm|template|`[${weightText}, silence]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Builds a new [weight, silence] arrange arm from the copied weight text."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#materializeBareDelete|template|`[${lead}, ${pat}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Builds new [n, pat] arrange arms around a silence gap from a bare loop."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#materializeBareDelete|template|`[${rest}, ${pat}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Builds new [n, pat] arrange arms around a silence gap from a bare loop."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#materializeBareSplit|template|`arrange([${k}, ${pat}], [${total - k}, ${pat}])`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Writes a new arrange([k, pat], [total-k, pat]) call splitting a bare loop."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#patternText|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Copies an arm's pattern bytes verbatim from the doc."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#removeArm|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Deletes one arm and its separator by range; creates nothing new."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#reorderArm|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Rebuilds the argument list in a new order joined by new separators; unsure: authoring vs surgery."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#setArmPattern|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Replaces one arm's pattern slot with the chosen part name."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#setWeight|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Replaces a weight literal, or promotes cat to arrange wrapping every arm in new tuples."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#setWeight|template|`[${aw}, `": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Wraps each cat arm as a new [w, pat] arrange tuple when promoting cat to arrange."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#silenceArm|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Re-spells one arm's pattern slot as silence at its named range."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#splitArm|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Replaces one arm with two new weighted arms."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#splitArm|template|`[${n1}, ${pat}], [${n2}, ${pat}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Replaces one arrange arm with two new [n1, pat], [n2, pat] tuples."
+  },
+  "packages/editor/src/visualEdit/arrange/serialize.ts#wrapBare|template|`arrange([${lead}, silence], [${pw}, `": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Wraps a bare pattern in new arrange([lead, silence], [pw, ...]) code."
+  },
+  "packages/editor/src/visualEdit/mixer/gain.ts#<module>|regex|/^(\\d+(?:\\.\\d+)?)(@\\d+)?$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand regex decides which mini tokens are number[@n] gain steps."
+  },
+  "packages/editor/src/visualEdit/mixer/gain.ts#hasChildGain|regex|/\\.gain\\s*\\(/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over raw JS argument text looking for a .gain( call."
+  },
+  "packages/editor/src/visualEdit/mixer/gain.ts#parseManagedGain|regex|/\\s+/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Splits a mini gain string into steps on whitespace, a hand tokenizer over mini-notation."
+  },
+  "packages/editor/src/visualEdit/mixer/masterEdit.ts#findVizBackdropCall|regex|/\\bbackdrop\\s*:\\s*true\\b/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over raw JS argument text looking for a backdrop: true property."
+  },
+  "packages/editor/src/visualEdit/mixer/masterEdit.ts#vizNameArg|regex|/^['\"`]/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Decides a viz argument is a JS string literal by its first quote char."
+  },
+  "packages/editor/src/visualEdit/mixer/stemNames.ts#safe|regex|/[^a-z0-9_-]+/gi": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Sanitises stem names into safe export file names."
+  },
+  "packages/editor/src/visualEdit/mixer/stemNames.ts#safe|regex|/^_+|_+$/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Sanitises stem names into safe export file names."
+  },
+  "packages/editor/src/visualEdit/mixer/writeStrip.ts#isValidTrackLabel|regex|/^[\\p{ID_Start}$_][\\p{ID_Continue}$\\u200C\\u200D]*$/u": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Hand regex decides whether a track label is a valid JS identifier/label."
+  },
+  "packages/editor/src/visualEdit/notation/lengthen.ts#appendEmptyBars|template|`<${entriesOf(mini)}${' ~'.repeat(add)}>`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Wraps/creates `[..]` or `<…>` entries to lengthen a pattern by bars."
+  },
+  "packages/editor/src/visualEdit/notation/lengthen.ts#duplicateBar|template|`<${entriesOf(mini)} ${entries[source]}>`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Wraps/creates `[..]` or `<…>` entries to lengthen a pattern by bars."
+  },
+  "packages/editor/src/visualEdit/notation/lengthen.ts#duplicateBar|template|`[${mini.trim()}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Wraps/creates `[..]` or `<…>` entries to lengthen a pattern by bars."
+  },
+  "packages/editor/src/visualEdit/notation/lengthen.ts#entriesOf|template|`[${mini.trim()}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Wraps/creates `[..]` or `<…>` entries to lengthen a pattern by bars."
+  },
+  "packages/editor/src/visualEdit/notation/lengthen.ts#fromBar|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Formats a hap time offset as an exact fraction string for a comparison key."
+  },
+  "packages/editor/src/visualEdit/notation/lengthen.ts#playsAsIntended|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Returns a refusal reason string after comparing queried haps."
+  },
+  "packages/editor/src/visualEdit/notation/lengthen.ts#splitEntries|regex|/\\s/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand tokenizer splitting alternation entries by bracket depth and whitespace."
+  },
+  "packages/editor/src/visualEdit/notation/lengthen.ts#splitEntries|scanner|'[<{('.includes": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand tokenizer splitting alternation entries by bracket depth and whitespace."
+  },
+  "packages/editor/src/visualEdit/notation/lengthen.ts#splitEntries|scanner|']>})'.includes": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand tokenizer splitting alternation entries by bracket depth and whitespace."
+  },
+  "packages/editor/src/visualEdit/notation/lengthen.ts#unwrapAlternation|scanner|t[i] === '<'": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Bracket-depth scan deciding whether text is exactly one `<…>` alternation."
+  },
+  "packages/editor/src/visualEdit/notation/lengthen.ts#unwrapAlternation|scanner|t[i] === '>'": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Bracket-depth scan deciding whether text is exactly one `<…>` alternation."
+  },
+  "packages/editor/src/visualEdit/notation/model.ts#gridCellKey|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a map/comparison key from token and rounded length."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#<module>|regex|/^-?\\d+$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Classifies a krill atom as a bare number vs note/sound name; unsure: hand-grammar vs other-text."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#<module>|regex|/^\\d+(\\.\\d+)?$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand-tokenizes a `.gain` mini string (whitespace split, number/`@n` regex)."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#applyRollGain|regex|/\\s+/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand-tokenizes a `.gain` mini string (whitespace split, number/`@n` regex)."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#applyRollGain|regex|/^(\\d+(?:\\.\\d+)?)(?:@(\\d+))?$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand-tokenizes a `.gain` mini string (whitespace split, number/`@n` regex)."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#buildAltRegions|regex|/\\s*$/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#buildAltRegions|regex|/^\\s*/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#buildRegions|regex|/\\s*$/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#buildRegions|regex|/^\\s*/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#chordAtoms|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Collects atom tokens from a krill chord node (user's own text)."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#gateReason|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Returns a user-facing refusal message."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#gridFromAlternation|concat|'<' + (/^\\s*/.exec(inner)?.[0] ?? '')": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Rebuilds the source wrapper from the user's own `<` and padding stripped by unwrapAlternation."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#gridFromAlternation|concat|(/\\s*$/.exec(inner)?.[0] ?? '') + '>'": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Rebuilds the source wrapper from the user's own `<` and padding stripped by unwrapAlternation."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#gridFromAlternation|regex|/\\s*$/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#gridFromAlternation|regex|/^\\s*/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#gridFromBarStack|regex|/\\s*$/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#gridFromBarStack|regex|/^\\s*/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#onsetKey|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a JSON comparison key of onsets."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#parseGainMini|regex|/\\s+/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand-tokenizes a `.gain` mini string (whitespace split, number/`@n` regex)."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#parsePianoRollCore|concat|'<' + (/^\\s*/.exec(alt)?.[0] ?? '')": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Rebuilds the source wrapper from the user's own `<` and padding stripped by unwrapAlternation."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#parsePianoRollCore|concat|(/\\s*$/.exec(alt)?.[0] ?? '') + '>'": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Rebuilds the source wrapper from the user's own `<` and padding stripped by unwrapAlternation."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#parsePianoRollCore|regex|/\\s*$/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#parsePianoRollCore|regex|/^-?\\d+$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Classifies a krill atom as a bare number vs note/sound name; unsure: hand-grammar vs other-text."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#parsePianoRollCore|regex|/^\\s*/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#projectAltBars|concat|'<' + (/^\\s*/.exec(inner)?.[0] ?? '')": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Rebuilds the source wrapper from the user's own `<` and padding stripped by unwrapAlternation."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#projectAltBars|concat|(/\\s*$/.exec(inner)?.[0] ?? '') + '>'": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Rebuilds the source wrapper from the user's own `<` and padding stripped by unwrapAlternation."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#projectAltBars|regex|/\\s*$/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#projectAltBars|regex|/^\\s*/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#projectAltRollBars|concat|'<' + (/^\\s*/.exec(inner)?.[0] ?? '')": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Rebuilds the source wrapper from the user's own `<` and padding stripped by unwrapAlternation."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#projectAltRollBars|concat|(/\\s*$/.exec(inner)?.[0] ?? '') + '>'": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Rebuilds the source wrapper from the user's own `<` and padding stripped by unwrapAlternation."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#projectAltRollBars|regex|/\\s*$/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#projectAltRollBars|regex|/^\\s*/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#restSpansByColumn|regex|/^qzrest(\\d+)$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches Stave's own `qzrestN` sentinel in played hap values."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#rollFromAltElements|regex|/^-?\\d+$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Classifies a krill atom as a bare number vs note/sound name; unsure: hand-grammar vs other-text."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#rollKey|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a JSON comparison key of roll onsets."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#rollStackSource|regex|/\\s*$/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#rollStackSource|regex|/^\\s*/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#splitTopLevel|scanner|c === '['": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Bracket-depth scan splitting a mini stack on top-level commas."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#splitTopLevel|scanner|c === ']'": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Bracket-depth scan splitting a mini stack on top-level commas."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#stackSource|regex|/\\s*$/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#stackSource|regex|/^\\s*/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Captures leading/trailing whitespace of a source slice."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#tokenOf|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Re-assembles token text as atom source + \":\" + krill tail source; unsure: authoring vs surgery (bytes are the user's own)."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#unwrapAlternation|scanner|t[i] === '<'": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Bracket-depth scan deciding whether text is exactly one `<…>` alternation."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#unwrapAlternation|scanner|t[i] === '>'": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Bracket-depth scan deciding whether text is exactly one `<…>` alternation."
+  },
+  "packages/editor/src/visualEdit/notation/parse.ts#walk|regex|/\\s/": {
+   "count": 1,
+   "class": "boundary",
+   "why": "Skips whitespace after a krill location to find a rest atom's start."
+  },
+  "packages/editor/src/visualEdit/notation/pitch.ts#pitchToMidi|regex|/^([a-g])(s|#|b)?(-?\\d+)?$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Parses note names / numbers to MIDI by regex, re-modelling Strudel's note parsing."
+  },
+  "packages/editor/src/visualEdit/notation/pitch.ts#pitchToMidi|regex|/^-?\\d+$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Parses note names / numbers to MIDI by regex, re-modelling Strudel's note parsing."
+  },
+  "packages/editor/src/visualEdit/notation/place.ts#key|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a Set key for a note."
+  },
+  "packages/editor/src/visualEdit/notation/place.ts#key|template|`${n.pitch}@${n.start}+${n.duration}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a Set/dedupe key for a note."
+  },
+  "packages/editor/src/visualEdit/notation/resize.ts#resizeRoll|template|`${n.pitch}@${n.start}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a Set/dedupe key for a note."
+  },
+  "packages/editor/src/visualEdit/notation/resolution.ts#rollSlotState|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Returns a UI slot-state label for the roll."
+  },
+  "packages/editor/src/visualEdit/notation/resolution.ts#slotState|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Returns a UI slot-state label for a resolution control."
+  },
+  "packages/editor/src/visualEdit/notation/resolution.ts#stepSlotState|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Returns a UI slot-state label for the step grid."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#asEntry|regex|/[@!]/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Decides by regex whether an element carries `@`/`!` to need bracketing."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#asEntry|template|`[${text}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#cellToken|template|`[${atoms.join(',')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#fmtGain|regex|/\\.?0+$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Strips trailing zeros when formatting a number."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#gridBars|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Builds a `<[..] ~ ..>` bar alternation from model columns."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#gridBars|template|`<${slots.join(' ')}>`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#gridBars|template|`[${bar.join(' ')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#gridColumns|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells lanes as mini column tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#groupBody|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells a note group as a pitch or `[a,b]` chord."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#groupBody|template|`[${g.pitches.join(',')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#groupToken|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells a note group with an `@weight` suffix."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#groupToken|template|`${groupBody(g)}@${weightToken(g.duration)}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#groupWrapRegion|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Builds a new `[..]@n` group from notes."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#groupWrapRegion|template|`${body}@${steps}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#groupWrapRegion|template|`[${inner.join(' ')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#laneString|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells one lane of notes as mini tokens with rests."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#laneWrapRegion|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Builds a new `[lane, lane]@n` stack from notes."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#laneWrapRegion|template|`${body}@${steps}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#laneWrapRegion|template|`[${strings.join(', ')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#noteKey|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a comparison key for a roll note."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#outsideBrackets|scanner|'[<{('.includes": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand bracket-depth scan of mini text (top-level elements / outer brackets)."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#outsideBrackets|scanner|']>})'.includes": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand bracket-depth scan of mini text (top-level elements / outer brackets)."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#rebuildGrid|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Rebuilds the whole grid as fresh mini-notation (columns, `<…>` bars, `,` parts) from the model."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#reemitAltRegion|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells per-bar region text and wraps differing bars in a new `<…>`."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#reemitAltRegion|template|`<${barTokens.join(' ')}>`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#reemitAltRoll|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells per-bar roll text and wraps differing bars in a new `<…>`."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#reemitAltRoll|template|`<${barTokens.join(' ')}>`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#reemitRegion|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells model columns as mini steps (`~`, `_`, `[..]`)."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#reemitRollRegionFlat|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells notes as mini steps with `~`, `[..]` and `@` weights."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#reemitRollRegionFlat|template|`[${slots.join(' ')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#reemitRollRegion|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Re-emits a roll region as flat or lane-wrapped mini text."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#reemitStep|template|`[${tokens.join(' ')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#respellBar|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Repacks a drawn bar and re-emits it as mini text."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#respellRollBar|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Repacks a drawn roll bar and re-emits it as mini text."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#restTokens|template|`~@${weightToken(remainder)}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#rollBarLanes|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Builds a `<…>` of per-bar `[lane, lane]` stacks."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#rollBarLanes|template|`${body}@${k}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#rollBarLanes|template|`<${slots.join(' ')}>`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#rollBarLanes|template|`[${strings.join(', ')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#rollBars|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Builds a `<…>` bar alternation of roll notes."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#rollBars|template|`${groupBody(atStart)}@${k}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#rollBars|template|`<${slots.join(' ')}>`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#rollBars|template|`[${tokens.join(' ')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#serializeByLeaf|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Replaces text at given leaf spans in the source, nothing else."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#serializePianoRollWithExtent|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Dispatches roll writers; falls back to rebuilding mini-notation from the model."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#serializePianoRoll|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Returns the roll writer's mini-notation, possibly rebuilt from the model."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#serializeRollGain|template|`${fmtGain(g.gain)}@${weightToken(g.duration)}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#serializeRollGain|template|`<${seq}>`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#serializeRollLanes|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Builds a `,`-stack of lane strings from the model."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#serializeStepGridWithExtent|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Dispatches grid writers; falls back to rebuilding mini-notation from the model."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#serializeStepGrid|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Returns the grid writer's mini-notation, which may be rebuilt from the model."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#soundsOf|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Lists cell token names for comparison (not written; appears unused)."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#spliceAltGrid|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Copies unedited alternation regions, re-emits edited ones as new mini text."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#spliceAltRoll|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Copies unedited alt roll regions, re-emits edited ones."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#spliceBars|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Rewrites a stack part bar by bar, building a new `<…>` of entries."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#spliceBars|regex|/<\\s*$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Strips a `<` wrapper from a part's surrounding text, assuming it is the bar alternation; unsure: hand-grammar vs boundary."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#spliceBars|regex|/^\\s*>/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Strips a `<` wrapper from a part's surrounding text, assuming it is the bar alternation; unsure: hand-grammar vs boundary."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#spliceBars|template|`<${texts.map(asEntry).join(' ')}>`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#spliceByLeaf|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Swaps one token (or `~`) at krill/engine-located leaf spans, copying all other bytes."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#spliceGrid|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Keeps unedited regions verbatim but re-emits edited regions/parts as newly spelled mini-notation."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#splicePart|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Splices a part: edited regions re-emitted, or whole part rebuilt as `[..]` bars."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#splicePart|template|`[${bar.join(' ')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#spliceRegions|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Re-emits edited regions (merging neighbours) as new mini text."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#spliceRollByLeaf|model-to-text|": {
+   "count": 1,
+   "class": "surgery",
+   "why": "Swaps one token (or `~`) at krill/engine-located leaf spans, copying all other bytes."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#spliceRoll|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Keeps unedited roll regions verbatim, re-emits edited ones or rebuilds lanes."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#stackedRegion|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells a region as a new `[a ~ _, b ...]@n` stack."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#stackedRegion|template|`@${slots}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#stackedRegion|template|`[${parts.join(', ')}]`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Generates new mini-notation structure (`[..]`, `<..>`, `@n`, `,`) around generated tokens."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#sustainTokens|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Spells columns as mini tokens with `~` rests and `_` sustains."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#topLevel|regex|/\\s/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand bracket-depth scan of mini text (top-level elements / outer brackets)."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#topLevel|scanner|'[<{('.includes": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand bracket-depth scan of mini text (top-level elements / outer brackets)."
+  },
+  "packages/editor/src/visualEdit/notation/serialize.ts#topLevel|scanner|']>})'.includes": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand bracket-depth scan of mini text (top-level elements / outer brackets)."
+  },
+  "packages/editor/src/visualEdit/panels/ExtendHandle.tsx#ExtendHandle|template|`[${cellAttr}$=\":${cols - 1}\"]`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a CSS attribute selector to find grid cells in the DOM."
+  },
+  "packages/editor/src/visualEdit/panels/ExtendHandle.tsx#ExtendHandle|template|`[${cellAttr}$=\":${cols - 2}\"]`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a CSS attribute selector to find grid cells in the DOM."
+  },
+  "packages/editor/src/visualEdit/panels/ResolutionControl.tsx#ResolutionControl|template|`~${preset}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Prefixes a UI preset label with ~ to mark a rewriting choice."
+  },
+  "packages/editor/src/visualEdit/panels/ResolutionControl.tsx#describeTarget|model-to-text|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a UI tooltip describing a slot target."
+  },
+  "packages/editor/src/visualEdit/panels/ResolutionControl.tsx#stepButton|template|`~${label}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Prefixes a UI button label with ~ to mark a rewriting choice."
+  },
+  "packages/editor/src/visualEdit/panels/useGridModel.ts#gainEdits|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Writes a new .gain(\"...\") call or replaces the gain argument from the model intent."
+  },
+  "packages/editor/src/visualEdit/panels/useGridModel.ts#managedGainArg|regex|/^[\"'`]/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Decides a .gain argument is a JS string literal by its first quote char."
+  },
+  "packages/editor/src/visualEdit/panels/useGridModel.ts#readChunkGain|regex|/^[\"'`]/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Decides a .gain argument is a JS string literal by its first quote char, then strips quotes."
+  },
+  "packages/editor/src/visualEdit/panels/usePatternLength.ts#check|model-to-text|": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Gates and passes through mini text authored by duplicateBar/appendEmptyBars for writing; unsure: authoring vs surgery."
+  },
+  "packages/editor/src/visualEdit/panels/usePatternLength.ts#hasVelocityString|regex|/^[\"'`]/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Decides a .gain argument is a JS string literal by its first quote char."
+  },
+  "packages/editor/src/visualEdit/panels/writtenSteps.ts#useRulerFit|template|`[${labelAttr}]`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a CSS attribute selector for ruler labels."
+  },
+  "packages/editor/src/visualEdit/pickControl/parse.ts#scanControlArms|regex|/[0-9.]/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand scan reads the digit run after @ as an arm weight in mini-notation."
+  },
+  "packages/editor/src/visualEdit/pickControl/parse.ts#scanControlArms|regex|/\\s/": {
+   "count": 3,
+   "class": "hand-grammar",
+   "why": "Whitespace test inside the hand mini tokenizer that decides where pick arms end."
+  },
+  "packages/editor/src/visualEdit/pickControl/parse.ts#scanControlArms|scanner|c === '<'": {
+   "count": 2,
+   "class": "hand-grammar",
+   "why": "Hand bracket-depth scan of a pick mini string to find arms, heads and @weights."
+  },
+  "packages/editor/src/visualEdit/pickControl/parse.ts#scanControlArms|scanner|c === '>'": {
+   "count": 2,
+   "class": "hand-grammar",
+   "why": "Hand bracket-depth scan of a pick mini string to find arms, heads and @weights."
+  },
+  "packages/editor/src/visualEdit/pickControl/parse.ts#scanControlArms|scanner|c === '['": {
+   "count": 2,
+   "class": "hand-grammar",
+   "why": "Hand bracket-depth scan of a pick mini string to find arms, heads and @weights."
+  },
+  "packages/editor/src/visualEdit/pickControl/parse.ts#scanControlArms|scanner|c === ']'": {
+   "count": 2,
+   "class": "hand-grammar",
+   "why": "Hand bracket-depth scan of a pick mini string to find arms, heads and @weights."
+  },
+  "packages/editor/src/visualEdit/pickControl/parse.ts#scanControlArms|scanner|raw[i] === '<'": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand bracket-depth scan of a pick mini string to find arms, heads and @weights."
+  },
+  "packages/editor/src/visualEdit/pickControl/parse.ts#scanControlArms|scanner|raw[i] === '>'": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand bracket-depth scan of a pick mini string to find arms, heads and @weights."
+  },
+  "packages/editor/src/visualEdit/pickControl/serialize.ts#<module>|regex|/^[A-Za-z_$][A-Za-z0-9_$]*$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand regex gates a new section name used as both JS key and mini arm head; unsure: hand-grammar vs js-grammar."
+  },
+  "packages/editor/src/visualEdit/pickControl/serialize.ts#<module>|regex|/^[A-Za-z_][A-Za-z0-9_]*$/": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Hand regex decides which names are valid pick selector words in mini-notation."
+  },
+  "packages/editor/src/visualEdit/pickControl/serialize.ts#escapeRe|regex|/[.*+?^${}()|[\\]\\\\]/g": {
+   "count": 1,
+   "class": "hand-grammar",
+   "why": "Escapes a name to build a regex that scans mini text for arm-head occurrences; unsure: hand-grammar vs other-text."
+  },
+  "packages/editor/src/visualEdit/pickControl/serialize.ts#insertSilenceArm|template|`~@${doc.slice(arm.weightRange[0], arm.weightRange[1])}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Builds a new ~@weight silence arm in mini-notation."
+  },
+  "packages/editor/src/visualEdit/pickControl/serialize.ts#setWeight|template|`@${w}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Inserts a new @w weight operator after an arm head in mini-notation."
+  },
+  "packages/editor/src/visualEdit/pickControl/serialize.ts#splitArm|template|`${head}@${n1} ${head}@${n2}`": {
+   "count": 1,
+   "class": "authoring",
+   "why": "Writes two new head@n1 head@n2 mini arms in place of one."
+  },
+  "packages/editor/src/visualEdit/trackColor.ts#<module>|regex|/^(?:bass|sub|808)/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches track names to a colour family for the palette."
+  },
+  "packages/editor/src/visualEdit/trackColor.ts#<module>|regex|/^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches track names to a colour family for the palette."
+  },
+  "packages/editor/src/visualEdit/trackColor.ts#<module>|regex|/^(?:lead|melody|synth|piano|keys|guitar)/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches track names to a colour family for the palette."
+  },
+  "packages/editor/src/visualEdit/trackColor.ts#<module>|regex|/^(?:pad|pads)/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Matches track names to a colour family for the palette."
+  },
+  "packages/editor/src/visualEdit/trackColor.ts#trackIndexOf|regex|/^d(\\d+)$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Parses d<N> track ids to pick a palette colour index."
+  },
+  "packages/editor/src/visualEdit/writeback.ts#formatNumber|regex|/\\.?0+$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Trims trailing zeros when formatting a number."
+  },
+  "packages/editor/src/visualEdit/writeback.ts#normalizeEdits|template|`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Error message text for invalid edit ranges."
+  },
+  "packages/editor/src/visualEdit/writeback.ts#normalizeEdits|template|`writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Error message text for invalid edit ranges."
+  },
+  "packages/editor/src/visualizers/blockScan.ts#startsNamedTrack|regex|/^[\\p{ID_Start}$_][\\p{ID_Continue}$\\u200C\\u200D]*\\s*:/u": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over user Strudel code lines to detect $: / named labels / all( block starts (JS statement structure)."
+  },
+  "packages/editor/src/visualizers/blockScan.ts#startsTopLevelBlock|regex|/^_?\\$_?:/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over user Strudel code lines to detect $: / named labels / all( block starts (JS statement structure)."
+  },
+  "packages/editor/src/visualizers/blockScan.ts#startsTopLevelBlock|regex|/^all\\s*\\(/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over user Strudel code lines to detect $: / named labels / all( block starts (JS statement structure)."
+  },
+  "packages/editor/src/visualizers/namedVizRegistry.ts#normalizeVizName|regex|/[\\s\\-_]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Viz preset id/name sanitising from file paths."
+  },
+  "packages/editor/src/visualizers/p5Compiler.ts#<module>|regex|/\\n/g": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Counts newlines in a fixed wrapper prefix for line-offset mapping."
+  },
+  "packages/editor/src/visualizers/p5Compiler.ts#isFullLifecycleSketch|regex|/\\bfunction\\s+(?:draw|setup|preload)\\s*\\(/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over a p5 sketch (JS) to detect draw/setup/preload function declarations; not Strudel code."
+  },
+  "packages/editor/src/visualizers/p5FesBridge.ts#<module>|regex|/,\\s*line\\s+(\\d+)\\s*\\]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Parses p5.js friendly-error log messages."
+  },
+  "packages/editor/src/visualizers/p5FesBridge.ts#<module>|regex|/^\\s*🌸\\s*p5\\.js\\s*says:\\s*/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Parses p5.js friendly-error log messages."
+  },
+  "packages/editor/src/visualizers/p5FesBridge.ts#buildLogger|regex|/^\\[[^\\]]*\\]\\s*/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Parses p5.js friendly-error log messages."
+  },
+  "packages/editor/src/visualizers/p5FesBridge.ts#buildLogger|regex|/accidentally written|is not defined|no such/i": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Parses p5.js friendly-error log messages."
+  },
+  "packages/editor/src/visualizers/renderers/WorkerVizRenderer.ts#onMount|template|`[viz worker ${this.name}] ${d.message}`": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Log/debug message formatting."
+  },
+  "packages/editor/src/visualizers/renderers/glslShaderSource.ts#<module>|template|`uniform vec3 iResolution; uniform float iTime; uniform vec4 iMouse; uniform sampler2D iChannel0; uniform float uKick, uSnare, uHat, uOpenHat, uClap, uRim, uTom": {
+   "count": 1,
+   "class": "other-text",
+   "why": "GLSL shader preamble / comment stripping / compile-error line parsing."
+  },
+  "packages/editor/src/visualizers/renderers/glslShaderSource.ts#buildGLSLFragmentSource|regex|/\\bmainImage\\s*\\(/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "GLSL shader preamble / comment stripping / compile-error line parsing."
+  },
+  "packages/editor/src/visualizers/renderers/glslShaderSource.ts#buildGLSLFragmentSource|regex|/\\bvoid\\s+main\\s*\\(/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "GLSL shader preamble / comment stripping / compile-error line parsing."
+  },
+  "packages/editor/src/visualizers/renderers/glslShaderSource.ts#glslFragmentErrorUserLine|regex|/\\b\\d+:(\\d+):/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "GLSL shader preamble / comment stripping / compile-error line parsing."
+  },
+  "packages/editor/src/visualizers/renderers/glslShaderSource.ts#glslFragmentErrorUserLine|regex|/fragment compile error/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "GLSL shader preamble / comment stripping / compile-error line parsing."
+  },
+  "packages/editor/src/visualizers/renderers/glslShaderSource.ts#glslPreambleLineCount|regex|/\\bmainImage\\s*\\(/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "GLSL shader preamble / comment stripping / compile-error line parsing."
+  },
+  "packages/editor/src/visualizers/renderers/glslShaderSource.ts#glslPreambleLineCount|regex|/\\n/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "GLSL shader preamble / comment stripping / compile-error line parsing."
+  },
+  "packages/editor/src/visualizers/renderers/glslShaderSource.ts#stripComments|regex|/\\/\\*[\\s\\S]*?\\*\\//g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "GLSL shader preamble / comment stripping / compile-error line parsing."
+  },
+  "packages/editor/src/visualizers/renderers/glslShaderSource.ts#stripComments|regex|/\\/\\/[^\\n]*/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "GLSL shader preamble / comment stripping / compile-error line parsing."
+  },
+  "packages/editor/src/visualizers/renderers/glslShaderSource.ts#stripVersion|regex|/^[ \\t]*#version[^\\n]*\\r?\\n?/m": {
+   "count": 1,
+   "class": "other-text",
+   "why": "GLSL shader preamble / comment stripping / compile-error line parsing."
+  },
+  "packages/editor/src/visualizers/viewZones.ts#escapeRegex|regex|/[.*+?^${}()|[\\]\\\\]/g": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Escapes a viz name to build a regex that finds .viz(\"name\") in user code; unsure: js-grammar vs other-text."
+  },
+  "packages/editor/src/visualizers/viewZones.ts#normalize|regex|/[\\s\\-_]/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Normalises a viz name for comparison."
+  },
+  "packages/editor/src/visualizers/viewZones.ts#reAnchorZones|regex|/\\.viz\\s*\\(/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over user code lines to find .viz( calls to re-anchor view zones."
+  },
+  "packages/editor/src/visualizers/vizPreset.ts#bundledPresetId|template|`${BUNDLED_PREFIX}${sanitizePresetName(name)}_${renderer}__`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Viz preset id/name sanitising from file paths."
+  },
+  "packages/editor/src/visualizers/vizPreset.ts#generateUniquePresetId|template|`${slug}_${renderer}_v${n}`": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Viz preset id/name sanitising from file paths."
+  },
+  "packages/editor/src/visualizers/vizPreset.ts#sanitizePresetName|regex|/[^a-z0-9]+/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Viz preset id/name sanitising from file paths."
+  },
+  "packages/editor/src/visualizers/vizPreset.ts#sanitizePresetName|regex|/^_+|_+$/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Viz preset id/name sanitising from file paths."
+  },
+  "packages/editor/src/visualizers/worker/hostP5Worker.ts#mount|template|`mounted ${msg.kind} viz '${msg.name}' (${msg.size.w}×${msg.size.h}@${dpr})`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Log/debug message formatting."
+  },
+  "packages/editor/src/workspace/assetNaming.ts#nextTakeName|template|`${TAKE_NAME_PREFIX}_${highest + 1}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Derives/uniquifies sound or take names from filenames."
+  },
+  "packages/editor/src/workspace/assetNaming.ts#nextTakeName|template|`^${TAKE_NAME_PREFIX}_(\\\\d+)$`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Derives/uniquifies sound or take names from filenames."
+  },
+  "packages/editor/src/workspace/assetNaming.ts#soundNameFromFilename|regex|/[^a-z0-9]+/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Derives/uniquifies sound or take names from filenames."
+  },
+  "packages/editor/src/workspace/assetNaming.ts#soundNameFromFilename|regex|/\\.[^./\\\\]*$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Derives/uniquifies sound or take names from filenames."
+  },
+  "packages/editor/src/workspace/assetNaming.ts#soundNameFromFilename|regex|/^_+|_+$/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Derives/uniquifies sound or take names from filenames."
+  },
+  "packages/editor/src/workspace/assetNaming.ts#uniqueSoundName|template|`${base}_${n}`": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Derives/uniquifies sound or take names from filenames."
+  },
+  "packages/editor/src/workspace/assetStore.ts#unregisterAsset|regex|/\\s+/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds the sound-map key from an asset name."
+  },
+  "packages/editor/src/workspace/codeUndo.ts#codeEditorForFocus|template|`[${CODE_UNDO_ATTR}]`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "CSS attribute selector for locating the focused code editor."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/./": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/0[xX][0-9a-fA-F]+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/[;,.]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/[<>]=?|[!=]=?|&&|\\|\\||[-+*/%]=?|[?:]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/[^/*]+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/[a-zA-Z_]\\w*/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/[{}()[\\]]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/\\*\\//": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/\\.([a-zA-Z_]\\w*)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/\\/\\*/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/\\/\\/.*$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/\\d*\\.\\d+([eE][+-]?\\d+)?[fF]?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/\\d+[fFuU]?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerGLSLLanguage|regex|/^[ \\t]*#\\w+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Monarch tokenizer rule for GLSL syntax highlighting (not Strudel/JS)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\"/": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/'/": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/(\\?\\?|\\?\\.|\\?|:)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/./": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/0[bB][01]+n?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/0[xX][\\da-fA-F]+n?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/===|!==|==|!=|<=|>=|<<|>>>|>>|&&|\\|\\|/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/=>/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/[+\\-*/%&|^~]=?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/[;,.]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/[=!<>]=?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/[^/*]+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/[^\\\\\"]+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/[^\\\\']+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/[^\\\\`$]+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/[a-zA-Z_$][\\w$]*/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/[{}()[\\]]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\$\\{/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\*\\//": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\.([a-zA-Z_$][\\w$]*)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\.\\d+([eE][+-]?\\d+)?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\/\\*/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\/\\/.*$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\\\./": {
+   "count": 3,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\b(let|const|var|function|for|while|if|else|return|class|new|typeof|instanceof|of|in|break|continue|do|switch|case|default|throw|try|catch|finally|async|await|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\ba\\b/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\d+(\\.\\d+)?([eE][+-]?\\d+)?n?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/\\}/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerHydraLanguage|regex|/`/": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\"/": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/'/": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/(\\?\\?|\\?\\.|\\?|:)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/./": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/0[bB][01]+n?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/0[xX][\\da-fA-F]+n?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/===|!==|==|!=|<=|>=|<<|>>>|>>|&&|\\|\\|/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/=>/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/[+\\-*/%&|^~]=?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/[;,.]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/[=!<>]=?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/[^/*]+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/[^\\\\\"]+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/[^\\\\']+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/[^\\\\`$]+/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/[a-zA-Z_$][\\w$]*/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/[{}()[\\]]/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\\$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\\$\\{/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\\*\\//": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\\.([a-zA-Z_$][\\w$]*)/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\\.\\d+([eE][+-]?\\d+)?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\\/\\*/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\\/\\/.*$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\\\\./": {
+   "count": 3,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\\b(let|const|var|function|for|while|if|else|return|class|new|typeof|instanceof|of|in|break|continue|do|switch|case|default|throw|try|catch|finally|async|await|": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\\d+(\\.\\d+)?([eE][+-]?\\d+)?n?/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/\\}/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/languages.ts#registerP5JsLanguage|regex|/`/": {
+   "count": 2,
+   "class": "other-text",
+   "why": "Display-only syntax highlighting for Hydra/p5 sketches, not Strudel (another language, like the Sonic Pi highlighter)."
+  },
+  "packages/editor/src/workspace/preview/vizPresetBridge.ts#flushToPreset|regex|/\\.[^.]+$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Viz preset id/name sanitising from file paths."
+  },
+  "packages/editor/src/workspace/preview/vizPresetBridge.ts#flushToPreset|regex|/^.*\\//": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Viz preset id/name sanitising from file paths."
+  },
+  "packages/editor/src/workspace/runtime/LiveCodingRuntime.ts#extractBpmFromCode|regex|/setcps\\s*\\(\\s*([\\d.]+)\\s*\\)/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over user code to find a setcps(...) call and read its numeric args for BPM."
+  },
+  "packages/editor/src/workspace/runtime/LiveCodingRuntime.ts#extractBpmFromCode|regex|/setcps\\s*\\(\\s*([\\d.]+)\\s*\\/\\s*([\\d.]+)\\s*\\)/": {
+   "count": 1,
+   "class": "js-grammar",
+   "why": "Regex over user code to find a setcps(...) call and read its numeric args for BPM."
+  },
+  "packages/editor/src/workspace/samplePeaks.ts#resolveSampleUrl|template|`${ref.bank}_${played}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Builds a sound-registry key bank_name to look up sample data."
+  },
+  "packages/editor/src/workspace/soundCollector.ts#<module>|regex|/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "UUID format check."
+  },
+  "packages/editor/src/workspace/soundRegistry.ts#soundfontLabel|regex|/^gm_/": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Formats sound/soundfont names for UI labels."
+  },
+  "packages/editor/src/workspace/soundRegistry.ts#spaceCamel|regex|/([a-z])([A-Z])/g": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Formats sound/soundfont names for UI labels."
+  },
+  "packages/editor/src/workspace/vizInputsHover.ts#provideHover|template|`**live · master:** ${spark(v)}`": {
+   "count": 1,
+   "class": "other-text",
+   "why": "Markdown hover text with a sparkline."
+  }
+ }
+}

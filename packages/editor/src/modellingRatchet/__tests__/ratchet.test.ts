@@ -14,6 +14,9 @@ describe('the modelling ratchet (#1866)', () => {
 
   it('names every count a gate measures', () => {
     expect(Object.keys(loadLedger()).sort()).toEqual([
+      'inventory.authoring',
+      'inventory.hand-grammar',
+      'inventory.js-grammar',
       'predicate-audit.anchored',
       'writer-census.p6-blocker',
       'writer-census.untransferable',

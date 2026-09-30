@@ -33,6 +33,39 @@
           "note": "Baseline when the ratchet was added, on origin/main 612772aa. #1007's body says 36; PREDICATE-AUDIT.md records the move to 37."
         }
       ]
+    },
+    "inventory.authoring": {
+      "what": "Builds Strudel or mini-notation text from a model instead of copying the user's bytes (M3). Counted in sites from inventory.json.",
+      "measuredBy": "packages/editor/src/modellingRatchet/__tests__/siteInventory.test.ts",
+      "history": [
+        {
+          "value": 100,
+          "date": "2026-10-01",
+          "note": "Baseline when the site inventory was added (#1298, #1866 part 2), on feat/1298-authoring-inventory over origin/main 612772aa + the ratchet (#1870)."
+        }
+      ]
+    },
+    "inventory.hand-grammar": {
+      "what": "Decides what Strudel or mini-notation syntax means by hand — regex, bracket-depth scan, hand tokenizer — outside ir/parseStrudel.ts (which the predicate audit counts). Counted in sites from inventory.json.",
+      "measuredBy": "packages/editor/src/modellingRatchet/__tests__/siteInventory.test.ts",
+      "history": [
+        {
+          "value": 77,
+          "date": "2026-10-01",
+          "note": "Baseline when the site inventory was added (#1298, #1866 part 2), on feat/1298-authoring-inventory over origin/main 612772aa + the ratchet (#1870)."
+        }
+      ]
+    },
+    "inventory.js-grammar": {
+      "what": "Decides JavaScript source structure by hand — acorn's job — including display-only Strudel-file highlighting rules. Counted in sites from inventory.json.",
+      "measuredBy": "packages/editor/src/modellingRatchet/__tests__/siteInventory.test.ts",
+      "history": [
+        {
+          "value": 73,
+          "date": "2026-10-01",
+          "note": "Baseline when the site inventory was added (#1298, #1866 part 2), on feat/1298-authoring-inventory over origin/main 612772aa + the ratchet (#1870)."
+        }
+      ]
     }
   }
 }
