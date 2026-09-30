@@ -473,7 +473,39 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
         }
     }
     // the population must be non-empty, or the comparison above reports on nothing
-    expect(compared, 'accepted placements compared').toBeGreaterThan(1000)  })
+    expect(compared, 'accepted placements compared').toBeGreaterThan(1000)
+  })
+
+  /**
+   * THE SAME, FOR THE CLICK EXACT MAKES (#1860). In Exact (#1855) a box is one of a part's
+   * own steps and a click paints a hit that many columns long (`toggleCell`'s `length`).
+   * The arm above asks one-column clicks only, so the control arm could drop the length and
+   * still read green there. Asked here at every empty box of every grid Exact draws.
+   */
+  it('the ungated control arm builds what the op builds for an own-step click', () => {
+    let compared = 0
+    for (const mini of minis) {
+      const r = parseStepGrid(mini)
+      if (!r.ok) continue
+      const m = r.model
+      const widths = ownStepWidths(m)
+      if (widths.size === 0) continue
+      m.lanes.forEach((l, li) => {
+        for (const b of rowBoxes(l.cells, m.steps, widths.get(l.part ?? 0), isCellOn)) {
+          if (b.width === 1 || isCellOn(l.cells[b.start])) continue
+          const gated = toggleCell(m, li, b.start, true, b.width)
+          if (gated === m) continue
+          compared++
+          expect(
+            gated,
+            `${JSON.stringify(mini)} [${li},${b.start}] width ${b.width}: the control arm has drifted from the op`,
+          ).toEqual(ungatedToggle(m, li, b.start, true, b.width))
+        }
+      })
+    }
+    console.log(`#1860: ${compared} own-step clicks compared`)
+    expect(compared, 'own-step clicks compared').toBeGreaterThan(50)
+  })
 
   /**
    * ⚠ THIS TEST NO LONGER ASKS A PATH QUESTION, and the rename is the finding.

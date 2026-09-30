@@ -46,8 +46,10 @@ export function ungatedToggle(
   laneIndex: number,
   stepIndex: number,
   value: boolean,
+  length = 1,
 ): StepGridModel {
-  const paint = (v: boolean): StepCell => (v ? cellOn() : false)
+  // a hit one box long, as the op paints it — one of a part's own steps in Exact (#1855)
+  const paint = (v: boolean): StepCell => (v ? cellOn(length) : false)
   const painted = model.lanes.map((lane, i) =>
     i === laneIndex
       ? {
