@@ -57,7 +57,8 @@ const GRID_ASKS = 62716
 const GRID_REFUSED = 4470
 // ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
 // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-const GRID_ANSWERS = '09a550cf60f19604'
+// ⚠ MOVED at #1849's bar-by-bar edits: an edit in bar b of a comma part now changes bar b only. Edit diff over the 81 comma patterns the grid opens, linked vs bar-by-bar: exactly the 3 per-bar stacks differ, the other 78 byte-identical.
+const GRID_ANSWERS = 'd755024957a6e1fa'
 
 const shortHash = (s: string): string =>
   crypto.createHash('sha1').update(s).digest('hex').slice(0, 12)

@@ -752,7 +752,7 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // once the oracle measures a per-bar model with its own ruler (`barRuler`). Before
       // that fix the drum grid's edit was filed `corrupt`: the probe deleted the wrong cell.
     // ⚠ 55/55/53 -> 58/56/54 at #1849, from the stacks it opens. Of the new structural rows, the two without a verified core edit are the rolls `0,.1` and `0,.1,7, 6.9` — `no-probe`, decimal `n` values; the blocker set moves by one, on the roll.
-    // ⚠ 58/56/54 -> 59/57/55 at #1849's `<…>` half: `c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >` has structure and a core edit the engine oracle verifies, once the oracle expects a delete in a repeated part to leave every repeat (`repeatEvery`) — the #1827 story again: before that fix it was filed `corrupt`.
+    // ⚠ 58/56/54 -> 59/57/55 at #1849's `<…>` half: `c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >` has structure and a core edit the engine oracle verifies, once the writer and the oracle agree on what a delete in a repeated part does. First measured with linked repeats and a repeat-aware oracle; unchanged under bar-by-bar edits with the oracle back to "every other bar untouched".
     }).toEqual({ coreStructured: 59, coreEdits: 57, both: 55 })
 
     // …and the split the whole conjunction exists to keep visible. Asserted here rather
