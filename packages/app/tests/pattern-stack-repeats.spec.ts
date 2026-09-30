@@ -72,6 +72,6 @@ test.describe('a comma pattern with a `<…>` part (#1849)', () => {
     const seq = await open(page, '$: s("bd sd, hh*4")')
     await expect(seq.locator('[data-seq-cell]')).toHaveCount(12)
     await cell(seq, 'hh step 2').click()
-    await expect.poll(() => editorValue(page)).toBe('$: s("bd sd, hh ~ hh hh")')
+    await expect.poll(() => editorValue(page)).toBe('$: s("bd sd, [hh ~ hh hh]")')
   })
 })
