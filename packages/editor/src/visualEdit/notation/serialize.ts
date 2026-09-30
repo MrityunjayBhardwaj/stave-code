@@ -221,13 +221,28 @@ export function serializeStepGridWithExtent(drawn: StepGridModel): {
   // once per model and only on a write, which is the whole point: a parse that never
   // writes never pays it. The source it hands back already carries the overlay's
   // attach-time width, so `anchorsAreFor` below stays the one place that rule is enforced.
-  // ⚠ NOT FOR A STACK WHOSE PARTS ARE WRITTEN BAR BY BAR (#1849). There the splice owns
-  // the bar rule — an edit that makes a part's bars agree again writes it back as one
-  // bar — and an in-place leaf write would keep `<hh*8 [hh hh hh hh hh hh hh hh]>`.
-  const perBarStack = (model.bars ?? 1) > 1 && !!model.source?.parts.some((p) => p.bars !== undefined)
-  const spans = model.leafSource ?? (perBarStack ? undefined : model.surgical?.spans())
+  const spans = model.leafSource ?? model.surgical?.spans()
   if (spans) {
     const surgical = spliceByLeaf(model, spans)
+    // ⚠ A STACK WHOSE PARTS ARE WRITTEN BAR BY BAR (#1849): the splice owns the bar
+    // rule, and it overrides the in-place write only where the two DISAGREE — an edit
+    // that makes a part's bars agree again writes it back as one bar, where the leaf
+    // write would keep `<hh*8 [hh hh hh hh hh hh hh hh]>`. Where they agree the leaf
+    // write answers, exactly as before.
+    if (surgical !== null && !model.leafSource && perBarStack(model)) {
+      const bars = spliceGrid(model, respell)
+      if (typeof bars === 'object' && bars.out !== surgical) {
+        return {
+          mini: bars.out,
+          extent: {
+            path: 'splice',
+            regions: bars.regions,
+            regionsReemitted: bars.regionsReemitted,
+            rebuiltParts: bars.rebuiltParts,
+          },
+        }
+      }
+    }
     if (surgical !== null) return { mini: surgical, extent: { path: 'leaf' } }
     if (model.leafSource) return { mini: null, extent: { path: 'leaf' } }
   }
@@ -1162,6 +1177,10 @@ function reemitAltRegion(perBar: GridCells[], div: number, refined = false): str
   if (barTokens.some((t) => t === null)) return null
   return barTokens.every((t) => t === barTokens[0]) ? barTokens[0]! : `<${barTokens.join(' ')}>`
 }
+
+/** a stack with a part written over fewer bars than it plays, or as `<…>` bars (#1849) */
+const perBarStack = (model: StepGridModel): boolean =>
+  (model.bars ?? 1) > 1 && !!model.source?.parts.some((p) => p.bars !== undefined)
 
 type PartSplice = { body: string; reemitted: number; rebuilt: number | null }
 

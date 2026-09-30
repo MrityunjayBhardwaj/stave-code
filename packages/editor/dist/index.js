@@ -30005,10 +30005,23 @@ __name(ifRollSpellable, "ifRollSpellable");
 function serializeStepGridWithExtent(drawn) {
   const model = toUniformGrid(drawn);
   const respell = drawn.barSteps;
-  const perBarStack = (model.bars ?? 1) > 1 && !!model.source?.parts.some((p) => p.bars !== void 0);
-  const spans = model.leafSource ?? (perBarStack ? void 0 : model.surgical?.spans());
+  const spans = model.leafSource ?? model.surgical?.spans();
   if (spans) {
     const surgical = spliceByLeaf(model, spans);
+    if (surgical !== null && !model.leafSource && perBarStack(model)) {
+      const bars = spliceGrid(model, respell);
+      if (typeof bars === "object" && bars.out !== surgical) {
+        return {
+          mini: bars.out,
+          extent: {
+            path: "splice",
+            regions: bars.regions,
+            regionsReemitted: bars.regionsReemitted,
+            rebuiltParts: bars.rebuiltParts
+          }
+        };
+      }
+    }
     if (surgical !== null) return { mini: surgical, extent: { path: "leaf" } };
     if (model.leafSource) return { mini: null, extent: { path: "leaf" } };
   }
@@ -30274,6 +30287,7 @@ function reemitAltRegion(perBar2, div, refined = false) {
   return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(" ")}>`;
 }
 __name(reemitAltRegion, "reemitAltRegion");
+var perBarStack = /* @__PURE__ */ __name((model) => (model.bars ?? 1) > 1 && !!model.source?.parts.some((p) => p.bars !== void 0), "perBarStack");
 function spliceBars(p, lanes, steps, stackBars, splicePart) {
   const P = p.bars ?? 1;
   const L = stackBars;
