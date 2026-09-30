@@ -5,7 +5,7 @@
  * so existing code keeps working. New code should import IREvent directly.
  */
 
-import type { IREvent, SourceLocation } from '../ir/IREvent'
+import type { IREvent, SourceLocation } from '../codeView/ir/IREvent'
 
 /** @deprecated Use IREvent from '../ir' instead. */
 export type NormalizedHap = IREvent

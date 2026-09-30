@@ -26,18 +26,18 @@
  */
 import * as React from 'react'
 
-import { parseStepGrid, applyStepGain } from '../notation/parse'
-import { serializeStepGrid, serializeStepGain } from '../notation/serialize'
-import { columnCount, isCellOn, laneCoverage } from '../notation/model'
-import type { StepGridModel } from '../notation/model'
-import { drawnLayout } from '../notation/perBar'
+import { parseStepGrid, applyStepGain } from '../../codeView/notation/parse'
+import { serializeStepGrid, serializeStepGain } from '../../codeView/notation/serialize'
+import { columnCount, isCellOn, laneCoverage } from '../../codeView/notation/model'
+import type { StepGridModel } from '../../codeView/notation/model'
+import { drawnLayout } from '../../codeView/notation/perBar'
 import { VisualEditStandby } from './VisualEditStandby'
 import { SEQUENCER_TAB_ID } from './tabs'
 import { opensStepGrid } from './surfaceRoute'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
-import { addLane, removeLane } from '../notation/lane'
-import { canResizeCell, canToggleCell, resizeCell, toggleCell } from '../notation/place'
+import { addLane, removeLane } from '../../codeView/notation/lane'
+import { canResizeCell, canToggleCell, resizeCell, toggleCell } from '../../codeView/notation/place'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
 import { chordLanes } from './chordLanes'
@@ -50,8 +50,8 @@ import {
   quantizeStepGridTo,
   freeZoneScale,
   collapseStepGridToDocument,
-} from '../notation/resolution'
-import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
+} from '../../codeView/notation/resolution'
+import { UNREFINED, documentSteps, type ViewScale } from '../../codeView/notation/viewResolution'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
 import {

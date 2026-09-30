@@ -89,7 +89,7 @@ import {
   RESOLUTION_PRESETS,
   type GridResolutionEffect,
   type SlotState,
-} from '../notation/resolution'
+} from '../../codeView/notation/resolution'
 
 /**
  * Lift a grid's resolution control up to the Pattern inspector (#601). The grid

@@ -18,7 +18,7 @@ import { drawTimeline, type DrawTheme, type DrawTransform } from '../drawTimelin
 import { DEFAULT_METER } from '../../../lib/meter'
 import type { TimelineScene, SceneLane } from '../timelineScene'
 import type { SignalAutomation } from '@stave/editor'
-import { signalTimeAt } from '../../../../../editor/src/ir/signalAutomation'
+import { signalTimeAt } from '../../../../../editor/src/codeView/ir/signalAutomation'
 import { computeLaneLayout, AUTOMATION_MIN_ROW_H, AUTOMATION_MIN_DRAG_BAND_H } from '../laneLayout'
 import { automationBand, automationBandHeight, rowHeightForBandHeight, captionRows, AUTOMATION_PAD_Y, AUTOMATION_MIN_BAND_H } from '../automationCaption'
 

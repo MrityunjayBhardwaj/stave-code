@@ -9,10 +9,10 @@
 import * as React from 'react'
 
 import { emitLog } from '../../engine/engineLog'
-import type { ChunkInfo } from '../chunkDetect'
-import { appendEmptyBars, duplicateBar, type LengthenResult } from '../notation/lengthen'
-import type { ParseResult } from '../notation/model'
-import { UNREFINED, type ViewScale } from '../notation/viewResolution'
+import type { ChunkInfo } from '../../codeView/chunkDetect'
+import { appendEmptyBars, duplicateBar, type LengthenResult } from '../../codeView/notation/lengthen'
+import type { ParseResult } from '../../codeView/notation/model'
+import { UNREFINED, type ViewScale } from '../../codeView/notation/viewResolution'
 
 /**
  * A per-column `.gain("…")` is managed only while each bar is one column, so a

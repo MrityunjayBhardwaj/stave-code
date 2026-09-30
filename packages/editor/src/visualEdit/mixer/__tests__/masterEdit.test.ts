@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 
-import { applyEdits } from '../../writeback'
+import { applyEdits } from '../../../codeView/writeback'
 import type { StripEdit } from '../writeStrip'
 import {
   detectMasterAll,

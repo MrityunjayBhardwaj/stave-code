@@ -1,7 +1,7 @@
 import type { HapStream } from './HapStream'
 import type { PatternScheduler } from '../visualizers/types'
-import type { PatternIR } from '../ir/PatternIR'
-import type { IREvent } from '../ir/IREvent'
+import type { PatternIR } from '../codeView/ir/PatternIR'
+import type { IREvent } from '../codeView/ir/IREvent'
 
 // ---------------------------------------------------------------------------
 // Engine Component Bags

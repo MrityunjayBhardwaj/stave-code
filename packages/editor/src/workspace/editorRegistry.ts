@@ -28,7 +28,7 @@ import {
 // lightweight Writeback (monaco types + acorn chunkDetect), never the React
 // panels — useActiveChunk imports getActiveEditor from HERE, so the barrel would
 // be a cycle.
-import { Writeback, type OffsetEdit, type WriteSource } from '../visualEdit/writeback'
+import { Writeback, type OffsetEdit, type WriteSource } from '../codeView/writeback'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MonacoEditor = any
@@ -251,7 +251,7 @@ export type WriteOutcome = 'applied' | WriteRefusal
 /**
  * Apply a batch of surgical offset edits to the model of `fileId`'s editor as
  * ONE undo step, tagged with `source`. This is the arrangement timeline's
- * write-back seam: the canvas hands up the edits (built by `visualEdit/arrange`),
+ * write-back seam: the canvas hands up the edits (built by `codeView/arrange`),
  * the registry routes them through the same surgical `Writeback` the panels use,
  * and the runtime's debounced re-eval picks the change up (no explicit eval call
  * needed). PV122 #2.

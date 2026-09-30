@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { detectAllChunks } from '../../chunkDetect'
+import { detectAllChunks } from '../../../codeView/chunkDetect'
 import { knobsFromChunk, rangeArgsEdit, rangeResetEdit } from '../MixerBody'
-import { applyEdits } from '../../writeback'
+import { applyEdits } from '../../../codeView/writeback'
 
 /**
  * A known Strudel control is UNARY (controls.mjs:50 — the chainable prototype

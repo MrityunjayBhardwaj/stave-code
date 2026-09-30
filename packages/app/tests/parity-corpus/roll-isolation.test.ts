@@ -31,7 +31,7 @@ import fs from 'node:fs'
 import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   canMoveNote,
   canRemoveNote,
@@ -41,12 +41,12 @@ import {
   removeNote,
   resizableNotes,
   resizeNote,
-} from '../../../editor/src/visualEdit/notation/place'
+} from '../../../editor/src/codeView/notation/place'
 import {
   serializePianoRoll,
   serializePianoRollWithExtent,
-} from '../../../editor/src/visualEdit/notation/serialize'
-import type { PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/serialize'
+import type { PianoRollModel } from '../../../editor/src/codeView/notation/model'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

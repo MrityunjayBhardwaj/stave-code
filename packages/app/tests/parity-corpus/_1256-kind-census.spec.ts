@@ -44,9 +44,9 @@ import {
   parsePianoRoll,
   parseStepGridCore,
   parsePianoRollCore,
-} from '../../../editor/src/visualEdit/notation/parse'
-import { hasStructure, isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import { loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+} from '../../../editor/src/codeView/notation/parse'
+import { hasStructure, isCellOn } from '../../../editor/src/codeView/notation/model'
+import { loadCorpus } from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
 import census from './WRITER-CENSUS.json'
 
 /*

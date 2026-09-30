@@ -38,7 +38,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { readGridOnsets, tailToken, type Onset } from '../../../editor/src/visualEdit/notation/parse'
+import { readGridOnsets, tailToken, type Onset } from '../../../editor/src/codeView/notation/parse'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

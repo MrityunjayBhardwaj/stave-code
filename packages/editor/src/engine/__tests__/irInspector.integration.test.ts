@@ -12,8 +12,8 @@
  * snap.ir === snap.passes[passes.length - 1].ir.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { parseStrudel, parseStrudelStages } from '../../ir'
-import { walkLeafItems } from '../../ir/structuralWalk'
+import { parseStrudel, parseStrudelStages } from '../../codeView/ir'
+import { walkLeafItems } from '../../codeView/ir/structuralWalk'
 import { publishIRSnapshot, clearIRSnapshot, type IRSnapshotInput } from '../irInspector'
 import { getCaptureBuffer, __resetCaptureForTest } from '../timelineCapture'
 

@@ -20,8 +20,8 @@ import { computeLaneLayout } from '../laneLayout'
 import { AUTOMATION_PAD_Y } from '../automationCaption'
 import { colorForAutomation } from '../colors'
 import { unitOnAxis, type StepAxis } from '../steppedLane'
-import { stepIndexAtCycle } from '../../../../../editor/src/ir/steppedAutomation'
-import { signalTimeAt } from '../../../../../editor/src/ir/signalAutomation'
+import { stepIndexAtCycle } from '../../../../../editor/src/codeView/ir/steppedAutomation'
+import { signalTimeAt } from '../../../../../editor/src/codeView/ir/signalAutomation'
 
 const THEME: DrawTheme = {
   background: '#bg', rowAlt: '#rowAlt', section: '#sect', sectionAlt: '#sectAlt',

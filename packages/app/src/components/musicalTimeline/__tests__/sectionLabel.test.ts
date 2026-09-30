@@ -10,8 +10,8 @@
  * must fail; with typed offsets they would sail through.
  */
 import { describe, it, expect } from 'vitest'
-import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
-import type { PatternIR } from '../../../../../editor/src/ir/PatternIR'
+import { parseStrudel } from '../../../../../editor/src/codeView/ir/parseStrudel'
+import type { PatternIR } from '../../../../../editor/src/codeView/ir/PatternIR'
 import {
   sectionNameAtRange,
   resolveSectionName,

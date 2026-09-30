@@ -30,8 +30,8 @@ vi.mock('@stave/editor', async () => ({
 }))
 
 import { collectNoteMarks } from '../timelineMarks'
-import { IR, type PatternIR } from '../../../../../editor/src/ir/PatternIR'
-import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
+import { IR, type PatternIR } from '../../../../../editor/src/codeView/ir/PatternIR'
+import { parseStrudel } from '../../../../../editor/src/codeView/ir/parseStrudel'
 
 // The tree the song is drawn from: `parseStrudel` (since #1558).
 const pipeline = (code: string): PatternIR => parseStrudel(code)

@@ -21,10 +21,10 @@
  * of divergent oracle this suite exists to avoid:
  *
  *     git show b08326cf:packages/editor/src/visualEdit/notation/parse.ts \
- *       > packages/editor/src/visualEdit/notation/parseBASE.ts
+ *       > packages/editor/src/codeView/notation/parseBASE.ts
  *     pnpm --filter @stave/app exec vitest run \
  *       --config vitest.instruments.config.ts tests/parity-corpus/_sweep-1034e.spec.ts
- *     rm packages/editor/src/visualEdit/notation/parseBASE.ts
+ *     rm packages/editor/src/codeView/notation/parseBASE.ts
  *
  * (The old recipe renamed this to `_sweep-1034e.test.ts` first, because the gate
  * config includes `*.test.ts` only. `vitest.instruments.config.ts` — added with
@@ -54,7 +54,7 @@ import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readGridOnsets as NEW } from '../../../editor/src/visualEdit/notation/parse'
+import { readGridOnsets as NEW } from '../../../editor/src/codeView/notation/parse'
 
 /**
  * Loaded through a non-literal specifier ON PURPOSE: `parseBASE.ts` is a scratch
@@ -68,7 +68,7 @@ import { readGridOnsets as NEW } from '../../../editor/src/visualEdit/notation/p
  * instruments reports this file green either way (#1141). Hence the explicit
  * existence check below: the thing collection cannot see, we look for ourselves.
  */
-const BASE = '../../../editor/src/visualEdit/notation/parseBASE'
+const BASE = '../../../editor/src/codeView/notation/parseBASE'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const minis: string[] = JSON.parse(fs.readFileSync(path.join(dir, 'mini-corpus.json'), 'utf8'))
@@ -94,7 +94,7 @@ if (!HAVE_BASE) {
     '\n  [#1034 A/B] SKIPPED — baseline reader absent, so nothing was compared.\n' +
       '  To arm it, from the repo root:\n' +
       '    git show b08326cf:packages/editor/src/visualEdit/notation/parse.ts \\\n' +
-      '      > packages/editor/src/visualEdit/notation/parseBASE.ts\n' +
+      '      > packages/editor/src/codeView/notation/parseBASE.ts\n' +
       '  then re-run, and delete parseBASE.ts afterwards (it must not be committed).\n',
   )
 }

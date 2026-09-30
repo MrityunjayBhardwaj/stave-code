@@ -26,8 +26,8 @@
  * The common case is neither: **544 of those 558 documents write no `.begin` at
  * all**, so the path that runs most is the append.
  */
-import type { ChunkInfo, ChainCall } from './chunkDetect'
-import { formatNumber } from './writeback'
+import type { ChunkInfo, ChainCall } from '../codeView/chunkDetect'
+import { formatNumber } from '../codeView/writeback'
 
 /** One surgical edit: replace `range` with `text` (a zero-width range inserts). */
 export interface RegionEdit {

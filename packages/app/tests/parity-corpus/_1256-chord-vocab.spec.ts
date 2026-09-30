@@ -19,7 +19,7 @@
 import { describe, it, expect } from 'vitest'
 import { isChordSymbol, chordLanes } from '../../../editor/src/visualEdit/panels/chordLanes'
 import { routeSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
-import { parsePianoRoll, parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
+import { parsePianoRoll, parseStepGrid } from '../../../editor/src/codeView/notation/parse'
 
 // Every pitch-class × every octave a real tune uses, in the two spellings the
 // corpus actually contains.

@@ -7,10 +7,10 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { LanePeriod, SongAnalysis } from '@stave/editor'
-import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
-import { steppedAutomations } from '../../../../../editor/src/ir/steppedAutomation'
-import { stepCountEdit } from '../../../../../editor/src/ir/stepCount'
-import { previewRepeat, songPeriodOf } from '../../../../../editor/src/ir/songAnalysis'
+import { parseStrudel } from '../../../../../editor/src/codeView/ir/parseStrudel'
+import { steppedAutomations } from '../../../../../editor/src/codeView/ir/steppedAutomation'
+import { stepCountEdit } from '../../../../../editor/src/codeView/ir/stepCount'
+import { previewRepeat, songPeriodOf } from '../../../../../editor/src/codeView/ir/songAnalysis'
 import { sectionLengthOf, stepCountOptions } from '../stepCountMenu'
 
 const deps = { stepCountEdit, previewRepeat, songPeriodOf }

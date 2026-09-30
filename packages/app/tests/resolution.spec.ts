@@ -447,7 +447,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     //
     // #607's re-alignment rule is unchanged and still governs `quantizePianoRollTo`
     // when slots really are added; its coverage is the op-level `#607` cases in
-    // `packages/editor/src/visualEdit/notation/__tests__/resolution.test.ts`.
+    // `packages/editor/src/codeView/notation/__tests__/resolution.test.ts`.
     await boot(page)
     const src = '$: note("c3 e3 g3 a3").gain("1 0.8 0.6 0.4")'
     await setStrudelCode(page, src)

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { detectAllChunks } from '../../chunkDetect'
+import { detectAllChunks } from '../../../codeView/chunkDetect'
 import { parseManagedGain, scaleManagedGain, readGainState } from '../gain'
 
 /** detect the single chunk in a one-statement doc */

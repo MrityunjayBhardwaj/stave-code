@@ -20,8 +20,8 @@ import {
   onActiveEditorChange,
   getMonacoNamespace,
 } from '../../workspace/editorRegistry'
-import { detectChunk, type ChunkInfo } from '../chunkDetect'
-import { Writeback } from '../writeback'
+import { detectChunk, type ChunkInfo } from '../../codeView/chunkDetect'
+import { Writeback } from '../../codeView/writeback'
 
 export interface ActiveChunk {
   /** the chunk under the cursor, or null when there's nothing editable */

@@ -20,7 +20,7 @@ export default defineConfig({
     'src/index.ts',
     'src/visualizers/worker/index.ts',
     'src/visualEdit/panels/knobScale.ts',
-    'src/ir/trackId.ts',
+    'src/codeView/ir/trackId.ts',
     'src/keys/chord.ts',
   ],
   format: ['esm', 'cjs'],

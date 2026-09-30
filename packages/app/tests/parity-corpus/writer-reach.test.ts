@@ -55,18 +55,18 @@ import {
   parseStepGridCore,
   parsePianoRoll,
   parsePianoRollCore,
-} from '../../../editor/src/visualEdit/notation/parse'
+} from '../../../editor/src/codeView/notation/parse'
 import type {
   ParseResult,
   PianoRollModel,
   StepGridModel,
-} from '../../../editor/src/visualEdit/notation/model'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
+} from '../../../editor/src/codeView/notation/model'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import { toggleCell } from '../../../editor/src/codeView/notation/place'
 import {
   serializePianoRollWithExtent,
   serializeStepGridWithExtent,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 import {
   GRID_SURFACE,
   ROLL_SURFACE,

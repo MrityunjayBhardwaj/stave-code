@@ -29,14 +29,14 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parsePianoRoll, parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
+import { parsePianoRoll, parseStepGrid } from '../../../editor/src/codeView/notation/parse'
 import {
   columnCount,
   columnOverlap,
   isCellOn,
   rollContentRange,
-} from '../../../editor/src/visualEdit/notation/model'
-import { midiToPitch, pitchToMidi } from '../../../editor/src/visualEdit/notation/pitch'
+} from '../../../editor/src/codeView/notation/model'
+import { midiToPitch, pitchToMidi } from '../../../editor/src/codeView/notation/pitch'
 import { ungatedPlace, ungatedToggle } from './ungatedOps'
 import {
   canPlaceNote,
@@ -45,12 +45,12 @@ import {
   placeNote,
   toggleCell,
   viewPlacesNotes,
-} from '../../../editor/src/visualEdit/notation/place'
+} from '../../../editor/src/codeView/notation/place'
 import {
   serializePianoRoll,
   serializeStepGain,
   serializeStepGrid,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 import { boxLengths, boxesPlaceNotes, ownStepWidths, rowBoxes } from '../../../editor/src/visualEdit/panels/writtenSteps'
 
 const here = path.dirname(fileURLToPath(import.meta.url))

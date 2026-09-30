@@ -11,9 +11,9 @@
  * dependencies (vitest's ESM loader can't resolve gifenc).
  */
 import { describe, it, expect } from 'vitest'
-import { parseStrudel as _parseStrudel } from '../../../../editor/src/ir/parseStrudel'
-import { IR, type PatternIR } from '../../../../editor/src/ir/PatternIR'
-import { parseStrudelStages } from '../../../../editor/src/ir/parseStrudelStages'
+import { parseStrudel as _parseStrudel } from '../../../../editor/src/codeView/ir/parseStrudel'
+import { IR, type PatternIR } from '../../../../editor/src/codeView/ir/PatternIR'
+import { parseStrudelStages } from '../../../../editor/src/codeView/ir/parseStrudelStages'
 import {
   projectedLabel,
   projectedChildren,
@@ -21,11 +21,11 @@ import {
   flattenLeafVoices,
   LOCALSTORAGE_KEY,
 } from '../irProjection'
-import { unwrapD1 } from '../../../../editor/src/ir/__tests__/helpers/unwrapD1'
+import { unwrapD1 } from '../../../../editor/src/codeView/ir/__tests__/helpers/unwrapD1'
 // The staged pipeline as the app publishes it (#1375) — the SHARED helper the
 // corpus parity gate uses, not a second copy: the defect that issue tracked was
 // a parallel reimplementation kept in sync by hand.
-import { pipeline, stripStageMeta } from '../../../../editor/src/ir/__tests__/helpers/stagesParity'
+import { pipeline, stripStageMeta } from '../../../../editor/src/codeView/ir/__tests__/helpers/stagesParity'
 
 // Phase 20-11 γ-4 — drill through the synthetic d1 Track wrapper. The
 // projection tests assert on the inner shape (Stack, Late, Degrade, ...);

@@ -31,9 +31,9 @@ import fs from 'node:fs'
 import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid } from '../../../editor/src/visualEdit/notation/parse'
-import { toggleCell } from '../../../editor/src/visualEdit/notation/place'
-import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
+import { parseStepGrid } from '../../../editor/src/codeView/notation/parse'
+import { toggleCell } from '../../../editor/src/codeView/notation/place'
+import { serializeStepGrid } from '../../../editor/src/codeView/notation/serialize'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

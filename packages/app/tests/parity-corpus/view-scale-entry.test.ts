@@ -72,11 +72,11 @@ import {
   parseStepGridCore,
   parsePianoRoll,
   parsePianoRollCore,
-} from '../../../editor/src/visualEdit/notation/parse'
-import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import type { StepGridModel, PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
-import { toUniformGrid, toUniformRoll } from '../../../editor/src/visualEdit/notation/perBar'
+} from '../../../editor/src/codeView/notation/parse'
+import { documentSteps } from '../../../editor/src/codeView/notation/viewResolution'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
+import type { StepGridModel, PianoRollModel } from '../../../editor/src/codeView/notation/model'
+import { toUniformGrid, toUniformRoll } from '../../../editor/src/codeView/notation/perBar'
 
 /**
  * The document's model in the columns a refine MAGNIFIES. A refined view is one shared

@@ -26,7 +26,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type * as Monaco from 'monaco-editor'
-import { detectAllChunks } from '../visualEdit/chunkDetect'
+import { detectAllChunks } from '../codeView/chunkDetect'
 import { buildStripModels, type StripModel } from '../visualEdit/mixer/stripModel'
 import { useTrackMetaMap } from '../workspace/useTrackMeta'
 import type { TrackMeta } from '../workspace/WorkspaceFile'

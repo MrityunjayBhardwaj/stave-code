@@ -24,7 +24,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as React from 'react'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { ResolutionControl } from '../ResolutionControl'
-import type { GridResolutionEffect, SlotState } from '../../notation/resolution'
+import type { GridResolutionEffect, SlotState } from '../../../codeView/notation/resolution'
 
 afterEach(() => cleanup())
 

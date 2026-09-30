@@ -1,46 +1,46 @@
 // Pattern IR — universal music representation
-export type { IREvent, SourceLocation, IRPattern } from './ir'
-export { merge, transpose, timestretch, filter, scaleGain } from './ir'
-export type { PatternIR, PlayParams } from './ir'
-export { IR, toStrudel, patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './ir'
-export { structuralWalk, aggregateLaneItems, wholeWalkWindow, rootStackArms, armSourceSpan } from './ir'
-export type { LaneSkeleton, LaneItem, WalkWindow } from './ir'
+export type { IREvent, SourceLocation, IRPattern } from './codeView/ir'
+export { merge, transpose, timestretch, filter, scaleGain } from './codeView/ir'
+export type { PatternIR, PlayParams } from './codeView/ir'
+export { IR, toStrudel, patternToJSON, patternFromJSON, PATTERN_IR_SCHEMA_VERSION } from './codeView/ir'
+export { structuralWalk, aggregateLaneItems, wholeWalkWindow, rootStackArms, armSourceSpan } from './codeView/ir'
+export type { LaneSkeleton, LaneItem, WalkWindow } from './codeView/ir'
 // Full-song analysis (#385)
-export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf, analyzeWindow, accumulateLanesInWindow, computeSectionsInWindow } from './ir'
-export type { SongAnalysis, DisplaySpan, LaneActivity, SongSection, AnalyzeSongOptions, WindowAnalysis, AnalyzeWindowOptions } from './ir'
-export { songExtent } from './ir'
-export { signalDimensionsOf } from './ir'
-export type { SignalDimensions } from './ir'
-export type { SongExtent } from './ir'
-export { parseMini, parseStrudel, classifyLiteralRhs } from './ir'
+export { analyzeSong, analyzeEvents, accumulateLanes, cycleFingerprints, detectPeriod, computeSections, laneKeyOf, analyzeWindow, accumulateLanesInWindow, computeSectionsInWindow } from './codeView/ir'
+export type { SongAnalysis, DisplaySpan, LaneActivity, SongSection, AnalyzeSongOptions, WindowAnalysis, AnalyzeWindowOptions } from './codeView/ir'
+export { songExtent } from './codeView/ir'
+export { signalDimensionsOf } from './codeView/ir'
+export type { SignalDimensions } from './codeView/ir'
+export type { SongExtent } from './codeView/ir'
+export { parseMini, parseStrudel, classifyLiteralRhs } from './codeView/ir'
 
 // #1464 Stage 1's IR reader, re-exported for the timeline lane that draws it
 // (moved out of @stave/app by #1489 so `songAnalysis` can reach it too).
-export { signalAutomations, signalCarryingParamKeys, signalTimeAt, shapeAlternatives, crossClassShapes } from './ir'
-export type { SignalAutomation, SignalKind, SignalSpans, UnboundedSignalKind } from './ir'
+export { signalAutomations, signalCarryingParamKeys, signalTimeAt, shapeAlternatives, crossClassShapes } from './codeView/ir'
+export type { SignalAutomation, SignalKind, SignalSpans, UnboundedSignalKind } from './codeView/ir'
 // #1463 Stage 1 — the stepped class, for the same lane.
-export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './ir'
-export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp } from './ir'
+export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './codeView/ir'
+export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp } from './codeView/ir'
 // #1600 — a fixed value a lane can start automating.
-export { fixedParameters, fixedToStepsEdit } from './ir'
-export type { FixedParameter } from './ir'
+export { fixedParameters, fixedToStepsEdit } from './codeView/ir'
+export type { FixedParameter } from './codeView/ir'
 // #1602 — a stepped parameter's step count, and the song length it would give.
-export { stepCountEdit, previewRepeat, songPeriodOf, arrangedRepeatCycles } from './ir'
-export type { StepCountEdit, LanePeriod } from './ir'
+export { stepCountEdit, previewRepeat, songPeriodOf, arrangedRepeatCycles } from './codeView/ir'
+export type { StepCountEdit, LanePeriod } from './codeView/ir'
 // #1611 — a shape swap across periodicity, and the song it would give.
-export { previewShapeSwap } from './ir'
-export type { ShapeSwap } from './ir'
+export { previewShapeSwap } from './codeView/ir'
+export type { ShapeSwap } from './codeView/ir'
 
 // #1387 — the IR Inspector's intermediate views, derived from parseStrudel.
 // Re-exported from the top-level barrel so the app can import it from
 // "@stave/editor" — Phase 19-02 hit a sub-barrel-only export missing from
 // dist/index.cjs. Replaces the four `run*Stage` passes (#79).
-export { parseStrudelStages } from './ir'
-export type { NamedStage } from './ir'
+export { parseStrudelStages } from './codeView/ir'
+export type { NamedStage } from './codeView/ir'
 
 // Pass runner — runtime-neutral IR→IR transform machinery
-export type { Pass } from './ir'
-export { runPasses } from './ir'
+export type { Pass } from './codeView/ir'
+export { runPasses } from './codeView/ir'
 
 // Main components
 export { StrudelEditor } from './StrudelEditor'

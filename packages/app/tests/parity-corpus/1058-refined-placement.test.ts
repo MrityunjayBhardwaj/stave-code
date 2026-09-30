@@ -53,17 +53,17 @@ import { fileURLToPath } from 'node:url'
 import {
   parsePianoRoll,
   parseStepGrid,
-} from '../../../editor/src/visualEdit/notation/parse'
+} from '../../../editor/src/codeView/notation/parse'
 import {
   serializePianoRoll,
   serializeStepGrid,
   serializeStepGridWithExtent,
-} from '../../../editor/src/visualEdit/notation/serialize'
-import { placeNote, toggleCell } from '../../../editor/src/visualEdit/notation/place'
+} from '../../../editor/src/codeView/notation/serialize'
+import { placeNote, toggleCell } from '../../../editor/src/codeView/notation/place'
 import {
   collapsePianoRollToDocument,
   collapseStepGridToDocument,
-} from '../../../editor/src/visualEdit/notation/resolution'
+} from '../../../editor/src/codeView/notation/resolution'
 import { enginePlayedCycle, HRES, type Note } from './engineEditOracle'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))

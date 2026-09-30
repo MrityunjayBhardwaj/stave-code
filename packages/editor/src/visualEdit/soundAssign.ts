@@ -7,7 +7,7 @@
 // insert can be pinned by fast unit tests. WorkspaceShell computes the plan
 // here and applies it via `Writeback`; the tested code is the shipped code.
 
-import { detectChunk } from './chunkDetect'
+import { detectChunk } from '../codeView/chunkDetect'
 import { readChainMethod } from './panels/chainMethod'
 import { patternKind } from './panels/patternKind'
 

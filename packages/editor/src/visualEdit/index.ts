@@ -17,11 +17,11 @@ export {
   docParses,
   isChunkFresh,
   classifyChunk,
-} from './chunkDetect'
-export type { ChunkInfo, ChainCall, ChainArg, ChunkType } from './chunkDetect'
+} from '../codeView/chunkDetect'
+export type { ChunkInfo, ChainCall, ChainArg, ChunkType } from '../codeView/chunkDetect'
 
-export { Writeback, formatNumber, normalizeEdits, applyEdits } from './writeback'
-export type { WriteSource, OffsetEdit } from './writeback'
+export { Writeback, formatNumber, normalizeEdits, applyEdits } from '../codeView/writeback'
+export type { WriteSource, OffsetEdit } from '../codeView/writeback'
 
 export {
   detectArrangeAt,
@@ -41,13 +41,13 @@ export {
   splitArm,
   setArmPattern,
   listSectionParts as listArrangeSectionParts,
-} from './arrange'
-export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './arrange'
+} from '../codeView/arrange'
+export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from '../codeView/arrange'
 
 // #463 Stage 2 — pick* section-clip write-back. Same op names as `arrange`
 // (setWeight/splitArm/…), so they're re-exported aliased as `pick*`.
-export { detectPickControlAt, detectAllPickControls } from './pickControl'
-export type { PickControl, PickControlArm, PickMethod, PickSectionEntry } from './pickControl'
+export { detectPickControlAt, detectAllPickControls } from '../codeView/pickControl'
+export type { PickControl, PickControlArm, PickMethod, PickSectionEntry } from '../codeView/pickControl'
 export {
   setWeight as pickSetWeight,
   splitArm as pickSplitArm,
@@ -61,7 +61,7 @@ export {
   countSectionArms as pickCountSectionArms,
   setArmHead as pickSetArmHead,
   listSectionParts as pickListSectionParts,
-} from './pickControl'
+} from '../codeView/pickControl'
 
 export {
   parseStepGrid,
@@ -74,7 +74,7 @@ export {
   placeNote,
   resizeGrid,
   resizeRoll,
-} from './notation'
+} from '../codeView/notation'
 export type {
   StepGridModel,
   StepLane,
@@ -82,7 +82,7 @@ export type {
   RollNote,
   ParseResult,
   ResizeMode,
-} from './notation'
+} from '../codeView/notation'
 
 export { VisualEditStandby } from './panels/VisualEditStandby'
 export type { VisualEditStandbyProps } from './panels/VisualEditStandby'

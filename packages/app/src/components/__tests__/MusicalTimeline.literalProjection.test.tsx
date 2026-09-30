@@ -57,7 +57,7 @@ vi.mock('@stave/editor', () => ({
 
 import { __test_collectTrackBodies } from '../MusicalTimeline'
 // Type-only import — `import type` ensures no runtime entry into the barrel.
-import type { PatternIR } from '../../../../editor/src/ir/PatternIR'
+import type { PatternIR } from '../../../../editor/src/codeView/ir/PatternIR'
 
 function makeLiteralCode(raw: string): PatternIR {
   // Mirror the shape `classifyLiteralRhs` produces in @stave/editor.

@@ -21,9 +21,9 @@
  * carries no written-step regions at all, and gets the same bar-and-column answer.
  */
 import * as React from 'react'
-import type { AltSource, NotationSource } from '../notation/model'
-import { drawnAt, drawnLayout, lcmOf } from '../notation/perBar'
-import { parseStepGrid } from '../notation/parse'
+import type { AltSource, NotationSource } from '../../codeView/notation/model'
+import { drawnAt, drawnLayout, lcmOf } from '../../codeView/notation/perBar'
+import { parseStepGrid } from '../../codeView/notation/parse'
 
 /** the fields both grid and roll models share that this module reads */
 export interface WrittenStepsModel {

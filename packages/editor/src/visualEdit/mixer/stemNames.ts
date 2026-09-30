@@ -11,7 +11,7 @@
  * Names are made safe for a file system and unique; each file is numbered in
  * document order so a folder sorts the way the song reads.
  */
-import { detectAllChunks } from '../chunkDetect'
+import { detectAllChunks } from '../../codeView/chunkDetect'
 import { buildStripModels } from './stripModel'
 import { SONG_LEVEL_STEM } from '../../engine/stemSplit'
 

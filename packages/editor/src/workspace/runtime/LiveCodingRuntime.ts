@@ -101,7 +101,7 @@
 import type { TrackEnvelopeAccess } from '../../engine/trackEnvelopes'
 import type { LiveCodingEngine } from '../../engine/LiveCodingEngine'
 import type { HapStream } from '../../engine/HapStream'
-import type { IREvent } from '../../ir/IREvent'
+import type { IREvent } from '../../codeView/ir/IREvent'
 import type { BreakpointStore } from '../../engine/BreakpointStore'
 import { BufferedScheduler } from '../../engine/BufferedScheduler'
 // #1570 — the transport frame's arithmetic only. The WRAPS it describes are

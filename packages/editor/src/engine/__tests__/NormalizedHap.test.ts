@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { normalizeStrudelHap, declaredLocationKeys } from '../NormalizedHap'
-import type { IREvent } from '../../ir/IREvent'
+import type { IREvent } from '../../codeView/ir/IREvent'
 
 describe('normalizeStrudelHap', () => {
   it('extracts all fields from a full Strudel hap with Fraction-like objects', () => {

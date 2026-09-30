@@ -16,9 +16,9 @@
  * observed for real in the app (#1388's listening pass).
  */
 import { describe, it, expect } from 'vitest'
-import { IR, type PatternIR } from '../../../../editor/src/ir/PatternIR'
-import { songExtent } from '../../../../editor/src/ir/songExtent'
-import type { SongExtent } from '../../../../editor/src/ir/songExtent'
+import { IR, type PatternIR } from '../../../../editor/src/codeView/ir/PatternIR'
+import { songExtent } from '../../../../editor/src/codeView/ir/songExtent'
+import type { SongExtent } from '../../../../editor/src/codeView/ir/songExtent'
 import {
   createEndOfSongWatcher,
   hasDefiniteEnd,

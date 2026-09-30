@@ -32,10 +32,10 @@ import {
   parseStepGrid,
   parsePianoRoll,
   rollOnsets,
-} from '../../../editor/src/visualEdit/notation/parse'
-import { serializeStepGrid } from '../../../editor/src/visualEdit/notation/serialize'
-import { cellOn, isCellOn } from '../../../editor/src/visualEdit/notation/model'
-import type { StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/parse'
+import { serializeStepGrid } from '../../../editor/src/codeView/notation/serialize'
+import { cellOn, isCellOn } from '../../../editor/src/codeView/notation/model'
+import type { StepGridModel } from '../../../editor/src/codeView/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

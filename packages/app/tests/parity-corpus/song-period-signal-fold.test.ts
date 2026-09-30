@@ -49,8 +49,8 @@
  */
 import { describe, it, expect } from 'vitest'
 import { hasCorpusArchive, sweepCorpus, documentContext, type SweepDetector } from './songPeriodSweep'
-import { displayPeriodRule } from '../../../editor/src/ir/songAnalysis'
-import { loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+import { displayPeriodRule } from '../../../editor/src/codeView/ir/songAnalysis'
+import { loadCorpus } from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
 
 /** The cap `analyzeSong` runs with, so the without-signals arm asks its rule at the same place. */
 const CAP = 256
