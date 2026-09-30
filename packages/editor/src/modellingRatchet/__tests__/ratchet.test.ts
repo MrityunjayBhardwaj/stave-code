@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { appendOnlyProblems, ledgerOnMain, ledgerProblems, loadLedger, ratchetProblem, type Ledger } from '../ratchet'
+import { appendOnlyProblems, assertRatchet, ledgerOnMain, ledgerProblems, loadLedger, ratchetProblem, type Ledger } from '../ratchet'
 
 const entry = (value: number, extra: object = {}) => ({ value, date: '2026-09-30', note: 'n', ...extra })
 const one = (...history: ReturnType<typeof entry>[]): Ledger => ({
@@ -35,6 +35,11 @@ describe('the modelling ratchet (#1866)', () => {
 
     it('passes a rise once an exempted entry records it', () => {
       expect(ratchetProblem('c', 6, one(entry(5), entry(6, { exemption: '#1869 needed while the adapter lands' })))).toBeNull()
+    })
+
+    it('assertRatchet throws the whole instruction, not a truncated diff', () => {
+      expect(() => assertRatchet('c', 6, one(entry(5)))).toThrow(/ROSE 5 → 6.*"exemption": "#<issue> <why>"/s)
+      expect(() => assertRatchet('c', 5, one(entry(5)))).not.toThrow()
     })
 
     it('fails on a count the ledger does not name', () => {

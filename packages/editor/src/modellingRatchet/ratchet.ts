@@ -124,6 +124,15 @@ export function ledgerOnMain(file: string = LEDGER_PATH): MainLedger {
 }
 
 /**
+ * The call a gate makes. Throws the WHOLE problem as the error message — `expect(p).toBeNull()`
+ * truncates it at the arrow, so a failing run would never show the instruction to append.
+ */
+export function assertRatchet(name: string, measured: number, ledger?: Ledger): void {
+  const problem = ratchetProblem(name, measured, ledger)
+  if (problem !== null) throw new Error(`modelling ratchet (#1866): ${problem}`)
+}
+
+/**
  * Compare a freshly measured count against its ledger. Returns the problem, or null when
  * the measurement equals the ledger's last value. Callers assert it is null, so the
  * message is what a failing run prints.

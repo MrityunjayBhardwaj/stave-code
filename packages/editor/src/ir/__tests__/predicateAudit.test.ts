@@ -27,7 +27,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import ts from 'typescript'
-import { ratchetProblem } from '../../modellingRatchet/ratchet'
+import { assertRatchet } from '../../modellingRatchet/ratchet'
 
 const IR_DIR = join(__dirname, '..')
 const SOURCE = join(IR_DIR, 'parseStrudel.ts')
@@ -174,7 +174,7 @@ describe('predicate audit (#959)', () => {
     // The agreement above lets the count move as long as the document moves with it — which
     // is how it went 36 → 37. The ratchet (#1866) lets it only FALL: a new predicate needs an
     // exemption naming an issue, appended to modellingRatchet/ledger.json.
-    expect(ratchetProblem('predicate-audit.anchored', anchored)).toBeNull()
+    assertRatchet('predicate-audit.anchored', anchored)
 
     expect(
       text.includes(`has ${words[anchored]} (was `),
