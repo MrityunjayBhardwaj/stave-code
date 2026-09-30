@@ -306,8 +306,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // already at one column can only grow.
   //
   // Asked around the ROUNDED length, since that is the lattice the gesture moves on: a
-  // drag sets a whole number of columns, and a sub-column note (`[hh ~]!16` → 0.5) is
-  // offered the nearest whole lengths rather than a fraction it could not be dragged to.
+  // drag sets a whole number of boxes (columns in LCM), and a sub-column note (`[hh ~]!16`
+  // → 0.5) is offered the nearest whole lengths rather than a fraction it could not be
+  // dragged to (`boxLengths`).
   //
   // Keyed by the note's HEAD column, so a two-column note asks once rather than once per
   // column it covers. Memoized on the model beside `toggleable`/`coverage` and for the
