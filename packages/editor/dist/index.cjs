@@ -35580,6 +35580,20 @@ function regionStepStarts(r) {
   return Array.from({ length: w }, (_, k) => r.from + k * span / w);
 }
 __name(regionStepStarts, "regionStepStarts");
+function wholeBarStepStarts(r) {
+  const text = r.raw.trim();
+  if (!text.startsWith("[") || !text.endsWith("]")) return null;
+  const inner = parseStepGrid(text.slice(1, -1));
+  if (!inner.ok) return null;
+  const src = inner.model.source;
+  if (!src || src.parts.length !== 1 || src.prefix || src.suffix || inner.model.bars) return null;
+  const regions = src.parts[0].regions;
+  const cols = regions[regions.length - 1]?.to;
+  if (!cols) return null;
+  const starts = regions.flatMap(regionStepStarts).map((c) => r.from + c * (r.to - r.from) / cols);
+  return starts.every(Number.isInteger) ? starts : null;
+}
+__name(wholeBarStepStarts, "wholeBarStepStarts");
 function writtenStepStarts(m) {
   const out = /* @__PURE__ */ new Map();
   const shared = sharedSteps(m);
@@ -35596,8 +35610,11 @@ function writtenStepStarts(m) {
       const last = p.regions[p.regions.length - 1];
       const repeats = p.bars === void 0 ? 1 : (m.bars ?? 1) / p.bars;
       if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== shared) continue;
-      const once = p.regions.flatMap(regionStepStarts).map((c) => c * p.factor);
       const span = last.to * p.factor;
+      const bar2 = (m.bars ?? 1) > 1 ? shared / (m.bars ?? 1) : null;
+      const once = p.regions.flatMap(
+        (r) => bar2 !== null && (r.to - r.from) * p.factor === bar2 ? wholeBarStepStarts(r) ?? regionStepStarts(r) : regionStepStarts(r)
+      ).map((c) => c * p.factor);
       put(
         p.part,
         Array.from({ length: repeats }, (_, k) => once.map((c) => c + k * span)).flat()

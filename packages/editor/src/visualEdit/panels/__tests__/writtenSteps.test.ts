@@ -60,8 +60,9 @@ describe('written-step starts, in drawn columns', () => {
   it('a grid drawn per bar maps through the shared grid (bars of 3 and 2)', () => {
     const m = grid('<bd*3 [sd hh]>')
     expect(m.barSteps).toEqual([3, 2])
-    expect(starts(m)).toEqual({ 0: [0, 3] })
-    expect(labels(m)).toEqual({ 0: '1', 3: '2' })
+    // ⚠ MOVED at #1855: bar 2 is `[sd hh]`, a whole bar in one `[…]`, and draws its two steps
+    expect(starts(m)).toEqual({ 0: [0, 3, 4] })
+    expect(labels(m)).toEqual({ 0: '1', 3: '2', 4: '2.2' })
   })
 
   it('a finer Slots view moves the lines with the columns', () => {
@@ -83,7 +84,8 @@ describe('written-step starts, in drawn columns', () => {
 
   it('the piano roll reads the same regions', () => {
     expect(starts(roll('c4 [e4 g4] a4 b4'))).toEqual({ 0: [0, 2, 4, 6] })
-    expect(starts(roll('<[c3 e3 g3] [c3 e3 g3 b3]>'))).toEqual({ 0: [0, 3] })
+    // ⚠ MOVED at #1855: each `<…>` bar is a whole bar in one `[…]`, drawn at its own steps (3, then 4)
+    expect(starts(roll('<[c3 e3 g3] [c3 e3 g3 b3]>'))).toEqual({ 0: [0, 1, 2, 3, 4, 5, 6] })
   })
 })
 
@@ -145,6 +147,51 @@ describe('an element Strudel counts as several steps begins that many (#1845)', 
         expect(r.weight, `${c}: ${r.raw}`).toBe(strudelSteps(r.raw))
       }
     }
+  })
+})
+
+describe('a whole bar written as one `[…]` draws its own steps (#1855)', () => {
+  const BEAT = '<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd, hh*8'
+
+  it('each `<…>` bar of the kick is four steps, like the snare beside it', () => {
+    const m = grid(BEAT)
+    expect(m.bars).toBe(2)
+    expect(starts(m)).toEqual({ 0: [0, 2, 4, 6, 8, 10, 12, 14], 1: [0, 2, 4, 6, 8, 10, 12, 14], 2: [0, 8] })
+  })
+
+  it('an edit that splits a part into bars keeps bar 1 drawn as it was; an emptied bar is one step', () => {
+    const edited = grid('<[bd ~ bd ~] [bd ~ ~ bd]>, <[~ sd ~ sd] ~>, hh*8')
+    expect(starts(edited)[1]).toEqual([0, 2, 4, 6, 8])
+    expect(starts(edited)[1].filter((c) => c < 8)).toEqual(starts(grid(BEAT))[1].filter((c) => c < 8))
+  })
+
+  it('a pattern that is only a `<…>` of bracketed bars', () => {
+    expect(starts(grid('<[bd ~ bd ~] [bd ~ ~ bd]>'))).toEqual({ 0: [0, 1, 2, 3, 4, 5, 6, 7] })
+  })
+
+  it('the bar is cut the way its content is: weights count, groups inside stay one step', () => {
+    // `bd@3 sd` is four steps; `[bd [sd sd]]` is two, its inner group one of them
+    const m = grid('<[bd@3 sd] [bd [sd sd]]>')
+    const perBar = m.steps / 2
+    expect(starts(m)[0]).toEqual([0, 1, 2, 3].map((k) => (k * perBar) / 4).concat([perBar, perBar * 1.5]))
+  })
+
+  it('a bracketed bar beside an unbracketed one: only the bracketed bar splits', () => {
+    const m = grid('<bd [sd sd]>')
+    const perBar = m.steps / 2
+    expect(starts(m)[0]).toEqual([0, perBar, perBar * 1.5])
+  })
+
+  it('CONTROL: unbracketed bars stay one step each, and `hh*8` is one step as before', () => {
+    const m = grid('<bd sd hh>')
+    expect(starts(m)[0]).toEqual([0, m.steps / 3, (2 * m.steps) / 3])
+    expect(starts(grid('hh*8'))).toEqual({ 0: [0] })
+  })
+
+  it('the piano roll draws the same bars', () => {
+    const m = roll('<[c3 e3 g3 b3] [d3 f3]>')
+    const perBar = m.steps / 2
+    expect(starts(m)[0]).toEqual([0, 1, 2, 3].map((k) => (k * perBar) / 4).concat([perBar, perBar * 1.5]))
   })
 })
 
