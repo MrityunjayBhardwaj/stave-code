@@ -62,6 +62,7 @@ import {
   PROJECTION_PERIOD_BOUNDS,
 } from '../../../editor/src/visualEdit/notation/parse'
 import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
+import { ratchetProblem } from '../../../editor/src/modellingRatchet/ratchet'
 import type {
   ParseResult,
   PianoRollModel,
@@ -544,6 +545,10 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // untransferable (`view-unusable`: no derived projection opens it, the core edits it ok); `<G4 A4 Bb4 A4>,Bb3,D3`
     // is unverified (`fully-chorded`: no singleton onset to probe).
     ).toEqual({ transfers: 1107, untransferable: 77, unverified: 122 })
+    // The partition above may be re-pinned by any change — which is how untransferable went
+    // 68 → 77 across #1827 and #1849. The ratchet (#1866) lets it only FALL: a rise needs an
+    // exemption naming an issue, appended to modellingRatchet/ledger.json.
+    expect(ratchetProblem('writer-census.untransferable', untransferable.length)).toBeNull()
     // The reclassification is asserted by MECHANISM as well as by total, so that a
     // future change cannot hold the totals steady while moving asks between buckets.
     // ⚠ 11 → 0 at #1010 P4c. The printer preserves lengths, so nothing in the census
@@ -754,6 +759,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // ⚠ 55/55/53 -> 58/56/54 at #1849, from the stacks it opens. Of the new structural rows, the two without a verified core edit are the rolls `0,.1` and `0,.1,7, 6.9` — `no-probe`, decimal `n` values; the blocker set moves by one, on the roll.
     // ⚠ 58/56/54 -> 59/57/55 at #1849's `<…>` half: `c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >` has structure and a core edit the engine oracle verifies, once the writer and the oracle agree on what a delete in a repeated part does. First measured with linked repeats and a repeat-aware oracle; unchanged under bar-by-bar edits with the oracle back to "every other bar untouched".
     }).toEqual({ coreStructured: 59, coreEdits: 57, both: 55 })
+    // …and the set that blocks P6 may only fall (#1866): 51 → 55 happened one re-pin at a time.
+    expect(ratchetProblem('writer-census.p6-blocker', p6.both.blocker)).toBeNull()
 
     // …and the split the whole conjunction exists to keep visible. Asserted here rather
     // than left to the generated document, because the document is an OUTPUT of this run
