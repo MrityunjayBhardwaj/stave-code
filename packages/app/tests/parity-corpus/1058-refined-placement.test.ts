@@ -457,15 +457,10 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
         removed = removed.concat(d.removed)
       }
       if (!queryable) continue
-      // ONE NET NEW ROW PER TIME THE EDITED BAR PLAYS. Notes that merely change duration
-      // appear on both sides of the diff — that is the placement clamp, which #1064 made
-      // the sanctioned behaviour: a new onset takes the room an earlier note had. A `,`-part
-      // written over fewer bars than its stack plays them again (#1849), and a hit placed in
-      // it is heard in every repeat — the grid shows it there too — so it counts once each.
-      const lanePart = parsed.model.lanes[a.lane]?.part ?? 0
-      const own = parsed.model.source?.parts.find((p) => p.part === lanePart)?.bars
-      const plays = own === undefined ? 1 : bars / own
-      if (added.length - removed.length === plays) clean++
+      // EXACTLY ONE NET NEW ROW. Notes that merely change duration appear on both
+      // sides of the diff — that is the placement clamp, which #1064 made the
+      // sanctioned behaviour: a new onset takes the room an earlier note had.
+      if (added.length - removed.length === 1) clean++
       else wrong.push(a.mini)
     }
     // NAMED, NOT EXCLUDED. The only documents that gain anything other than one
