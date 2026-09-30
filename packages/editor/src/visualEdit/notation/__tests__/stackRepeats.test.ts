@@ -3,19 +3,21 @@
  *
  * `<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd, hh*8` plays for two bars: the kick is written
  * over two, the snare and hats over one, and Strudel plays those again in bar 2 (`stack`
- * asks every part for the same cycle). The grid draws two bars, the one-bar parts
- * REPEATED, and an edit anywhere in a repeat is written into the part's one written bar —
- * so every repeat changes with it and the other parts keep their bytes.
+ * asks every part for the same cycle). The grid draws two bars, and an edit in bar b
+ * changes bar b only: the edited part is written `<bar1 bar2>`, every other bar and every
+ * other part byte for byte, and a part whose bars agree again goes back to one bar.
  */
 import { describe, expect, it } from 'vitest'
+import { mini as reify } from '@strudel/mini/mini.mjs'
 import { parseStepGrid } from '../parse'
-import { linkGridRepeats, serializeStepGrid } from '../serialize'
+import { serializeStepGrid } from '../serialize'
 import { toggleCell } from '../place'
 import { collapseStepGridToDocument } from '../resolution'
 import type { StepGridModel } from '../model'
-import { writtenStepStarts, repeatedBar } from '../../panels/writtenSteps'
+import { writtenStepStarts } from '../../panels/writtenSteps'
 
 const BEAT = '<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd, hh*8'
+const KICK = '<[bd ~ bd ~] [bd ~ ~ bd]>'
 const CORPUS = 'bd bd bd bd, - sd - sd, <[cr oh hh oh hh oh hh oh] [hh oh]*4!3>'
 
 function open(mini: string): StepGridModel {
@@ -31,17 +33,47 @@ const lane = (m: StepGridModel, sound: string): number => {
 /** the columns a sound is struck in */
 const hits = (m: StepGridModel, sound: string): number[] =>
   m.lanes[lane(m, sound)].cells.flatMap((c, i) => (c ? [i] : []))
-/** toggle, write, and read the result back the way the panel does */
-function edit(mini: string, sound: string, col: number, value: boolean): string {
+/**
+ * toggle, write, and check the text reads back as the model that was edited. `'step'`
+ * adds a hit one of the part's OWN steps long — a copy of a hit it already has — since a
+ * click on a coarser part's own step still paints half of it (#1853).
+ */
+function edit(mini: string, sound: string, col: number, value: boolean | 'step'): string {
   const m = open(mini)
-  const next = toggleCell(m, lane(m, sound), col, value)
+  const li = lane(m, sound)
+  const own = m.lanes[li].cells.find((c) => c)
+  const next =
+    value === 'step'
+      ? { ...m, lanes: m.lanes.map((l, i) => (i === li ? { ...l, cells: l.cells.map((c, j) => (j === col ? own! : c)) } : l)) }
+      : toggleCell(m, li, col, value)
   expect(next, `the ${sound} toggle at ${col} must be admitted`).not.toBe(m)
+  return written(next)
+}
+function written(next: StepGridModel): string {
   const out = serializeStepGrid(next)
   expect(out).not.toBeNull()
+  // what you clicked is what the text holds: no bar changes on the re-read
+  const back = open(out!)
+  for (const l of next.lanes) {
+    const shown = next.lanes.filter((x) => x.sound === l.sound).flatMap((x) => x.cells.map((c, i) => (c ? i : -1)))
+    const read = back.lanes.filter((x) => x.sound === l.sound).flatMap((x) => x.cells.map((c, i) => (c ? i : -1)))
+    expect(new Set(read.filter((i) => i >= 0)), `${l.sound} on re-read of ${out}`).toEqual(
+      new Set(shown.filter((i) => i >= 0)),
+    )
+  }
   return out!
 }
+/** what Strudel plays in cycle `c`, as sorted `begin value` rows */
+function heard(mini: string, c: number): string[] {
+  type H = { whole?: { begin: { valueOf(): number } }; value: unknown; hasOnset?: () => boolean }
+  return (reify(mini) as unknown as { queryArc(a: number, b: number): H[] })
+    .queryArc(c, c + 1)
+    .filter((h) => h.hasOnset?.() !== false)
+    .map((h) => `${(h.whole!.begin.valueOf() - c).toFixed(4)} ${JSON.stringify(h.value)}`)
+    .sort()
+}
 
-describe('a stack with a `<…>` part reads bar by bar, shorter parts repeated (#1849)', () => {
+describe('a stack with a `<…>` part reads bar by bar (#1849)', () => {
   it('opens with its source: 2 bars, the kick written over 2, snare and hats over 1', () => {
     const m = open(BEAT)
     expect(m.leafSource).toBeUndefined()
@@ -55,84 +87,124 @@ describe('a stack with a `<…>` part reads bar by bar, shorter parts repeated (
     expect(serializeStepGrid(m)).toBe(BEAT)
   })
 
-  it('an edit in a REPEATED bar is written into the written bar: every repeat changes', () => {
-    // remove the snare in bar 2 (column 10 repeats bar 1's column 2)
-    const out = edit(BEAT, 'sd', 10, false)
-    expect(out).toBe('<[bd ~ bd ~] [bd ~ ~ bd]>, ~ ~ ~ sd, hh*8')
-    expect(hits(open(out), 'sd')).toEqual([6, 14])
+  it('step lines are drawn in every bar', () => {
+    const m = open(BEAT)
+    expect(writtenStepStarts(m).get(m.lanes[lane(m, 'sd')].part!)).toEqual([0, 2, 4, 6, 8, 10, 12, 14])
+  })
+})
+
+describe('an edit in bar b changes bar b only (#1849)', () => {
+  // [sound, column, on, the code after] — column 8 is bar 2's downbeat
+  const TABLE: [string, string, number, boolean | 'step', string][] = [
+    ['remove the second snare', 'sd', 14, false, `${KICK}, <[~ sd ~ sd] [~ sd ~ ~]>, hh*8`],
+    ['add a snare on step 3', 'sd', 12, 'step', `${KICK}, <[~ sd ~ sd] [~ sd sd sd]>, hh*8`],
+    ['remove the 4th hat', 'hh', 11, false, `${KICK}, ~ sd ~ sd, <hh*8 [hh hh hh ~ hh hh hh hh]>`],
+    ['add a kick between steps', 'bd', 11, true, '<[bd ~ bd ~] [bd _ ~ bd ~ ~ bd _]>, ~ sd ~ sd, hh*8'],
+  ]
+  for (const [what, sound, col, on, after] of TABLE) {
+    it(`${what} in bar 2 → ${after}`, () => {
+      const out = edit(BEAT, sound, col, on)
+      expect(out).toBe(after)
+      // Strudel: bar 1 plays exactly as before, bar 2 changes, and the pair loops
+      expect(heard(out, 0)).toEqual(heard(BEAT, 0))
+      expect(heard(out, 2)).toEqual(heard(BEAT, 2))
+      expect(heard(out, 1)).not.toEqual(heard(BEAT, 1))
+      expect(heard(out, 3)).toEqual(heard(out, 1))
+    })
+  }
+
+  it('a bar emptied by edits is one rest, so it draws no steps over nothing', () => {
+    const one = edit(BEAT, 'sd', 10, false)
+    const out = edit(one, 'sd', 14, false)
+    expect(out).toBe(`${KICK}, <[~ sd ~ sd] ~>, hh*8`)
+    const m = open(out)
+    // bar 2 of the snare has no step lines of its own
+    expect(writtenStepStarts(m).get(m.lanes[lane(m, 'sd')].part!)!.filter((c) => c > 8)).toEqual([])
+    expect(heard(out, 0)).toEqual(heard(BEAT, 0))
+    expect(heard(out, 1)).toEqual(heard(`${KICK}, ~, hh*8`, 1))
+    // …the same as the hats, which spell one element
+    let hats = BEAT
+    for (let c = 8; c < 16; c++) hats = edit(hats, 'hh', c, false)
+    expect(hats).toBe(`${KICK}, ~ sd ~ sd, <hh*8 ~>`)
   })
 
-  it('adding in a repeated bar is the same edit as adding in the written bar', () => {
-    // column 13 repeats column 5: between the snare's own columns, so its step splits
-    // (a column ON the snare's own grid paints half a snare step, which the one-bar
-    // stack `bd ~, hh*4` refuses too — not this path's rule)
-    expect(edit(BEAT, 'sd', 13, true)).toBe(edit(BEAT, 'sd', 5, true))
-    expect(edit(BEAT, 'sd', 5, true)).toBe('<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd [~ sd] sd, hh*8')
+  it('an edit in bar 1 of a repeating part leaves bar 2 as it was', () => {
+    expect(edit(BEAT, 'sd', 6, false)).toBe(`${KICK}, <[~ sd ~ ~] [~ sd ~ sd]>, hh*8`)
   })
 
-  it('an edit to the part written over 2 bars changes only that bar, and no other part', () => {
-    // column 11 is between the kick's own columns, so bar 2 is spelled at the shared
-    // width — Strudel plays bar 2 as bd 1+1/4, 11/8+1/8, 7/4+1/4 and bar 1 unchanged
-    const out = edit(BEAT, 'bd', 11, true)
-    expect(out).toBe('<[bd ~ bd ~] [bd _ ~ bd ~ ~ bd _]>, ~ sd ~ sd, hh*8')
+  it('a part whose bars agree again goes back to one bar', () => {
+    const snare = `${KICK}, <[~ sd ~ sd] [~ sd ~ ~]>, hh*8`
+    expect(edit(snare, 'sd', 14, 'step')).toBe(BEAT)
+    const hats = `${KICK}, ~ sd ~ sd, <hh*8 [hh hh hh ~ hh hh hh hh]>`
+    expect(edit(hats, 'hh', 11, 'step')).toBe(BEAT)
   })
 
-  it('the corpus shape: a 4-bar hats part beside two 1-bar parts', () => {
+  it('a one-bar part in a four-bar stack, edited in bar 3 → <A A B A>', () => {
+    const four = '<[bd ~] [bd bd] [~ bd] [bd ~]>, ~ sd'
+    const m = open(four)
+    expect(m.bars).toBe(4)
+    // bar 3 of 4: its snare is the second of that bar's two steps
+    const col = 2 * (m.steps / 4) + m.steps / 8
+    // bar 3, emptied, is one rest
+    const out = edit(four, 'sd', col, false)
+    expect(out).toBe('<[bd ~] [bd bd] [~ bd] [bd ~]>, <[~ sd] [~ sd] ~ [~ sd]>')
+    for (const c of [0, 1, 3]) expect(heard(out, c)).toEqual(heard(four, c))
+  })
+
+  it('a two-bar part in a four-bar stack, edited in bar 3 → <A B C B>', () => {
+    const four = '<[bd ~] [bd bd] [~ bd] [bd ~]>, <[~ sd] [sd ~]>'
+    const m = open(four)
+    const col = 2 * (m.steps / 4) + m.steps / 8
+    // an emptied bar is one rest, the way any emptied element is re-emitted
+    const out = edit(four, 'sd', col, false)
+    expect(out).toBe('<[bd ~] [bd bd] [~ bd] [bd ~]>, <[~ sd] [sd ~] ~ [sd ~]>')
+    for (const c of [0, 1, 3]) expect(heard(out, c)).toEqual(heard(four, c))
+    expect(heard(out, 2)).toEqual(heard('<[bd ~] [bd bd] [~ bd] [bd ~]>', 2))
+  })
+
+  it('edits in two bars at once — a nudge across the bar line — are written', () => {
+    const m = open(BEAT)
+    const sd = lane(m, 'sd')
+    // the bar-1 snare on column 6 moves to bar 2's downbeat
+    const cells = m.lanes[sd].cells.map((c, i) => (i === 6 ? false : i === 8 ? m.lanes[sd].cells[6] : c))
+    const moved: StepGridModel = { ...m, lanes: m.lanes.map((l, i) => (i === sd ? { ...l, cells } : l)) }
+    expect(written(moved)).toBe(`${KICK}, <[~ sd ~ ~] [sd sd ~ sd]>, hh*8`)
+  })
+
+  it('the corpus shape: a kick written once beside a four-bar hats part', () => {
     const m = open(CORPUS)
     expect(m.bars).toBe(4)
     expect(m.source?.parts.map((p) => p.bars)).toEqual([1, 1, 4])
     expect(serializeStepGrid(m)).toBe(CORPUS)
-    // the kick struck in bar 3 only: written into its one bar
-    const bdBar3 = 2 * (m.steps / 4) + 2
-    expect(edit(CORPUS, 'bd', bdBar3, false)).toBe(
-      'bd ~ bd bd, - sd - sd, <[cr oh hh oh hh oh hh oh] [hh oh]*4!3>',
+    // the second kick of bar 3 — bar 3 only
+    const col = 2 * (m.steps / 4) + 2
+    expect(edit(CORPUS, 'bd', col, false)).toBe(
+      '<[bd bd bd bd] [bd bd bd bd] [bd ~ bd bd] [bd bd bd bd]>, - sd - sd, <[cr oh hh oh hh oh hh oh] [hh oh]*4!3>',
     )
   })
 
-  it('step lines and repeat marks follow the repeats', () => {
-    const m = open(BEAT)
-    const sdPart = m.lanes[lane(m, 'sd')].part!
-    expect(writtenStepStarts(m).get(sdPart)).toEqual([0, 2, 4, 6, 8, 10, 12, 14])
-    expect(repeatedBar(m, sdPart, 3)).toBeNull()
-    expect(repeatedBar(m, sdPart, 11)).toBe(1)
-    const bdPart = m.lanes[lane(m, 'bd')].part!
-    expect(repeatedBar(m, bdPart, 11)).toBeNull()
+  it('a lone weighted bar is bracketed inside <…>, where `!2` would claim a second bar', () => {
+    const bang = '<[bd ~] [bd bd]>, sd!2'
+    const m = open(bang)
+    // the second snare of bar 2
+    const out = edit(bang, 'sd', m.steps / 2 + m.steps / 4, false)
+    expect(out).toBe('<[bd ~] [bd bd]>, <[sd!2] [sd ~]>')
+    expect(heard(out, 0)).toEqual(heard(bang, 0))
+    expect(heard(out, 1)).toEqual(heard('<[bd ~] [bd bd]>, sd ~', 1))
   })
 
-  it('the model a panel keeps after the edit is the one the text reads back as', () => {
-    const m = open(BEAT)
-    const edited = toggleCell(m, lane(m, 'sd'), 10, false)
-    // as painted: only bar 2 lost its snare
-    expect(hits(edited, 'sd')).toEqual([2, 6, 14])
-    const shown = linkGridRepeats(edited)
-    const back = open(serializeStepGrid(edited)!)
-    for (const sound of ['bd', 'sd', 'hh']) expect(hits(shown, sound)).toEqual(hits(back, sound))
-    expect(serializeStepGrid(shown)).toBe(serializeStepGrid(edited))
-    // nothing repeats → the same model, by reference
-    const flat = open('bd sd, hh*4')
-    expect(linkGridRepeats(flat)).toBe(flat)
-  })
-
-  it('an edit that changes two repeats differently is declined, never half-written', () => {
-    const m = open(BEAT)
-    const sd = lane(m, 'sd')
-    // take the bar-1 snare out and put one in bar 2 at a different column: a "move"
-    // across the bar line of a part that is written once
-    const cells = m.lanes[sd].cells.map((c, i) => (i === 6 ? false : i === 12 ? m.lanes[sd].cells[6] : c))
-    const moved: StepGridModel = { ...m, lanes: m.lanes.map((l, i) => (i === sd ? { ...l, cells } : l)) }
-    expect(serializeStepGrid(moved)).toBeNull()
-    // …while the same change made in BOTH repeats is one edit, and writes
-    const both = m.lanes[sd].cells.map((c, i) =>
-      i === 6 || i === 14 ? false : i === 4 || i === 12 ? m.lanes[sd].cells[6] : c,
-    )
-    const alike: StepGridModel = { ...m, lanes: m.lanes.map((l, i) => (i === sd ? { ...l, cells: both } : l)) }
-    expect(serializeStepGrid(alike)).toBe('<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd sd ~, hh*8')
+  it('a part written as <A A> by hand stays as written while another part is edited', () => {
+    const hand = '<[bd ~] [bd ~]>, <[~ sd] [~ sd]>'
+    const m = open(hand)
+    expect(m.bars).toBe(2)
+    expect(serializeStepGrid(m)).toBe(hand)
+    // the second kick step of bar 2
+    expect(edit(hand, 'bd', m.steps / 2 + m.steps / 4, true)).toBe('<[bd ~] [bd bd]>, <[~ sd] [~ sd]>')
   })
 
   it('a ×2 view comes back to the document, so zooming never respells the file (#1057)', () => {
-    // the corpus unit whose one-bar and two-bar parts share a width: halving passes
-    // through a model whose regions still describe ×2, and the two-bar part must
-    // rebuild bar by bar there rather than decline
+    // halving passes through a model whose regions still describe ×2, and the two-bar
+    // part must rebuild bar by bar there rather than decline
     for (const mini of [BEAT, CORPUS, 'c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >']) {
       const r = parseStepGrid(mini, 2)
       if (!r.ok) throw new Error(`×2 refused ${mini}`)
@@ -142,7 +214,7 @@ describe('a stack with a `<…>` part reads bar by bar, shorter parts repeated (
     }
   })
 
-  it('CONTROL: a stack that plays one bar is read exactly as before', () => {
+  it('CONTROL: a stack that plays one bar is written exactly as before', () => {
     const m = open('bd sd, hh*4')
     expect(m.bars).toBeUndefined()
     expect(m.source?.parts.every((p) => p.bars === undefined)).toBe(true)

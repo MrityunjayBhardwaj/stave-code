@@ -30005,7 +30005,8 @@ __name(ifRollSpellable, "ifRollSpellable");
 function serializeStepGridWithExtent(drawn) {
   const model = toUniformGrid(drawn);
   const respell = drawn.barSteps;
-  const spans = model.leafSource ?? model.surgical?.spans();
+  const perBarStack = (model.bars ?? 1) > 1 && !!model.source?.parts.some((p) => p.bars !== void 0);
+  const spans = model.leafSource ?? (perBarStack ? void 0 : model.surgical?.spans());
   if (spans) {
     const surgical = spliceByLeaf(model, spans);
     if (surgical !== null) return { mini: surgical, extent: { path: "leaf" } };
@@ -30051,16 +30052,7 @@ function spliceGrid(model, respell) {
   if (!src || src.parts.length === 0) return "rebuild";
   let regionsReemitted = 0;
   const rebuiltParts = [];
-  let out = src.prefix;
-  for (const p of src.parts) {
-    const written = writtenWindow(
-      model.lanes.filter((l) => (l.part ?? 0) === p.part),
-      model.steps,
-      model.bars ?? 1,
-      p
-    );
-    if (written === null) return "decline";
-    const { lanes, steps } = written;
+  const splicePart = /* @__PURE__ */ __name((p, lanes, steps) => {
     const widths = [];
     const own = partColumns(lanes, steps, p.factor);
     if (own !== null) widths.push({ cols: own, growth: 1 });
@@ -30071,7 +30063,6 @@ function spliceGrid(model, respell) {
         if (finer !== null) widths.push({ cols: finer, growth: p.factor / g });
       }
     const last = p.regions[p.regions.length - 1];
-    out += p.before;
     const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
     const spliceRegions = /* @__PURE__ */ __name((cols, growth) => {
       const at = /* @__PURE__ */ __name((n) => n * growth, "at");
@@ -30124,7 +30115,6 @@ function spliceGrid(model, respell) {
     if (spliced === null) {
       const partBars = p.bars ?? 1;
       if (partBars > 1) {
-        rebuiltParts.push(p.regions.length);
         const per = steps / partBars;
         const groups = [];
         for (let b = 0; b < partBars; b++) {
@@ -30135,17 +30125,23 @@ function spliceGrid(model, respell) {
           if (bar2 === null) return "decline";
           groups.push(`[${bar2.join(" ")}]`);
         }
-        out += groups.join(" ") + p.after;
-        continue;
+        return { body: groups.join(" "), reemitted: 0, rebuilt: p.regions.length };
       }
-      rebuiltParts.push(p.regions.length);
       const rebuilt = gridColumns(lanes, steps);
       if (rebuilt === null) return "decline";
-      out += rebuilt.join(" ") + p.after;
-      continue;
+      return { body: rebuilt.join(" "), reemitted: 0, rebuilt: p.regions.length };
     }
-    regionsReemitted += spliced.reemitted;
-    out += spliced.body + p.after;
+    return { body: spliced.body, reemitted: spliced.reemitted, rebuilt: null };
+  }, "splicePart");
+  let out = src.prefix;
+  const stackBars = model.bars ?? 1;
+  for (const p of src.parts) {
+    const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part);
+    const one = p.bars !== void 0 && stackBars > 1 ? spliceBars(p, lanes, model.steps, stackBars, splicePart) : splicePart(p, lanes, model.steps);
+    if (one === "decline") return "decline";
+    regionsReemitted += one.reemitted;
+    if (one.rebuilt !== null) rebuiltParts.push(one.rebuilt);
+    out += "text" in one ? one.text : p.before + one.body + p.after;
   }
   const regions = src.parts.reduce((n, p) => n + p.regions.length, 0);
   return { out: out + src.suffix, regions, regionsReemitted, rebuiltParts };
@@ -30278,45 +30274,94 @@ function reemitAltRegion(perBar2, div, refined = false) {
   return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(" ")}>`;
 }
 __name(reemitAltRegion, "reemitAltRegion");
-function writtenWindow(lanes, steps, stackBars, p) {
-  if (p.bars === void 0) return { lanes, steps };
-  const repeats = stackBars / p.bars;
-  if (!Number.isInteger(repeats) || repeats < 1 || steps % repeats !== 0) return null;
-  if (repeats === 1) return { lanes, steps };
-  const span = steps / repeats;
-  const window2 = /* @__PURE__ */ __name((k) => lanes.map((l) => ({ ...l, cells: l.cells.slice(k * span, (k + 1) * span) })), "window");
-  const was = p.regions.flatMap((r) => r.content);
-  const changed = [];
-  for (let k = 0; k < repeats; k++) {
-    const w = window2(k);
-    const cols = partColumns(w, span, p.factor);
-    if (cols === null || !sameCells(cols, was)) changed.push(w);
+function spliceBars(p, lanes, steps, stackBars, splicePart) {
+  const P = p.bars ?? 1;
+  const L = stackBars;
+  if (!Number.isInteger(L / P) || steps % L !== 0) return "decline";
+  const per = steps / L;
+  const window2 = /* @__PURE__ */ __name((from, n) => lanes.map((l) => ({ ...l, cells: l.cells.slice(from * per, (from + n) * per) })), "window");
+  const held2 = Array.from({ length: L }, (_, b) => columnAtoms(window2(b, 1), per));
+  const Q = repeatingRun(held2, L);
+  if (P % Q === 0) {
+    const whole = splicePart(p, window2(0, P), P * per);
+    if (whole === "decline") return "decline";
+    const unchanged = whole.reemitted === 0 && whole.rebuilt === null;
+    if (Q === P || unchanged) return { text: p.before + whole.body + p.after, ...whole };
   }
-  const first = changed[0];
-  if (first && changed.some((w) => w.some((l, i) => !sameLaneCells(l.cells, first[i].cells)))) return null;
-  return { lanes: first ?? window2(0), steps: span };
+  const before = P > 1 ? p.before.replace(/<\s*$/, "") : p.before;
+  const after = P > 1 ? p.after.replace(/^\s*>/, "") : p.after;
+  if (P > 1 && (before === p.before || after === p.after)) return "decline";
+  const last = p.regions[p.regions.length - 1];
+  if (!last || last.to % P !== 0) return "decline";
+  const ownPer = last.to / P;
+  const texts = [];
+  let reemitted = 0;
+  let rebuilt = null;
+  for (let q = 0; q < Q; q++) {
+    const w = q % P;
+    const regions = p.regions.filter((r) => r.from >= w * ownPer && r.to <= (w + 1) * ownPer).map((r) => ({ ...r, from: r.from - w * ownPer, to: r.to - w * ownPer }));
+    if (regions.length === 0 || regions[0].from !== 0 || regions[regions.length - 1].to !== ownPer) return "decline";
+    if (regions.some((r, i) => i > 0 && r.from !== regions[i - 1].to)) return "decline";
+    const bar2 = splicePart({ ...p, regions, bars: void 0 }, window2(q, 1), per);
+    if (bar2 === "decline") return "decline";
+    reemitted += bar2.reemitted;
+    if (bar2.rebuilt !== null) rebuilt = (rebuilt ?? 0) + bar2.rebuilt;
+    const emptied = (bar2.reemitted > 0 || bar2.rebuilt !== null) && held2[q].every((c) => c.length === 0);
+    texts.push(emptied ? "~" : bar2.body.trim());
+  }
+  const body = Q === 1 ? unbracketed(texts[0]) : `<${texts.map(asEntry).join(" ")}>`;
+  return { text: before + body + after, reemitted, rebuilt };
 }
-__name(writtenWindow, "writtenWindow");
-var sameLaneCells = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((c, i) => JSON.stringify(c) === JSON.stringify(b[i])), "sameLaneCells");
-function linkGridRepeats(model) {
-  const src = model.source;
-  const stackBars = model.bars ?? 1;
-  if (!src || stackBars < 2 || !src.parts.some((p) => p.bars !== void 0 && p.bars < stackBars)) {
-    return model;
+__name(spliceBars, "spliceBars");
+function repeatingRun(held2, n) {
+  for (let q = 1; q < n; q++) {
+    if (n % q === 0 && held2.every((cells, b) => sameCells(cells, held2[b % q]))) return q;
   }
-  let lanes = model.lanes;
-  for (const p of src.parts) {
-    if (p.bars === void 0 || p.bars >= stackBars) continue;
-    const own = lanes.filter((l) => (l.part ?? 0) === p.part);
-    const w = writtenWindow(own, model.steps, stackBars, p);
-    if (w === null) return model;
-    const repeats = model.steps / w.steps;
-    const linked = new Map(own.map((l, i) => [l, Array.from({ length: repeats }, () => w.lanes[i].cells).flat()]));
-    lanes = lanes.map((l) => linked.has(l) ? { ...l, cells: linked.get(l) } : l);
-  }
-  return { ...model, lanes };
+  return n;
 }
-__name(linkGridRepeats, "linkGridRepeats");
+__name(repeatingRun, "repeatingRun");
+function topLevel(text) {
+  const out = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of text) {
+    if ("[<{(".includes(ch)) depth++;
+    else if ("]>})".includes(ch)) depth--;
+    if (depth === 0 && /\s/.test(ch)) {
+      if (cur) out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+__name(topLevel, "topLevel");
+function asEntry(text) {
+  const els = topLevel(text);
+  return els.length === 1 && !/[@!]/.test(outsideBrackets(els[0])) ? text : `[${text}]`;
+}
+__name(asEntry, "asEntry");
+function unbracketed(text) {
+  const els = topLevel(text);
+  if (els.length !== 1 || !text.startsWith("[") || !text.endsWith("]")) return text;
+  return outsideBrackets(text) === "[]" ? text.slice(1, -1).trim() : text;
+}
+__name(unbracketed, "unbracketed");
+function outsideBrackets(el) {
+  let depth = 0;
+  let out = "";
+  for (const ch of el) {
+    if ("[<{(".includes(ch)) {
+      if (depth === 0) out += ch;
+      depth++;
+    } else if ("]>})".includes(ch)) {
+      depth--;
+      if (depth === 0) out += ch;
+    } else if (depth === 0) out += ch;
+  }
+  return out;
+}
+__name(outsideBrackets, "outsideBrackets");
 function partColumns(lanes, steps, factor) {
   if (factor < 1 || steps % factor !== 0) return null;
   const all = columnAtoms(lanes, steps);
@@ -33278,6 +33323,7 @@ __name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const [model, setModel] = React21.useState(null);
+  const [read5, setRead] = React21.useState(null);
   const modelRef = React21.useRef(null);
   React21.useEffect(() => {
     modelRef.current = model;
@@ -33291,14 +33337,17 @@ function useGridModel(opts) {
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
       setModel(null);
+      setRead(null);
       return;
     }
     const parsed = o.parse(chunk.miniString, viewScale);
     if (!parsed.ok) {
       modelRef.current = null;
       setModel(null);
+      setRead(null);
       return;
     }
+    setRead(parsed.model);
     const chunkGain = readChunkGain(chunk);
     const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain) : parsed.model;
     const prev = modelRef.current;
@@ -33312,9 +33361,8 @@ function useGridModel(opts) {
     setModel(next);
   }, [chunk, viewScale]);
   const writeModel = React21.useCallback(
-    (edited) => {
+    (next) => {
       const o = optsRef.current;
-      const next = o.readsBackAs ? o.readsBackAs(edited) : edited;
       const atDocument = o.collapseToDocument ? o.collapseToDocument(next) : null;
       const spellsRefinement = atDocument === null;
       const toWrite = atDocument ?? next;
@@ -33354,7 +33402,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  return { model, chunk, mutate, settle, writeMini, beginGesture, endGesture };
+  return { model, read: read5, chunk, mutate, settle, writeMini, beginGesture, endGesture };
 }
 __name(useGridModel, "useGridModel");
 
@@ -35526,14 +35574,11 @@ function writtenStepStarts(m) {
   return out;
 }
 __name(writtenStepStarts, "writtenStepStarts");
-function repeatedBar(m, part, col) {
-  if (!m.source || !m.bars || m.bars < 2 || m.barSteps) return null;
-  const p = m.source.parts.find((x) => x.part === part);
-  if (!p || p.bars === void 0 || p.bars >= m.bars) return null;
-  const bar2 = Math.floor(col / (m.steps / m.bars));
-  return bar2 >= p.bars ? bar2 % p.bars + 1 : null;
+function linesModel(shown, read5) {
+  if (!read5 || read5.steps !== shown.steps || (read5.bars ?? 1) !== (shown.bars ?? 1)) return shown;
+  return (read5.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read5 : shown;
 }
-__name(repeatedBar, "repeatedBar");
+__name(linesModel, "linesModel");
 function drawnBarStarts(m, cols) {
   const layout = drawnLayout(m, cols);
   const out = [0];
@@ -36136,7 +36181,7 @@ function reportRefusal(attempted) {
 __name(reportRefusal, "reportRefusal");
 function SequencerGrid({ onResolution } = {}) {
   const [viewScale, setViewScale] = React21.useState(UNREFINED);
-  const { chunk, model, mutate, writeMini, beginGesture, endGesture } = useGridModel({
+  const { chunk, model, read: read5, mutate, writeMini, beginGesture, endGesture } = useGridModel({
     source: "seq",
     eligible: opensStepGrid,
     parse: parseStepGrid,
@@ -36145,8 +36190,7 @@ function SequencerGrid({ onResolution } = {}) {
     serializeGain: serializeStepGain,
     viewScale,
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed"),
-    collapseToDocument: collapseStepGridToDocument,
-    readsBackAs: linkGridRepeats
+    collapseToDocument: collapseStepGridToDocument
   });
   const length = usePatternLength(chunk, model, parseStepGrid, writeMini);
   const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
@@ -36179,9 +36223,9 @@ function SequencerGrid({ onResolution } = {}) {
   const stepStarts = React21.useMemo(() => {
     if (!model) return null;
     const out = /* @__PURE__ */ new Map();
-    for (const [part, cols] of writtenStepStarts(model)) out.set(part, new Set(cols));
+    for (const [part, cols] of writtenStepStarts(linesModel(model, read5))) out.set(part, new Set(cols));
     return out;
-  }, [model]);
+  }, [model, read5]);
   const resizable = React21.useMemo(() => {
     if (!model) return null;
     return model.lanes.map((lane, li) => {
@@ -36596,7 +36640,6 @@ function SequencerGrid({ onResolution } = {}) {
                     const isCursor = liveCursor?.row === laneIndex && liveCursor.col === stepIndex;
                     const isTab = tabCell.row === laneIndex && tabCell.col === stepIndex;
                     const stepStart = stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex);
-                    const repeats = repeatedBar(model, lane.part ?? 0, stepIndex);
                     return (
                       // A gridcell holding one toggle button — `aria-pressed` stays on the
                       // button, which may carry it; the cursor is the cell's `aria-selected`.
@@ -36634,9 +36677,8 @@ function SequencerGrid({ onResolution } = {}) {
                               "data-gain": on && gainScoped ? gain : void 0,
                               "data-playing": isPlaying ? "true" : void 0,
                               "data-seq-cell-inert": canToggle ? void 0 : "true",
-                              "data-seq-repeat": repeats ?? void 0,
                               "aria-disabled": canToggle ? void 0 : true,
-                              title: canToggle ? repeats !== null ? `Repeats bar ${repeats} \u2014 an edit here changes bar ${repeats} and every repeat of it.` : void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
+                              title: canToggle ? void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
                               onPointerDown: (e) => {
                                 e.preventDefault();
                                 setCursor({ row: laneIndex, col: stepIndex });
@@ -36662,8 +36704,7 @@ function SequencerGrid({ onResolution } = {}) {
                                 border: isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
                                 borderRadius: 3,
                                 background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
-                                cursor: !canToggle ? "default" : gainScoped && on ? "ns-resize" : "pointer",
-                                opacity: repeats !== null ? 0.5 : void 0
+                                cursor: !canToggle ? "default" : gainScoped && on ? "ns-resize" : "pointer"
                               },
                               children: [
                                 cov && // Two orthogonal axes on one bar, which is how a DAW draws a
@@ -36938,7 +36979,7 @@ function PianoRollGrid({
 } = {}) {
   const [viewScale, setViewScale] = React21.useState(UNREFINED);
   const [declinedCell, setDeclinedCell] = React21.useState(null);
-  const { chunk, model, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel({
+  const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel({
     source: "roll",
     eligible: opensPianoRoll,
     parse: parsePianoRoll,
@@ -37405,7 +37446,7 @@ function PianoRollGrid({
   }
   const tabCell = cursorCell() ?? defaultCell();
   const layout = drawnLayout(model, cols);
-  const { stepStarts, ruler } = rollSteps(model, cols);
+  const { stepStarts, ruler } = rollSteps(linesModel(model, read5), cols);
   const barLine = /* @__PURE__ */ __name((c) => layout.barStart(c) ? "-2px 0 0 0 var(--foreground, #e6e6ea)" : c > 0 && stepStarts.has(c) ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0, "barLine");
   const cellBox = /* @__PURE__ */ __name((c) => {
     const w = layout.weight(c);

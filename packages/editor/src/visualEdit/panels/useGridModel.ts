@@ -66,13 +66,6 @@ export interface GridModelOptions<M> {
    * refines behaving exactly as it did.
    */
   collapseToDocument?: (model: M) => M | null
-  /**
-   * The model the written text will read back as, when that differs from the edited
-   * model (#1849): an edit in a repeat of a `,`-part is written into its written bars,
-   * so every repeat changes. A write keeps THIS model on screen — the one the text
-   * holds — rather than the edit as painted. Omit when a model reads back as itself.
-   */
-  readsBackAs?: (model: M) => M
   /** model → mini, or null when the model can't be expressed in the subset */
   serialize: (model: M) => string | null
   /**
@@ -86,6 +79,8 @@ export interface GridModelOptions<M> {
 
 export interface GridModel<M> {
   model: M | null
+  /** the model the document's text reads as right now — `model` may be the edited one */
+  read: M | null
   chunk: ChunkInfo | null
   /** transform the model and write the serialized result over the mini range */
   mutate: (fn: (model: M) => M) => void
@@ -166,6 +161,12 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
 ): GridModel<M> {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
   const [model, setModel] = React.useState<M | null>(null)
+  // WHAT THE TEXT READS AS, beside the model kept on screen (#1849). After a write the
+  // kept model is the one that was edited, and its `source` still describes the text it
+  // was parsed from — so anything drawn from the WRITTEN structure (step lines) has to
+  // be read off this instead: `<[~ sd ~ sd] ~>` has no steps in bar 2, while the edited
+  // model's source still says `~ sd ~ sd`, repeated.
+  const [read, setRead] = React.useState<M | null>(null)
   // Mirror for synchronous reads inside pointer handlers / rapid drags.
   const modelRef = React.useRef<M | null>(null)
   React.useEffect(() => {
@@ -191,14 +192,17 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null
       setModel(null)
+      setRead(null)
       return
     }
     const parsed = o.parse(chunk.miniString, viewScale)
     if (!parsed.ok) {
       modelRef.current = null
       setModel(null)
+      setRead(null)
       return
     }
+    setRead(parsed.model)
     const chunkGain = readChunkGain(chunk)
     const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain) : parsed.model
 
@@ -231,9 +235,8 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
    * differently (#1453).
    */
   const writeModel = React.useCallback(
-    (edited: M): void => {
+    (next: M): void => {
       const o = optsRef.current
-      const next = o.readsBackAs ? o.readsBackAs(edited) : edited
       // WHAT RESOLUTION SHOULD THIS WRITE SPELL? Only an edit that used a column
       // the document does not have needs the finer one; a velocity drag does not,
       // and respelling for it rewrites the file to record how closely someone was
@@ -292,5 +295,5 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
     [applyEdit],
   )
 
-  return { model, chunk, mutate, settle, writeMini, beginGesture, endGesture }
+  return { model, read, chunk, mutate, settle, writeMini, beginGesture, endGesture }
 }

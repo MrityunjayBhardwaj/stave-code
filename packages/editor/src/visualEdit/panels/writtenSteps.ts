@@ -102,18 +102,16 @@ export function writtenStepStarts(m: WrittenStepsModel): Map<number, number[]> {
 }
 
 /**
- * The written bar (1-based) that column `col` of part `part` REPEATS, or null when the
- * column is written there (#1849). A part written over fewer bars than its stack plays
- * again from its first bar — `~ sd ~ sd` beside `<A B>` is written in bar 1 and repeated
- * in bar 2 — and a panel draws the repeats as repeats, so a click there reads as what it
- * does: an edit to the bar that is written, heard in every repeat.
+ * The model whose `source` the step lines are drawn from: the text's own reading when it
+ * lays out the same columns as the model on screen, else the model on screen (#1849).
+ * After a write the kept model's source still describes the text it was parsed from.
  */
-export function repeatedBar(m: WrittenStepsModel, part: number, col: number): number | null {
-  if (!m.source || !m.bars || m.bars < 2 || m.barSteps) return null
-  const p = m.source.parts.find((x) => x.part === part)
-  if (!p || p.bars === undefined || p.bars >= m.bars) return null
-  const bar = Math.floor(col / (m.steps / m.bars))
-  return bar >= p.bars ? (bar % p.bars) + 1 : null
+export function linesModel<M extends { steps: number; bars?: number; barSteps?: readonly number[] }>(
+  shown: M,
+  read: M | null,
+): M {
+  if (!read || read.steps !== shown.steps || (read.bars ?? 1) !== (shown.bars ?? 1)) return shown
+  return (read.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read : shown
 }
 
 /**

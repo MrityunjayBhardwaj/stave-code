@@ -72,7 +72,7 @@ import {
 } from './gridGestures'
 import { readChainMethod } from './chainMethod'
 import { ExtendHandle } from './ExtendHandle'
-import { rulerLabels, useLayoutFollow, useRulerFit, writtenStepStarts } from './writtenSteps'
+import { linesModel, rulerLabels, useLayoutFollow, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { usePatternLength } from './usePatternLength'
 import { AUDITION_ENVELOPE, AUDITION_DUR_S } from '../audition'
 import { superdough, getAudioContext } from '@strudel/webaudio'
@@ -353,7 +353,7 @@ export function PianoRollGrid({
    * worst case measured here is a sweep down the 13 declined cells of one column.
    */
   const [declinedCell, setDeclinedCell] = React.useState<string | null>(null)
-  const { chunk, model, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel<PianoRollModel>({
+  const { chunk, model, read, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel<PianoRollModel>({
     source: 'roll',
     eligible: opensPianoRoll,
     parse: parsePianoRoll,
@@ -1226,7 +1226,8 @@ export function PianoRollGrid({
   // Each bar may hold its own count of cells (#1827); `drawnLayout` says where bars start
   // and how wide a cell is, so every bar is drawn the same width whatever its count.
   const layout = drawnLayout(model, cols)
-  const { stepStarts, ruler } = rollSteps(model, cols)
+  // drawn from what the TEXT reads as — the kept model's source is the text before the edit
+  const { stepStarts, ruler } = rollSteps(linesModel(model, read), cols)
   // THREE LINE WEIGHTS, all in that same gap (#1841): a bar line, then a lighter line
   // where a step AS WRITTEN begins, then a plain column. Colour carries the difference,
   // never width, for the reason above.

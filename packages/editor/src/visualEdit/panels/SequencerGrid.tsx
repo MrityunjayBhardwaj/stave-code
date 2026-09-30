@@ -27,7 +27,7 @@
 import * as React from 'react'
 
 import { parseStepGrid, applyStepGain } from '../notation/parse'
-import { linkGridRepeats, serializeStepGrid, serializeStepGain } from '../notation/serialize'
+import { serializeStepGrid, serializeStepGain } from '../notation/serialize'
 import { columnCount, isCellOn, laneCoverage } from '../notation/model'
 import type { StepGridModel } from '../notation/model'
 import { drawnLayout } from '../notation/perBar'
@@ -54,7 +54,7 @@ import {
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
-import { repeatedBar, rulerLabels, useRulerFit, writtenStepStarts } from './writtenSteps'
+import { linesModel, rulerLabels, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
 import {
@@ -113,7 +113,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // reaches the document until an actual edit is made, and the first write absorbs
   // it (`useGridModel` → `absorbViewScale`).
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { chunk, model, mutate, writeMini, beginGesture, endGesture } = useGridModel<StepGridModel>({
+  const { chunk, model, read, mutate, writeMini, beginGesture, endGesture } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: opensStepGrid,
     parse: parseStepGrid,
@@ -123,7 +123,6 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     viewScale,
     onViewScaleConsumed: () => setViewScale(UNREFINED),
     collapseToDocument: collapseStepGridToDocument,
-    readsBackAs: linkGridRepeats,
   })
   // The `+` past the last column: add a bar that continues the pattern, or drag in empty bars (#1824).
   const length = usePatternLength(chunk, model, parseStepGrid, writeMini)
@@ -255,9 +254,10 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   const stepStarts = React.useMemo(() => {
     if (!model) return null
     const out = new Map<number, Set<number>>()
-    for (const [part, cols] of writtenStepStarts(model)) out.set(part, new Set(cols))
+    // drawn from what the TEXT reads as — the kept model's source is the text before the edit
+    for (const [part, cols] of writtenStepStarts(linesModel(model, read))) out.set(part, new Set(cols))
     return out
-  }, [model])
+  }, [model, read])
 
   // PROVE BEFORE OFFER, at the length handle (#1053) — the same rule the cell already
   // applies, asked of `resizeCell` itself so the handle cannot promise a drag the writer
@@ -853,9 +853,6 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                 // A written step begins here, and it is not a bar line (those keep their gap)
                 const stepStart =
                   stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex)
-                // a bar this lane's part only REPEATS (#1849): drawn fainter, and an edit here
-                // goes to the bar that is written, so every repeat changes with it
-                const repeats = repeatedBar(model, lane.part ?? 0, stepIndex)
                 return (
                   // A gridcell holding one toggle button — `aria-pressed` stays on the
                   // button, which may carry it; the cursor is the cell's `aria-selected`.
@@ -901,7 +898,6 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     data-gain={on && gainScoped ? gain : undefined}
                     data-playing={isPlaying ? 'true' : undefined}
                     data-seq-cell-inert={canToggle ? undefined : 'true'}
-                    data-seq-repeat={repeats ?? undefined}
                     aria-disabled={canToggle ? undefined : true}
                     // WHY THIS CELL IS INERT, and the two reasons are not
                     // interchangeable. On the element and alt paths every
@@ -925,9 +921,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     // removes only this box — all 285 refused erases in the corpus.
                     title={
                       canToggle
-                        ? repeats !== null
-                          ? `Repeats bar ${repeats} — an edit here changes bar ${repeats} and every repeat of it.`
-                          : undefined
+                        ? undefined
                         : on
                           ? model.leafSource
                             ? 'This hit comes from text that plays in more than one box here — remove it in the code view.'
@@ -979,7 +973,6 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                         ? 'var(--background, #34343c)'
                         : 'var(--background-elevated, #26262c)',
                       cursor: !canToggle ? 'default' : gainScoped && on ? 'ns-resize' : 'pointer',
-                      opacity: repeats !== null ? 0.5 : undefined,
                     }}
                   >
                     {cov && (
