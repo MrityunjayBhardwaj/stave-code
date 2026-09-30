@@ -17,6 +17,7 @@ describe('the modelling ratchet (#1866)', () => {
       'predicate-audit.anchored',
       'writer-census.p6-blocker',
       'writer-census.untransferable',
+      'writer-census.unverified',
     ])
   })
 

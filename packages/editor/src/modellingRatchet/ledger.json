@@ -12,6 +12,17 @@
         }
       ]
     },
+    "writer-census.unverified": {
+      "what": "Core-served asks with no probe to verify them (outcome `no-probe`): the syntactic core serves them, and nothing has shown a derived writer can — or cannot — take them over.",
+      "measuredBy": "packages/app/tests/parity-corpus/writer-census.test.ts",
+      "history": [
+        {
+          "value": 122,
+          "date": "2026-10-01",
+          "note": "Baseline, on origin/main 612772aa over mini-corpus.json. It grew 109 → 121 (#1849) and 121 → 122 (#1849's <…> half) before it was watched. Watched beside untransferable so an ask cannot leave that count by losing its probe (#1872)."
+        }
+      ]
+    },
     "writer-census.p6-blocker": {
       "what": "The set that blocks deleting the syntactic core (P6, #1012): structural untransferable asks whose core view has structure and whose core edit is verified, both surfaces, at the shipped caps LEAF_PROJECT_BARS = { grid: 12, roll: 4 } (exported as PROJECTION_PERIOD_BOUNDS.leaf; the census reads the roll cap from there).",
       "measuredBy": "packages/app/tests/parity-corpus/writer-census.test.ts",

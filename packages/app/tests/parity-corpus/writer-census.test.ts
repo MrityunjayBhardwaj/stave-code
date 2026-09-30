@@ -549,6 +549,9 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // 68 → 77 across #1827 and #1849. The ratchet (#1866) lets it only FALL: a rise needs an
     // exemption naming an issue, appended to modellingRatchet/ledger.json.
     assertRatchet('writer-census.untransferable', untransferable.length)
+    // …and so may the asks nothing has verified, or an ask could leave `untransferable` by
+    // losing its probe and read as progress (#1872).
+    assertRatchet('writer-census.unverified', all.filter((r) => r.outcome === 'no-probe').length)
     // The reclassification is asserted by MECHANISM as well as by total, so that a
     // future change cannot hold the totals steady while moving asks between buckets.
     // ⚠ 11 → 0 at #1010 P4c. The printer preserves lengths, so nothing in the census
