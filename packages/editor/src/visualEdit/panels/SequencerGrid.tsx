@@ -54,7 +54,8 @@ import {
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
-import { linesModel, rulerLabels, useRulerFit, writtenStepStarts } from './writtenSteps'
+import { linesModel, ownStepWidths, rowBoxes, rulerLabels, useRulerFit, writtenStepStarts } from './writtenSteps'
+import { useGridMode } from './gridMode'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
 import {
@@ -145,6 +146,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     model?.barSteps,
   )
   const [colorMode] = useNoteColorMode()
+  const gridMode = useGridMode()
 
   // One pointer gesture from a cell press. An OFF cell paints immediately (snappy
   // step entry); an ON cell starts PENDING — a vertical drag past the threshold
@@ -200,6 +202,20 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     [laneKey],
   )
 
+  // THE BOXES EACH ROW IS DRAWN AS (#1855). LCM: one per column. Exact: a row whose
+  // `,`-part is stretched onto the shared grid is drawn at the part's own steps, each box
+  // `factor` columns wide, so `~ sd ~ sd, hh*8` shows the snare as 4 boxes and the hats
+  // as 8. The part's own step is read from what the TEXT reads as, like the step lines.
+  const boxes = React.useMemo(() => {
+    if (!model) return null
+    const widths = gridMode === 'exact' ? ownStepWidths(linesModel(model, read)) : new Map<number, number>()
+    return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn))
+  }, [model, read, gridMode])
+  /** columns one box of this row spans: 1 in LCM and on a row at the shared grid */
+  const boxesRef = React.useRef(boxes)
+  boxesRef.current = boxes
+  const boxWidth = (laneIndex: number): number => boxesRef.current?.[laneIndex]?.[0]?.width ?? 1
+
   // PROVE BEFORE OFFER, at the cell — the gesture this panel exists for.
   // `canToggleCell` runs the real op and asks the real writer, so it cannot
   // drift from what a click actually does ([[PV241]]).
@@ -219,12 +235,18 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // than once per render. Asking the lit cells too was TIMED, not estimated ([[P380]]):
   // over the 1,014 corpus grids (best of 3, Node) p50 0.0042 → 0.0111ms, p99 6.23 →
   // 6.52ms, worst 14.5 → 21.1ms, total +15%.
+  //
+  // A box in Exact is asked as the click it is: a hit one whole box long, at its first
+  // column (#1855). The columns inside a box are never drawn, so they are not asked.
   const toggleable = React.useMemo(
     () =>
       model
-        ? model.lanes.map((lane, li) => lane.cells.map((c, si) => canToggleCell(model, li, si, !isCellOn(c))))
+        ? model.lanes.map((lane, li) => {
+            const w = boxes?.[li]?.[0]?.width ?? 1
+            return lane.cells.map((c, si) => si % w === 0 && canToggleCell(model, li, si, !isCellOn(c), w))
+          })
         : null,
-    [model],
+    [model, boxes],
   )
 
   // How long each note SOUNDS, per column (#1056). The grid drew one full box per
@@ -298,15 +320,19 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // model it was given — as distinct from a cell already in the asked state, which
   // is no refusal. The caller decides whether to say so: a single press or key does
   // (`paintOne`), a paint drag brushing across inert cells does not.
+  //
+  // A hit is painted one box long: one column in LCM, one of the part's own steps in
+  // Exact (#1855) — the step the user sees and clicked.
   const paintCell = React.useCallback(
     (laneIndex: number, stepIndex: number, value: boolean): boolean => {
       let refused = false
+      const length = boxWidth(laneIndex)
       mutate((prev) => {
         const lane = prev.lanes[laneIndex]
         if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) {
           return prev // no change → useGridModel skips the write
         }
-        const next = toggleCell(prev, laneIndex, stepIndex, value)
+        const next = toggleCell(prev, laneIndex, stepIndex, value, length)
         refused = next === prev
         return next
       })
@@ -475,7 +501,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     }
   }
 
-  const onCellEnter = (laneIndex: number, stepIndex: number): void => {
+  const onCellEnter = (laneIndex: number, stepIndex: number, width: number): void => {
     const g = gestureRef.current
     if (!g) return
     if (g.mode === 'resize') {
@@ -484,7 +510,8 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
       // silently retarget it. `resizeCell` floors at one column and `clampLane` caps at
       // the room the note has, so a drag back past the note's own start, or forward past
       // the next hit, lands on the shortest/longest length rather than doing nothing.
-      mutate((prev) => resizeCell(prev, g.lane, g.step, stepIndex - g.step + 1))
+      // the pointer's box ends the note: its last column, however wide the box is
+      mutate((prev) => resizeCell(prev, g.lane, g.step, stepIndex + width - g.step))
       return
     }
     if (g.mode !== 'paint') return
@@ -579,28 +606,37 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     if (isCursorMove(action)) {
       if (dryRun) return true
       focusCursorRef.current = true
-      setCursor(moveCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN))
+      // ←/→ step over a whole box: from its first column left, from its last column right.
+      // The cursor keeps a column; the box holding it is the one selected (#1855).
+      const from = at ?? { row: 0, col: 0 }
+      const w = boxWidth(from.row)
+      const start = from.col - (from.col % w)
+      const col = action === 'left' ? start : action === 'right' ? start + w - 1 : from.col
+      setCursor(moveCursor({ row: from.row, col }, action, rowsN, colsN))
       return true
     }
     if (!at) return false
     if (isNoteEdit(action)) return resizeByKey(at, action, dryRun)
-    const cell = model.lanes[at.row]?.cells[at.col]
+    // a key acts on the box the cursor is in, at its first column — what a click on it does
+    const boxW = boxWidth(at.row)
+    const col = at.col - (at.col % boxW)
+    const cell = model.lanes[at.row]?.cells[col]
     const on = cell !== undefined && isCellOn(cell)
     switch (action) {
       case 'toggle':
         // Exactly what a click does: the cell flips where the writer takes it
         // (`toggleable`, the same gate that makes the cell inert to the pointer —
         // an ON cell included, #1836); a column a note sounds through is inert.
-        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return refuseKey(on, dryRun)
+        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun)
         if (!dryRun) {
           if (!cursorRef.current) setCursor(at)
-          paintByKey(at.row, at.col, !on)
+          paintByKey(at.row, col, !on)
         }
         return true
       case 'remove':
         if (!on) return false // nothing under the cursor: nothing asked, nothing to say
-        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return refuseKey(on, dryRun)
-        if (!dryRun) paintByKey(at.row, at.col, false)
+        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun)
+        if (!dryRun) paintByKey(at.row, col, false)
         return true
       default:
         return false
@@ -728,6 +764,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
               return (
                 <div
                   key={c}
+                  // the ExtendHandle measures the last COLUMN here: in Exact a row's last box
+                  // can start several columns before the end, so no cell names that column
+                  data-seq-col={`ruler:${c}`}
                   style={{
                     flex: `${layout.weight(c)} ${layout.weight(c)} 0`,
                     minWidth: 16 * layout.weight(c),
@@ -814,7 +853,11 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             </button>
             </div>
             <div role="none" style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
-              {lane.cells.map((cell, stepIndex) => {
+              {(boxes?.[laneIndex] ?? []).map(({ start: stepIndex, width: w }) => {
+                // ONE BOX, `w` columns from `stepIndex` (#1855): a column in LCM, one of
+                // the part's own steps in Exact. Everything below reads the box's first
+                // column — a box only exists where no hit starts inside it (`rowBoxes`).
+                const cell = lane.cells[stepIndex]
                 // A cell is drawn from the note SOUNDING through it, not from the
                 // trigger alone (#1056): `cov.extent` is how much of this column
                 // the note fills, so a half-column note draws a half-width bar and
@@ -831,7 +874,17 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                 // drawing that has to be asked. `undefined` past the lane end is not the
                 // same note, which is what makes the final column a tail.
                 const isTail =
-                  cov !== undefined && coverage?.[laneIndex]?.[stepIndex + 1]?.start !== cov.start
+                  cov !== undefined && coverage?.[laneIndex]?.[stepIndex + w]?.start !== cov.start
+                // how much of the BOX the note fills: its columns' shares, over the box width
+                let extent = cov?.extent ?? 0
+                if (cov && w > 1) {
+                  extent = 0
+                  for (let c = stepIndex; c < stepIndex + w; c++) {
+                    const k = coverage?.[laneIndex]?.[c]
+                    if (k && k.start === cov.start) extent += k.extent
+                  }
+                  extent /= w
+                }
                 /** the note's own start column, when this cell carries an offerable handle */
                 const resizeStart =
                   cov !== undefined && isTail && resizable?.[laneIndex]?.has(cov.start)
@@ -842,14 +895,22 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                 // reading `stepIndex` would make a long note jump to full height
                 // halfway through. Same rule the roll's velocity lane already uses.
                 const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1
-                const isPlaying = stepIndex === playingStep
+                const isPlaying = playingStep !== null && playingStep >= stepIndex && playingStep < stepIndex + w
                 // A cell is offered only where the writer will take its toggle.
                 // Where it will not, the cell is inert AND says so, instead of
                 // swallowing the click the way it did before (#1064/#1070) — for a
                 // lit cell's erase too (#1836).
                 const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true
-                const isCursor = liveCursor?.row === laneIndex && liveCursor.col === stepIndex
-                const isTab = tabCell.row === laneIndex && tabCell.col === stepIndex
+                const inBox = (c: number): boolean => c >= stepIndex && c < stepIndex + w
+                const isCursor = liveCursor?.row === laneIndex && inBox(liveCursor.col)
+                const isTab = tabCell.row === laneIndex && inBox(tabCell.col)
+                // a box is as wide as its columns AND the 2px gaps between them, so its
+                // edges fall on the columns of the rows drawn one box per column
+                let weight = 0
+                for (let c = stepIndex; c < stepIndex + w; c++) weight += layout.weight(c)
+                const gaps = 2 * (w - 1)
+                /** the step number a person reads: the box's, counted in this row */
+                const stepNo = (c: number): number => Math.floor(c / w) + 1
                 // A written step begins here, and it is not a bar line (those keep their gap)
                 const stepStart =
                   stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex)
@@ -863,9 +924,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     data-seq-step-start={stepStart ? 'true' : undefined}
                     style={{
                       display: 'flex',
-                      flex: `${layout.weight(stepIndex)} ${layout.weight(stepIndex)} 0`,
-                      minWidth: 16 * layout.weight(stepIndex),
-                      maxWidth: 56 * layout.weight(stepIndex),
+                      flex: `${weight} ${weight} ${gaps}px`,
+                      minWidth: 16 * weight + gaps,
+                      maxWidth: 56 * weight + gaps,
                       // subtle gap at each bar boundary
                       marginLeft: layout.barStart(stepIndex) ? 8 : 0,
                       // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
@@ -891,10 +952,11 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     // empty cell's. Making the picture richer is what opened the gap.
                     aria-label={
                       held
-                        ? `${lane.sound} step ${stepIndex + 1}, held from step ${cov!.start + 1}`
-                        : `${lane.sound} step ${stepIndex + 1}`
+                        ? `${lane.sound} step ${stepNo(stepIndex)}, held from step ${stepNo(cov!.start)}`
+                        : `${lane.sound} step ${stepNo(stepIndex)}`
                     }
                     data-seq-cell={`${laneIndex}:${stepIndex}`}
+                    data-seq-box-width={w > 1 ? w : undefined}
                     data-gain={on && gainScoped ? gain : undefined}
                     data-playing={isPlaying ? 'true' : undefined}
                     data-seq-cell-inert={canToggle ? undefined : 'true'}
@@ -948,7 +1010,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                       // edge is simply its extent — the roll's `offset` term is 0 here.
                       if (resizeStart !== null) {
                         const rect = e.currentTarget.getBoundingClientRect()
-                        const barW = clamp01(cov!.extent) * rect.width
+                        const barW = clamp01(extent) * rect.width
                         const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4))
                         if (e.clientX - rect.left >= barW - zone) {
                           onResizeDown(laneIndex, resizeStart)
@@ -958,7 +1020,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                       if (!canToggle) return
                       onCellDown(laneIndex, stepIndex, on, e)
                     }}
-                    onPointerEnter={() => onCellEnter(laneIndex, stepIndex)}
+                    onPointerEnter={() => onCellEnter(laneIndex, stepIndex, w)}
                     style={{
                       position: 'relative',
                       width: '100%',
@@ -991,7 +1053,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                       <span
                         data-seq-fill
                         data-seq-sustain={held ? 'true' : undefined}
-                        data-seq-extent={cov.extent !== 1 ? cov.extent.toFixed(4) : undefined}
+                        data-seq-extent={extent !== 1 ? extent.toFixed(4) : undefined}
                         style={{
                           position: 'absolute',
                           left: 0,
@@ -1000,7 +1062,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                           // note whose length rounds to nothing still has to be
                           // visible, or the grid would silently lose a trigger it
                           // can spell.
-                          width: `${clamp01(cov.extent) * 100}%`,
+                          width: `${clamp01(extent) * 100}%`,
                           minWidth: held ? 0 : 2,
                           height: `${clamp01(gainScoped ? gain : 1) * 100}%`,
                           background:
@@ -1032,7 +1094,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                       // project ranks that worse than not offering it at all.
                       <span
                         data-seq-resize={`${laneIndex}:${resizeStart}`}
-                        aria-label={`resize ${lane.sound} step ${resizeStart + 1}`}
+                        aria-label={`resize ${lane.sound} step ${stepNo(resizeStart)}`}
                         onPointerDown={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
@@ -1042,8 +1104,8 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                           position: 'absolute',
                           top: 0,
                           bottom: 0,
-                          right: `${(1 - clamp01(cov!.extent)) * 100}%`,
-                          width: `min(${RESIZE_ZONE_PX}px, ${clamp01(cov!.extent) * 100}%)`,
+                          right: `${(1 - clamp01(extent)) * 100}%`,
+                          width: `min(${RESIZE_ZONE_PX}px, ${clamp01(extent) * 100}%)`,
                           cursor: 'ew-resize',
                           background: 'var(--foreground, #e6e6ea)',
                           opacity: 0.45,
@@ -1060,7 +1122,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
           )
         })}
         </div>
-        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-seq-cell" cols={model.steps} lastBarCols={layout.lastBarCols} />
+        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-seq-col" cols={model.steps} lastBarCols={layout.lastBarCols} />
         {/* The drum catalogue is the wrong menu for a chord chart — it would
             offer Kick and Snare as things to add to a progression. Withdrawn
             rather than restocked: a chord picker is a different feature, and

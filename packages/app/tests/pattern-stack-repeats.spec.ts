@@ -18,7 +18,7 @@ const KICK = '<[bd ~ bd ~] [bd ~ ~ bd]>'
 const BEAT = `$: s("${KICK}, ~ sd ~ sd, hh*8")`
 
 async function open(page: Page, code: string): Promise<Locator> {
-  await bootApp(page, { drawer: { tabId: 'pattern', height: 460 } })
+  await bootApp(page, { drawer: { tabId: 'pattern', height: 460 }, gridMode: 'lcm' })
   await seedCode(page, code)
   const seq = page.locator('[data-bottom-panel-tab="sequencer"]')
   await expect(seq, `the sequencer must open for ${code}`).toHaveCount(1)
