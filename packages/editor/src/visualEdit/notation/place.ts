@@ -188,17 +188,24 @@ export function viewPlacesNotes(model: StepGridModel | PianoRollModel): boolean 
  * painting on such a grid should offer the prevailing length, that is a product
  * question, and it belongs with the per-note length control (#1053).
  */
-const paint = (value: boolean): StepCell => (value ? cellOn() : false)
+const paint = (value: boolean, length = 1): StepCell => (value ? cellOn(length) : false)
 
 /**
  * Flip one cell of the step grid, returning a new model (stable lane set preserved).
  * This is what a click on a cell does — the panel and every corpus sweep call it.
+ *
+ * `length` is how many columns a placed hit lasts: one by default (the box the LCM view
+ * draws), or one of the PART's own steps (`SourcePart.factor` columns) when the Exact view
+ * draws the row at its own steps (#1855). A part stretched by 2 cannot spell a one-column
+ * hit on its own step — that is half its step — so the writer declines it and those cells
+ * were locked (#1853); one own step long is exactly what the part's own reading spells.
  */
 export function toggleCell(
   model: StepGridModel,
   laneIndex: number,
   stepIndex: number,
   value: boolean,
+  length = 1,
 ): StepGridModel {
   // ADMISSIBLE EXACTLY WHEN THE RESULT IS WRITABLE, asked of the real writer
   // ([[PV241]]) — the same rule `resize.ts` and `resolution.ts` already apply to
@@ -227,7 +234,7 @@ export function toggleCell(
           // clamp for exactly this reason; paint is the third op that moves
           // onsets closer together, and it was the one still missing it.
           cells: clampLane(
-            lane.cells.map((c, j) => (j === stepIndex ? paint(value) : c)),
+            lane.cells.map((c, j) => (j === stepIndex ? paint(value, length) : c)),
             model.steps,
           ),
         }
@@ -474,7 +481,8 @@ export const canToggleCell = (
   laneIndex: number,
   stepIndex: number,
   value: boolean,
-): boolean => toggleCell(model, laneIndex, stepIndex, value) !== model
+  length = 1,
+): boolean => toggleCell(model, laneIndex, stepIndex, value, length) !== model
 
 export const canPlaceNote = (
   model: PianoRollModel,

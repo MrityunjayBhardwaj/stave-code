@@ -747,6 +747,10 @@
     "runs": "gate",
     "why": "A comma pattern whose parts are written over different numbers of bars (#1849): `<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd, hh*8` opens editable instead of 44 of 48 cells locked, the one-bar parts are drawn as repeats in bar 2, and a click in a repeat edits the written bar so the text changes once and the grid shows both bars changed. Pins that the grid agrees with the text after the click, which a panel keeping its own edited model did not."
   },
+  "pattern-exact-grid.spec.ts": {
+    "runs": "gate",
+    "why": "Exact grid mode (#1855), the default: each part of a comma pattern is drawn at its own steps (`~ sd ~ sd, hh*8` shows the snare as 4 boxes, each over two hat cells) and a click fills one whole own step, so the cells LCM locks on a coarser part (#1853) write the part's own spelling. Pins box count and alignment, the whole-step write in one bar only, keys stepping over a box, the Settings \u203a Grid switch redrawing an open grid both ways, and LCM unchanged as the control."
+  },
   "pattern-step-lines.spec.ts": {
     "runs": "gate",
     "why": "Stage 1 of the pattern grid (#1841): both grids draw a line where each step as written begins, and a ruler counting those steps, from the regions the parser already records. Pins line positions, that a plain column draws none, that a bar line differs from a step line, and that the sequencer's ruler follows the cursor row when parts split the bar differently."

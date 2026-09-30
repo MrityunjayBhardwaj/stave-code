@@ -432,9 +432,9 @@ export interface SourcePart<C> {
    * same bar again (`mini.mjs` `case 'stack'`). So the model draws this part's `bars`
    * written bars, then REPEATS them until the stack's own `bars` — never stretches them.
    * Its regions tile the written bars only (columns `[0, bars × columns-per-bar)` of its
-   * own space), and the writer folds an edit made in any repeat back onto them, so a
-   * change in bar 2 of the snare changes the one bar that is written, and with it every
-   * repeat (the way a Logic Step Sequencer row loops at its own length).
+   * own space). An edit in any bar changes that bar only: the writer spells the part bar
+   * by bar as `<t0 … t(Q-1)>` (`spliceBars`, #1854), and back to the plain part when the
+   * bars agree again.
    *
    * Absent on every stack that plays for one bar, which is every stack read before
    * #1849's `<…>` half — so those models are unchanged. Present → `factor` maps one bar

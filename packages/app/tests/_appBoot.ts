@@ -36,6 +36,7 @@ const STORAGE = {
   height: 'stave:bottomPanel.height',
   open: 'stave:bottomPanel.open',
   activeTabId: 'stave:bottomPanel.activeTabId',
+  gridMode: 'stave:visualEdit.gridMode',
 } as const
 
 export interface BootOptions {
@@ -43,6 +44,11 @@ export interface BootOptions {
   readonly drawer?: { readonly tabId: string; readonly height?: number }
   /** enable the `__stave*` E2E hooks (gated on this flag, set before mount) */
   readonly e2eHooks?: boolean
+  /**
+   * the step grid's layout (#1855, seeded into localStorage): a spec about how LCM draws a
+   * comma pattern says so, since Exact is the default from the first launch
+   */
+  readonly gridMode?: 'exact' | 'lcm'
 }
 
 /** The editor's model value — the single source of truth for "what will be evaluated". */
@@ -69,14 +75,20 @@ export async function editorValue(page: Page): Promise<string> {
  * whole point — see the header.
  */
 export async function bootApp(page: Page, opts: BootOptions = {}): Promise<void> {
-  if (opts.drawer || opts.e2eHooks) {
+  if (opts.drawer || opts.e2eHooks || opts.gridMode) {
     await page.addInitScript(
-      ([drawer, hooks, keys]: [
+      ([drawer, hooks, keys, gridMode]: [
         BootOptions['drawer'],
         boolean,
         typeof STORAGE,
+        BootOptions['gridMode'],
       ]) => {
         if (hooks) (window as unknown as { __STAVE_E2E__?: boolean }).__STAVE_E2E__ = true
+        try {
+          if (gridMode) window.localStorage.setItem(keys.gridMode, gridMode)
+        } catch {
+          /* private mode — the grid opens in its default */
+        }
         if (!drawer) return
         try {
           window.localStorage.setItem(keys.open, 'true')
@@ -86,10 +98,11 @@ export async function bootApp(page: Page, opts: BootOptions = {}): Promise<void>
           /* private mode — the drawer just starts closed */
         }
       },
-      [opts.drawer, Boolean(opts.e2eHooks), STORAGE] as [
+      [opts.drawer, Boolean(opts.e2eHooks), STORAGE, opts.gridMode] as [
         BootOptions['drawer'],
         boolean,
         typeof STORAGE,
+        BootOptions['gridMode'],
       ],
     )
   }

@@ -4021,7 +4021,7 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
   const leadingWs = chain.length - chain.trimStart().length;
   let remaining = chain.trim();
   let remainingOffset = baseOffset + leadingWs;
-  let current4 = ir;
+  let current5 = ir;
   while (true) {
     const consumedSep = skipWhitespaceAndLineComments(remaining, 0);
     if (consumedSep > 0) {
@@ -4037,11 +4037,11 @@ function applyChain(ir, chain, baseOffset = 0, bindings, numbers) {
       remainingOffset + consumed
     ];
     const argsAbsoluteOffset = argsOffset >= 0 ? remainingOffset + argsOffset : remainingOffset;
-    current4 = applyMethod(current4, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
+    current5 = applyMethod(current5, method, args, argsAbsoluteOffset, callSiteRange, bindings, numbers);
     remainingOffset += consumed;
     remaining = rest;
   }
-  return current4;
+  return current5;
 }
 __name(applyChain, "applyChain");
 function applyMethod(ir, method, args, baseOffset = 0, callSiteRange = [0, 0], bindings, numbers) {
@@ -4594,14 +4594,14 @@ __name(splitArgs, "splitArgs");
 function splitArgsWithOffsets(argsStr) {
   const args = [];
   let depth = 0;
-  let current4 = "";
+  let current5 = "";
   let currentStart = 0;
   let inString = false;
   let stringChar = "";
   const pushCurrent = /* @__PURE__ */ __name(() => {
-    if (current4.trim().length === 0) return;
-    const consumed = skipWhitespaceAndLineComments(current4, 0);
-    const value = current4.slice(consumed).trimEnd();
+    if (current5.trim().length === 0) return;
+    const consumed = skipWhitespaceAndLineComments(current5, 0);
+    const value = current5.slice(consumed).trimEnd();
     if (value.length === 0) return;
     args.push({
       value,
@@ -4611,47 +4611,47 @@ function splitArgsWithOffsets(argsStr) {
   for (let i = 0; i < argsStr.length; i++) {
     const ch = argsStr[i];
     if (inString) {
-      current4 += ch;
+      current5 += ch;
       if (ch === stringChar && argsStr[i - 1] !== "\\") inString = false;
       continue;
     }
     if (ch === "/" && argsStr[i + 1] === "/") {
-      if (current4.length === 0) currentStart = i;
+      if (current5.length === 0) currentStart = i;
       while (i < argsStr.length && argsStr[i] !== "\n") {
-        current4 += argsStr[i];
+        current5 += argsStr[i];
         i++;
       }
       if (i < argsStr.length) {
-        current4 += argsStr[i];
+        current5 += argsStr[i];
       }
       continue;
     }
     if (ch === '"' || ch === "'" || ch === "`") {
       inString = true;
       stringChar = ch;
-      if (current4.length === 0) currentStart = i;
-      current4 += ch;
+      if (current5.length === 0) currentStart = i;
+      current5 += ch;
       continue;
     }
     if (ch === "(" || ch === "[" || ch === "{") {
       depth++;
-      if (current4.length === 0) currentStart = i;
-      current4 += ch;
+      if (current5.length === 0) currentStart = i;
+      current5 += ch;
       continue;
     }
     if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
-      if (current4.length === 0) currentStart = i;
-      current4 += ch;
+      if (current5.length === 0) currentStart = i;
+      current5 += ch;
       continue;
     }
     if (ch === "," && depth === 0) {
       pushCurrent();
-      current4 = "";
+      current5 = "";
       currentStart = i + 1;
     } else {
-      if (current4.length === 0) currentStart = i;
-      current4 += ch;
+      if (current5.length === 0) currentStart = i;
+      current5 += ch;
     }
   }
   pushCurrent();
@@ -5981,7 +5981,7 @@ function createTrackEnvelopeScheduler(deps) {
   let cycles = 0;
   const envelopes = /* @__PURE__ */ new Map();
   const refused2 = /* @__PURE__ */ new Map();
-  const current4 = /* @__PURE__ */ new Map();
+  const current5 = /* @__PURE__ */ new Map();
   let overCap = [];
   let rendering = null;
   let cancelTimer = null;
@@ -6010,8 +6010,8 @@ function createTrackEnvelopeScheduler(deps) {
       } catch {
         fp = null;
       }
-      if (wanted.includes(id) && current4.get(id) !== fp) {
-        current4.set(id, fp);
+      if (wanted.includes(id) && current5.get(id) !== fp) {
+        current5.set(id, fp);
         deps.onChange();
       }
       deps.schedule(step, 0);
@@ -6037,7 +6037,7 @@ function createTrackEnvelopeScheduler(deps) {
     const seconds = cps > 0 ? cycles / cps : Infinity;
     let spent = 0;
     for (const id of wanted) {
-      const fp = current4.get(id);
+      const fp = current5.get(id);
       if (fp == null) continue;
       const kept = envelopes.get(id)?.fingerprint === fp;
       const cost = seconds * (deps.weight?.(id) ?? 1);
@@ -6066,7 +6066,7 @@ function createTrackEnvelopeScheduler(deps) {
       for (const id of over) if (envelopes.delete(id)) deps.onChange();
       for (const id of todo) {
         if (controller.signal.aborted) break;
-        const fp = current4.get(id);
+        const fp = current5.get(id);
         if (fp == null) continue;
         rendering = id;
         deps.onChange();
@@ -6111,7 +6111,7 @@ function createTrackEnvelopeScheduler(deps) {
         kick();
         return;
       }
-      for (const id of [...current4.keys()]) if (!wanted.includes(id)) current4.delete(id);
+      for (const id of [...current5.keys()]) if (!wanted.includes(id)) current5.delete(id);
       deps.onChange();
       refingerprint();
     },
@@ -6164,7 +6164,7 @@ function createTrackEnvelopeScheduler(deps) {
         data: env.data,
         columns: env.columns,
         cycles: env.cycles,
-        stale: current4.get(trackId) !== env.fingerprint
+        stale: current5.get(trackId) !== env.fingerprint
       };
     },
     status: /* @__PURE__ */ __name(() => ({
@@ -19209,9 +19209,9 @@ function ensureUndoManager() {
     }
   }, "filesObserver");
   files.observe(filesObserver);
-  const listeners14 = /* @__PURE__ */ new Set();
+  const listeners15 = /* @__PURE__ */ new Set();
   const notify6 = /* @__PURE__ */ __name(() => {
-    for (const l of listeners14) l();
+    for (const l of listeners15) l();
   }, "notify");
   const onStackItemAdded = /* @__PURE__ */ __name(() => notify6(), "onStackItemAdded");
   const onStackItemPopped = /* @__PURE__ */ __name(() => notify6(), "onStackItemPopped");
@@ -19221,7 +19221,7 @@ function ensureUndoManager() {
   um.on("stack-cleared", onStackCleared);
   active = {
     um,
-    listeners: listeners14,
+    listeners: listeners15,
     cleanup: /* @__PURE__ */ __name(() => {
       um.off("stack-item-added", onStackItemAdded);
       um.off("stack-item-popped", onStackItemPopped);
@@ -19264,10 +19264,10 @@ function canRedo() {
 __name(canRedo, "canRedo");
 function subscribeToUndoState(cb) {
   ensureUndoManager();
-  const listeners14 = active.listeners;
-  listeners14.add(cb);
+  const listeners15 = active.listeners;
+  listeners15.add(cb);
   return () => {
-    listeners14.delete(cb);
+    listeners15.delete(cb);
   };
 }
 __name(subscribeToUndoState, "subscribeToUndoState");
@@ -19451,10 +19451,10 @@ function subscribe(id, cb) {
   }
   set2.add(cb);
   return () => {
-    const current4 = subscribersByFile.get(id);
-    if (!current4) return;
-    current4.delete(cb);
-    if (current4.size === 0) {
+    const current5 = subscribersByFile.get(id);
+    if (!current5) return;
+    current5.delete(cb);
+    if (current5.size === 0) {
       subscribersByFile.delete(id);
     }
   };
@@ -19677,12 +19677,12 @@ function pruneZoneOverrides(fileId, currentViz) {
   const stale = [];
   for (const [trackKey, value] of overrides.entries()) {
     const entry = value;
-    const current4 = currentViz.get(trackKey);
-    if (!current4) {
+    const current5 = currentViz.get(trackKey);
+    if (!current5) {
       stale.push(trackKey);
-    } else if (entry.vizId && entry.vizId !== current4.vizId) {
+    } else if (entry.vizId && entry.vizId !== current5.vizId) {
       stale.push(trackKey);
-    } else if (entry.contentHash && current4.contentHash && entry.contentHash !== current4.contentHash) {
+    } else if (entry.contentHash && current5.contentHash && entry.contentHash !== current5.contentHash) {
       stale.push(trackKey);
     }
   }
@@ -19846,12 +19846,12 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe7 = React21.useCallback(
+  const subscribe8 = React21.useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
   const getSnapshot = React21.useCallback(() => getFile(id), [id]);
-  const file = React21.useSyncExternalStore(subscribe7, getSnapshot, getSnapshot);
+  const file = React21.useSyncExternalStore(subscribe8, getSnapshot, getSnapshot);
   const setContent2 = React21.useCallback(
     (content) => setContent(id, content),
     [id]
@@ -23397,7 +23397,7 @@ function ensureStrudelLintCodeActionProvider(monaco, languageId) {
 __name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
 var EMPTY_META_MAP = /* @__PURE__ */ new Map();
 function useTrackMetaMap(fileId) {
-  const subscribe7 = React21.useCallback(
+  const subscribe8 = React21.useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -23409,7 +23409,7 @@ function useTrackMetaMap(fileId) {
     if (!fileId) return EMPTY_META_MAP;
     return getTrackMetaMapSnapshot(fileId);
   }, [fileId]);
-  return React21.useSyncExternalStore(subscribe7, getSnapshot, getSnapshot);
+  return React21.useSyncExternalStore(subscribe8, getSnapshot, getSnapshot);
 }
 __name(useTrackMetaMap, "useTrackMetaMap");
 
@@ -24677,10 +24677,10 @@ function subscribe2(ref, cb) {
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
-    const current4 = pinnedSubscribers.get(fileId);
-    if (!current4) return;
-    current4.delete(cb);
-    if (current4.size === 0) {
+    const current5 = pinnedSubscribers.get(fileId);
+    if (!current5) return;
+    current5.delete(cb);
+    if (current5.size === 0) {
       pinnedSubscribers.delete(fileId);
     }
   };
@@ -27199,10 +27199,10 @@ function readWorkspaceOrder() {
 }
 __name(readWorkspaceOrder, "readWorkspaceOrder");
 function applySnapshot(files, fileMeta, order) {
-  const current4 = listWorkspaceFiles();
-  const currentIds = new Set(current4.map((f) => f.id));
+  const current5 = listWorkspaceFiles();
+  const currentIds = new Set(current5.map((f) => f.id));
   const wantIds = new Set(Object.keys(files));
-  for (const f of current4) {
+  for (const f of current5) {
     if (!wantIds.has(f.id)) deleteWorkspaceFile(f.id);
   }
   const recreatedMissing = [];
@@ -33539,8 +33539,8 @@ function viewPlacesNotes(model) {
   return asked === 0;
 }
 __name(viewPlacesNotes, "viewPlacesNotes");
-var paint = /* @__PURE__ */ __name((value) => value ? cellOn() : false, "paint");
-function toggleCell(model, laneIndex, stepIndex, value) {
+var paint = /* @__PURE__ */ __name((value, length = 1) => value ? cellOn(length) : false, "paint");
+function toggleCell(model, laneIndex, stepIndex, value, length = 1) {
   const painted = model.lanes.map(
     (lane, i) => i === laneIndex ? {
       ...lane,
@@ -33553,7 +33553,7 @@ function toggleCell(model, laneIndex, stepIndex, value) {
       // clamp for exactly this reason; paint is the third op that moves
       // onsets closer together, and it was the one still missing it.
       cells: clampLane(
-        lane.cells.map((c, j) => j === stepIndex ? paint(value) : c),
+        lane.cells.map((c, j) => j === stepIndex ? paint(value, length) : c),
         model.steps
       )
     } : lane
@@ -33624,7 +33624,7 @@ function pasteNote(model, pitch, start, duration, opts = {}) {
   return placed === cleared ? model : placed;
 }
 __name(pasteNote, "pasteNote");
-var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value) => toggleCell(model, laneIndex, stepIndex, value) !== model, "canToggleCell");
+var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value, length = 1) => toggleCell(model, laneIndex, stepIndex, value, length) !== model, "canToggleCell");
 var canPlaceNote = /* @__PURE__ */ __name((model, pitch, start, duration) => placeNote(model, pitch, start, duration) !== model, "canPlaceNote");
 function partRoom(model, laneIndex, stepIndex) {
   const part = model.lanes[laneIndex]?.part ?? 0;
@@ -35631,6 +35631,34 @@ function writtenStepStarts(m) {
   return out;
 }
 __name(writtenStepStarts, "writtenStepStarts");
+function ownStepWidths(m) {
+  const out = /* @__PURE__ */ new Map();
+  if (!m.source || m.barSteps) return out;
+  for (const p of m.source.parts) {
+    const last = p.regions[p.regions.length - 1];
+    const repeats = p.bars === void 0 ? 1 : (m.bars ?? 1) / p.bars;
+    if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== m.steps) continue;
+    if (p.factor > 1 && Number.isInteger(p.factor) && m.steps % p.factor === 0) out.set(p.part, p.factor);
+  }
+  return out;
+}
+__name(ownStepWidths, "ownStepWidths");
+function rowBoxes(cells, steps, width, isOn) {
+  const w = width !== void 0 && width > 1 && steps % width === 0 && cells.every((c, i) => i % width === 0 || !isOn(c)) ? width : 1;
+  return Array.from({ length: steps / w }, (_, k) => ({ start: k * w, width: w }));
+}
+__name(rowBoxes, "rowBoxes");
+function boxesPlaceNotes(lanes, boxes, isOn, placeable) {
+  let asked = 0;
+  for (let li = 0; li < lanes.length; li++)
+    for (const b of boxes[li] ?? []) {
+      if (isOn(lanes[li].cells[b.start])) continue;
+      asked++;
+      if (placeable[li]?.[b.start]) return true;
+    }
+  return asked === 0;
+}
+__name(boxesPlaceNotes, "boxesPlaceNotes");
 function linesModel(shown, read5) {
   if (!read5 || read5.steps !== shown.steps || (read5.bars ?? 1) !== (shown.bars ?? 1)) return shown;
   return (read5.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read5 : shown;
@@ -35727,6 +35755,43 @@ function useLayoutFollow(ref, run) {
   React21__namespace.useEffect(() => () => observed.current?.ro.disconnect(), []);
 }
 __name(useLayoutFollow, "useLayoutFollow");
+var GRID_MODE_KEY = "stave:visualEdit.gridMode";
+var DEFAULT_MODE2 = "exact";
+function readStored2() {
+  if (typeof window === "undefined") return DEFAULT_MODE2;
+  try {
+    const v = window.localStorage.getItem(GRID_MODE_KEY);
+    return v === "exact" || v === "lcm" ? v : DEFAULT_MODE2;
+  } catch {
+    return DEFAULT_MODE2;
+  }
+}
+__name(readStored2, "readStored");
+var current4 = readStored2();
+var listeners11 = /* @__PURE__ */ new Set();
+function subscribe4(listener) {
+  listeners11.add(listener);
+  return () => listeners11.delete(listener);
+}
+__name(subscribe4, "subscribe");
+function useGridMode() {
+  return React21__namespace.useSyncExternalStore(subscribe4, () => current4, () => DEFAULT_MODE2);
+}
+__name(useGridMode, "useGridMode");
+function getGridMode() {
+  return current4;
+}
+__name(getGridMode, "getGridMode");
+function setGridMode(mode) {
+  if (mode === current4) return;
+  current4 = mode;
+  try {
+    window.localStorage.setItem(GRID_MODE_KEY, mode);
+  } catch {
+  }
+  listeners11.forEach((l) => l());
+}
+__name(setGridMode, "setGridMode");
 function unwrapAlternation2(mini) {
   const t = mini.trim();
   if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
@@ -36261,17 +36326,32 @@ function SequencerGrid({ onResolution } = {}) {
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
+  const gridMode = useGridMode();
   const gestureRef = React21__namespace.useRef(null);
   const gainScoped = React21__namespace.useMemo(() => model ? serializeStepGain(model).kind !== "skip" : false, [model]);
-  const placesNotes = React21__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
   const isChordChart = React21__namespace.useMemo(
     () => chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
     [laneKey]
   );
+  const boxes = React21__namespace.useMemo(() => {
+    if (!model) return null;
+    const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read5)) : /* @__PURE__ */ new Map();
+    return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn));
+  }, [model, read5, gridMode]);
+  const boxesRef = React21__namespace.useRef(boxes);
+  boxesRef.current = boxes;
+  const boxWidth = /* @__PURE__ */ __name((laneIndex) => boxesRef.current?.[laneIndex]?.[0]?.width ?? 1, "boxWidth");
   const toggleable = React21__namespace.useMemo(
-    () => model ? model.lanes.map((lane, li) => lane.cells.map((c, si) => canToggleCell(model, li, si, !isCellOn(c)))) : null,
-    [model]
+    () => model ? model.lanes.map((lane, li) => {
+      const w = boxes?.[li]?.[0]?.width ?? 1;
+      return lane.cells.map((c, si) => si % w === 0 && canToggleCell(model, li, si, !isCellOn(c), w));
+    }) : null,
+    [model, boxes]
+  );
+  const placesNotes = React21__namespace.useMemo(
+    () => model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false,
+    [model, boxes, toggleable]
   );
   const coverage = React21__namespace.useMemo(
     () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,
@@ -36298,12 +36378,13 @@ function SequencerGrid({ onResolution } = {}) {
   const paintCell = React21__namespace.useCallback(
     (laneIndex, stepIndex, value) => {
       let refused2 = false;
+      const length2 = boxWidth(laneIndex);
       mutate((prev) => {
         const lane = prev.lanes[laneIndex];
         if (!lane || stepIndex >= lane.cells.length || isCellOn(lane.cells[stepIndex]) === value) {
           return prev;
         }
-        const next = toggleCell(prev, laneIndex, stepIndex, value);
+        const next = toggleCell(prev, laneIndex, stepIndex, value, length2);
         refused2 = next === prev;
         return next;
       });
@@ -36391,9 +36472,9 @@ function SequencerGrid({ onResolution } = {}) {
       window.removeEventListener("pointerup", onUp);
     };
   }, [mutate, paintOne, endGesture, gainScoped]);
-  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current4, e) => {
+  const onCellDown = /* @__PURE__ */ __name((laneIndex, stepIndex, current5, e) => {
     beginGesture();
-    if (current4) {
+    if (current5) {
       gestureRef.current = {
         lane: laneIndex,
         step: stepIndex,
@@ -36428,11 +36509,11 @@ function SequencerGrid({ onResolution } = {}) {
       paintValue: false
     };
   }, "onResizeDown");
-  const onCellEnter = /* @__PURE__ */ __name((laneIndex, stepIndex) => {
+  const onCellEnter = /* @__PURE__ */ __name((laneIndex, stepIndex, width) => {
     const g = gestureRef.current;
     if (!g) return;
     if (g.mode === "resize") {
-      mutate((prev) => resizeCell(prev, g.lane, g.step, stepIndex - g.step + 1));
+      mutate((prev) => resizeCell(prev, g.lane, g.step, stepIndex + width - g.step));
       return;
     }
     if (g.mode !== "paint") return;
@@ -36499,25 +36580,31 @@ function SequencerGrid({ onResolution } = {}) {
     if (isCursorMove(action)) {
       if (dryRun) return true;
       focusCursorRef.current = true;
-      setCursor(moveCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN));
+      const from = at ?? { row: 0, col: 0 };
+      const w = boxWidth(from.row);
+      const start = from.col - from.col % w;
+      const col2 = action === "left" ? start : action === "right" ? start + w - 1 : from.col;
+      setCursor(moveCursor({ row: from.row, col: col2 }, action, rowsN, colsN));
       return true;
     }
     if (!at) return false;
     if (isNoteEdit(action)) return resizeByKey(at, action, dryRun);
-    const cell = model.lanes[at.row]?.cells[at.col];
+    const boxW = boxWidth(at.row);
+    const col = at.col - at.col % boxW;
+    const cell = model.lanes[at.row]?.cells[col];
     const on = cell !== void 0 && isCellOn(cell);
     switch (action) {
       case "toggle":
-        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return refuseKey(on, dryRun);
+        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun);
         if (!dryRun) {
           if (!cursorRef.current) setCursor(at);
-          paintByKey(at.row, at.col, !on);
+          paintByKey(at.row, col, !on);
         }
         return true;
       case "remove":
         if (!on) return false;
-        if (!(toggleable?.[at.row]?.[at.col] ?? false)) return refuseKey(on, dryRun);
-        if (!dryRun) paintByKey(at.row, at.col, false);
+        if (!(toggleable?.[at.row]?.[col] ?? false)) return refuseKey(on, dryRun);
+        if (!dryRun) paintByKey(at.row, col, false);
         return true;
       default:
         return false;
@@ -36601,6 +36688,7 @@ function SequencerGrid({ onResolution } = {}) {
               return /* @__PURE__ */ jsxRuntime.jsx(
                 "div",
                 {
+                  "data-seq-col": `ruler:${c}`,
                   style: {
                     flex: `${layout.weight(c)} ${layout.weight(c)} 0`,
                     minWidth: 16 * layout.weight(c),
@@ -36685,17 +36773,32 @@ function SequencerGrid({ onResolution } = {}) {
                       }
                     )
                   ] }),
-                  /* @__PURE__ */ jsxRuntime.jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: lane.cells.map((cell, stepIndex) => {
+                  /* @__PURE__ */ jsxRuntime.jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: (boxes?.[laneIndex] ?? []).map(({ start: stepIndex, width: w }) => {
+                    const cell = lane.cells[stepIndex];
                     const on = isCellOn(cell);
                     const cov = coverage?.[laneIndex]?.[stepIndex];
                     const held2 = cov !== void 0 && cov.start !== stepIndex;
-                    const isTail = cov !== void 0 && coverage?.[laneIndex]?.[stepIndex + 1]?.start !== cov.start;
+                    const isTail = cov !== void 0 && coverage?.[laneIndex]?.[stepIndex + w]?.start !== cov.start;
+                    let extent = cov?.extent ?? 0;
+                    if (cov && w > 1) {
+                      extent = 0;
+                      for (let c = stepIndex; c < stepIndex + w; c++) {
+                        const k = coverage?.[laneIndex]?.[c];
+                        if (k && k.start === cov.start) extent += k.extent;
+                      }
+                      extent /= w;
+                    }
                     const resizeStart = cov !== void 0 && isTail && resizable?.[laneIndex]?.has(cov.start) ? cov.start : null;
                     const gain = model.gains?.[cov ? cov.start : stepIndex] ?? 1;
-                    const isPlaying = stepIndex === playingStep;
+                    const isPlaying = playingStep !== null && playingStep >= stepIndex && playingStep < stepIndex + w;
                     const canToggle = toggleable?.[laneIndex]?.[stepIndex] ?? true;
-                    const isCursor = liveCursor?.row === laneIndex && liveCursor.col === stepIndex;
-                    const isTab = tabCell.row === laneIndex && tabCell.col === stepIndex;
+                    const inBox = /* @__PURE__ */ __name((c) => c >= stepIndex && c < stepIndex + w, "inBox");
+                    const isCursor = liveCursor?.row === laneIndex && inBox(liveCursor.col);
+                    const isTab = tabCell.row === laneIndex && inBox(tabCell.col);
+                    let weight = 0;
+                    for (let c = stepIndex; c < stepIndex + w; c++) weight += layout.weight(c);
+                    const gaps = 2 * (w - 1);
+                    const stepNo = /* @__PURE__ */ __name((c) => Math.floor(c / w) + 1, "stepNo");
                     const stepStart = stepIndex > 0 && !layout.barStart(stepIndex) && !!stepStarts?.get(lane.part ?? 0)?.has(stepIndex);
                     return (
                       // A gridcell holding one toggle button — `aria-pressed` stays on the
@@ -36708,9 +36811,9 @@ function SequencerGrid({ onResolution } = {}) {
                           "data-seq-step-start": stepStart ? "true" : void 0,
                           style: {
                             display: "flex",
-                            flex: `${layout.weight(stepIndex)} ${layout.weight(stepIndex)} 0`,
-                            minWidth: 16 * layout.weight(stepIndex),
-                            maxWidth: 56 * layout.weight(stepIndex),
+                            flex: `${weight} ${weight} ${gaps}px`,
+                            minWidth: 16 * weight + gaps,
+                            maxWidth: 56 * weight + gaps,
                             // subtle gap at each bar boundary
                             marginLeft: layout.barStart(stepIndex) ? 8 : 0,
                             // THREE LINE WEIGHTS (#1841): a bar is the 8px gap above; a written
@@ -36729,8 +36832,9 @@ function SequencerGrid({ onResolution } = {}) {
                                 if (!isCursor) setCursor({ row: laneIndex, col: stepIndex });
                               },
                               "aria-pressed": on,
-                              "aria-label": held2 ? `${lane.sound} step ${stepIndex + 1}, held from step ${cov.start + 1}` : `${lane.sound} step ${stepIndex + 1}`,
+                              "aria-label": held2 ? `${lane.sound} step ${stepNo(stepIndex)}, held from step ${stepNo(cov.start)}` : `${lane.sound} step ${stepNo(stepIndex)}`,
                               "data-seq-cell": `${laneIndex}:${stepIndex}`,
+                              "data-seq-box-width": w > 1 ? w : void 0,
                               "data-gain": on && gainScoped ? gain : void 0,
                               "data-playing": isPlaying ? "true" : void 0,
                               "data-seq-cell-inert": canToggle ? void 0 : "true",
@@ -36741,7 +36845,7 @@ function SequencerGrid({ onResolution } = {}) {
                                 setCursor({ row: laneIndex, col: stepIndex });
                                 if (resizeStart !== null) {
                                   const rect = e.currentTarget.getBoundingClientRect();
-                                  const barW = clamp012(cov.extent) * rect.width;
+                                  const barW = clamp012(extent) * rect.width;
                                   const zone = Math.min(rect.width * 0.45, Math.max(RESIZE_ZONE_PX, barW * 0.4));
                                   if (e.clientX - rect.left >= barW - zone) {
                                     onResizeDown(laneIndex, resizeStart);
@@ -36751,7 +36855,7 @@ function SequencerGrid({ onResolution } = {}) {
                                 if (!canToggle) return;
                                 onCellDown(laneIndex, stepIndex, on, e);
                               },
-                              onPointerEnter: () => onCellEnter(laneIndex, stepIndex),
+                              onPointerEnter: () => onCellEnter(laneIndex, stepIndex, w),
                               style: {
                                 position: "relative",
                                 width: "100%",
@@ -36781,7 +36885,7 @@ function SequencerGrid({ onResolution } = {}) {
                                   {
                                     "data-seq-fill": true,
                                     "data-seq-sustain": held2 ? "true" : void 0,
-                                    "data-seq-extent": cov.extent !== 1 ? cov.extent.toFixed(4) : void 0,
+                                    "data-seq-extent": extent !== 1 ? extent.toFixed(4) : void 0,
                                     style: {
                                       position: "absolute",
                                       left: 0,
@@ -36790,7 +36894,7 @@ function SequencerGrid({ onResolution } = {}) {
                                       // note whose length rounds to nothing still has to be
                                       // visible, or the grid would silently lose a trigger it
                                       // can spell.
-                                      width: `${clamp012(cov.extent) * 100}%`,
+                                      width: `${clamp012(extent) * 100}%`,
                                       minWidth: held2 ? 0 : 2,
                                       height: `${clamp012(gainScoped ? gain : 1) * 100}%`,
                                       background: colorMode === "velocity" ? velocityColor(gainScoped ? gain : 1) : voice.color,
@@ -36820,7 +36924,7 @@ function SequencerGrid({ onResolution } = {}) {
                                   "span",
                                   {
                                     "data-seq-resize": `${laneIndex}:${resizeStart}`,
-                                    "aria-label": `resize ${lane.sound} step ${resizeStart + 1}`,
+                                    "aria-label": `resize ${lane.sound} step ${stepNo(resizeStart)}`,
                                     onPointerDown: (e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
@@ -36830,8 +36934,8 @@ function SequencerGrid({ onResolution } = {}) {
                                       position: "absolute",
                                       top: 0,
                                       bottom: 0,
-                                      right: `${(1 - clamp012(cov.extent)) * 100}%`,
-                                      width: `min(${RESIZE_ZONE_PX}px, ${clamp012(cov.extent) * 100}%)`,
+                                      right: `${(1 - clamp012(extent)) * 100}%`,
+                                      width: `min(${RESIZE_ZONE_PX}px, ${clamp012(extent) * 100}%)`,
                                       cursor: "ew-resize",
                                       background: "var(--foreground, #e6e6ea)",
                                       opacity: 0.45,
@@ -36853,7 +36957,7 @@ function SequencerGrid({ onResolution } = {}) {
             );
           })
         ] }),
-        /* @__PURE__ */ jsxRuntime.jsx(ExtendHandle, { length, gridRef, cellAttr: "data-seq-cell", cols: model.steps, lastBarCols: layout.lastBarCols }),
+        /* @__PURE__ */ jsxRuntime.jsx(ExtendHandle, { length, gridRef, cellAttr: "data-seq-col", cols: model.steps, lastBarCols: layout.lastBarCols }),
         !isChordChart && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 4 }, children: [
           /* @__PURE__ */ jsxRuntime.jsx("span", { style: { width: 72, flex: "0 0 auto" } }),
           /* @__PURE__ */ jsxRuntime.jsxs(
@@ -39741,7 +39845,7 @@ __name(groupDrumKits, "groupDrumKits");
 function createCatalogStore() {
   let accessor2 = null;
   let cached2 = null;
-  const listeners14 = /* @__PURE__ */ new Set();
+  const listeners15 = /* @__PURE__ */ new Set();
   const recompute = /* @__PURE__ */ __name(() => {
     if (!accessor2) {
       cached2 = null;
@@ -39756,18 +39860,18 @@ function createCatalogStore() {
   const setAccessor = /* @__PURE__ */ __name((fn) => {
     accessor2 = fn;
     recompute();
-    listeners14.forEach((l) => l());
+    listeners15.forEach((l) => l());
   }, "setAccessor");
   const notify6 = /* @__PURE__ */ __name(() => {
     recompute();
-    listeners14.forEach((l) => l());
+    listeners15.forEach((l) => l());
   }, "notify");
   const read5 = /* @__PURE__ */ __name(() => cached2, "read");
-  const subscribe7 = /* @__PURE__ */ __name((listener) => {
-    listeners14.add(listener);
-    return () => listeners14.delete(listener);
+  const subscribe8 = /* @__PURE__ */ __name((listener) => {
+    listeners15.add(listener);
+    return () => listeners15.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React21__namespace.useSyncExternalStore(subscribe7, read5, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React21__namespace.useSyncExternalStore(subscribe8, read5, () => null), "useCatalog");
   return { setAccessor, notify: notify6, read: read5, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -40370,7 +40474,7 @@ __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
 var cache = /* @__PURE__ */ new Map();
 var snapshots = /* @__PURE__ */ new Map();
-var listeners11 = /* @__PURE__ */ new Set();
+var listeners12 = /* @__PURE__ */ new Set();
 function read2(fileId) {
   if (!fileId) return EMPTY;
   return cache.get(fileId) ?? EMPTY;
@@ -40382,7 +40486,7 @@ function toggleSolo(fileId, id) {
   else next.add(id);
   if (next.size === 0) cache.delete(fileId);
   else cache.set(fileId, next);
-  listeners11.forEach((l) => l());
+  listeners12.forEach((l) => l());
 }
 __name(toggleSolo, "toggleSolo");
 function getPreSoloMutes(fileId) {
@@ -40396,13 +40500,13 @@ function setPreSoloMutes(fileId, snapshot) {
   else snapshots.set(fileId, snapshot);
 }
 __name(setPreSoloMutes, "setPreSoloMutes");
-function subscribe4(listener) {
-  listeners11.add(listener);
+function subscribe5(listener) {
+  listeners12.add(listener);
   return () => {
-    listeners11.delete(listener);
+    listeners12.delete(listener);
   };
 }
-__name(subscribe4, "subscribe");
+__name(subscribe5, "subscribe");
 function useActiveFileId() {
   const [id, setId] = React21__namespace.useState(() => getActiveFileId());
   React21__namespace.useEffect(() => {
@@ -40415,7 +40519,7 @@ __name(useActiveFileId, "useActiveFileId");
 function useSoloedIds() {
   const fileId = useActiveFileId();
   return React21__namespace.useSyncExternalStore(
-    subscribe4,
+    subscribe5,
     () => read2(fileId),
     () => EMPTY
   );
@@ -41282,7 +41386,7 @@ function safeLocalStorage5() {
 }
 __name(safeLocalStorage5, "safeLocalStorage");
 var cache2 = /* @__PURE__ */ new Map();
-var listeners12 = /* @__PURE__ */ new Set();
+var listeners13 = /* @__PURE__ */ new Set();
 function parseExpanded(raw) {
   if (!raw) return /* @__PURE__ */ new Set();
   try {
@@ -41328,16 +41432,16 @@ function toggleExpanded(fileId, id) {
   else next.add(id);
   cache2.set(fileId, next);
   persist(fileId, next);
-  listeners12.forEach((l) => l());
+  listeners13.forEach((l) => l());
 }
 __name(toggleExpanded, "toggleExpanded");
-function subscribe5(listener) {
-  listeners12.add(listener);
+function subscribe6(listener) {
+  listeners13.add(listener);
   return () => {
-    listeners12.delete(listener);
+    listeners13.delete(listener);
   };
 }
-__name(subscribe5, "subscribe");
+__name(subscribe6, "subscribe");
 function useActiveFileId2() {
   const [id, setId] = React21__namespace.useState(() => getActiveFileId());
   React21__namespace.useEffect(() => {
@@ -41350,7 +41454,7 @@ __name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId2();
   const expanded = React21__namespace.useSyncExternalStore(
-    subscribe5,
+    subscribe6,
     () => read3(fileId),
     () => EMPTY2
   );
@@ -41395,7 +41499,7 @@ function safeLocalStorage6() {
 }
 __name(safeLocalStorage6, "safeLocalStorage");
 var cached = null;
-var listeners13 = /* @__PURE__ */ new Set();
+var listeners14 = /* @__PURE__ */ new Set();
 function read4() {
   if (cached == null) {
     const ls = safeLocalStorage6();
@@ -41418,22 +41522,22 @@ function setMixerZoom(v) {
   if (next === cached) return;
   cached = next;
   persist2(next);
-  listeners13.forEach((l) => l());
+  listeners14.forEach((l) => l());
 }
 __name(setMixerZoom, "setMixerZoom");
 function nudgeMixerZoom(dir) {
   setMixerZoom(read4() + dir * MIXER_ZOOM_STEP);
 }
 __name(nudgeMixerZoom, "nudgeMixerZoom");
-function subscribe6(listener) {
-  listeners13.add(listener);
+function subscribe7(listener) {
+  listeners14.add(listener);
   return () => {
-    listeners13.delete(listener);
+    listeners14.delete(listener);
   };
 }
-__name(subscribe6, "subscribe");
+__name(subscribe7, "subscribe");
 function useMixerZoom() {
-  const zoom = React21__namespace.useSyncExternalStore(subscribe6, read4, () => MIXER_ZOOM_DEFAULT);
+  const zoom = React21__namespace.useSyncExternalStore(subscribe7, read4, () => MIXER_ZOOM_DEFAULT);
   return {
     zoom,
     percent: Math.round(zoom * 100),
@@ -43565,12 +43669,12 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
-      const current4 = onSaveFileRef.current;
-      if (!current4) return;
+      const current5 = onSaveFileRef.current;
+      if (!current5) return;
       const tab = activeTab;
       if (!tab || tab.kind !== "editor") return;
       e.preventDefault();
-      current4(tab);
+      current5(tab);
     }, "handler");
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -43812,24 +43916,24 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
                     }
                   }, "onTogglePausePreview"),
                   onChangePreviewSource: /* @__PURE__ */ __name((nextRef) => {
-                    const current4 = shellActionsRef.current.findTabByFileId(
+                    const current5 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (!current4) return;
-                    updateGroup(current4.groupId, (g) => ({
+                    if (!current5) return;
+                    updateGroup(current5.groupId, (g) => ({
                       ...g,
                       tabs: g.tabs.map(
-                        (t) => t.id === current4.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
+                        (t) => t.id === current5.tabId && t.kind === "preview" ? { ...t, sourceRef: nextRef } : t
                       )
                     }));
                   }, "onChangePreviewSource"),
                   onOpenPreview: /* @__PURE__ */ __name((selectedSourceRef) => {
-                    const current4 = shellActionsRef.current.findTabByFileId(
+                    const current5 = shellActionsRef.current.findTabByFileId(
                       tab.fileId,
                       "preview"
                     );
-                    if (current4) {
+                    if (current5) {
                       return;
                     }
                     const sourceRef = selectedSourceRef ?? { kind: "default" };
@@ -47910,10 +48014,10 @@ function getAssetsMap() {
 __name(getAssetsMap, "getAssetsMap");
 var wiredAssetsMap = null;
 function ensureAssetsObserver() {
-  const current4 = getAssetsMap();
-  if (wiredAssetsMap === current4) return;
-  current4.observe(() => notify5());
-  wiredAssetsMap = current4;
+  const current5 = getAssetsMap();
+  if (wiredAssetsMap === current5) return;
+  current5.observe(() => notify5());
+  wiredAssetsMap = current5;
 }
 __name(ensureAssetsObserver, "ensureAssetsObserver");
 function subscribeToAssets(cb) {
@@ -51082,13 +51186,13 @@ function regionTrimEdit(chunk, control, value) {
   if (chunk.headFn !== null && MULTI_VOICE_HEADS.has(chunk.headFn)) {
     return { edit: null, refusal: "not-one-voice", value };
   }
-  const current4 = readRegion(chunk);
-  if (!current4 || !Number.isFinite(value)) {
+  const current5 = readRegion(chunk);
+  if (!current5 || !Number.isFinite(value)) {
     return { edit: null, refusal: "not-a-number", value };
   }
-  const clamped = control === "begin" ? Math.min(Math.max(0, value), current4.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current4.begin + MIN_REGION_SPAN);
+  const clamped = control === "begin" ? Math.min(Math.max(0, value), current5.end - MIN_REGION_SPAN) : Math.max(Math.min(1, value), current5.begin + MIN_REGION_SPAN);
   if (!Number.isFinite(clamped)) return { edit: null, refusal: "not-a-number", value };
-  const before = current4[control];
+  const before = current5[control];
   if (formatNumber(clamped) === formatNumber(before)) {
     return { edit: null, refusal: "no-change", value: clamped };
   }
@@ -51581,6 +51685,7 @@ exports.getFileContentAt = getFileContentAt;
 exports.getFileHistoryTarget = getFileHistoryTarget;
 exports.getFixedMarkers = getFixedMarkers;
 exports.getFolderOrder = getFolderOrder;
+exports.getGridMode = getGridMode;
 exports.getIRSnapshot = getIRSnapshot;
 exports.getInlineVizActionSize = getInlineVizActionSize;
 exports.getInlineVizResolution = getInlineVizResolution;
@@ -51834,6 +51939,7 @@ exports.setEditorUiIconSize = setEditorUiIconSize;
 exports.setFileHistoryTarget = setFileHistoryTarget;
 exports.setFolderOrder = setFolderOrder;
 exports.setGridKeyMatcher = setGridKeyMatcher;
+exports.setGridMode = setGridMode;
 exports.setInlineVizActionSize = setInlineVizActionSize;
 exports.setInlineVizResolution = setInlineVizResolution;
 exports.setInlineVizTeardownEnabled = setInlineVizTeardownEnabled;
@@ -51909,6 +52015,7 @@ exports.unregisterAsset = unregisterAsset;
 exports.unregisterBottomPanelTab = unregisterBottomPanelTab;
 exports.unregisterNamedViz = unregisterNamedViz;
 exports.updateVizConfig = updateVizConfig;
+exports.useGridMode = useGridMode;
 exports.useNoteColorMode = useNoteColorMode;
 exports.usePopoutPreview = usePopoutPreview;
 exports.useSilencedTrackNames = useSilencedTrackNames;

@@ -135,6 +135,69 @@ export function writtenStepStarts(m: WrittenStepsModel): Map<number, number[]> {
 }
 
 /**
+ * Exact mode (#1855): how many drawn columns ONE OF A PART'S OWN STEPS spans, per `,`-part.
+ *
+ * `~ sd ~ sd, hh*8` shares 8 columns, and the snare's own step is 2 of them — its
+ * `SourcePart.factor`, the stretch the writers already use. Exact draws that part as 4 boxes,
+ * each 2 columns wide; a click fills one whole box. Only parts stretched by more than 1 are
+ * listed, and only when their regions still tile the model (the same stale check as
+ * `writtenStepStarts`) — anything else is drawn one box per column, as LCM draws it.
+ *
+ * A model drawn per bar (`barSteps`, #1827) lists nothing: its drawn columns are already
+ * each bar's own, and its one part has factor 1 (measured: `<[a b c] [a b c d]>`); a stack
+ * with differing bar counts is read leaf by leaf and carries no parts at all.
+ */
+export function ownStepWidths(m: WrittenStepsModel): Map<number, number> {
+  const out = new Map<number, number>()
+  if (!m.source || m.barSteps) return out
+  for (const p of m.source.parts) {
+    const last = p.regions[p.regions.length - 1]
+    const repeats = p.bars === undefined ? 1 : (m.bars ?? 1) / p.bars
+    if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== m.steps) continue // stale
+    if (p.factor > 1 && Number.isInteger(p.factor) && m.steps % p.factor === 0) out.set(p.part, p.factor)
+  }
+  return out
+}
+
+/**
+ * The boxes one row is drawn as: `[start, start + width)` in drawn columns. A row whose part
+ * has an own step of `width` columns is cut into boxes of that width — unless one of its hits
+ * starts inside a box, which that picture cannot show, and then it keeps a box per column.
+ */
+export function rowBoxes<C>(
+  cells: readonly C[],
+  steps: number,
+  width: number | undefined,
+  isOn: (cell: C) => boolean,
+): { start: number; width: number }[] {
+  const w = width !== undefined && width > 1 && steps % width === 0 && cells.every((c, i) => i % width === 0 || !isOn(c)) ? width : 1
+  return Array.from({ length: steps / w }, (_, k) => ({ start: k * w, width: w }))
+}
+
+/**
+ * Does the grid ON SCREEN take a new hit anywhere (#1070, #1858)? Asked of the boxes it
+ * draws, through the same per-box answers its cells use (`placeable[lane][box start]`), so
+ * the "add it in the code view" line can never speak about cells Exact does not draw. With a
+ * box per column this asks exactly what `viewPlacesNotes` asks. No empty box → `true`: a full
+ * grid has nothing to refuse.
+ */
+export function boxesPlaceNotes<C>(
+  lanes: readonly { cells: readonly C[] }[],
+  boxes: readonly (readonly { start: number }[])[],
+  isOn: (cell: C) => boolean,
+  placeable: readonly (readonly boolean[])[],
+): boolean {
+  let asked = 0
+  for (let li = 0; li < lanes.length; li++)
+    for (const b of boxes[li] ?? []) {
+      if (isOn(lanes[li].cells[b.start])) continue
+      asked++
+      if (placeable[li]?.[b.start]) return true
+    }
+  return asked === 0
+}
+
+/**
  * The model whose `source` the step lines are drawn from: the text's own reading when it
  * lays out the same columns as the model on screen, else the model on screen (#1849).
  * After a write the kept model's source still describes the text it was parsed from.

@@ -398,6 +398,7 @@ export {
   useNoteColorMode,
   type NoteColorMode,
 } from './visualEdit/panels/noteColor'
+export { getGridMode, setGridMode, useGridMode, type GridMode } from './visualEdit/panels/gridMode'
 export type { EditorTheme, ResolvedTheme, SignalAliasMap } from './workspace/editorRegistry'
 export {
   saveSnapshot,

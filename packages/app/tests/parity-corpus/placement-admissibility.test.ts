@@ -49,6 +49,7 @@ import {
   serializePianoRoll,
   serializeStepGrid,
 } from '../../../editor/src/visualEdit/notation/serialize'
+import { boxesPlaceNotes, ownStepWidths, rowBoxes } from '../../../editor/src/visualEdit/panels/writtenSteps'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus = JSON.parse(fs.readFileSync(path.join(here, 'mini-corpus.json'), 'utf8'))
@@ -751,5 +752,50 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       probeAsks: 46481,
       fullSurfaceAsks: 135089,
     })
+  })
+
+  /**
+   * THE PANEL'S LINE IS READ OFF THE BOXES IT DRAWS (#1858). "Add it in the code view"
+   * comes from `boxesPlaceNotes` over the same per-box answers the cells use, so in Exact
+   * (#1855) it speaks about the boxes on screen rather than columns Exact does not draw.
+   *
+   * LCM draws a box per column, and there the answer must be `viewPlacesNotes`'s on every
+   * grid — the equivalence the panel change rests on. Exact's answer is then MEASURED
+   * against it, so a view where the two modes would disagree is counted, not argued about.
+   */
+  it('the line the panel shows is read off its boxes: LCM equals viewPlacesNotes, Exact measured', () => {
+    let views = 0
+    let exactViews = 0
+    const lcmDisagree: string[] = []
+    const exactDiffers: string[] = []
+    for (const mini of minis) {
+      const r = parseStepGrid(mini)
+      if (!r.ok) continue
+      const m = r.model
+      views++
+      const answer = (widths: Map<number, number>): boolean => {
+        const boxes = m.lanes.map((l) => rowBoxes(l.cells, m.steps, widths.get(l.part ?? 0), isCellOn))
+        const placeable = m.lanes.map((l, li) => {
+          const out: boolean[] = []
+          for (const b of boxes[li]) out[b.start] = !isCellOn(l.cells[b.start]) && canToggleCell(m, li, b.start, true, b.width)
+          return out
+        })
+        return boxesPlaceNotes(m.lanes, boxes, isCellOn, placeable)
+      }
+      const lcm = answer(new Map())
+      if (lcm !== viewPlacesNotes(m)) lcmDisagree.push(JSON.stringify(mini))
+      const widths = ownStepWidths(m)
+      if (widths.size === 0) continue
+      exactViews++
+      if (answer(widths) !== lcm) exactDiffers.push(`${JSON.stringify(mini)} lcm=${lcm}`)
+    }
+    console.log(`#1858: ${views} grids, ${exactViews} drawn differently in Exact; answers differ on ${exactDiffers.length}\n${exactDiffers.join('\n')}`)
+    expect(lcmDisagree.join('\n')).toBe('')
+    expect(views).toBeGreaterThan(900)
+    // MEASURED 2026-09-30 over 1026 corpus grids: 29 draw differently in Exact, and on none
+    // of them does the line's answer change — the mismatch #1858 names is closed by
+    // construction, not because it was firing.
+    expect(exactViews).toBe(29)
+    expect(exactDiffers.join('\n')).toBe('')
   })
 })

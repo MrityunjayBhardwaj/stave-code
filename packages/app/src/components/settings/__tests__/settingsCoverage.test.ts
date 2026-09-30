@@ -15,7 +15,7 @@ vi.mock("@stave/editor", () => {
     "getInlineVizResolution", "setInlineVizResolution", "getVizQuality", "setVizQuality",
     "getInlineVizTeardownEnabled", "setInlineVizTeardownEnabled", "getVizInputsLiveValuesEnabled",
     "setVizInputsLiveValuesEnabled", "getMusicalTimelineSubRowHeight", "setMusicalTimelineSubRowHeight",
-    "getEditorTheme", "setEditorTheme", "getNoteColorMode", "setNoteColorMode", "getTierFlags",
+    "getEditorTheme", "setEditorTheme", "getNoteColorMode", "setNoteColorMode", "getGridMode", "setGridMode", "getTierFlags",
     "setTierFlag", "listTiers", "getSignalAliases", "setSignalAliases", "getPerfEnabled",
     "setPerfEnabled", "getAdaptivePerfEnabled", "setAdaptivePerfEnabled", "getTrackColourBarsEnabled",
     "setTrackColourBarsEnabled", "getPlayVizOnHoverEnabled", "setPlayVizOnHoverEnabled",
