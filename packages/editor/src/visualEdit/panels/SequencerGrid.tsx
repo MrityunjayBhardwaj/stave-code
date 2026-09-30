@@ -1120,6 +1120,20 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                         }}
                       />
                     )}
+                    {variant === 'plain' && isPlaying && (
+                      // A plain step's columns draw no border, so the playing column is marked by
+                      // a frame drawn over its fill — the note is an absolutely placed child and
+                      // would paint over the button's own outline.
+                      <span
+                        data-seq-playing-frame
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          border: '1px solid var(--foreground, #e6e6ea)',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    )}
                     {resizeStart !== null && (
                       // THE LENGTH HANDLE (#1053) — the axis #1056 made visible, made
                       // settable. Same shape as the roll's, because this is the same

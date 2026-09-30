@@ -83,6 +83,19 @@ test.describe('nested steps in Exact (#1861)', () => {
     await expect.poll(() => editorValue(page)).toBe('$: s("[bd bd] [~ bd] sd ~, hh*8")')
   })
 
+  test('the playing column of a plain step is still marked', async ({ page }) => {
+    // a plain step's columns draw no border, which is how every other cell shows it is playing
+    const seq = await open(page, '$: s("bd hh*2 sd cp")')
+    await page.evaluate(() => {
+      const eds = (window as unknown as { monaco: { editor: { getEditors: () => { getModel: () => { getValue: () => string } | null; focus: () => void }[] } } }).monaco.editor.getEditors()
+      ;(eds.find((e) => e.getModel()?.getValue().includes('hh*2')) ?? eds[0]).focus()
+    })
+    await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+Enter`)
+    await expect(
+      seq.locator('[data-seq-step="plain"] [data-seq-cell][data-playing="true"] [data-seq-playing-frame]').first(),
+    ).toBeVisible({ timeout: 8000 })
+  })
+
   test('CONTROL: LCM draws every column on its own, as before', async ({ page }) => {
     const seq = await open(page, BEAT, 'lcm')
     await expect(seq.locator('[data-seq-step="holds"], [data-seq-step="plain"]')).toHaveCount(0)
