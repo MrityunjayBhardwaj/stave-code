@@ -35648,6 +35648,17 @@ function rowBoxes(cells, steps, width, isOn) {
   return Array.from({ length: steps / w }, (_, k) => ({ start: k * w, width: w }));
 }
 __name(rowBoxes, "rowBoxes");
+function boxesPlaceNotes(lanes, boxes, isOn, placeable) {
+  let asked = 0;
+  for (let li = 0; li < lanes.length; li++)
+    for (const b of boxes[li] ?? []) {
+      if (isOn(lanes[li].cells[b.start])) continue;
+      asked++;
+      if (placeable[li]?.[b.start]) return true;
+    }
+  return asked === 0;
+}
+__name(boxesPlaceNotes, "boxesPlaceNotes");
 function linesModel(shown, read5) {
   if (!read5 || read5.steps !== shown.steps || (read5.bars ?? 1) !== (shown.bars ?? 1)) return shown;
   return (read5.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read5 : shown;
@@ -36318,7 +36329,6 @@ function SequencerGrid({ onResolution } = {}) {
   const gridMode = useGridMode();
   const gestureRef = React21__namespace.useRef(null);
   const gainScoped = React21__namespace.useMemo(() => model ? serializeStepGain(model).kind !== "skip" : false, [model]);
-  const placesNotes = React21__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
   const isChordChart = React21__namespace.useMemo(
     () => chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
@@ -36338,6 +36348,10 @@ function SequencerGrid({ onResolution } = {}) {
       return lane.cells.map((c, si) => si % w === 0 && canToggleCell(model, li, si, !isCellOn(c), w));
     }) : null,
     [model, boxes]
+  );
+  const placesNotes = React21__namespace.useMemo(
+    () => model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false,
+    [model, boxes, toggleable]
   );
   const coverage = React21__namespace.useMemo(
     () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,

@@ -175,6 +175,29 @@ export function rowBoxes<C>(
 }
 
 /**
+ * Does the grid ON SCREEN take a new hit anywhere (#1070, #1858)? Asked of the boxes it
+ * draws, through the same per-box answers its cells use (`placeable[lane][box start]`), so
+ * the "add it in the code view" line can never speak about cells Exact does not draw. With a
+ * box per column this asks exactly what `viewPlacesNotes` asks. No empty box → `true`: a full
+ * grid has nothing to refuse.
+ */
+export function boxesPlaceNotes<C>(
+  lanes: readonly { cells: readonly C[] }[],
+  boxes: readonly (readonly { start: number }[])[],
+  isOn: (cell: C) => boolean,
+  placeable: readonly (readonly boolean[])[],
+): boolean {
+  let asked = 0
+  for (let li = 0; li < lanes.length; li++)
+    for (const b of boxes[li] ?? []) {
+      if (isOn(lanes[li].cells[b.start])) continue
+      asked++
+      if (placeable[li]?.[b.start]) return true
+    }
+  return asked === 0
+}
+
+/**
  * The model whose `source` the step lines are drawn from: the text's own reading when it
  * lays out the same columns as the model on screen, else the model on screen (#1849).
  * After a write the kept model's source still describes the text it was parsed from.

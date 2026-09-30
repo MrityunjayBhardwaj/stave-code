@@ -37,7 +37,7 @@ import { opensStepGrid } from './surfaceRoute'
 import { useGridModel } from './useGridModel'
 import { usePlayingStep } from './usePlayingStep'
 import { addLane, removeLane } from '../notation/lane'
-import { canResizeCell, canToggleCell, resizeCell, toggleCell, viewPlacesNotes } from '../notation/place'
+import { canResizeCell, canToggleCell, resizeCell, toggleCell } from '../notation/place'
 import { DRUM_SOUNDS } from './soundCatalog'
 import { sampleVoice } from './drumVoices'
 import { chordLanes } from './chordLanes'
@@ -54,7 +54,15 @@ import {
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
-import { linesModel, ownStepWidths, rowBoxes, rulerLabels, useRulerFit, writtenStepStarts } from './writtenSteps'
+import {
+  boxesPlaceNotes,
+  linesModel,
+  ownStepWidths,
+  rowBoxes,
+  rulerLabels,
+  useRulerFit,
+  writtenStepStarts,
+} from './writtenSteps'
 import { useGridMode } from './gridMode'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
@@ -178,17 +186,6 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // the model, as `mutate` fires every pointermove of the drag it gates.
   const gainScoped = React.useMemo(() => (model ? serializeStepGain(model).kind !== 'skip' : false), [model])
 
-  // Does this view place notes ANYWHERE? Said ONCE here rather than as a grid
-  // full of individually dead cells with no reason on them (#1070) — the per-cell
-  // map below refuses each of them anyway; this is what lets the panel give a
-  // reason for the surface.
-  //
-  // ⚠ It ASKS, and no longer reads the write path. A leaf-anchored projection
-  // used to be creation-incapable by construction; since rests carry a span
-  // (#1154) some leaf grids take a note and most still do not, so the honest
-  // answer is per view and only the view can give it. Memoized for the same
-  // reason `toggleable` is: `mutate` fires every pointermove of a drag.
-  const placesNotes = React.useMemo(() => (model ? viewPlacesNotes(model) : false), [model])
 
   // Is this a CHORD CHART rather than a drum kit (#1241)? Asked of the lane
   // tokens, because the route cannot answer it: seven of the thirteen units
@@ -247,6 +244,25 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
           })
         : null,
     [model, boxes],
+  )
+
+  // Does this view place notes ANYWHERE? Said ONCE here rather than as a grid
+  // full of individually dead cells with no reason on them (#1070) — the per-cell
+  // map above refuses each of them anyway; this is what lets the panel give a
+  // reason for the surface.
+  //
+  // ⚠ It ASKS, and no longer reads the write path. A leaf-anchored projection
+  // used to be creation-incapable by construction; since rests carry a span
+  // (#1154) some leaf grids take a note and most still do not, so the honest
+  // answer is per view and only the view can give it.
+  //
+  // Read off the SAME per-box answers the cells use (#1858), so in Exact it speaks
+  // about the boxes on screen, not columns it does not draw. With a box per column
+  // (LCM) those are exactly the asks `viewPlacesNotes` makes; the map is already
+  // paid for, so this costs one pass over it.
+  const placesNotes = React.useMemo(
+    () => (model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false),
+    [model, boxes, toggleable],
   )
 
   // How long each note SOUNDS, per column (#1056). The grid drew one full box per
