@@ -301,6 +301,26 @@ export function barRuler(model: { steps: number; bars?: number; barSteps?: reado
   return { widths, starts }
 }
 
+/**
+ * Every how many bars the note at `col` is written again, when it belongs to a `,`-part
+ * written over fewer bars than its stack (`SourcePart.bars`, #1849) — or null when the
+ * column's note is written once. Read off the model's own source, never inferred from
+ * what plays: the parts that STRIKE at `col` must agree on one written length.
+ */
+export function repeatEvery(
+  model: StepGridModel & PianoRollModel,
+  col: number,
+  bars: number,
+): number | null {
+  const parts = model.source?.parts
+  if (!parts || bars < 2 || !model.lanes) return null
+  const struck = new Set(model.lanes.filter((l) => isCellOn(l.cells[col])).map((l) => l.part ?? 0))
+  const lengths = new Set(
+    [...struck].map((p) => parts.find((x) => x.part === p)?.bars).filter((b) => b !== undefined && b < bars),
+  )
+  return lengths.size === 1 ? [...lengths][0]! : null
+}
+
 /** the column a time `t` (absolute cycles) lands on, in bar `bar` of `ruler` */
 export function columnAt(ruler: { widths: number[]; starts: number[] }, bar: number, t: number): number {
   return ruler.starts[bar] + (t - bar) * ruler.widths[bar]
@@ -379,19 +399,24 @@ export function probeDeleteAt(
   const bars = model.bars ?? 1
   const ruler = barRuler(model)
   if (ruler === null) return { verdict: 'no-probe', why: 'non-integer-per-bar' }
-  const out = s.del(model, ruler.starts[bar] + Math.round((pos - bar) * ruler.widths[bar]))
+  const col = ruler.starts[bar] + Math.round((pos - bar) * ruler.widths[bar])
+  const out = s.del(model, col)
   if (out === null) return { verdict: 'no-probe', why: 'writer-declined' }
+  const every = repeatEvery(model, col, bars)
 
   for (let b = 0; b < bars; b++) {
     const want = enginePlayedCycle(mini, b)
     const got = enginePlayedCycle(out, b)
     if (want === null || got === null) return { verdict: 'corrupt', out }
-    // the deleted note is gone from the bar it was deleted in; every other bar is
-    // untouched. `pos` and `n.pos` are both absolute, so they compare directly.
-    const expected =
-      b === bar
-        ? want.filter((n) => Math.round(n.pos * HRES) !== Math.round(pos * HRES))
-        : want
+    // the deleted note is gone from the bar it was deleted in — and from every bar that
+    // plays the same WRITTEN bar (#1849): a `,`-part written over fewer bars than its
+    // stack repeats them, so its note is heard, and deleted, in each repeat. Every other
+    // bar is untouched. `pos` and `n.pos` are absolute, so they compare directly.
+    const hit = b === bar || (every !== null && (b - bar) % every === 0)
+    const at = pos + (b - bar)
+    const expected = hit
+      ? want.filter((n) => Math.round(n.pos * HRES) !== Math.round(at * HRES))
+      : want
     if (sig(got, s.collapses) !== sig(expected, s.collapses)) return { verdict: 'corrupt', out }
   }
   return { verdict: 'ok', out }
