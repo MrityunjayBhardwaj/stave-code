@@ -214,7 +214,8 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
       expect([...s.refusesFinerView.entries()], `k=${k} gates`).toEqual([
         // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-        ['no-finer-view', 82],
+        // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+        ['no-finer-view', 80],
         ['view-resolution', 1],
       ])
       // IDENTICAL AT EVERY SCALE, and that is the point rather than a coincidence:
@@ -226,8 +227,10 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // means a population change reports the total and hides which path took it.
       expect({ asks: s.asks.length, ...pathCounts(s) }, `k=${k} asks by path`).toEqual({
         // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-        asks: 26666,
-        splice: 22076,
+        // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+        asks: 26862,
+        // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+        splice: 22272,
         alt: 4553,
         declined: 37,
       })

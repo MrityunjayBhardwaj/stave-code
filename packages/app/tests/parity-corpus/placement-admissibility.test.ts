@@ -257,7 +257,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
       // ⚠ element 874 -> 875 at #1827 (each bar drawn at its own step count): the newly opened drum grid.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-    ).toEqual({ leaf: 82, alt: 61, element: 882 })
+    // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+    ).toEqual({ leaf: 80, alt: 61, element: 885 })
 
     // The residual's SHAPE is asserted in its own test below, not here — an assertion
     // that sits after a failing one never runs, so bundling it into this body would

@@ -539,7 +539,11 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // per bar (`<~ ~ bd*3 bd*4 …>`, `<[36 48]*2 [34 46]*3 …>`) need 96 shared columns, and
       // the derived projections still cap at 64, so neither has a derived view to transfer to.
     // ⚠ 1096/70/109 -> 1106/76/121 at #1849: 28 asks the core newly serves — 10 transfer, 6 are untransferable (`no-leaf-anchor`: a `,`-stack the leaf writer cannot anchor), 12 have no probe to verify them.
-    ).toEqual({ transfers: 1106, untransferable: 76, unverified: 121 })
+    // ⚠ 1106/76/121 -> 1107/77/122 at #1849's `<…>` half: the 3 asks the core newly serves, one per bucket —
+    // `bd bd bd bd, - sd - sd, <[cr oh …] [hh oh]*4!3>` transfers; `c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >` is
+    // untransferable (`view-unusable`: no derived projection opens it, the core edits it ok); `<G4 A4 Bb4 A4>,Bb3,D3`
+    // is unverified (`fully-chorded`: no singleton onset to probe).
+    ).toEqual({ transfers: 1107, untransferable: 77, unverified: 122 })
     // The reclassification is asserted by MECHANISM as well as by total, so that a
     // future change cannot hold the totals steady while moving asks between buckets.
     // ⚠ 11 → 0 at #1010 P4c. The printer preserves lengths, so nothing in the census
@@ -577,7 +581,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // breaking the oracle had removed exactly those. The half of the number this line
     // exists to keep honest is the half that moved, in the good direction this time.
     // ⚠ 684 → 694 at #1849: the ten asks the core newly serves that transfer are all STRUCTURED (`,`-stacks with written steps). WRITER-CENSUS.md's #1849 note says so.
-    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(694)
+    // ⚠ 694 → 695 at #1849's `<…>` half: the one new transfer (`bd bd bd bd, - sd - sd, <[cr oh …] [hh oh]*4!3>`) is structured.
+    expect(all.filter((r) => r.outcome === 'transfers' && r.structured).length, 'structured transfers' + why).toBe(695)
 
     // THIS USED TO SAY "NOTHING CORRUPTS", and it said why that mattered: both derived
     // writers refuse rather than mis-write, which is what made the untransferable set
@@ -652,7 +657,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // pair is the split between the columns, which one value cannot show.
     // ⚠ structural 59 -> 61 at #1827 (each bar drawn at its own step count): the two core-served units that need 96 shared columns.
     // ⚠ [9, 61] -> [12, 64] at #1849: the three grids it newly opens, each an array-value `no-leaf-anchor` structural ask (WRITER-CENSUS.md).
-    expect([p6.both.arrayValue, p6.both.structural]).toEqual([12, 64])
+    // ⚠ [12, 64] -> [12, 65] at #1849's `<…>` half: `c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >`, untransferable (`view-unusable`), is structural and not an array value.
+    expect([p6.both.arrayValue, p6.both.structural]).toEqual([12, 65])
 
     // THE NUMBER P6 IS SCOPED AGAINST, and it is a CONJUNCTION. "46 have a
     // structured core view" and "45 have a verified core edit" are different
@@ -746,14 +752,16 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // once the oracle measures a per-bar model with its own ruler (`barRuler`). Before
       // that fix the drum grid's edit was filed `corrupt`: the probe deleted the wrong cell.
     // ⚠ 55/55/53 -> 58/56/54 at #1849, from the stacks it opens. Of the new structural rows, the two without a verified core edit are the rolls `0,.1` and `0,.1,7, 6.9` — `no-probe`, decimal `n` values; the blocker set moves by one, on the roll.
-    }).toEqual({ coreStructured: 58, coreEdits: 56, both: 54 })
+    // ⚠ 58/56/54 -> 59/57/55 at #1849's `<…>` half: `c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >` has structure and a core edit the engine oracle verifies, once the oracle expects a delete in a repeated part to leave every repeat (`repeatEvery`) — the #1827 story again: before that fix it was filed `corrupt`.
+    }).toEqual({ coreStructured: 59, coreEdits: 57, both: 55 })
 
     // …and the split the whole conjunction exists to keep visible. Asserted here rather
     // than left to the generated document, because the document is an OUTPUT of this run
     // and cannot testify about it.
     // ⚠ [18, 33] -> [19, 34] at #1827 — one per surface, the two units the core newly serves per bar.
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-    expect([p6.grid.blocker, p6.roll.blocker]).toEqual([19, 35])
+    // ⚠ [19, 35] -> [20, 35] at #1849's `<…>` half — grid only: the `c2 … < … >` unit above.
+    expect([p6.grid.blocker, p6.roll.blocker]).toEqual([20, 35])
   }, 900_000)
 
   /**
