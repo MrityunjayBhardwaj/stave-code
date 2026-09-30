@@ -55,6 +55,7 @@ import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolu
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
 import {
+  boxLengths,
   boxesPlaceNotes,
   linesModel,
   ownStepWidths,
@@ -72,7 +73,7 @@ import {
   isNoteEdit,
   matchGridKey,
   mountGridGestures,
-  moveCursor,
+  moveBoxCursor,
   type GridAction,
   type GridCell,
 } from './gridGestures'
@@ -319,18 +320,23 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // on the same run, i.e. **16.1% of its total**. It costs less than the map beside it
   // despite serializing, because it asks once per NOTE while that map then asked once per
   // EMPTY cell, and grids have far more of those.
+  //
+  // In Exact the neighbours are one BOX away (#1855): on a factor-2 row ±1 column is half a
+  // step, which the writer declines both ways, so `~ sd ~ sd, hh*8` offered no handle at all
+  // while a snare two steps long was writable.
   const resizable = React.useMemo(() => {
     if (!model) return null
     return model.lanes.map((lane, li) => {
       const out = new Set<number>()
+      const w = boxes?.[li]?.[0]?.width ?? 1
       lane.cells.forEach((c, si) => {
         if (!isCellOn(c)) return
-        const d = Math.round(c.duration)
-        if (canResizeCell(model, li, si, d + 1) || canResizeCell(model, li, si, d - 1)) out.add(si)
+        const { longer, shorter } = boxLengths(c.duration, w)
+        if (canResizeCell(model, li, si, longer) || (shorter !== null && canResizeCell(model, li, si, shorter))) out.add(si)
       })
       return out
     })
-  }, [model])
+  }, [model, boxes])
 
   // Returns whether the writer REFUSED the toggle — `toggleCell` handing back the
   // model it was given — as distinct from a cell already in the asked state, which
@@ -573,7 +579,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     endGesture()
   }
 
-  // ⌥⇧← / ⌥⇧→ set the length of the hit under the cursor, a column at a time (#1803)
+  // ⌥⇧← / ⌥⇧→ set the length of the hit under the cursor, a box at a time (#1803, #1855)
   // — what the handle does, through the same `resizeCell`, on the note sounding
   // through the cursor's column (its head, when the cursor sits on a held column).
   // The sequencer has no move: every other note edit is declined here.
@@ -591,8 +597,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     if (head < 0) return false
     const c = cells[head]
     if (!isCellOn(c)) return false
-    const dur = Math.round(c.duration) + (action === 'longer' ? 1 : -1)
-    if (!canResizeCell(model, at.row, head, dur)) return false
+    const { longer, shorter } = boxLengths(c.duration, boxWidth(at.row))
+    const dur = action === 'longer' ? longer : shorter
+    if (dur === null || !canResizeCell(model, at.row, head, dur)) return false
     if (!dryRun) {
       beginGesture()
       mutate((prev) => resizeCell(prev, at.row, head, dur))
@@ -622,13 +629,8 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     if (isCursorMove(action)) {
       if (dryRun) return true
       focusCursorRef.current = true
-      // ←/→ step over a whole box: from its first column left, from its last column right.
-      // The cursor keeps a column; the box holding it is the one selected (#1855).
-      const from = at ?? { row: 0, col: 0 }
-      const w = boxWidth(from.row)
-      const start = from.col - (from.col % w)
-      const col = action === 'left' ? start : action === 'right' ? start + w - 1 : from.col
-      setCursor(moveCursor({ row: from.row, col }, action, rowsN, colsN))
+      // ←/→ step over a whole box; ↑/↓ land on the box playing at the same moment (#1855)
+      setCursor(moveBoxCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN, boxWidth))
       return true
     }
     if (!at) return false

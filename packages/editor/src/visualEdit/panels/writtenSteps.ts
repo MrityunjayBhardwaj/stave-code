@@ -198,6 +198,19 @@ export function boxesPlaceNotes<C>(
 }
 
 /**
+ * The lengths a note moves to one box longer and one box shorter, in columns, on a row whose
+ * boxes are `w` columns wide (#1855) — what the length handle offers and ⌥⇧←/→ writes. On a
+ * box per column this is ±1; on a row at a part's own steps it is ± one own step, landing on
+ * a whole number of them, since a half step is a length that row cannot draw. `shorter` is
+ * null below one box.
+ */
+export function boxLengths(duration: number, w: number): { longer: number; shorter: number | null } {
+  const d = Math.round(duration)
+  const down = Math.ceil(d / w) - 1
+  return { longer: (Math.floor(d / w) + 1) * w, shorter: down >= 1 ? down * w : null }
+}
+
+/**
  * The model whose `source` the step lines are drawn from: the text's own reading when it
  * lays out the same columns as the model on screen, else the model on screen (#1849).
  * After a write the kept model's source still describes the text it was parsed from.
