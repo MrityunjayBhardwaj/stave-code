@@ -81,21 +81,21 @@ through the writer would measure a path production never takes.
 > observations committed in `GRID-CAP-SWEEP.json`, re-taken by `node scripts/cap-sweep.mjs grid 4 6 8 10 12`.
 
 Both populations, all 5 caps, the real shipped writers at each value —
-**A** = core-REFUSED (805 grid asks, what production reaches today),
-**B** = core-SERVED (828 grid asks, what #1012 would inherit).
+**A** = core-REFUSED (802 grid asks, what production reaches today),
+**B** = core-SERVED (831 grid asks, what #1012 would inherit).
 
 | | 4 | 6 | 8 | 10 | **12** (shipped) |
 |---|---|---|---|---|---|
-| **A** reach (transfers) | 142 | 142 | 153 | 158 | 159 |
-| **B** transfers | 719 | 724 | 727 | 729 | 729 |
-| A views opened by the leaf writer | 57 | 58 | 74 | 80 | 82 |
-| B views opened by the leaf writer | 67 | 72 | 75 | 78 | 78 |
-| A leaf notes live | 162/300 54.0% | 165/313 52.7% | 197/363 54.3% | 207/373 55.5% | 215/389 55.3% |
-| B leaf notes live | 63/93 67.7% | 140/176 79.5% | 173/233 74.2% | 185/253 73.1% | 185/253 73.1% |
+| **A** reach (transfers) | 141 | 141 | 152 | 157 | 158 |
+| **B** transfers | 720 | 725 | 728 | 730 | 730 |
+| A views opened by the leaf writer | 55 | 56 | 72 | 78 | 80 |
+| B views opened by the leaf writer | 69 | 74 | 77 | 80 | 80 |
+| A leaf notes live | 158/284 55.6% | 161/297 54.2% | 193/347 55.6% | 203/357 56.9% | 211/373 56.6% |
+| B leaf notes live | 67/109 61.5% | 144/192 75.0% | 177/249 71.1% | 189/269 70.3% | 189/269 70.3% |
 | views that CORRUPT (must be 0) | 0 | 0 | 0 | 0 | 0 |
 
-- **Population A's reach moves by 17 asks across the whole range** (142 → 142 → 153 → 158 → 159). It is the population production reaches today, and unlike the roll it is the whole justification for the shipped value: this is the gain the comment on `LEAF_PROJECT_BARS` used to carry as a number, and now defers to this gate for.
-- **Population B gains 10 transfers** (719 → 724 → 727 → 729 → 729), served by the leaf writer, which is the writer this cap governs. Unlike the roll — where only 16 of 415 opened B views are leaf-served, so its B floor guards nothing this constant can move — the grid has 74 of 820, and B moves with the cap. Do not read the roll's note across. B is a counterfactual until the core is deleted (#1012).
+- **Population A's reach moves by 17 asks across the whole range** (141 → 141 → 152 → 157 → 158). It is the population production reaches today, and unlike the roll it is the whole justification for the shipped value: this is the gain the comment on `LEAF_PROJECT_BARS` used to carry as a number, and now defers to this gate for.
+- **Population B gains 10 transfers** (720 → 725 → 728 → 730 → 730), served by the leaf writer, which is the writer this cap governs. Unlike the roll — where only 16 of 415 opened B views are leaf-served, so its B floor guards nothing this constant can move — the grid has 74 of 820, and B moves with the cap. Do not read the roll's note across. B is a counterfactual until the core is deleted (#1012).
 - **Zero views corrupt on either population at any cap**, and zero asks moved to a worse outcome per ask — checked against the shipped-cap rows rather than by netting totals, since an ask lost and an ask gained sum to no change.
 
 The ceiling is 12 and not a round number: `detectPeriod` confirms a period `p` only

@@ -79,10 +79,15 @@ export function writtenStepStarts(m: WrittenStepsModel): Map<number, number[]> {
   if (m.source) {
     for (const p of m.source.parts) {
       const last = p.regions[p.regions.length - 1]
-      if (!last || last.to * p.factor !== shared) continue // stale: no longer tiles the model
+      // a part written over fewer bars than the stack repeats them (#1849): its regions
+      // tile one window, and the window recurs `repeats` times across the model
+      const repeats = p.bars === undefined ? 1 : (m.bars ?? 1) / p.bars
+      if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== shared) continue // stale
+      const once = p.regions.flatMap(regionStepStarts).map((c) => c * p.factor)
+      const span = last.to * p.factor
       put(
         p.part,
-        p.regions.flatMap(regionStepStarts).map((c) => c * p.factor),
+        Array.from({ length: repeats }, (_, k) => once.map((c) => c + k * span)).flat(),
       )
     }
     return out
@@ -94,6 +99,19 @@ export function writtenStepStarts(m: WrittenStepsModel): Map<number, number[]> {
     put(0, us) // an alternation-as-element pattern has no `,`-parts
   }
   return out
+}
+
+/**
+ * The model whose `source` the step lines are drawn from: the text's own reading when it
+ * lays out the same columns as the model on screen, else the model on screen (#1849).
+ * After a write the kept model's source still describes the text it was parsed from.
+ */
+export function linesModel<M extends { steps: number; bars?: number; barSteps?: readonly number[] }>(
+  shown: M,
+  read: M | null,
+): M {
+  if (!read || read.steps !== shown.steps || (read.bars ?? 1) !== (shown.bars ?? 1)) return shown
+  return (read.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read : shown
 }
 
 /**

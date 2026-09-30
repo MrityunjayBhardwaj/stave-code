@@ -278,7 +278,8 @@ describe('#1116 the view scale, through the public entries', () => {
       // ⚠ grid 1013 -> 1014, roll 597 -> 598 at #1827 (each bar drawn at its own step count) — the two units that now open, and
       // both are refused a refine (multi-bar views are drawn per bar only at ×1).
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-    ]).toEqual([1017, 601, 820, 474])
+    // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+    ]).toEqual([1018, 601, 823, 474])
 
     expect(
       grids.filter((m) => JSON.stringify(parseStepGrid(m, 1)) !== JSON.stringify(parseStepGrid(m))),
@@ -318,7 +319,8 @@ describe('#1116 the view scale, through the public entries', () => {
     expect([honoured.get(2), refused.get(2), honoured.get(4), refused.get(4)]).toEqual([
       // ⚠ refused 86 -> 87 at both scales at #1827 (each bar drawn at its own step count): the newly opened drum grid, as `view-resolution`.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-      934, 83, 934, 83,
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      937, 81, 937, 81,
     ])
   })
 

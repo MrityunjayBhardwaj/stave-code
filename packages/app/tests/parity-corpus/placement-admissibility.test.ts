@@ -111,7 +111,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // move — 31 over the same 9 minis — so the widening added multi-part units that
     // this cause does not reach, which is the honest direction for a non-vacuity clause.
       // ⚠ 31/9/67 -> 115/13/74 at #1849: the stacks it opens bring cells the writer cannot take (a hit inside a held `bd@3`); every refusal is STILL on a multi-part unit — refused === onMultiPart.
-    ).toEqual({ refused: 115, onMultiPart: 115, distinctMinis: 13, multiPartUnits: 74 })
+    // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+    ).toEqual({ refused: 123, onMultiPart: 123, distinctMinis: 14, multiPartUnits: 77 })
   })
 
   it('grid: the offer matches the writer on every cell, split by write path', () => {
@@ -219,7 +220,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       // drawn per bar as 2 + 5 + 2 cells instead of 30 columns, so each lane offers 9
       // cells, not 30 (the newly opened drum grid adds its own cells on the source path).
     // ⚠ 17034/31 -> 17523/115 at #1849: the stacks it moves onto the element path bring 489 cells, 84 of which the writer truly cannot take (a hit inside a held `bd@3`, between `hh!6`'s steps) — refused BY THE OFFER, which still equals the writer on every cell (asserted above).
-    ).toEqual({ asks: 17523, refused: 115 })
+    // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+    ).toEqual({ asks: 17641, refused: 123 })
     // ⚠ 3834 → 3842 IN #1235, AND THE 8 WERE NEVER PLACEMENTS. The leaf writer used to
     // compare TOKENS only, so it could not see that `clampLane` had SHORTENED a note
     // sustaining through the clicked column — it wrote the rest's bytes for the new sound
@@ -242,7 +244,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       'leaf path — the 294 taken are columns holding a rest (#1154) whose placement moves no other length (#1235)',
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     // ⚠ 4466/4172 -> 4135/3841 at #1849: the leaf path loses the cells of the 4 grids #1849 moves to the core — 331 asks, all refused on the leaf path, so the 294 it takes are unmoved.
-    ).toEqual({ asks: 4135, refused: 3841 })
+    // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+    ).toEqual({ asks: 4023, refused: 3729 })
     expect(
       { asks: by.alt.asks, refused: by.alt.refused },
       'alt path — 512 → 0 refused',
@@ -254,7 +257,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
       // ⚠ element 874 -> 875 at #1827 (each bar drawn at its own step count): the newly opened drum grid.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-    ).toEqual({ leaf: 82, alt: 61, element: 882 })
+    // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+    ).toEqual({ leaf: 80, alt: 61, element: 885 })
 
     // The residual's SHAPE is asserted in its own test below, not here — an assertion
     // that sits after a failing one never runs, so bundling it into this body would
@@ -529,7 +533,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // (98 arrivals, 0 departures): the harvest gained the product's own
     // resolver, so every figure here is over a wider population. Upward only.
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-    expect(leafViews, 'leaf grids in the corpus').toBe(82)
+    // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+    expect(leafViews, 'leaf grids in the corpus').toBe(80)
     // WHAT THE PATH RULE WOULD HAVE SAID, pinned as the delta rather than described:
     // it answered `false` on all 82. 20 of them now answer `true` — the 18 that take
     // a note on a rest column, plus 2 with no empty cell to ask about.
@@ -560,7 +565,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       'non-leaf grids with any empty cell, and of those the ones that still take a note',
       // ⚠ 508 -> 509 at #1827: the newly opened drum grid, which takes a note too.
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-    ).toEqual([516, 516])
+    // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+    ).toEqual([519, 519])
   })
 
   /**

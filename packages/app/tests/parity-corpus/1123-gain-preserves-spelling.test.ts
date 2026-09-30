@@ -176,7 +176,8 @@ const rollSurface: Surface<PianoRollModel> = {
 // grid and `<[36 48]*2 [34 46]*3 [41 53]*4 [39 51]*2>` on the roll. Population, not
 // notation: `respelled` and `play-changed` stay at 0.
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const ASKED = { grid: 1016, roll: 598 }
+// ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+const ASKED = { grid: 1017, roll: 598 }
 
 describe('#1123 — a velocity drag leaves the notation alone', () => {
   it('grid', () => {

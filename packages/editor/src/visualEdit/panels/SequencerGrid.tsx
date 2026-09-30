@@ -54,7 +54,7 @@ import {
 import { UNREFINED, documentSteps, type ViewScale } from '../notation/viewResolution'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
-import { rulerLabels, useRulerFit, writtenStepStarts } from './writtenSteps'
+import { linesModel, rulerLabels, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { emitLog } from '../../engine/engineLog'
 import { usePatternLength } from './usePatternLength'
 import {
@@ -113,7 +113,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // reaches the document until an actual edit is made, and the first write absorbs
   // it (`useGridModel` → `absorbViewScale`).
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { chunk, model, mutate, writeMini, beginGesture, endGesture } = useGridModel<StepGridModel>({
+  const { chunk, model, read, mutate, writeMini, beginGesture, endGesture } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: opensStepGrid,
     parse: parseStepGrid,
@@ -254,9 +254,10 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   const stepStarts = React.useMemo(() => {
     if (!model) return null
     const out = new Map<number, Set<number>>()
-    for (const [part, cols] of writtenStepStarts(model)) out.set(part, new Set(cols))
+    // drawn from what the TEXT reads as — the kept model's source is the text before the edit
+    for (const [part, cols] of writtenStepStarts(linesModel(model, read))) out.set(part, new Set(cols))
     return out
-  }, [model])
+  }, [model, read])
 
   // PROVE BEFORE OFFER, at the length handle (#1053) — the same rule the cell already
   // applies, asked of `resizeCell` itself so the handle cannot promise a drag the writer

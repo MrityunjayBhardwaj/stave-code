@@ -295,9 +295,11 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // not a new one — the arm below re-derives every refusal from the source.
     expect({ units: t.units, asks: t.asks, refused: t.refused }).toEqual({
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-      units: 82,
-      asks: 590,
-      refused: 267,
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      units: 80,
+      asks: 522,
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      refused: 211,
     })
   })
 
@@ -346,7 +348,8 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // refusal branch appeared — had the writer started guessing inside the population,
     // these two numbers would have parted.
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-    expect({ grid: g.refusedShared, roll: r.refusedShared }).toEqual({ grid: 267, roll: 337 })
+    // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+    expect({ grid: g.refusedShared, roll: r.refusedShared }).toEqual({ grid: 211, roll: 337 })
   })
 
   it('GRID: sharing is not merely necessary but SUFFICIENT — an exact iff, no residue', () => {
@@ -417,7 +420,8 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // rests on is unmoved at 15%, and the grid is untouched — this widening is the
     // roll writer's alone.
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-    expect(split).toEqual({ gridOn: 71, gridOff: 298, rollOn: 68, rollOff: 496 })
+    // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+    expect(split).toEqual({ gridOn: 71, gridOff: 182, rollOn: 68, rollOff: 496 })
   })
 
   it('POSITIVE CONTROL — the non-leaf paths take the same gesture', () => {
@@ -446,7 +450,8 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
       // newly opened `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` brings its 22 hits, and
       // `refused` stays ZERO on every accepting path.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused). Still refused 0.
-      gridSource: { asks: 4530, refused: 0 },
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      gridSource: { asks: 4608, refused: 0 },
       gridAlt: { asks: 619, refused: 0 },
       rollAlt: { asks: 874, refused: 0 },
     })

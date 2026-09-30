@@ -21,6 +21,7 @@ import type {
   RollLeafAnchor,
   RollLeafSource,
   RollNote,
+  SourcePart,
   StepGridModel,
   StepLane,
 } from './model'
@@ -223,6 +224,25 @@ export function serializeStepGridWithExtent(drawn: StepGridModel): {
   const spans = model.leafSource ?? model.surgical?.spans()
   if (spans) {
     const surgical = spliceByLeaf(model, spans)
+    // ⚠ A STACK WHOSE PARTS ARE WRITTEN BAR BY BAR (#1849): the splice owns the bar
+    // rule, and it overrides the in-place write only where the two DISAGREE — an edit
+    // that makes a part's bars agree again writes it back as one bar, where the leaf
+    // write would keep `<hh*8 [hh hh hh hh hh hh hh hh]>`. Where they agree the leaf
+    // write answers, exactly as before.
+    if (surgical !== null && !model.leafSource && perBarStack(model)) {
+      const bars = spliceGrid(model, respell)
+      if (typeof bars === 'object' && bars.out !== surgical) {
+        return {
+          mini: bars.out,
+          extent: {
+            path: 'splice',
+            regions: bars.regions,
+            regionsReemitted: bars.regionsReemitted,
+            rebuiltParts: bars.rebuiltParts,
+          },
+        }
+      }
+    }
     if (surgical !== null) return { mini: surgical, extent: { path: 'leaf' } }
     if (model.leafSource) return { mini: null, extent: { path: 'leaf' } }
   }
@@ -493,9 +513,12 @@ function spliceGrid(
   // argument). Measured against the user's own document, the splice matches on all 220
   // and the rebuild on 217, so the guard was never protecting a case that existed and on
   // 3 units it silently changed what plays.
-  let out = src.prefix
-  for (const p of src.parts) {
-    const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part)
+  /**
+   * One part's bytes (without its `before`/`after`) from `lanes`, `steps` columns wide:
+   * its untouched regions verbatim, the touched ones re-emitted, and the whole part
+   * rebuilt only where no region splice can describe it (`rebuilt` = its region count).
+   */
+  const splicePart = (p: SourcePart<GridCells>, lanes: StepLane[], steps: number): PartSplice | 'decline' => {
     // READ THE PART AT THE FINEST WIDTH ITS OWN ELEMENTS STILL DESCRIBE (#1137).
     //
     // `partColumns` refuses when a hit lands BETWEEN this part's columns — the user
@@ -536,12 +559,12 @@ function spliceGrid(
     // before, so a refusal there is the refusal the writer has always given and it
     // must propagate rather than retry (P4c, argued at the decline below).
     const widths: { cols: GridCells; growth: number }[] = []
-    const own = partColumns(lanes, model.steps, p.factor)
+    const own = partColumns(lanes, steps, p.factor)
     if (own !== null) widths.push({ cols: own, growth: 1 })
     else
       for (let g = p.factor - 1; g >= 1; g--) {
         if (p.factor % g !== 0) continue
-        const finer = partColumns(lanes, model.steps, g)
+        const finer = partColumns(lanes, steps, g)
         if (finer !== null) widths.push({ cols: finer, growth: p.factor / g })
       }
     // The regions index the grid they were parsed from. If they no longer describe
@@ -550,7 +573,6 @@ function spliceGrid(
     // normalizes every `,`-part to its own weight, so re-emitting one of them at the
     // shared resolution leaves the others sounding exactly as written.
     const last = p.regions[p.regions.length - 1]
-    out += p.before
     // A lone element owning the whole line has nothing to stay aligned WITH, so
     // a re-emit can spread across the line as plain steps instead of holding
     // its one step's worth of brackets: rewriting `hh*8` reads `hh ~ hh …`, not
@@ -669,14 +691,14 @@ function spliceGrid(
       }
       return { body, reemitted }
     }
-    let written: { body: string; reemitted: number } | null = null
+    let spliced: { body: string; reemitted: number } | null = null
     for (const w of widths) {
       // the regions must still tile the part at THIS width; where they do not, the
       // width cannot describe what the user wrote and the next one is tried
       if (last === undefined || last.to * w.growth !== w.cols.length) continue
-      const spliced = spliceRegions(w.cols, w.growth)
-      if (spliced !== 'decline') {
-        written = spliced
+      const attempt = spliceRegions(w.cols, w.growth)
+      if (attempt !== 'decline') {
+        spliced = attempt
         break
       }
       // WHERE THE FINER READ IS WHAT FAILED, THE COARSE ANSWER IS STILL THERE (#1137).
@@ -706,15 +728,45 @@ function spliceGrid(
       // whole line; this is its `,`-stack form.
       if (p.regions.length < 2) break
     }
-    if (written === null) {
-      rebuiltParts.push(p.regions.length)
-      const rebuilt = gridColumns(lanes, model.steps)
+    if (spliced === null) {
+      // A PART WRITTEN OVER SEVERAL BARS REBUILDS BAR BY BAR (#1849). Its `<`/`>` sit in
+      // `before`/`after`, and inside them every element is one bar — so the rebuild is
+      // one `[…]` group per bar. A flat column list there would play one column a bar.
+      const partBars = p.bars ?? 1
+      if (partBars > 1) {
+        const per = steps / partBars
+        const groups: string[] = []
+        for (let b = 0; b < partBars; b++) {
+          const bar = gridColumns(
+            lanes.map((l) => ({ ...l, cells: l.cells.slice(b * per, (b + 1) * per) })),
+            per,
+          )
+          if (bar === null) return 'decline'
+          groups.push(`[${bar.join(' ')}]`)
+        }
+        return { body: groups.join(' '), reemitted: 0, rebuilt: p.regions.length }
+      }
+      const rebuilt = gridColumns(lanes, steps)
       if (rebuilt === null) return 'decline'
-      out += rebuilt.join(' ') + p.after
-      continue
+      return { body: rebuilt.join(' '), reemitted: 0, rebuilt: p.regions.length }
     }
-    regionsReemitted += written.reemitted
-    out += written.body + p.after
+    return { body: spliced.body, reemitted: spliced.reemitted, rebuilt: null }
+  }
+
+  let out = src.prefix
+  const stackBars = model.bars ?? 1
+  for (const p of src.parts) {
+    const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part)
+    // A PART OF A STACK THAT PLAYS FOR SEVERAL BARS IS WRITTEN BAR BY BAR (#1849): an
+    // edit in bar b changes bar b only, even where the part is written once and repeats.
+    const one =
+      p.bars !== undefined && stackBars > 1
+        ? spliceBars(p, lanes, model.steps, stackBars, splicePart)
+        : splicePart(p, lanes, model.steps)
+    if (one === 'decline') return 'decline'
+    regionsReemitted += one.reemitted
+    if (one.rebuilt !== null) rebuiltParts.push(one.rebuilt)
+    out += 'text' in one ? one.text : p.before + one.body + p.after
   }
   const regions = src.parts.reduce((n, p) => n + p.regions.length, 0)
   return { out: out + src.suffix, regions, regionsReemitted, rebuiltParts }
@@ -1124,6 +1176,147 @@ function reemitAltRegion(perBar: GridCells[], div: number, refined = false): str
   const barTokens = perBar.map((bar) => reemitRegion(bar, div, refined))
   if (barTokens.some((t) => t === null)) return null
   return barTokens.every((t) => t === barTokens[0]) ? barTokens[0]! : `<${barTokens.join(' ')}>`
+}
+
+/** a stack with a part written over fewer bars than it plays, or as `<…>` bars (#1849) */
+const perBarStack = (model: StepGridModel): boolean =>
+  (model.bars ?? 1) > 1 && !!model.source?.parts.some((p) => p.bars !== undefined)
+
+type PartSplice = { body: string; reemitted: number; rebuilt: number | null }
+
+/**
+ * A `,`-part of a stack that plays for several bars, written BAR BY BAR (#1849).
+ *
+ * `<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd, hh*8` plays for two bars and the snare is written
+ * once, so Strudel plays it again in bar 2 (`stack` asks every part for the same cycle).
+ * An edit in bar 2 changes bar 2 only — the way every row of a default Logic pattern runs
+ * the whole length with every step its own — so the part stops being one written bar:
+ * `<[~ sd ~ sd] [~ sd ~ ~]>`. The rule inside a part is the same one (`reemitAltRegion`):
+ * `<…>` where the bars differ, plain where they agree.
+ *
+ * 1. `Q`, the shortest run the part's `L` bars repeat in, from what they HOLD (cells, not
+ *    text — a bar edited back to what it was is the same bar however it would be spelled).
+ *    `Q` divides `L`, so the stack's length never changes under the part.
+ * 2. `Q` divides the written bars `P`: the written bars still hold every bar, so the part
+ *    is spliced from its first `P` bars as one — byte for byte where nothing changed. A
+ *    part written as `<A A>` stays as written unless it was edited.
+ * 3. Otherwise each of the `Q` bars is spliced against the written bar it plays (`q mod P`)
+ *    — untouched bars come back as their own bytes — and the part is written
+ *    `<t0 … t(Q-1)>`, or as its one bar, unwrapped, when `Q` is 1.
+ *
+ * Declines rather than guesses where a bar has no bytes of its own to splice against (a
+ * written element spanning a bar line, `x!3`).
+ */
+function spliceBars(
+  p: SourcePart<GridCells>,
+  lanes: StepLane[],
+  steps: number,
+  stackBars: number,
+  splicePart: (p: SourcePart<GridCells>, lanes: StepLane[], steps: number) => PartSplice | 'decline',
+): { text: string; reemitted: number; rebuilt: number | null } | 'decline' {
+  const P = p.bars ?? 1
+  const L = stackBars
+  if (!Number.isInteger(L / P) || steps % L !== 0) return 'decline'
+  const per = steps / L
+  const window = (from: number, n: number): StepLane[] =>
+    lanes.map((l) => ({ ...l, cells: l.cells.slice(from * per, (from + n) * per) }))
+  const held = Array.from({ length: L }, (_, b) => columnAtoms(window(b, 1), per))
+  const Q = repeatingRun(held, L)
+  if (P % Q === 0) {
+    const whole = splicePart(p, window(0, P), P * per)
+    if (whole === 'decline') return 'decline'
+    const unchanged = whole.reemitted === 0 && whole.rebuilt === null
+    if (Q === P || unchanged) return { text: p.before + whole.body + p.after, ...whole }
+  }
+  // the part's own `<`/`>` (a part written over several bars carries them in
+  // `before`/`after`) come off, and the `,` and padding stay where they are
+  const before = P > 1 ? p.before.replace(/<\s*$/, '') : p.before
+  const after = P > 1 ? p.after.replace(/^\s*>/, '') : p.after
+  if (P > 1 && (before === p.before || after === p.after)) return 'decline'
+  const last = p.regions[p.regions.length - 1]
+  if (!last || last.to % P !== 0) return 'decline'
+  const ownPer = last.to / P
+  const texts: string[] = []
+  let reemitted = 0
+  let rebuilt: number | null = null
+  for (let q = 0; q < Q; q++) {
+    const w = q % P
+    const regions = p.regions
+      .filter((r) => r.from >= w * ownPer && r.to <= (w + 1) * ownPer)
+      .map((r) => ({ ...r, from: r.from - w * ownPer, to: r.to - w * ownPer }))
+    // the written bar must be its own run of regions, edge to edge
+    if (regions.length === 0 || regions[0].from !== 0 || regions[regions.length - 1].to !== ownPer) return 'decline'
+    if (regions.some((r, i) => i > 0 && r.from !== regions[i - 1].to)) return 'decline'
+    const bar = splicePart({ ...p, regions, bars: undefined }, window(q, 1), per)
+    if (bar === 'decline') return 'decline'
+    reemitted += bar.reemitted
+    if (bar.rebuilt !== null) rebuilt = (rebuilt ?? 0) + bar.rebuilt
+    // A BAR EMPTIED BY AN EDIT IS ONE REST. Spliced, its elements each re-emit as `~`
+    // and the bar comes back `[~ ~ ~ ~]` — four written steps that still draw their
+    // step lines over nothing. A bar written empty by hand keeps its own bytes.
+    const emptied = (bar.reemitted > 0 || bar.rebuilt !== null) && held[q].every((c) => c.length === 0)
+    texts.push(emptied ? '~' : bar.body.trim())
+  }
+  const body = Q === 1 ? unbracketed(texts[0]) : `<${texts.map(asEntry).join(' ')}>`
+  return { text: before + body + after, reemitted, rebuilt }
+}
+
+/** the shortest run, dividing `n`, that the bars' cells repeat in */
+function repeatingRun(held: GridCells[], n: number): number {
+  for (let q = 1; q < n; q++) {
+    if (n % q === 0 && held.every((cells, b) => sameCells(cells, held[b % q]))) return q
+  }
+  return n
+}
+
+/** the top-level elements of a bar's text, or null when it is not a plain list of them */
+function topLevel(text: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let cur = ''
+  for (const ch of text) {
+    if ('[<{('.includes(ch)) depth++
+    else if (']>})'.includes(ch)) depth--
+    if (depth === 0 && /\s/.test(ch)) {
+      if (cur) out.push(cur)
+      cur = ''
+    } else cur += ch
+  }
+  if (cur) out.push(cur)
+  return out
+}
+
+/**
+ * A bar's text as one `<…>` entry: a lone element as written (`hh*8`), anything else in
+ * `[…]`. A lone `bd@3` or `bd!2` is bracketed too — inside `<…>` those would claim
+ * three bars, or two.
+ */
+function asEntry(text: string): string {
+  const els = topLevel(text)
+  return els.length === 1 && !/[@!]/.test(outsideBrackets(els[0])) ? text : `[${text}]`
+}
+
+/** a part collapsing back to one bar needs no `[…]` of its own: `[~ sd ~ sd]` → `~ sd ~ sd` */
+function unbracketed(text: string): string {
+  const els = topLevel(text)
+  if (els.length !== 1 || !text.startsWith('[') || !text.endsWith(']')) return text
+  return outsideBrackets(text) === '[]' ? text.slice(1, -1).trim() : text
+}
+
+/** the characters of `el` at bracket depth 0 (the brackets themselves kept) */
+function outsideBrackets(el: string): string {
+  let depth = 0
+  let out = ''
+  for (const ch of el) {
+    if ('[<{('.includes(ch)) {
+      if (depth === 0) out += ch
+      depth++
+    } else if (']>})'.includes(ch)) {
+      depth--
+      if (depth === 0) out += ch
+    } else if (depth === 0) out += ch
+  }
+  return out
 }
 
 /**

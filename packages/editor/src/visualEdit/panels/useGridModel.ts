@@ -79,6 +79,8 @@ export interface GridModelOptions<M> {
 
 export interface GridModel<M> {
   model: M | null
+  /** the model the document's text reads as right now — `model` may be the edited one */
+  read: M | null
   chunk: ChunkInfo | null
   /** transform the model and write the serialized result over the mini range */
   mutate: (fn: (model: M) => M) => void
@@ -159,6 +161,12 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
 ): GridModel<M> {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
   const [model, setModel] = React.useState<M | null>(null)
+  // WHAT THE TEXT READS AS, beside the model kept on screen (#1849). After a write the
+  // kept model is the one that was edited, and its `source` still describes the text it
+  // was parsed from — so anything drawn from the WRITTEN structure (step lines) has to
+  // be read off this instead: `<[~ sd ~ sd] ~>` has no steps in bar 2, while the edited
+  // model's source still says `~ sd ~ sd`, repeated.
+  const [read, setRead] = React.useState<M | null>(null)
   // Mirror for synchronous reads inside pointer handlers / rapid drags.
   const modelRef = React.useRef<M | null>(null)
   React.useEffect(() => {
@@ -184,14 +192,17 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null
       setModel(null)
+      setRead(null)
       return
     }
     const parsed = o.parse(chunk.miniString, viewScale)
     if (!parsed.ok) {
       modelRef.current = null
       setModel(null)
+      setRead(null)
       return
     }
+    setRead(parsed.model)
     const chunkGain = readChunkGain(chunk)
     const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain) : parsed.model
 
@@ -284,5 +295,5 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
     [applyEdit],
   )
 
-  return { model, chunk, mutate, settle, writeMini, beginGesture, endGesture }
+  return { model, read, chunk, mutate, settle, writeMini, beginGesture, endGesture }
 }

@@ -199,10 +199,12 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // `<~ ~ bd*3 bd*4 bd*3 bd*4 bd*4 bd*4>` (1+1+3+4+3+4+4+4 cells, 96 shared). Its
       // refined view has to be one shared grid, so it is the new `view-resolution` below.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-      expect(s.opensAtDocument, `k=${k} opens`).toBe(1017)
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      expect(s.opensAtDocument, `k=${k} opens`).toBe(1018)
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-      expect(s.admitsFinerView, `k=${k} admits`).toBe(934)
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      expect(s.admitsFinerView, `k=${k} admits`).toBe(937)
       // Two refusal gates, each saying why by name. `no-finer-view` is the leaf path: a
       // leaf model anchors each note to its own source span, so there is no span to
       // subdivide, and the entry refuses a refine rather than quietly drawing the
@@ -212,7 +214,8 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
       expect([...s.refusesFinerView.entries()], `k=${k} gates`).toEqual([
         // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-        ['no-finer-view', 82],
+        // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+        ['no-finer-view', 80],
         ['view-resolution', 1],
       ])
       // IDENTICAL AT EVERY SCALE, and that is the point rather than a coincidence:
@@ -224,8 +227,10 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // means a population change reports the total and hides which path took it.
       expect({ asks: s.asks.length, ...pathCounts(s) }, `k=${k} asks by path`).toEqual({
         // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-        asks: 26666,
-        splice: 22076,
+        // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+        asks: 26862,
+        // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+        splice: 22272,
         alt: 4553,
         declined: 37,
       })
@@ -272,7 +277,8 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // (98 arrivals, 0 departures): the harvest gained the product's own
       // resolver, so every figure here is over a wider population. Upward only.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(22054)
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      expect(spliced.length - nonLocal.length, `k=${k} local`).toBe(22250)
     }
   })
 
