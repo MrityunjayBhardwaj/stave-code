@@ -30,6 +30,7 @@
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export interface LedgerEntry {
   value: number
@@ -51,7 +52,7 @@ export interface LedgerCount {
 
 export type Ledger = Record<string, LedgerCount>
 
-export const LEDGER_PATH = path.join(__dirname, 'ledger.json')
+export const LEDGER_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'ledger.json')
 
 export function loadLedger(file: string = LEDGER_PATH): Ledger {
   return JSON.parse(fs.readFileSync(file, 'utf8')).counts as Ledger

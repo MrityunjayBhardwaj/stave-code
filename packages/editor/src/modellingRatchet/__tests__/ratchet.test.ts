@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { appendOnlyProblems, assertRatchet, ledgerOnMain, ledgerProblems, loadLedger, ratchetProblem, type Ledger } from '../ratchet'
+import { appendOnlyProblems, assertRatchet, LEDGER_PATH, ledgerOnMain, ledgerProblems, loadLedger, ratchetProblem, type Ledger } from '../ratchet'
 
 const entry = (value: number, extra: object = {}) => ({ value, date: '2026-09-30', note: 'n', ...extra })
 const one = (...history: ReturnType<typeof entry>[]): Ledger => ({
@@ -88,15 +88,19 @@ describe('the modelling ratchet (#1866)', () => {
     it("the committed ledger only appends to origin/main's", () => {
       const main = ledgerOnMain()
       if (main.kind === 'absent') {
-        // only legitimate in the change that introduces the ratchet — said out loud, never silent
-        console.warn('modelling ratchet: no ledger on origin/main yet, so append-only is not checked in this run')
+        // Only legitimate in the change that introduces the ratchet, and that change is the
+        // only one whose ledger holds nothing but baselines. Once any history has grown, a
+        // ledger missing from main means a stale fetch or a deletion — never a pass.
+        const grown = Object.entries(loadLedger()).filter(([, c]) => c.history.length > 1).map(([n]) => n)
+        expect(grown, 'origin/main has no ledger, but these counts already have history — fetch origin, or restore the ledger on main').toEqual([])
+        console.warn('modelling ratchet: no ledger on origin/main yet (baselines only), so append-only is not checked in this run')
         return
       }
       expect(appendOnlyProblems(loadLedger(), main.ledger)).toEqual([])
     })
 
     it('ledgerOnMain finds a file that IS on origin/main (control: absent must not be the default answer)', () => {
-      const onMain = path.join(__dirname, '..', '..', 'ir', 'PREDICATE-AUDIT.md')
+      const onMain = path.join(path.dirname(LEDGER_PATH), '..', 'ir', 'PREDICATE-AUDIT.md')
       // PREDICATE-AUDIT.md is not JSON, so reading it must THROW at the parse — which proves
       // the lookup found it rather than answering 'absent'
       expect(() => ledgerOnMain(onMain)).toThrow(SyntaxError)
