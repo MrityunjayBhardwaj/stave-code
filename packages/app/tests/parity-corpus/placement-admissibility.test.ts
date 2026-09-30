@@ -40,6 +40,7 @@ import { midiToPitch, pitchToMidi } from '../../../editor/src/visualEdit/notatio
 import { ungatedPlace, ungatedToggle } from './ungatedOps'
 import {
   canPlaceNote,
+  canResizeCell,
   canToggleCell,
   placeNote,
   toggleCell,
@@ -47,9 +48,10 @@ import {
 } from '../../../editor/src/visualEdit/notation/place'
 import {
   serializePianoRoll,
+  serializeStepGain,
   serializeStepGrid,
 } from '../../../editor/src/visualEdit/notation/serialize'
-import { boxesPlaceNotes, ownStepWidths, rowBoxes } from '../../../editor/src/visualEdit/panels/writtenSteps'
+import { boxLengths, boxesPlaceNotes, ownStepWidths, rowBoxes } from '../../../editor/src/visualEdit/panels/writtenSteps'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus = JSON.parse(fs.readFileSync(path.join(here, 'mini-corpus.json'), 'utf8'))
@@ -471,7 +473,39 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
         }
     }
     // the population must be non-empty, or the comparison above reports on nothing
-    expect(compared, 'accepted placements compared').toBeGreaterThan(1000)  })
+    expect(compared, 'accepted placements compared').toBeGreaterThan(1000)
+  })
+
+  /**
+   * THE SAME, FOR THE CLICK EXACT MAKES (#1860). In Exact (#1855) a box is one of a part's
+   * own steps and a click paints a hit that many columns long (`toggleCell`'s `length`).
+   * The arm above asks one-column clicks only, so the control arm could drop the length and
+   * still read green there. Asked here at every empty box of every grid Exact draws.
+   */
+  it('the ungated control arm builds what the op builds for an own-step click', () => {
+    let compared = 0
+    for (const mini of minis) {
+      const r = parseStepGrid(mini)
+      if (!r.ok) continue
+      const m = r.model
+      const widths = ownStepWidths(m)
+      if (widths.size === 0) continue
+      m.lanes.forEach((l, li) => {
+        for (const b of rowBoxes(l.cells, m.steps, widths.get(l.part ?? 0), isCellOn)) {
+          if (b.width === 1 || isCellOn(l.cells[b.start])) continue
+          const gated = toggleCell(m, li, b.start, true, b.width)
+          if (gated === m) continue
+          compared++
+          expect(
+            gated,
+            `${JSON.stringify(mini)} [${li},${b.start}] width ${b.width}: the control arm has drifted from the op`,
+          ).toEqual(ungatedToggle(m, li, b.start, true, b.width))
+        }
+      })
+    }
+    console.log(`#1860: ${compared} own-step clicks compared`)
+    expect(compared, 'own-step clicks compared').toBeGreaterThan(50)
+  })
 
   /**
    * ⚠ THIS TEST NO LONGER ASKS A PATH QUESTION, and the rename is the finding.
@@ -797,5 +831,54 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // construction, not because it was firing.
     expect(exactViews).toBe(29)
     expect(exactDiffers.join('\n')).toBe('')
+  })
+
+  /**
+   * THE LENGTH HANDLE IN EXACT MOVES BY BOXES (#1855). On a row drawn at a part's own steps
+   * the handle asks one BOX longer or shorter (`boxLengths`), not one column: a column is half
+   * a step there, and the writer declines it both ways, so the handle was never drawn.
+   * MEASURED over every lit hit of every grid Exact draws differently: how many carry a handle
+   * in each mode. And velocity: offered only where `serializeStepGain` writes, which it never
+   * does on a `,`-stack — every Exact grid is one — so Exact has no velocity drag to move.
+   */
+  it('Exact: the length handle is asked in boxes; no Exact grid takes velocity', () => {
+    let exactViews = 0
+    let hits = 0
+    let lcmHandles = 0
+    let exactHandles = 0
+    const lost: string[] = []
+    const gainWrites: string[] = []
+    for (const mini of minis) {
+      const r = parseStepGrid(mini)
+      if (!r.ok) continue
+      const m = r.model
+      const widths = ownStepWidths(m)
+      if (widths.size === 0) continue
+      exactViews++
+      if (serializeStepGain(m).kind !== 'skip') gainWrites.push(JSON.stringify(mini))
+      m.lanes.forEach((lane, li) => {
+        const w = rowBoxes(lane.cells, m.steps, widths.get(lane.part ?? 0), isCellOn)[0]?.width ?? 1
+        lane.cells.forEach((c, si) => {
+          if (!isCellOn(c)) return
+          hits++
+          const offered = (width: number): boolean => {
+            const { longer, shorter } = boxLengths(c.duration, width)
+            return canResizeCell(m, li, si, longer) || (shorter !== null && canResizeCell(m, li, si, shorter))
+          }
+          const inLcm = offered(1)
+          const inExact = offered(w)
+          if (inLcm) lcmHandles++
+          if (inExact) exactHandles++
+          if (inLcm && !inExact) lost.push(`${JSON.stringify(mini)} ${lane.sound}@${si}`)
+        })
+      })
+    }
+    console.log(`#1855 lengths: ${exactViews} Exact grids, ${hits} hits; handle offered LCM ${lcmHandles}, Exact ${exactHandles}; lost in Exact ${lost.length}\n${lost.join('\n')}`)
+    expect(exactViews).toBe(29)
+    expect(gainWrites.join('\n')).toBe('')
+    // MEASURED 2026-09-30: of 281 hits on the 29 Exact grids, 41 carry a handle by columns
+    // and 65 by boxes — 24 gained, none lost.
+    expect(lost.join('\n')).toBe('')
+    expect({ hits, lcmHandles, exactHandles }).toEqual({ hits: 281, lcmHandles: 41, exactHandles: 65 })
   })
 })

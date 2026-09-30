@@ -107,6 +107,70 @@ test.describe('Exact grid mode (#1855)', () => {
     await expect(seq.locator('[data-seq-cell-inert="true"]')).toHaveCount(0)
   })
 
+  // ── PART 2: the other gestures move by the box the row draws ──────────────────────
+
+  test('the length handle is offered on an own step and drags by whole steps', async ({ page }) => {
+    // the snare is 2 hat-cells long; one column longer or shorter is half a step, which the
+    // writer declines both ways — asked by columns, the handle was never drawn
+    const seq = await open(page, '$: s("~ sd ~ ~, hh*8")')
+    const handle = seq.locator('[data-seq-resize="0:2"]')
+    await expect(handle).toHaveCount(1)
+    const h = await handle.boundingBox()
+    const t = await cell(seq, 'sd step 3').boundingBox()
+    await page.mouse.move(h!.x + h!.width / 2, h!.y + h!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(t!.x + t!.width / 2, t!.y + t!.height / 2, { steps: 10 })
+    await page.mouse.up()
+    await expect.poll(() => editorValue(page)).toBe('$: s("~ sd _ ~, hh*8")')
+  })
+
+  test('⌥⇧→ / ⌥⇧← lengthen and shorten by one own step', async ({ page }) => {
+    const seq = await open(page, '$: s("~ sd ~ ~, hh*8")')
+    await cell(seq, 'sd step 2').focus()
+    await page.keyboard.press('Alt+Shift+ArrowRight')
+    await expect.poll(() => editorValue(page)).toBe('$: s("~ sd _ ~, hh*8")')
+    await page.keyboard.press('Alt+Shift+ArrowLeft')
+    await expect.poll(() => editorValue(page)).toBe('$: s("~ sd ~ ~, hh*8")')
+  })
+
+  test('↓ lands on the step playing when the box starts, also after ←', async ({ page }) => {
+    const seq = await open(page, '$: s("~ sd ~ sd, hh*8")')
+    const selected = seq.locator('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')
+    await cell(seq, 'sd step 2').focus()
+    await page.keyboard.press('ArrowLeft')
+    await expect(selected).toHaveAttribute('aria-label', 'sd step 1')
+    await page.keyboard.press('ArrowDown')
+    await expect(selected).toHaveAttribute('aria-label', 'hh step 1')
+    // and up from the second hat of a snare step is that snare step
+    await page.keyboard.press('ArrowRight')
+    await page.keyboard.press('ArrowRight')
+    await page.keyboard.press('ArrowRight')
+    await expect(selected).toHaveAttribute('aria-label', 'hh step 4')
+    await page.keyboard.press('ArrowUp')
+    await expect(selected).toHaveAttribute('aria-label', 'sd step 2')
+  })
+
+  test('a paint drag fills every own step it crosses, one step each', async ({ page }) => {
+    const seq = await open(page, '$: s("~ sd ~ ~, hh*8")')
+    const a = await cell(seq, 'sd step 1').boundingBox()
+    const b = await cell(seq, 'sd step 3').boundingBox()
+    await page.mouse.move(a!.x + a!.width / 2, a!.y + a!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(b!.x + b!.width / 2, b!.y + b!.height / 2, { steps: 10 })
+    await page.mouse.up()
+    await expect.poll(() => editorValue(page)).toBe('$: s("sd sd sd ~, hh*8")')
+  })
+
+  test('CONTROL: in LCM the length still moves a column at a time', async ({ page }) => {
+    // one column is half the snare's step: declined, so no handle and the key writes nothing
+    const seq = await open(page, '$: s("~ sd ~ ~, hh*8")', 'lcm')
+    await expect(seq.locator('[data-seq-resize="0:2"]')).toHaveCount(0)
+    await cell(seq, 'sd step 3').focus()
+    await page.keyboard.press('Alt+Shift+ArrowRight')
+    await page.waitForTimeout(300)
+    expect(await editorValue(page)).toBe('$: s("~ sd ~ ~, hh*8")')
+  })
+
   test('CONTROL: LCM draws and writes as it always did', async ({ page }) => {
     const seq = await open(page, BEAT, 'lcm')
     await expect(seq.locator('[data-seq-cell]')).toHaveCount(48)

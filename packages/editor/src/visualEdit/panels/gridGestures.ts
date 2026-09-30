@@ -276,6 +276,30 @@ export function moveCursor(at: GridCell, move: CursorMove, rows: number, cols: n
   }
 }
 
+/**
+ * `moveCursor` on a grid whose rows are drawn as boxes `widthOf(row)` columns wide (#1855).
+ * The cursor keeps a column and the box holding it is the one selected. ←/→ step over a
+ * whole box and land on the next box's first column; ↑/↓ keep the column, so they land on
+ * the box playing at that moment in the next row — which, after ←/→, is the moment the box
+ * you were on starts. With a box per column this is `moveCursor`.
+ */
+export function moveBoxCursor(
+  at: GridCell,
+  move: CursorMove,
+  rows: number,
+  cols: number,
+  widthOf: (row: number) => number,
+): GridCell {
+  if (move === 'up' || move === 'down') return moveCursor(at, move, rows, cols)
+  const w = widthOf(at.row)
+  const start = at.col - (at.col % w)
+  // leave the box from the edge the key points out of
+  const from = { row: at.row, col: move === 'right' ? start + w - 1 : start }
+  const to = moveCursor(from, move, rows, cols)
+  const tw = widthOf(to.row)
+  return { row: to.row, col: to.col - (to.col % tw) }
+}
+
 /** Is `action` a cursor move? */
 export function isCursorMove(action: GridAction): action is CursorMove {
   return CURSOR_MOVES.has(action)

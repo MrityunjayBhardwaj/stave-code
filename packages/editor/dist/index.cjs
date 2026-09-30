@@ -35659,6 +35659,12 @@ function boxesPlaceNotes(lanes, boxes, isOn, placeable) {
   return asked === 0;
 }
 __name(boxesPlaceNotes, "boxesPlaceNotes");
+function boxLengths(duration, w) {
+  const d = Math.round(duration);
+  const down = Math.ceil(d / w) - 1;
+  return { longer: (Math.floor(d / w) + 1) * w, shorter: down >= 1 ? down * w : null };
+}
+__name(boxLengths, "boxLengths");
 function linesModel(shown, read5) {
   if (!read5 || read5.steps !== shown.steps || (read5.bars ?? 1) !== (shown.bars ?? 1)) return shown;
   return (read5.barSteps ?? []).join() === (shown.barSteps ?? []).join() ? read5 : shown;
@@ -36243,6 +36249,16 @@ function moveCursor(at, move, rows, cols) {
   }
 }
 __name(moveCursor, "moveCursor");
+function moveBoxCursor(at, move, rows, cols, widthOf) {
+  if (move === "up" || move === "down") return moveCursor(at, move, rows, cols);
+  const w = widthOf(at.row);
+  const start = at.col - at.col % w;
+  const from = { row: at.row, col: move === "right" ? start + w - 1 : start };
+  const to = moveCursor(from, move, rows, cols);
+  const tw = widthOf(to.row);
+  return { row: to.row, col: to.col - to.col % tw };
+}
+__name(moveBoxCursor, "moveBoxCursor");
 function isCursorMove(action) {
   return CURSOR_MOVES.has(action);
 }
@@ -36367,14 +36383,15 @@ function SequencerGrid({ onResolution } = {}) {
     if (!model) return null;
     return model.lanes.map((lane, li) => {
       const out = /* @__PURE__ */ new Set();
+      const w = boxes?.[li]?.[0]?.width ?? 1;
       lane.cells.forEach((c, si) => {
         if (!isCellOn(c)) return;
-        const d = Math.round(c.duration);
-        if (canResizeCell(model, li, si, d + 1) || canResizeCell(model, li, si, d - 1)) out.add(si);
+        const { longer, shorter } = boxLengths(c.duration, w);
+        if (canResizeCell(model, li, si, longer) || shorter !== null && canResizeCell(model, li, si, shorter)) out.add(si);
       });
       return out;
     });
-  }, [model]);
+  }, [model, boxes]);
   const paintCell = React21__namespace.useCallback(
     (laneIndex, stepIndex, value) => {
       let refused2 = false;
@@ -36559,8 +36576,9 @@ function SequencerGrid({ onResolution } = {}) {
     if (head < 0) return false;
     const c = cells[head];
     if (!isCellOn(c)) return false;
-    const dur = Math.round(c.duration) + (action === "longer" ? 1 : -1);
-    if (!canResizeCell(model, at.row, head, dur)) return false;
+    const { longer, shorter } = boxLengths(c.duration, boxWidth(at.row));
+    const dur = action === "longer" ? longer : shorter;
+    if (dur === null || !canResizeCell(model, at.row, head, dur)) return false;
     if (!dryRun) {
       beginGesture();
       mutate((prev) => resizeCell(prev, at.row, head, dur));
@@ -36580,11 +36598,7 @@ function SequencerGrid({ onResolution } = {}) {
     if (isCursorMove(action)) {
       if (dryRun) return true;
       focusCursorRef.current = true;
-      const from = at ?? { row: 0, col: 0 };
-      const w = boxWidth(from.row);
-      const start = from.col - from.col % w;
-      const col2 = action === "left" ? start : action === "right" ? start + w - 1 : from.col;
-      setCursor(moveCursor({ row: from.row, col: col2 }, action, rowsN, colsN));
+      setCursor(moveBoxCursor(at ?? { row: 0, col: 0 }, action, rowsN, colsN, boxWidth));
       return true;
     }
     if (!at) return false;
