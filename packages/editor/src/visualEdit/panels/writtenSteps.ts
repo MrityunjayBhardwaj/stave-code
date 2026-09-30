@@ -23,6 +23,7 @@
 import * as React from 'react'
 import type { AltSource, NotationSource } from '../notation/model'
 import { drawnAt, drawnLayout, lcmOf } from '../notation/perBar'
+import { parseStepGrid } from '../notation/parse'
 
 /** the fields both grid and roll models share that this module reads */
 export interface WrittenStepsModel {
@@ -61,6 +62,30 @@ function regionStepStarts(r: { from: number; to: number; weight?: number }): num
 }
 
 /**
+ * The steps of a WHOLE BAR written as one `[…]` element (#1855): `<[bd ~ bd ~] [bd ~ ~ bd]>`
+ * spells each bar as one bracketed element, because an entry of `<…>` is one bar. Strudel
+ * counts that element as one step, but it IS the bar, and the bar is cut the way its
+ * content is: `[~ sd ~ sd]` is `~ sd ~ sd` spelled so it fits in `<…>`, and the editor's
+ * own bar-by-bar writes produce exactly that spelling (#1849). So the bar draws the steps
+ * of its content — asked of the parser (`parseStepGrid` on the text inside the brackets),
+ * never re-derived here. A content the parser does not read as one flat part, or whose
+ * steps do not land on the region's columns, stays one step.
+ */
+function wholeBarStepStarts(r: { raw: string; from: number; to: number }): number[] | null {
+  const text = r.raw.trim()
+  if (!text.startsWith('[') || !text.endsWith(']')) return null
+  const inner = parseStepGrid(text.slice(1, -1))
+  if (!inner.ok) return null
+  const src = inner.model.source
+  if (!src || src.parts.length !== 1 || src.prefix || src.suffix || inner.model.bars) return null
+  const regions = src.parts[0].regions
+  const cols = regions[regions.length - 1]?.to
+  if (!cols) return null
+  const starts = regions.flatMap(regionStepStarts).map((c) => r.from + (c * (r.to - r.from)) / cols)
+  return starts.every(Number.isInteger) ? starts : null
+}
+
+/**
  * Drawn columns where a written step begins, per `,`-part index (`StepLane.part`).
  * Sorted, deduplicated, and including column 0. A part the model has no current
  * regions for is absent from the map.
@@ -83,8 +108,16 @@ export function writtenStepStarts(m: WrittenStepsModel): Map<number, number[]> {
       // tile one window, and the window recurs `repeats` times across the model
       const repeats = p.bars === undefined ? 1 : (m.bars ?? 1) / p.bars
       if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== shared) continue // stale
-      const once = p.regions.flatMap(regionStepStarts).map((c) => c * p.factor)
       const span = last.to * p.factor
+      // a region that is one whole bar of the grid draws its bar's own steps (#1855)
+      const bar = (m.bars ?? 1) > 1 ? shared / (m.bars ?? 1) : null
+      const once = p.regions
+        .flatMap((r) =>
+          bar !== null && (r.to - r.from) * p.factor === bar
+            ? (wholeBarStepStarts(r) ?? regionStepStarts(r))
+            : regionStepStarts(r),
+        )
+        .map((c) => c * p.factor)
       put(
         p.part,
         Array.from({ length: repeats }, (_, k) => once.map((c) => c + k * span)).flat(),
