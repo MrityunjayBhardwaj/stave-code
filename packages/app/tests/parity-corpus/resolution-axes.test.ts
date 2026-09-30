@@ -325,12 +325,14 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     // ⚠ MOVED at #1849: +3 units (the grids it opens), +16 asks, 13 `no-offer` become
     // `measured` — `unwritable` and `hapsUnevaluable` stay ZERO.
     }).toEqual({
-      units: 1017,
-      asks: 7608,
-      coarsenSkipped: 1281,
-      'no-offer': 1074,
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      units: 1018,
+      asks: 7614,
+      coarsenSkipped: 1283,
+      'no-offer': 1064,
       unwritable: 0,
-      measured: 6534,
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      measured: 6550,
       hapsUnevaluable: 0,
     })
     // TODAY'S ANSWER. Every grid refine that reaches the writer rewrites the document —
@@ -341,9 +343,11 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     // than reaching a combination the taxonomy had never seen.
     expect(grid.triples).toEqual({
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-      'lossless (doc,layout,----)': 2861,
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      'lossless (doc,layout,----)': 2869,
       'lossless (doc,layout,haps)': 230,
-      'quantize (doc,layout,----)': 101,
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      'quantize (doc,layout,----)': 109,
       'quantize (doc,layout,haps)': 3342,
     })
   })

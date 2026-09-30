@@ -5901,7 +5901,7 @@ a5 e5 c#5
     "roll": "the pattern mixes numeric and note-name pitches",
   },
   {
-    "grid": "nothing in this view could be edited on its own",
+    "grid": "ok",
     "mini": "c2 c2 c2 c2 , < [~ g1 ~ ~] [~ ~ ~ g1] >",
     "roll": "ok",
   },

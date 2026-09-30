@@ -473,7 +473,8 @@ describe('writer census — how much of the syntactic core transfers to the deri
     // 64 shared columns, so both arrive UNTRANSFERABLE (core-structured), which is the
     // +1/+1 the P6 table shows.
     // ⚠ 812 -> 805 / 1179 -> 1158 core-refused at #1849: a `,`-part the flat reading refused is now read as it is alone, so 7 grid and 21 roll units are served by the core (4 + 18 that were leaf-read, 3 + 3 that were refused).
-    expect(grid.length).toBe(1633 - 805)
+    // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+    expect(grid.length).toBe(1633 - 802)
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     expect(roll.length).toBe(1633 - 1158)
@@ -1008,12 +1009,14 @@ describe('writer census — how much of the syntactic core transfers to the deri
       // ⚠ 1273 -> 1275 at #1827: the two units the core newly serves per bar (see the
       // population pins above).
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-      expect(checked).toBe(1303)
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      expect(checked).toBe(1306)
       // the field the comparison above is allowed to ignore must be on EVERY one of them —
       // otherwise "identical apart from `surgical`" is satisfied by never attaching it
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-      expect(overlaid, 'the overlay is not reaching the core-served asks').toBe(1303)
+      // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+      expect(overlaid, 'the overlay is not reaching the core-served asks').toBe(1306)
     }, 900_000)
 
     it('RED TEST: the census distinguishes the two writers — it is not measuring one twice', () => {

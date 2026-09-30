@@ -418,7 +418,8 @@ const GRID_PINS: Record<string, [number, number, number]> = {
   'alt-element': [61, 61, 0],
   'alt-whole': [85, 85, 0],
   // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-  element: [788, 787, 0],
+  // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
+  element: [791, 788, 0],
 }
 const ROLL_PINS: Record<string, [number, number, number]> = {
   // ⚠ MOVED at #1310 (region-local parallel lanes). The two units that stopped needing
