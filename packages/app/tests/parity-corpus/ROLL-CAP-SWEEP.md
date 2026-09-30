@@ -155,13 +155,13 @@ units, 1306 core-served asks (831 grid / 475 roll):
 |---|---|---|
 | untransferable asks, both surfaces | 77 | 59 |
 | roll untransferable | 42 | 24 |
-| **the set that actually blocks deleting the core** | 54 | 38 |
-| …of it, grid | 19 | 19 |
+| **the set that actually blocks deleting the core** | 55 | 39 |
+| …of it, grid | 20 | 20 |
 | …of it, roll | 35 | 19 |
 
-**The cap's own contribution is 16 asks** (54 − 38), all of it on the roll: 35 − 19 = 16.
+**The cap's own contribution is 16 asks** (55 − 39), all of it on the roll: 35 − 19 = 16.
 
-**The grid is the control arm** and it is identical to the digit at both caps — 831 asks / 730 transfers / 35 untransferable / blocker 19 at cap 4, and 831 / 730 / 35 / 19 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
+**The grid is the control arm** and it is identical to the digit at both caps — 831 asks / 730 transfers / 35 untransferable / blocker 20 at cap 4, and 831 / 730 / 35 / 20 at cap 12. The constant is per-surface and roll-only, so a grid column that moved would mean the sweep had changed something it was not aiming at.
 
 The cap-4 column is DERIVED from this run. The cap-12 column is an OBSERVATION taken by `node scripts/p6-cap-census.mjs 12`, which sets the module constant exactly as a ship would; it carries the cap-4 column from its own run as an expiry stamp, and `writer-census.test.ts` reddens when that stamp stops matching this tree.
 

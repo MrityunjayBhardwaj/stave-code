@@ -14,8 +14,8 @@
       "arrayValue": 12,
       "structural": 65,
       "coreStructured": 59,
-      "coreEdits": 56,
-      "blocker": 54
+      "coreEdits": 57,
+      "blocker": 55
     },
     "grid": {
       "asks": 831,
@@ -24,8 +24,8 @@
       "arrayValue": 12,
       "structural": 23,
       "coreStructured": 20,
-      "coreEdits": 19,
-      "blocker": 19
+      "coreEdits": 20,
+      "blocker": 20
     },
     "roll": {
       "asks": 475,
@@ -4395,7 +4395,7 @@
       "surface": "step",
       "outcome": "no-view",
       "gate": "view-unusable",
-      "coreProbe": "corrupt",
+      "coreProbe": "ok",
       "shape": "alternation",
       "arrayValue": false,
       "coreStructured": true
