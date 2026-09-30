@@ -1672,8 +1672,11 @@ describe('#1849 grid stack parts read as they would be alone', () => {
     expect(serializeStepGrid(r.model)).toBe('bd sd, hh*4')
   })
 
-  it('a part whose own reading has a `<`…`>` wrapper still refuses the stack (control)', () => {
-    const r = parseStepGrid('<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd, hh*8')
+  it('a part read bar by bar from a `<…>` ELEMENT still refuses the stack (control)', () => {
+    // A whole-`<…>` part now reads with repeats (`stackRepeats.test.ts`); a part whose
+    // `<…>` is one element among others comes back as `altSource`, which a stack part
+    // cannot hold, so the pattern keeps the leaf reading.
+    const r = parseStepGrid('bd sd <bd sd> sd, hh*8')
     if (!r.ok) throw new Error('expected the grid to open')
     expect(r.model.source).toBeUndefined()
   })

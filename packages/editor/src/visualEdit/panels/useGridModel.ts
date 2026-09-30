@@ -66,6 +66,13 @@ export interface GridModelOptions<M> {
    * refines behaving exactly as it did.
    */
   collapseToDocument?: (model: M) => M | null
+  /**
+   * The model the written text will read back as, when that differs from the edited
+   * model (#1849): an edit in a repeat of a `,`-part is written into its written bars,
+   * so every repeat changes. A write keeps THIS model on screen — the one the text
+   * holds — rather than the edit as painted. Omit when a model reads back as itself.
+   */
+  readsBackAs?: (model: M) => M
   /** model → mini, or null when the model can't be expressed in the subset */
   serialize: (model: M) => string | null
   /**
@@ -224,8 +231,9 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
    * differently (#1453).
    */
   const writeModel = React.useCallback(
-    (next: M): void => {
+    (edited: M): void => {
       const o = optsRef.current
+      const next = o.readsBackAs ? o.readsBackAs(edited) : edited
       // WHAT RESOLUTION SHOULD THIS WRITE SPELL? Only an edit that used a column
       // the document does not have needs the finer one; a velocity drag does not,
       // and respelling for it rewrites the file to record how closely someone was

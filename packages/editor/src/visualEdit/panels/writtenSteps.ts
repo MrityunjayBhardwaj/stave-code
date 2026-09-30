@@ -79,10 +79,15 @@ export function writtenStepStarts(m: WrittenStepsModel): Map<number, number[]> {
   if (m.source) {
     for (const p of m.source.parts) {
       const last = p.regions[p.regions.length - 1]
-      if (!last || last.to * p.factor !== shared) continue // stale: no longer tiles the model
+      // a part written over fewer bars than the stack repeats them (#1849): its regions
+      // tile one window, and the window recurs `repeats` times across the model
+      const repeats = p.bars === undefined ? 1 : (m.bars ?? 1) / p.bars
+      if (!last || !Number.isInteger(repeats) || last.to * p.factor * repeats !== shared) continue // stale
+      const once = p.regions.flatMap(regionStepStarts).map((c) => c * p.factor)
+      const span = last.to * p.factor
       put(
         p.part,
-        p.regions.flatMap(regionStepStarts).map((c) => c * p.factor),
+        Array.from({ length: repeats }, (_, k) => once.map((c) => c + k * span)).flat(),
       )
     }
     return out
@@ -94,6 +99,21 @@ export function writtenStepStarts(m: WrittenStepsModel): Map<number, number[]> {
     put(0, us) // an alternation-as-element pattern has no `,`-parts
   }
   return out
+}
+
+/**
+ * The written bar (1-based) that column `col` of part `part` REPEATS, or null when the
+ * column is written there (#1849). A part written over fewer bars than its stack plays
+ * again from its first bar — `~ sd ~ sd` beside `<A B>` is written in bar 1 and repeated
+ * in bar 2 — and a panel draws the repeats as repeats, so a click there reads as what it
+ * does: an edit to the bar that is written, heard in every repeat.
+ */
+export function repeatedBar(m: WrittenStepsModel, part: number, col: number): number | null {
+  if (!m.source || !m.bars || m.bars < 2 || m.barSteps) return null
+  const p = m.source.parts.find((x) => x.part === part)
+  if (!p || p.bars === undefined || p.bars >= m.bars) return null
+  const bar = Math.floor(col / (m.steps / m.bars))
+  return bar >= p.bars ? (bar % p.bars) + 1 : null
 }
 
 /**

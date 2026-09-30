@@ -2869,6 +2869,9 @@ function gridFromStack(
   const elements: ElementSpan[][] = []
   // a part read by the lone-part chain brings its own regions (#1849)
   const given: (SourceRegion<GridCells>[] | null)[] = []
+  // …and, for a whole `<…>` part, its bars and its own `<`/`>` (#1849's `<…>` half)
+  const partBars: number[] = []
+  const wraps: { prefix: string; suffix: string }[] = []
   // The DOCUMENT's own shared width, needed for the unscaled ceiling below. Every
   // part's column count scales by exactly `viewScale`, and `lcm(k·a, k·b) = k·lcm(a, b)`,
   // so the shared total scales by the same factor — which is why the guard can be
@@ -2889,21 +2892,36 @@ function gridFromStack(
       // Only its flat-shaped answer fits a stack part: one part, no wrapper, not
       // bar-wise. Anything else refuses as before.
       const lone = loneGridPart(part.trim(), viewScale)
-      if (!lone) return flatRefusal ?? { ok: false, reason: 'unsupported mini-notation syntax' }
+      if (!lone) {
+        // A part that reads at the document's own resolution and not at this scale was
+        // stopped by the VIEW's ceiling, and says so — the stack owns the pattern at ×1,
+        // so its refinement refusal must name the gate rather than the part's syntax.
+        if (viewScale !== UNREFINED && loneGridPart(part.trim(), UNREFINED)) {
+          return { ok: false, reason: gateReason('view-resolution', 'grid'), gate: 'view-resolution' }
+        }
+        return flatRefusal ?? { ok: false, reason: 'unsupported mini-notation syntax' }
+      }
       documentTotal = lcm(documentTotal, lone.steps / viewScale)
       divs.push(lone.div)
       elements.push([])
       partCells.push(lone.cells)
       given.push(lone.regions)
+      partBars.push(lone.bars)
+      wraps.push({ prefix: lone.prefix, suffix: lone.suffix })
       continue
     }
     given.push(null)
+    partBars.push(1)
+    wraps.push({ prefix: '', suffix: '' })
     const documentDiv = division(tok.steps)
     documentTotal = lcm(documentTotal, tok.steps.length * documentDiv || 1)
     const div = documentDiv * viewScale
     divs.push(div)
     elements.push(tok.elements)
     partCells.push(toCells(tok.steps, div))
+  }
+  if (partBars.some((b) => b > 1)) {
+    return gridFromBarStack(parts, viewScale, { partCells, partBars, divs, elements, given, wraps })
   }
   if (documentTotal > MAX_STEPS) {
     return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` }
@@ -2941,6 +2959,97 @@ function gridFromStack(
 }
 
 /**
+ * `<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd, hh*8` — a stack that plays for more bars than
+ * some of its parts are written over (#1849's `<…>` half).
+ *
+ * Strudel asks every `,`-part for the same cycle (`mini.mjs` `case 'stack'` →
+ * `strudel.stack`), and a `<…>` answers with the element for THAT cycle (`slowcat`,
+ * `pats[cycle mod n]`). So the stack's length is the lcm of its parts' bars, and a part
+ * written over fewer bars plays them again — it repeats, it is not stretched. The shared
+ * grid is laid out bar by bar: each bar is the lcm of the parts' columns-per-bar, a part's
+ * bar `b` shows its written bar `b mod bars`, and a part's columns spread every `factor`
+ * shared columns within a bar, as in the one-bar stack.
+ *
+ * Each part keeps the regions its own reading gave it and its own `<`/`>` in its
+ * `before`/`after`, so the writer re-emits only a part that changed and copies the rest.
+ * Past `MAX_PROJECT_BARS` it refuses, and the pattern reads as it did before.
+ */
+function gridFromBarStack(
+  parts: string[],
+  viewScale: ViewScale,
+  read: {
+    partCells: ColumnNotes[]
+    partBars: number[]
+    divs: number[]
+    elements: ElementSpan[][]
+    given: (SourceRegion<GridCells>[] | null)[]
+    wraps: { prefix: string; suffix: string }[]
+  },
+): ParseResult<StepGridModel> {
+  const { partCells, partBars, divs, elements, given, wraps } = read
+  const bars = partBars.reduce((l, b) => lcm(l, b), 1)
+  if (bars > MAX_PROJECT_BARS) {
+    return { ok: false, reason: `the stack does not repeat within ${MAX_PROJECT_BARS} bars` }
+  }
+  const perBar = partCells.map((cells, i) => cells.length / partBars[i])
+  if (perBar.some((n) => !Number.isInteger(n) || n < 1)) {
+    return { ok: false, reason: 'a part does not split into whole bars' }
+  }
+  const width = perBar.reduce((l, n) => lcm(l, n), 1)
+  const total = bars * width
+  // the DOCUMENT's own ceiling on the unscaled grid, then the VIEW's (#1055, #1116)
+  if (total / viewScale > MAX_STEPS) {
+    return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` }
+  }
+  if (!viewScaleFits(width / viewScale, bars, viewScale)) {
+    return { ok: false, reason: gateReason('view-resolution', 'grid'), gate: 'view-resolution' }
+  }
+  const lanes: StepLane[] = []
+  const factors = perBar.map((n) => width / n)
+  partCells.forEach((cells, part) => {
+    const factor = factors[part]
+    const shown: ColumnNotes = Array.from({ length: total }, (_, c) => {
+      const within = c % width
+      if (within % factor !== 0) return []
+      const own = (Math.floor(c / width) % partBars[part]) * perBar[part] + within / factor
+      return (cells[own] ?? []).map((n) => ({ ...n, duration: n.duration * factor }))
+    })
+    lanes.push(...lanesFromCells(shown, part))
+  })
+  const out: SourcePart<GridCells>[] = []
+  for (let i = 0; i < parts.length; i++) {
+    const raw = parts[i]
+    const leading = /^\s*/.exec(raw)?.[0] ?? ''
+    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? ''
+    const regions =
+      given[i] ??
+      buildRegions(raw.trim(), elements[i], divs[i], partCells[i].length, gridContent(tokensOf(partCells[i])))
+    // no regions → no writer that keeps the other parts' bytes: refuse, and the pattern
+    // reads as it did before this path existed rather than handing the rebuild a stack
+    if (!regions) return { ok: false, reason: 'a stack part could not be tiled' }
+    out.push({
+      part: i,
+      div: divs[i],
+      factor: factors[i],
+      bars: partBars[i],
+      before: (i > 0 ? ',' : '') + leading + wraps[i].prefix,
+      after: wraps[i].suffix + after,
+      regions,
+    })
+  }
+  const model: StepGridModel = {
+    steps: total,
+    bars,
+    ...(viewScale === UNREFINED ? {} : { viewScale }),
+    lanes,
+  }
+  // the parts must reassemble the line exactly — `stackSource`'s check, one level up
+  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join('') + p.after).join('')
+  if (rebuilt !== parts.join(',')) return { ok: false, reason: 'a stack part could not be tiled' }
+  return { ok: true, model: { ...model, source: { prefix: '', suffix: '', parts: out } } }
+}
+
+/**
  * A `,`-part the flat reading turned away, read the way the same text is read on its
  * own (#1849) — `parseStepGrid`, the whole chain — and kept only when its answer has
  * the shape a stack part holds: one flat part of regions, no `<`…`>` wrapper, one bar,
@@ -2950,20 +3059,45 @@ function gridFromStack(
 function loneGridPart(
   part: string,
   viewScale: ViewScale,
-): { steps: number; div: number; cells: ColumnNotes; regions: SourceRegion<GridCells>[] } | null {
+): {
+  steps: number
+  div: number
+  cells: ColumnNotes
+  regions: SourceRegion<GridCells>[]
+  /** the bars the part is written over — more than 1 only for a whole `<…>` */
+  bars: number
+  /** the part's own `<` … `>` wrapper, with the padding inside it, verbatim */
+  prefix: string
+  suffix: string
+} | null {
   const r = parseStepGrid(part, viewScale)
   if (!r.ok) return null
   const m = r.model
   const src = m.source
-  if (!src || src.parts.length !== 1 || src.prefix !== '' || src.suffix !== '') return null
-  if (m.altSource || (m.bars ?? 1) !== 1 || (m.viewScale ?? UNREFINED) !== viewScale) return null
+  if (!src || src.parts.length !== 1) return null
+  if (m.altSource || m.barSteps || (m.viewScale ?? UNREFINED) !== viewScale) return null
+  const bars = m.bars ?? 1
+  // ONE BAR, NO WRAPPER — or A WHOLE `<…>`, ONE ELEMENT PER BAR (#1849): the lone reading
+  // `gridFromAlternation` gives `<[bd ~ bd ~] [bd ~ ~ bd]>`, whose `<`/`>` sit outside the
+  // regions exactly as a stack part's `,` does. Any other multi-bar answer is refused.
+  const wrapped = bars > 1 && src.prefix.startsWith('<') && src.suffix.endsWith('>')
+  if (!wrapped && (bars !== 1 || src.prefix !== '' || src.suffix !== '')) return null
+  if (m.steps % bars !== 0) return null
   const cells: ColumnNotes = Array.from({ length: m.steps }, (_, c) =>
     m.lanes.flatMap((l) => {
       const cell = l.cells[c]
       return isCellOn(cell) ? [{ token: l.sound, duration: cell.duration }] : []
     }),
   )
-  return { steps: m.steps, div: src.parts[0].div, cells, regions: src.parts[0].regions }
+  return {
+    steps: m.steps,
+    div: src.parts[0].div,
+    cells,
+    regions: src.parts[0].regions,
+    bars,
+    prefix: src.prefix,
+    suffix: src.suffix,
+  }
 }
 
 /**

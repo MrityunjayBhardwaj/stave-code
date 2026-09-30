@@ -21,6 +21,7 @@ import type {
   RollLeafAnchor,
   RollLeafSource,
   RollNote,
+  SourcePart,
   StepGridModel,
   StepLane,
 } from './model'
@@ -495,7 +496,17 @@ function spliceGrid(
   // 3 units it silently changed what plays.
   let out = src.prefix
   for (const p of src.parts) {
-    const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part)
+    // A part written over fewer bars than the stack plays is read from ONE window of the
+    // shared grid — the repeat the user edited, or its first — so the edit lands on the
+    // bars that are written and every repeat follows it (#1849).
+    const written = writtenWindow(
+      model.lanes.filter((l) => (l.part ?? 0) === p.part),
+      model.steps,
+      model.bars ?? 1,
+      p,
+    )
+    if (written === null) return 'decline'
+    const { lanes, steps } = written
     // READ THE PART AT THE FINEST WIDTH ITS OWN ELEMENTS STILL DESCRIBE (#1137).
     //
     // `partColumns` refuses when a hit lands BETWEEN this part's columns — the user
@@ -536,12 +547,12 @@ function spliceGrid(
     // before, so a refusal there is the refusal the writer has always given and it
     // must propagate rather than retry (P4c, argued at the decline below).
     const widths: { cols: GridCells; growth: number }[] = []
-    const own = partColumns(lanes, model.steps, p.factor)
+    const own = partColumns(lanes, steps, p.factor)
     if (own !== null) widths.push({ cols: own, growth: 1 })
     else
       for (let g = p.factor - 1; g >= 1; g--) {
         if (p.factor % g !== 0) continue
-        const finer = partColumns(lanes, model.steps, g)
+        const finer = partColumns(lanes, steps, g)
         if (finer !== null) widths.push({ cols: finer, growth: p.factor / g })
       }
     // The regions index the grid they were parsed from. If they no longer describe
@@ -669,14 +680,14 @@ function spliceGrid(
       }
       return { body, reemitted }
     }
-    let written: { body: string; reemitted: number } | null = null
+    let spliced: { body: string; reemitted: number } | null = null
     for (const w of widths) {
       // the regions must still tile the part at THIS width; where they do not, the
       // width cannot describe what the user wrote and the next one is tried
       if (last === undefined || last.to * w.growth !== w.cols.length) continue
-      const spliced = spliceRegions(w.cols, w.growth)
-      if (spliced !== 'decline') {
-        written = spliced
+      const attempt = spliceRegions(w.cols, w.growth)
+      if (attempt !== 'decline') {
+        spliced = attempt
         break
       }
       // WHERE THE FINER READ IS WHAT FAILED, THE COARSE ANSWER IS STILL THERE (#1137).
@@ -706,15 +717,34 @@ function spliceGrid(
       // whole line; this is its `,`-stack form.
       if (p.regions.length < 2) break
     }
-    if (written === null) {
+    if (spliced === null) {
+      // A PART WRITTEN OVER SEVERAL BARS REBUILDS BAR BY BAR (#1849). Its `<`/`>` sit in
+      // `before`/`after`, and inside them every element is one bar — so the rebuild is
+      // one `[…]` group per bar. A flat column list there would play one column a bar.
+      const partBars = p.bars ?? 1
+      if (partBars > 1) {
+        rebuiltParts.push(p.regions.length)
+        const per = steps / partBars
+        const groups: string[] = []
+        for (let b = 0; b < partBars; b++) {
+          const bar = gridColumns(
+            lanes.map((l) => ({ ...l, cells: l.cells.slice(b * per, (b + 1) * per) })),
+            per,
+          )
+          if (bar === null) return 'decline'
+          groups.push(`[${bar.join(' ')}]`)
+        }
+        out += groups.join(' ') + p.after
+        continue
+      }
       rebuiltParts.push(p.regions.length)
-      const rebuilt = gridColumns(lanes, model.steps)
+      const rebuilt = gridColumns(lanes, steps)
       if (rebuilt === null) return 'decline'
       out += rebuilt.join(' ') + p.after
       continue
     }
-    regionsReemitted += written.reemitted
-    out += written.body + p.after
+    regionsReemitted += spliced.reemitted
+    out += spliced.body + p.after
   }
   const regions = src.parts.reduce((n, p) => n + p.regions.length, 0)
   return { out: out + src.suffix, regions, regionsReemitted, rebuiltParts }
@@ -1124,6 +1154,81 @@ function reemitAltRegion(perBar: GridCells[], div: number, refined = false): str
   const barTokens = perBar.map((bar) => reemitRegion(bar, div, refined))
   if (barTokens.some((t) => t === null)) return null
   return barTokens.every((t) => t === barTokens[0]) ? barTokens[0]! : `<${barTokens.join(' ')}>`
+}
+
+/**
+ * The part of the shared grid a `,`-part is WRITTEN from (#1849).
+ *
+ * A part with `bars` fewer than the stack's is drawn once per repeat, and every repeat is
+ * the same written bars. A cell edit lands in one repeat only, so the writer has to know
+ * which one holds the user's change: the first window whose columns no longer read back
+ * as the part's regions did at parse. None changed → the first window, which is what was
+ * written. So an edit in bar 2 of `~ sd ~ sd` is written into its one bar, and on the
+ * re-read every repeat shows it — the loop semantics Strudel gives the part.
+ *
+ * Returns the lanes and width to read the part from, or null when the stack no longer
+ * divides into the part's repeats (a restructure changed the width under it). A part
+ * without `bars` is read across the whole grid, exactly as before.
+ */
+function writtenWindow(
+  lanes: StepLane[],
+  steps: number,
+  stackBars: number,
+  p: SourcePart<GridCells>,
+): { lanes: StepLane[]; steps: number } | null {
+  if (p.bars === undefined) return { lanes, steps }
+  const repeats = stackBars / p.bars
+  if (!Number.isInteger(repeats) || repeats < 1 || steps % repeats !== 0) return null
+  if (repeats === 1) return { lanes, steps }
+  const span = steps / repeats
+  const window = (k: number): StepLane[] =>
+    lanes.map((l) => ({ ...l, cells: l.cells.slice(k * span, (k + 1) * span) }))
+  const was: GridCells = p.regions.flatMap((r) => r.content)
+  const changed: StepLane[][] = []
+  for (let k = 0; k < repeats; k++) {
+    const w = window(k)
+    const cols = partColumns(w, span, p.factor)
+    if (cols === null || !sameCells(cols, was)) changed.push(w)
+  }
+  // TWO REPEATS CHANGED DIFFERENTLY is an edit the written bars cannot hold — a nudge
+  // across the bar line of a one-bar part takes a hit out of one repeat and puts it in
+  // the next. Keeping either would write half of it (a move read back as a delete), so
+  // it declines. Repeats that changed ALIKE are one edit, seen in each.
+  const first = changed[0]
+  if (first && changed.some((w) => w.some((l, i) => !sameLaneCells(l.cells, first[i].cells)))) return null
+  return { lanes: first ?? window(0), steps: span }
+}
+
+const sameLaneCells = (a: StepLane['cells'], b: StepLane['cells']): boolean =>
+  a.length === b.length && a.every((c, i) => JSON.stringify(c) === JSON.stringify(b[i]))
+
+/**
+ * The model the text will read back as, after an edit to a repeating part (#1849).
+ *
+ * The writer folds an edit made in any repeat onto the part's written bars
+ * (`writtenWindow`), so the text changes every repeat. A panel that kept the edited
+ * model as it was would still draw the other repeats unchanged — the text saying one
+ * thing and the grid another. This copies the same window the writer reads into every
+ * repeat, so the model shown IS the one the text holds. Same model back, by reference,
+ * when no part repeats.
+ */
+export function linkGridRepeats(model: StepGridModel): StepGridModel {
+  const src = model.source
+  const stackBars = model.bars ?? 1
+  if (!src || stackBars < 2 || !src.parts.some((p) => p.bars !== undefined && p.bars < stackBars)) {
+    return model
+  }
+  let lanes = model.lanes
+  for (const p of src.parts) {
+    if (p.bars === undefined || p.bars >= stackBars) continue
+    const own = lanes.filter((l) => (l.part ?? 0) === p.part)
+    const w = writtenWindow(own, model.steps, stackBars, p)
+    if (w === null) return model
+    const repeats = model.steps / w.steps
+    const linked = new Map(own.map((l, i) => [l, Array.from({ length: repeats }, () => w.lanes[i].cells).flat()]))
+    lanes = lanes.map((l) => (linked.has(l) ? { ...l, cells: linked.get(l)! } : l))
+  }
+  return { ...model, lanes }
 }
 
 /**

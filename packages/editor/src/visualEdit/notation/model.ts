@@ -419,8 +419,28 @@ export interface SourcePart<C> {
    * same step count and refuses the pattern otherwise, so a roll's parts share
    * one column space by construction. The grid is the view that stretches
    * (`bd sd, hh*4` lays two columns against four).
+   *
+   * With `bars` present, the stretch is per BAR: one of this part's bars spans one bar
+   * of the shared grid.
    */
   factor: number
+  /**
+   * The bars this part is WRITTEN over, when the stack is longer than some part (#1849).
+   *
+   * `<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd` plays for two bars, but the snare is written
+   * once: Strudel's `stack` asks every part for the same cycle and the snare answers the
+   * same bar again (`mini.mjs` `case 'stack'`). So the model draws this part's `bars`
+   * written bars, then REPEATS them until the stack's own `bars` — never stretches them.
+   * Its regions tile the written bars only (columns `[0, bars × columns-per-bar)` of its
+   * own space), and the writer folds an edit made in any repeat back onto them, so a
+   * change in bar 2 of the snare changes the one bar that is written, and with it every
+   * repeat (the way a Logic Step Sequencer row loops at its own length).
+   *
+   * Absent on every stack that plays for one bar, which is every stack read before
+   * #1849's `<…>` half — so those models are unchanged. Present → `factor` maps one bar
+   * of this part onto one bar of the shared grid.
+   */
+  bars?: number
   /** the bytes before this part's content — its `,` and padding — verbatim */
   before: string
   /** the bytes after it */
