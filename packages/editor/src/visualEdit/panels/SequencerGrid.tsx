@@ -893,7 +893,12 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                 // ONE BOX — `solo` as it has always been drawn; `inner` a small box inside a
                 // step that holds several (#1861); `plain` one column of a step drawn as a
                 // single box, its gaps showing as faint halves.
-                const cellFor = ({ start: stepIndex, width: w }: { start: number; width: number }, variant: 'solo' | 'inner' | 'plain') => {
+                const cellFor = (
+                  { start: stepIndex, width: w }: { start: number; width: number },
+                  variant: 'solo' | 'inner' | 'plain',
+                  /** a plain step's first/last column carries the step's rounded corner */
+                  ends: { first: boolean; last: boolean } = { first: true, last: true },
+                ) => {
                 // ONE BOX, `w` columns from `stepIndex` (#1855): a column in LCM, one of
                 // the part's own steps in Exact. Everything below reads the box's first
                 // column — a box only exists where no hit starts inside it (`rowBoxes`).
@@ -1075,7 +1080,12 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                           : isPlaying
                             ? '1px solid var(--foreground, #e6e6ea)'
                             : '1px solid var(--border, #3a3a42)',
-                      borderRadius: variant === 'plain' ? 0 : variant === 'inner' ? 2 : 3,
+                      borderRadius:
+                        variant === 'plain'
+                          ? `${ends.first ? 3 : 0}px ${ends.last ? 3 : 0}px ${ends.last ? 3 : 0}px ${ends.first ? 3 : 0}px`
+                          : variant === 'inner'
+                            ? 2
+                            : 3,
                       background: isPlaying
                         ? 'var(--background, #34343c)'
                         : 'var(--background-elevated, #26262c)',
@@ -1213,14 +1223,17 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                       // an outline takes no space, so it cannot push a column
                       outline: '1px solid var(--border, #3a3a42)',
                       borderRadius: g.plain ? 3 : 4,
-                      overflow: 'hidden',
+                      // NOT overflow-hidden: the focus ring is drawn just outside a cell, and
+                      // clipping it here hid the keyboard cursor on a filled column
                       // plain: the gaps between its columns read as faint halves; a step that
                       // holds several: a darker well its small boxes sit in
                       background: g.plain ? 'var(--border, #3a3a42)' : 'var(--background, #1e1e24)',
                       boxShadow: stepStart ? '-2px 0 0 0 var(--foreground-muted, #6a6a90)' : undefined,
                     }}
                   >
-                    {g.boxes.map((b) => cellFor(b, g.plain ? 'plain' : 'inner'))}
+                    {g.boxes.map((b, i) =>
+                      cellFor(b, g.plain ? 'plain' : 'inner', { first: i === 0, last: i === g.boxes.length - 1 }),
+                    )}
                   </div>
                 )
               })}

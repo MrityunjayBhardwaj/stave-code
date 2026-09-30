@@ -36824,7 +36824,7 @@ function SequencerGrid({ onResolution } = {}) {
                     )
                   ] }),
                   /* @__PURE__ */ jsxRuntime.jsx("div", { role: "none", style: { display: "flex", gap: 2, flex: 1, minWidth: 0 }, children: (stepGroups?.[laneIndex] ?? []).map((g) => {
-                    const cellFor = /* @__PURE__ */ __name(({ start: stepIndex, width: w }, variant) => {
+                    const cellFor = /* @__PURE__ */ __name(({ start: stepIndex, width: w }, variant, ends = { first: true, last: true }) => {
                       const cell = lane.cells[stepIndex];
                       const on = isCellOn(cell);
                       const cov = coverage?.[laneIndex]?.[stepIndex];
@@ -36916,7 +36916,7 @@ function SequencerGrid({ onResolution } = {}) {
                                   padding: 0,
                                   overflow: "hidden",
                                   border: variant === "plain" ? "none" : isPlaying ? "1px solid var(--foreground, #e6e6ea)" : "1px solid var(--border, #3a3a42)",
-                                  borderRadius: variant === "plain" ? 0 : variant === "inner" ? 2 : 3,
+                                  borderRadius: variant === "plain" ? `${ends.first ? 3 : 0}px ${ends.last ? 3 : 0}px ${ends.last ? 3 : 0}px ${ends.first ? 3 : 0}px` : variant === "inner" ? 2 : 3,
                                   background: isPlaying ? "var(--background, #34343c)" : "var(--background-elevated, #26262c)",
                                   cursor: !canToggle ? "default" : gainScoped && on ? "ns-resize" : "pointer"
                                 },
@@ -37047,13 +37047,16 @@ function SequencerGrid({ onResolution } = {}) {
                           // an outline takes no space, so it cannot push a column
                           outline: "1px solid var(--border, #3a3a42)",
                           borderRadius: g.plain ? 3 : 4,
-                          overflow: "hidden",
+                          // NOT overflow-hidden: the focus ring is drawn just outside a cell, and
+                          // clipping it here hid the keyboard cursor on a filled column
                           // plain: the gaps between its columns read as faint halves; a step that
                           // holds several: a darker well its small boxes sit in
                           background: g.plain ? "var(--border, #3a3a42)" : "var(--background, #1e1e24)",
                           boxShadow: stepStart ? "-2px 0 0 0 var(--foreground-muted, #6a6a90)" : void 0
                         },
-                        children: g.boxes.map((b) => cellFor(b, g.plain ? "plain" : "inner"))
+                        children: g.boxes.map(
+                          (b, i) => cellFor(b, g.plain ? "plain" : "inner", { first: i === 0, last: i === g.boxes.length - 1 })
+                        )
                       },
                       `step-${g.from}`
                     );

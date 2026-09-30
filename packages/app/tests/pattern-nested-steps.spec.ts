@@ -96,6 +96,18 @@ test.describe('nested steps in Exact (#1861)', () => {
     ).toBeVisible({ timeout: 8000 })
   })
 
+  test('the keyboard cursor inside a step is not clipped by the step', async ({ page }) => {
+    // the focus ring is drawn just outside a cell; a clipping step hid it on a filled column
+    const seq = await open(page, BEAT)
+    await cell(seq, '0:0').focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(cell(seq, '0:1')).toBeFocused()
+    const clipped = await seq.locator('[data-seq-step]').evaluateAll((els) =>
+      els.filter((e) => getComputedStyle(e).overflow !== 'visible').length,
+    )
+    expect(clipped).toBe(0)
+  })
+
   test('CONTROL: LCM draws every column on its own, as before', async ({ page }) => {
     const seq = await open(page, BEAT, 'lcm')
     await expect(seq.locator('[data-seq-step="holds"], [data-seq-step="plain"]')).toHaveCount(0)
