@@ -79,7 +79,7 @@ export function trackColorFromStem(
 /**
  * MIRROR (V-track-1, #579): the palette path below — `TRACK_PALETTE_32`,
  * `trackIndexOf`, `paletteForTrack` (and `stemHueGroup`) — is duplicated in the
- * editor-canonical `packages/editor/src/visualEdit/trackColor.ts` so the Mixer
+ * editor-canonical `packages/editor/src/codeView/trackColor.ts` so the Mixer
  * can colour strips by the SAME algorithm (the editor can't import this app
  * file, and this app file can't import the editor barrel — P172). Keep the two
  * in sync: `trackColor.drift.test.ts` fails loudly if they diverge. The editor's
