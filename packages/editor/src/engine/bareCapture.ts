@@ -59,7 +59,7 @@
  * level.
  */
 import { detectAllChunks } from '../codeView/chunkDetect'
-import { bareCaptureIdFor, isTrackChunk } from '../visualEdit/mixer/stripModel'
+import { bareCaptureIdFor, isTrackChunk } from '../codeView/mixer/stripModel'
 
 /**
  * The captureId a bare document's played pattern belongs to, or `null` when the

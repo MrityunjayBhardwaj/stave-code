@@ -37,10 +37,16 @@
     {
       "file": "packages/editor/src/engine/bareCapture.ts",
       "reaches": [
-        "codeView/chunkDetect#detectAllChunks"
+        "codeView/chunkDetect#detectAllChunks",
+        "codeView/mixer/stripModel#bareCaptureIdFor",
+        "codeView/mixer/stripModel#isTrackChunk"
       ],
-      "why": "The engine reads the document to decide which track a bare statement's pattern belongs to. It sits in the engine's runtime import graph (StrudelEngine → bareCapture → mixer/stripModel → mixer/gain), where importing the entry loads the mini-notation parser ahead of the engine test's mock and the suite dies at load.",
-      "issue": "#1882"
+      "why": "The engine reads the document to decide which track a bare statement's pattern belongs to: chunk detection, plus the track numbering in codeView/mixer/stripModel that the mixer joins on. It sits in the engine's runtime import graph, where importing the entry loads the mini-notation parser ahead of the engine test's mock and the suite dies at load.",
+      "issue": "#1882",
+      "added": {
+        "codeView/mixer/stripModel#bareCaptureIdFor": "#1882 the engine already imported this file; it moved into the area in #1884, so the same dependency now crosses the boundary",
+        "codeView/mixer/stripModel#isTrackChunk": "#1882 the engine already imported this file; it moved into the area in #1884, so the same dependency now crosses the boundary"
+      }
     },
     {
       "file": "packages/editor/src/visualEdit/mixer/LocalMixerStrip.tsx",
@@ -59,14 +65,6 @@
       "issue": "#1880"
     },
     {
-      "file": "packages/editor/src/visualEdit/mixer/gain.ts",
-      "reaches": [
-        "codeView/writeback#formatNumber"
-      ],
-      "why": "Needs one number formatter from the writer module. It sits in the engine's runtime import graph (StrudelEngine → bareCapture → mixer/stripModel → mixer/gain), where importing the entry loads the mini-notation parser ahead of the engine test's mock and the suite dies at load.",
-      "issue": "#1882"
-    },
-    {
       "file": "packages/editor/src/visualEdit/mixer/soloMuteSync.ts",
       "reaches": [
         "door#Writeback.replaceRanges",
@@ -74,19 +72,6 @@
       ],
       "why": "Constructs the writer and drives it directly instead of committing an op through codeView/.",
       "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/mixer/stripModel.ts",
-      "reaches": [
-        "codeView/chunkDetect#detectAllChunks",
-        "codeView/ir/parseStrudel#parseStrudel",
-        "codeView/ir/statementHeads#NON_TRACK_HEADS",
-        "codeView/ir/trackId#isMutedLabel",
-        "codeView/ir/trackId#splitMuteMarker",
-        "codeView/ir/trackId#trackIdsFromLabels"
-      ],
-      "why": "Numbers the document's tracks for the mixer, and the engine asks it for the same ids. It sits in the engine's runtime import graph (StrudelEngine → bareCapture → mixer/stripModel → mixer/gain), where importing the entry loads the mini-notation parser ahead of the engine test's mock and the suite dies at load.",
-      "issue": "#1882"
     },
     {
       "file": "packages/editor/src/visualEdit/mixer/useMixerModel.ts",
@@ -164,33 +149,13 @@
       "issue": "#1880"
     },
     {
-      "file": "packages/editor/src/visualEdit/mixer/gain.ts",
-      "what": "reads syntax from user code by hand",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/mixer/masterEdit.ts",
-      "what": "builds replacement text for the document; drives parse / serialize itself (through the entry, so no rule sees it); reads syntax from user code by hand",
-      "issue": "#1880"
-    },
-    {
       "file": "packages/editor/src/visualEdit/mixer/soloMuteSync.ts",
       "what": "decides and batches edits",
       "issue": "#1880"
     },
     {
-      "file": "packages/editor/src/visualEdit/mixer/stripModel.ts",
-      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
-      "issue": "#1880"
-    },
-    {
       "file": "packages/editor/src/visualEdit/mixer/useMixerModel.ts",
       "what": "builds replacement text for the document",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/mixer/writeStrip.ts",
-      "what": "builds replacement text for the document; reads syntax from user code by hand",
       "issue": "#1880"
     },
     {
@@ -231,16 +196,6 @@
     {
       "file": "packages/editor/src/visualEdit/panels/writtenSteps.ts",
       "what": "drives parse / serialize itself (through the entry, so no rule sees it); reads syntax from user code by hand",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/soundAssign.ts",
-      "what": "builds replacement text for the document",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/vizAssign.ts",
-      "what": "builds replacement text for the document",
       "issue": "#1880"
     },
     {

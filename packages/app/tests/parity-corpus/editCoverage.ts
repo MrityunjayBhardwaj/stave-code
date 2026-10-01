@@ -29,7 +29,7 @@ import { hasStructure } from '../../../editor/src/codeView/notation/model'
 import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
 import { detectAllArrangeCalls } from '../../../editor/src/codeView/arrange/parse'
 import { detectAllPickControls } from '../../../editor/src/codeView/pickControl/parse'
-import { detectMasterAll } from '../../../editor/src/visualEdit/mixer/masterEdit'
+import { detectMasterAll } from '../../../editor/src/codeView/mixer/masterEdit'
 
 // Bare-identifier combinators whose direct arguments are themselves patterns —
 // their nested voices ARE separately editable (the app binds them via

@@ -22,8 +22,8 @@ import {
 } from '../../workspace/editorRegistry'
 import { detectAllChunks } from '../../codeView'
 import { Writeback, type OffsetEdit } from '../../codeView'
-import { buildStripModels } from './stripModel'
-import { muteEdit } from './writeStrip'
+import { buildStripModels } from '../../codeView'
+import { muteEdit } from '../../codeView'
 import {
   getPreSoloMutes,
   setPreSoloMutes,

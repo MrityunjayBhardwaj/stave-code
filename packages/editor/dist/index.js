@@ -37,6 +37,19 @@ var init_piano = __esm({
     };
   }
 });
+
+// src/codeView/chainMethod.ts
+function readChainMethod(chunk, names) {
+  const call = chunk.chain.find((c) => names.includes(c.name) && c.args.length >= 1);
+  const arg = call?.args[0];
+  if (!call || !arg) return null;
+  const q = arg.raw[0];
+  if ((q === '"' || q === "'" || q === "`") && arg.raw[arg.raw.length - 1] === q) {
+    return { name: call.name, value: arg.raw.slice(1, -1), range: arg.range };
+  }
+  return null;
+}
+__name(readChainMethod, "readChainMethod");
 function parseTopLevel(doc) {
   try {
     const program = parse(doc, {
@@ -5379,6 +5392,2353 @@ function runPasses(input, passes) {
 }
 __name(runPasses, "runPasses");
 
+// src/visualizers/signals/aliasMap.ts
+var DEFAULT_VIZ_ENGINE = "strudel";
+var BUILTIN_ALIASES = {
+  uKick: { strudel: "bd", sonicpi: "drum_heavy_kick" },
+  uSnare: { strudel: "sd", sonicpi: "drum_snare_hard" },
+  uHat: { strudel: "hh", sonicpi: "drum_cymbal_closed" },
+  uOpenHat: { strudel: "oh", sonicpi: "drum_cymbal_open" },
+  uClap: { strudel: "cp" },
+  uRim: { strudel: "rim" },
+  uTom: {
+    strudel: ["lt", "mt", "ht"],
+    sonicpi: ["drum_tom_lo_hard", "drum_tom_mid_hard", "drum_tom_hi_hard"]
+  }
+};
+function resolveAliasesForEngine(custom, engine) {
+  const out = {};
+  for (const [name, slots] of Object.entries(BUILTIN_ALIASES)) {
+    const v = slots[engine];
+    if (v != null) out[name] = v;
+  }
+  for (const [name, slots] of Object.entries(custom)) {
+    const v = slots[engine];
+    if (v != null) out[name] = v;
+  }
+  return out;
+}
+__name(resolveAliasesForEngine, "resolveAliasesForEngine");
+var ALIAS_MAP = resolveAliasesForEngine(
+  {},
+  DEFAULT_VIZ_ENGINE
+);
+
+// src/perf/profiler.ts
+var RING = 240;
+var DROP_FACTOR = 2;
+var SLOW_FRAME_MS = 1e3 / 30;
+function nowMs() {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : 0;
+}
+__name(nowMs, "nowMs");
+var _Ring = class _Ring {
+  constructor() {
+    this.buf = [];
+    this.head = 0;
+    /** Total pushed since reset (uncapped) — distinct from retained length. */
+    this.total = 0;
+  }
+  push(v) {
+    if (this.buf.length < RING) this.buf.push(v);
+    else this.buf[this.head] = v;
+    this.head = (this.head + 1) % RING;
+    this.total++;
+  }
+  get last() {
+    if (this.buf.length === 0) return 0;
+    const i = (this.head - 1 + RING) % RING;
+    return this.buf[i] ?? 0;
+  }
+  /** Sorted copy of the retained samples (ascending). */
+  sorted() {
+    return this.buf.slice().sort((a, b) => a - b);
+  }
+  stats() {
+    const n = this.buf.length;
+    if (n === 0) {
+      return { count: 0, mean: 0, p50: 0, p95: 0, p99: 0, max: 0, last: 0 };
+    }
+    const s = this.sorted();
+    let sum = 0;
+    for (const v of this.buf) sum += v;
+    return {
+      count: this.total,
+      mean: sum / n,
+      p50: percentile(s, 0.5),
+      p95: percentile(s, 0.95),
+      p99: percentile(s, 0.99),
+      max: s[n - 1],
+      last: this.last
+    };
+  }
+  /** Median over the retained samples (for the drop-detection threshold). */
+  median() {
+    if (this.buf.length === 0) return 0;
+    return percentile(this.sorted(), 0.5);
+  }
+};
+__name(_Ring, "Ring");
+var Ring = _Ring;
+function percentile(sortedAsc, q) {
+  const n = sortedAsc.length;
+  if (n === 0) return 0;
+  if (n === 1) return sortedAsc[0];
+  const idx = Math.min(n - 1, Math.max(0, Math.ceil(q * n) - 1));
+  return sortedAsc[idx];
+}
+__name(percentile, "percentile");
+var _FrameTracker = class _FrameTracker {
+  constructor() {
+    this.intervals = new Ring();
+    this.lastTs = null;
+    this.dropCount = 0;
+    this.slowCount = 0;
+    this.frameCount = 0;
+  }
+  tick(ts) {
+    this.frameCount++;
+    if (this.lastTs != null) {
+      const dt = ts - this.lastTs;
+      const med = this.intervals.median();
+      if (med > 0 && dt > med * DROP_FACTOR) this.dropCount++;
+      if (dt > SLOW_FRAME_MS) this.slowCount++;
+      this.intervals.push(dt);
+    }
+    this.lastTs = ts;
+  }
+  stats() {
+    const s = this.intervals.stats();
+    return {
+      count: this.frameCount,
+      fps: s.p50 > 0 ? 1e3 / s.p50 : 0,
+      p50: s.p50,
+      p95: s.p95,
+      drops: this.dropCount,
+      slowFrames: this.slowCount
+    };
+  }
+};
+__name(_FrameTracker, "FrameTracker");
+var FrameTracker = _FrameTracker;
+var _Profiler = class _Profiler {
+  constructor() {
+    /** Plain field (not a getter) so the hot-path branch is a bare load. */
+    this._enabled = false;
+    this.startTs = 0;
+    this.sections = /* @__PURE__ */ new Map();
+    this.frames = /* @__PURE__ */ new Map();
+    this.counters = /* @__PURE__ */ new Map();
+    /** Live gauges (current-state counts) — survive reset(), unlike counters. */
+    this.gauges = /* @__PURE__ */ new Map();
+    /** Open spans for begin()/end() keyed by label — last-write-wins (a label
+     *  isn't expected to nest with itself within a frame). */
+    this.open = /* @__PURE__ */ new Map();
+    this.longtaskCount = 0;
+    this.longtaskTotalMs = 0;
+    this.longtaskMaxMs = 0;
+    this.ltObserver = null;
+  }
+  get enabled() {
+    return this._enabled;
+  }
+  /** Turn profiling on/off. Enabling (re)starts the longtask observer and
+   *  stamps the uptime origin; disabling tears the observer down so a disabled
+   *  profiler has no live platform hook. Idempotent. */
+  setEnabled(on) {
+    if (on === this._enabled) return;
+    this._enabled = on;
+    if (on) {
+      this.startTs = nowMs();
+      this.startLongtaskObserver();
+    } else {
+      this.ltObserver?.disconnect();
+      this.ltObserver = null;
+    }
+  }
+  startLongtaskObserver() {
+    if (this.ltObserver) return;
+    if (typeof PerformanceObserver === "undefined") return;
+    try {
+      this.ltObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          this.longtaskCount++;
+          this.longtaskTotalMs += entry.duration;
+          if (entry.duration > this.longtaskMaxMs) this.longtaskMaxMs = entry.duration;
+        }
+      });
+      this.ltObserver.observe({ entryTypes: ["longtask"] });
+    } catch {
+      this.ltObserver = null;
+    }
+  }
+  // ── section timing ────────────────────────────────────────────────────────
+  /** Record a section duration directly (ms). Cheap no-op when disabled. */
+  record(name, ms) {
+    if (!this._enabled) return;
+    let ring = this.sections.get(name);
+    if (!ring) {
+      ring = new Ring();
+      this.sections.set(name, ring);
+    }
+    ring.push(ms);
+  }
+  /** Open a span. Pair with `end(name)`. No-op when disabled. */
+  begin(name) {
+    if (!this._enabled) return;
+    this.open.set(name, nowMs());
+  }
+  /** Close a span opened by `begin(name)` and record its duration. No-op when
+   *  disabled or when no matching open span exists. */
+  end(name) {
+    if (!this._enabled) return;
+    const t0 = this.open.get(name);
+    if (t0 === void 0) return;
+    this.open.delete(name);
+    this.record(name, nowMs() - t0);
+  }
+  /** Time a synchronous function and record it under `name`. Returns the fn's
+   *  result. When disabled, calls the fn with no timing overhead. The fn runs
+   *  even if disabled (it's the real work, not just measurement). */
+  time(name, fn) {
+    if (!this._enabled) return fn();
+    const t0 = nowMs();
+    try {
+      return fn();
+    } finally {
+      this.record(name, nowMs() - t0);
+    }
+  }
+  // ── frames ──────────────────────────────────────────────────────────────
+  /** Record a rendered frame for an instance (e.g. `'p5#3'`). No-op when
+   *  disabled. */
+  frame(instanceId) {
+    if (!this._enabled) return;
+    let ft = this.frames.get(instanceId);
+    if (!ft) {
+      ft = new FrameTracker();
+      this.frames.set(instanceId, ft);
+    }
+    ft.tick(nowMs());
+  }
+  /** Forget an instance's frame history (on renderer destroy) so a dead viz
+   *  doesn't linger in the snapshot. No-op when disabled. */
+  dropFrames(instanceId) {
+    if (!this._enabled) return;
+    this.frames.delete(instanceId);
+  }
+  // ── counters ──────────────────────────────────────────────────────────────
+  /** Add to a CUMULATIVE counter (reset() clears it; rate = value/uptime). */
+  inc(name, by = 1) {
+    if (!this._enabled) return;
+    this.counters.set(name, (this.counters.get(name) ?? 0) + by);
+  }
+  dec(name, by = 1) {
+    if (!this._enabled) return;
+    this.counters.set(name, (this.counters.get(name) ?? 0) - by);
+  }
+  /** Adjust a LIVE GAUGE (current-state count, e.g. mounted viz instances).
+   *  Gauges survive reset() — they reflect what's live now, not samples.
+   *  Use +1 on mount, -1 on destroy. */
+  gauge(name, delta) {
+    if (!this._enabled) return;
+    this.gauges.set(name, (this.gauges.get(name) ?? 0) + delta);
+  }
+  // ── read / reset ────────────────────────────────────────────────────────
+  snapshot() {
+    const sections = {};
+    for (const [name, ring] of this.sections) sections[name] = ring.stats();
+    const frames = {};
+    for (const [id, ft] of this.frames) frames[id] = ft.stats();
+    const counters = {};
+    for (const [name, v] of this.counters) counters[name] = v;
+    const gauges = {};
+    for (const [name, v] of this.gauges) gauges[name] = Math.max(0, v);
+    return {
+      enabled: this._enabled,
+      uptimeMs: this._enabled ? nowMs() - this.startTs : 0,
+      sections,
+      frames,
+      counters,
+      gauges,
+      longtasks: {
+        count: this.longtaskCount,
+        totalMs: this.longtaskTotalMs,
+        maxMs: this.longtaskMaxMs
+      }
+    };
+  }
+  /** Clear all samples/counters but keep the enabled state + observer. Use to
+   *  start a clean measurement window (e.g. before driving a heavy patch). */
+  reset() {
+    this.sections.clear();
+    this.frames.clear();
+    this.counters.clear();
+    this.open.clear();
+    this.longtaskCount = 0;
+    this.longtaskTotalMs = 0;
+    this.longtaskMaxMs = 0;
+    this.startTs = nowMs();
+  }
+};
+__name(_Profiler, "Profiler");
+var Profiler = _Profiler;
+var perf = new Profiler();
+try {
+  const g = globalThis;
+  if (g.__STAVE_PERF__ === true) perf.setEnabled(true);
+  g.__stavePerf = {
+    snapshot: /* @__PURE__ */ __name(() => perf.snapshot(), "snapshot"),
+    reset: /* @__PURE__ */ __name(() => perf.reset(), "reset"),
+    setEnabled: /* @__PURE__ */ __name((on) => perf.setEnabled(on), "setEnabled")
+  };
+} catch {
+}
+
+// src/visualizers/vizFlags.ts
+var VIZ_FLAG_KEYS = {
+  worker: "stave.viz.worker",
+  p5direct: "stave.viz.p5direct",
+  pool: "stave.viz.pool",
+  governor: "stave.viz.governor",
+  pump: "stave.viz.pump",
+  maxFps: "stave.viz.maxFps",
+  maxDpr: "stave.viz.maxDpr"
+};
+function read(key2) {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage.getItem(key2);
+  } catch {
+    return null;
+  }
+}
+__name(read, "read");
+function enabledByDefault(key2) {
+  return read(key2) !== "0";
+}
+__name(enabledByDefault, "enabledByDefault");
+function optIn(key2) {
+  return read(key2) === "1";
+}
+__name(optIn, "optIn");
+function triState(key2) {
+  const v = read(key2);
+  return v === "1" ? true : v === "0" ? false : null;
+}
+__name(triState, "triState");
+function numFlag(key2) {
+  const n = Number(read(key2));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+__name(numFlag, "numFlag");
+function isP5DirectCanvasEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.p5direct);
+}
+__name(isP5DirectCanvasEnabled, "isP5DirectCanvasEnabled");
+function isVizGovernorEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.governor);
+}
+__name(isVizGovernorEnabled, "isVizGovernorEnabled");
+function isVizPumpSharedCacheEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.pump);
+}
+__name(isVizPumpSharedCacheEnabled, "isVizPumpSharedCacheEnabled");
+function isVizWorkerPoolEnabled() {
+  return optIn(VIZ_FLAG_KEYS.pool);
+}
+__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
+function getVizWorkerOverride() {
+  return triState(VIZ_FLAG_KEYS.worker);
+}
+__name(getVizWorkerOverride, "getVizWorkerOverride");
+function getVizMaxFpsOverride() {
+  return numFlag(VIZ_FLAG_KEYS.maxFps);
+}
+__name(getVizMaxFpsOverride, "getVizMaxFpsOverride");
+function getVizMaxDprOverride() {
+  return numFlag(VIZ_FLAG_KEYS.maxDpr);
+}
+__name(getVizMaxDprOverride, "getVizMaxDprOverride");
+
+// src/visualizers/vizGovernor.ts
+var HEALTHY_MS = 20;
+var JANK_MS = 45;
+var MIN_FPS = 10;
+var EMA_ALPHA = 0.25;
+var STRESS_RAMP_DOWN = 0.012;
+var IDLE_GAP_MS = 400;
+var RES_MIN_SCALE = 0.5;
+var RES_STRESS_ON = 0.5;
+function computeStress(emaMs, healthy = HEALTHY_MS, jank = JANK_MS) {
+  if (emaMs <= healthy) return 0;
+  if (emaMs >= jank) return 1;
+  return (emaMs - healthy) / (jank - healthy);
+}
+__name(computeStress, "computeStress");
+function maxPerFrame(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.round(n * (1 - stress)));
+}
+__name(maxPerFrame, "maxPerFrame");
+function periodFor(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.ceil(n / maxPerFrame(n, stress)));
+}
+__name(periodFor, "periodFor");
+function minGapMs(stress) {
+  if (stress <= 0) return 0;
+  return stress * (1e3 / MIN_FPS);
+}
+__name(minGapMs, "minGapMs");
+function resolutionScaleFor(stress) {
+  if (stress < RES_STRESS_ON) return 1;
+  const t = (stress - RES_STRESS_ON) / (1 - RES_STRESS_ON);
+  const raw = 1 - t * (1 - RES_MIN_SCALE);
+  return Math.max(RES_MIN_SCALE, Math.round(raw * 4) / 4);
+}
+__name(resolutionScaleFor, "resolutionScaleFor");
+var _VizGovernor = class _VizGovernor {
+  constructor() {
+    this.enabled = true;
+    /** Active (looping) renderer id → its stable round-robin offset. */
+    this.registered = /* @__PURE__ */ new Map();
+    this.lastProduce = /* @__PURE__ */ new Map();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
+    this.enabled = isVizGovernorEnabled();
+  }
+  /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */
+  register(id) {
+    if (!this.registered.has(id)) this.registered.set(id, this.nextOffset++);
+  }
+  /** Unregister when the loop STOPS (pause/destroy). Resets stress when the last
+   *  viz leaves so a fresh mount starts from a healthy baseline. */
+  unregister(id) {
+    this.registered.delete(id);
+    this.lastProduce.delete(id);
+    if (this.registered.size === 0) {
+      this.stress = 0;
+      this.emaMs = HEALTHY_MS;
+      this.lastObserveTs = 0;
+    }
+  }
+  /** Feed the cadence monitor — call once per rAF tick from EVERY active loop
+   *  (idempotent per timestamp: only the first call for a new `ts` advances the
+   *  frame + updates stress, so N renderers calling with the same ts is fine). */
+  observeFrame(ts) {
+    if (!this.enabled || this.registered.size === 0) return;
+    if (this.lastObserveTs > 0 && ts > this.lastObserveTs) {
+      const d = ts - this.lastObserveTs;
+      if (d > IDLE_GAP_MS) {
+        this.emaMs = HEALTHY_MS;
+      } else {
+        this.emaMs = this.emaMs * (1 - EMA_ALPHA) + d * EMA_ALPHA;
+      }
+      const target = computeStress(this.emaMs);
+      this.stress = target > this.stress ? target : Math.max(target, this.stress - STRESS_RAMP_DOWN);
+      this.frameIndex++;
+      perf.record("viz.governor.stress", Math.round(this.stress * 100));
+    }
+    if (ts > this.lastObserveTs) this.lastObserveTs = ts;
+  }
+  /** Gate: may renderer `id` produce a frame at `ts`? Composed with (and called
+   *  after) the renderer's own backpressure + maxFps checks. */
+  mayProduce(id, ts) {
+    if (!this.enabled) return true;
+    const n = this.registered.size;
+    if (n === 0 || this.stress <= 0) return true;
+    const gap = minGapMs(this.stress);
+    if (gap > 0) {
+      const last = this.lastProduce.get(id) ?? 0;
+      if (last > 0 && ts - last < gap - 1) return false;
+    }
+    if (n > 1) {
+      const period = periodFor(n, this.stress);
+      if (period > 1) {
+        const offset = this.registered.get(id) ?? 0;
+        if ((this.frameIndex + offset) % period !== 0) return false;
+      }
+    }
+    this.lastProduce.set(id, ts);
+    return true;
+  }
+  /** Render-resolution scale (lever 3) the renderer should apply to its backing
+   *  store at the current stress, in `[RES_MIN_SCALE, 1]`. 1 (full) when disabled
+   *  or smooth — so a renderer multiplying its `resize` w,h by this is a total
+   *  no-op in the common case (transparency, PV91). The `WorkerVizRenderer` reads
+   *  this each rAF and re-posts a scaled `resize` only when the quantized step
+   *  changes (the backing-store realloc is relatively expensive). */
+  resolutionScale() {
+    if (!this.enabled || this.stress <= 0) return 1;
+    return resolutionScaleFor(this.stress);
+  }
+  /** Observability / test hook. */
+  state() {
+    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() };
+  }
+  /** Live enable/disable (the "Adaptive performance" toggle, persisted via
+   *  editorRegistry under the SAME `stave.viz.governor` key this reads at
+   *  construction). Unlike `_setEnabledForTest` it KEEPS the registered renderers
+   *  (live viz stay tracked) — it only flips the gate. Disabling resets stress so
+   *  the levers release immediately: `mayProduce` returns true and
+   *  `resolutionScale` returns 1, so each WorkerVizRenderer's next tick re-posts a
+   *  full-resolution resize and stops being throttled. Re-enabling lets stress
+   *  rebuild from the live rAF cadence via observeFrame. */
+  setEnabled(on) {
+    this.enabled = on;
+    if (!on) {
+      this.stress = 0;
+      this.emaMs = HEALTHY_MS;
+      this.lastObserveTs = 0;
+    }
+  }
+  /** Test helper — force enabled state (and reset) deterministically. */
+  _setEnabledForTest(on) {
+    this.enabled = on;
+    this.registered.clear();
+    this.lastProduce.clear();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
+  }
+};
+__name(_VizGovernor, "VizGovernor");
+var VizGovernor = _VizGovernor;
+var vizGovernor = new VizGovernor();
+
+// src/visualizers/vizConfig.ts
+var DEFAULT_VIZ_CONFIG = {
+  // Resolver
+  defaultRenderer: "p5",
+  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
+  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
+  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
+  // automatic fallback when a browser can't offload (no OffscreenCanvas /
+  // transferControlToOffscreen / worker factory). Opt OUT per project via
+  // localStorage['stave.viz.worker'] = '0'.
+  workerRenderer: true,
+  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
+  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
+  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
+  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
+  // composite wall measured for multi-instance inline viz.
+  maxFps: 60,
+  maxDpr: 1,
+  // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
+  // values are opted into via "performance mode" (deriveVizQuality) and read by
+  // sketches as `sig.density`. Marshalled to the worker via the config channel.
+  density: 1,
+  // Inline view zones
+  inlineZoneHeight: 150,
+  // Audio analysis
+  fftSize: 2048,
+  smoothingTimeConstant: 0.8,
+  // Hydra
+  hydraAudioBins: 4,
+  hydraAutoLoop: true,
+  // Pianoroll
+  pianorollWindowSeconds: 6,
+  pianorollCycles: 4,
+  pianorollPlayhead: 0.5,
+  pianorollMidiMin: 24,
+  pianorollMidiMax: 96,
+  // Scope / FScope
+  scopeWindowSeconds: 4,
+  scopeAmplitudeScale: 0.25,
+  scopeBaseline: 0.75,
+  // Spectrum
+  spectrumMinDb: -80,
+  spectrumMaxDb: 0,
+  spectrumScrollSpeed: 2,
+  // Colors
+  backgroundColor: "#090912",
+  accentColor: "#75baff",
+  activeColor: "#FFCA28",
+  playheadColor: "rgba(255,255,255,0.5)"
+};
+function createVizConfig(overrides) {
+  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
+}
+__name(createVizConfig, "createVizConfig");
+var DEFAULT_VIZ_QUALITY = "balanced";
+function deriveVizQuality(level) {
+  switch (level) {
+    case "high":
+      return { resolution: 1024, density: 1 };
+    case "performance":
+      return { resolution: 256, density: 0.5 };
+    case "balanced":
+    default:
+      return { resolution: 512, density: 1 };
+  }
+}
+__name(deriveVizQuality, "deriveVizQuality");
+var _active = { ...DEFAULT_VIZ_CONFIG };
+var _listeners = /* @__PURE__ */ new Set();
+function notify() {
+  for (const cb of Array.from(_listeners)) cb(_active);
+}
+__name(notify, "notify");
+function getVizConfig() {
+  return _active;
+}
+__name(getVizConfig, "getVizConfig");
+function setVizConfig(config) {
+  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
+  notify();
+}
+__name(setVizConfig, "setVizConfig");
+function updateVizConfig(patch) {
+  _active = { ..._active, ...patch };
+  notify();
+}
+__name(updateVizConfig, "updateVizConfig");
+function onVizConfigChange(cb) {
+  _listeners.add(cb);
+  return () => {
+    _listeners.delete(cb);
+  };
+}
+__name(onVizConfigChange, "onVizConfigChange");
+var WORKER_VIZ_CONFIG_KEYS = ["hydraAudioBins", "density"];
+function pickWorkerVizConfig(config = _active) {
+  return WORKER_VIZ_CONFIG_KEYS.reduce((acc, k) => {
+    acc[k] = config[k];
+    return acc;
+  }, {});
+}
+__name(pickWorkerVizConfig, "pickWorkerVizConfig");
+
+// src/workspace/editorRegistry.ts
+var editors = /* @__PURE__ */ new Map();
+var monacoNs = null;
+function registerMonacoNamespace(monaco) {
+  if (!monacoNs) monacoNs = monaco;
+}
+__name(registerMonacoNamespace, "registerMonacoNamespace");
+function getMonacoNamespace() {
+  return monacoNs;
+}
+__name(getMonacoNamespace, "getMonacoNamespace");
+function registerEditor(fileId, editor) {
+  editors.set(fileId, editor);
+}
+__name(registerEditor, "registerEditor");
+function unregisterEditor(fileId, editor) {
+  if (editors.get(fileId) === editor) editors.delete(fileId);
+  if (activeEditor === editor) setActiveEditor(null);
+}
+__name(unregisterEditor, "unregisterEditor");
+function getEditorForFile(fileId) {
+  return editors.get(fileId);
+}
+__name(getEditorForFile, "getEditorForFile");
+var activeEditor = null;
+var activeEditorListeners = /* @__PURE__ */ new Set();
+function setActiveEditor(editor) {
+  if (activeEditor === editor) return;
+  activeEditor = editor;
+  for (const l of activeEditorListeners) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+__name(setActiveEditor, "setActiveEditor");
+function getActiveEditor() {
+  return activeEditor;
+}
+__name(getActiveEditor, "getActiveEditor");
+function getActiveFileId() {
+  if (!activeEditor) return null;
+  for (const [fileId, ed] of editors) {
+    if (ed === activeEditor) return fileId;
+  }
+  return null;
+}
+__name(getActiveFileId, "getActiveFileId");
+function getFileIdForEditor(editor) {
+  for (const [fileId, ed] of editors) {
+    if (ed === editor) return fileId;
+  }
+  return null;
+}
+__name(getFileIdForEditor, "getFileIdForEditor");
+function onActiveEditorChange(cb) {
+  activeEditorListeners.add(cb);
+  return () => {
+    activeEditorListeners.delete(cb);
+  };
+}
+__name(onActiveEditorChange, "onActiveEditorChange");
+var reevalHandler = null;
+function registerReevalHandler(fn) {
+  reevalHandler = fn;
+  return () => {
+    if (reevalHandler === fn) reevalHandler = null;
+  };
+}
+__name(registerReevalHandler, "registerReevalHandler");
+function requestReeval(fileId) {
+  if (fileId) reevalHandler?.(fileId);
+}
+__name(requestReeval, "requestReeval");
+var evalSourceTransform = null;
+function registerEvalSourceTransform(fn) {
+  evalSourceTransform = fn;
+  return () => {
+    if (evalSourceTransform === fn) evalSourceTransform = null;
+  };
+}
+__name(registerEvalSourceTransform, "registerEvalSourceTransform");
+function applyEvalSourceTransform(fileId, raw) {
+  if (!evalSourceTransform) return raw;
+  try {
+    return evalSourceTransform(fileId, raw);
+  } catch {
+    return raw;
+  }
+}
+__name(applyEvalSourceTransform, "applyEvalSourceTransform");
+function revealLineInFile(fileId, line) {
+  const editor = editors.get(fileId);
+  if (!editor) return false;
+  try {
+    editor.revealLineInCenter?.(line);
+    editor.setPosition?.({ lineNumber: line, column: 1 });
+    editor.focus?.();
+    return true;
+  } catch {
+    return false;
+  }
+}
+__name(revealLineInFile, "revealLineInFile");
+function revealOffsetInFile(fileId, offset) {
+  const editor = editors.get(fileId);
+  if (!editor) return false;
+  try {
+    const pos = editor.getModel?.()?.getPositionAt?.(offset);
+    if (!pos) return false;
+    editor.revealLineInCenter?.(pos.lineNumber);
+    editor.setPosition?.(pos);
+    editor.focus?.();
+    return true;
+  } catch {
+    return false;
+  }
+}
+__name(revealOffsetInFile, "revealOffsetInFile");
+function applyOffsetEditsToFile(fileId, edits, source, expectedDoc) {
+  const editor = editors.get(fileId);
+  if (!editor) return "no-editor";
+  if (!monacoNs) return "no-monaco";
+  if (edits.length === 0) return "no-edits";
+  if (expectedDoc != null && editor.getModel?.()?.getValue?.() !== expectedDoc) {
+    return "stale-document";
+  }
+  try {
+    new Writeback(editor, monacoNs).replaceRanges(edits, source);
+    return "applied";
+  } catch {
+    return "writeback-threw";
+  }
+}
+__name(applyOffsetEditsToFile, "applyOffsetEditsToFile");
+var DEFAULT_FONT_SIZE = 14;
+var FONT_SIZE_STORAGE = "stave:editorFontSize";
+var MINIMAP_STORAGE = "stave:editorMinimap";
+var DEFAULT_UI_ICON_SIZE = 25;
+var UI_ICON_SIZE_STORAGE = "stave:uiIconSize";
+var UI_ICON_SIZE_VAR = "--ui-icon-size";
+var DEFAULT_INLINE_VIZ_ACTION_SIZE = 11;
+var INLINE_VIZ_ACTION_SIZE_STORAGE = "stave:inlineVizActionSize";
+var INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
+function safeLocalStorage() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+__name(safeLocalStorage, "safeLocalStorage");
+function readFontSize() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_FONT_SIZE;
+  const saved = Number(ls.getItem(FONT_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 8 && saved <= 40 ? saved : DEFAULT_FONT_SIZE;
+}
+__name(readFontSize, "readFontSize");
+function readMinimap() {
+  const ls = safeLocalStorage();
+  return ls?.getItem(MINIMAP_STORAGE) === "1";
+}
+__name(readMinimap, "readMinimap");
+function writeFontSize(size) {
+  safeLocalStorage()?.setItem(FONT_SIZE_STORAGE, String(size));
+}
+__name(writeFontSize, "writeFontSize");
+function writeMinimap(on) {
+  safeLocalStorage()?.setItem(MINIMAP_STORAGE, on ? "1" : "0");
+}
+__name(writeMinimap, "writeMinimap");
+function applyOptionsToEditor(editor) {
+  const fontSize = readFontSize();
+  const minimap = readMinimap();
+  editor.updateOptions?.({ fontSize, minimap: { enabled: minimap } });
+}
+__name(applyOptionsToEditor, "applyOptionsToEditor");
+function getEditorFontSize() {
+  return readFontSize();
+}
+__name(getEditorFontSize, "getEditorFontSize");
+function getEditorMinimap() {
+  return readMinimap();
+}
+__name(getEditorMinimap, "getEditorMinimap");
+function setEditorFontSize(size) {
+  const clamped = Math.max(8, Math.min(40, Math.round(size)));
+  writeFontSize(clamped);
+  for (const ed of editors.values()) ed.updateOptions?.({ fontSize: clamped });
+}
+__name(setEditorFontSize, "setEditorFontSize");
+function bumpEditorFontSize(delta) {
+  setEditorFontSize(readFontSize() + delta);
+}
+__name(bumpEditorFontSize, "bumpEditorFontSize");
+function toggleEditorMinimap() {
+  const next = !readMinimap();
+  writeMinimap(next);
+  for (const ed of editors.values()) ed.updateOptions?.({ minimap: { enabled: next } });
+}
+__name(toggleEditorMinimap, "toggleEditorMinimap");
+var uiIconSizeListeners = /* @__PURE__ */ new Set();
+function readUiIconSize() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_UI_ICON_SIZE;
+  const saved = Number(ls.getItem(UI_ICON_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 10 && saved <= 40 ? saved : DEFAULT_UI_ICON_SIZE;
+}
+__name(readUiIconSize, "readUiIconSize");
+function writeUiIconSize(size) {
+  safeLocalStorage()?.setItem(UI_ICON_SIZE_STORAGE, String(size));
+}
+__name(writeUiIconSize, "writeUiIconSize");
+function applyUiIconSizeVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(UI_ICON_SIZE_VAR, `${size}px`);
+}
+__name(applyUiIconSizeVar, "applyUiIconSizeVar");
+function getEditorUiIconSize() {
+  return readUiIconSize();
+}
+__name(getEditorUiIconSize, "getEditorUiIconSize");
+function setEditorUiIconSize(size) {
+  const clamped = Math.max(10, Math.min(40, Math.round(size)));
+  writeUiIconSize(clamped);
+  applyUiIconSizeVar(clamped);
+  for (const cb of Array.from(uiIconSizeListeners)) cb(clamped);
+}
+__name(setEditorUiIconSize, "setEditorUiIconSize");
+function onUiIconSizeChange(cb) {
+  uiIconSizeListeners.add(cb);
+  return () => {
+    uiIconSizeListeners.delete(cb);
+  };
+}
+__name(onUiIconSizeChange, "onUiIconSizeChange");
+function applyPersistedUiIconSize() {
+  applyUiIconSizeVar(readUiIconSize());
+}
+__name(applyPersistedUiIconSize, "applyPersistedUiIconSize");
+var inlineVizActionSizeListeners = /* @__PURE__ */ new Set();
+function readInlineVizActionSize() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_INLINE_VIZ_ACTION_SIZE;
+  const saved = Number(ls.getItem(INLINE_VIZ_ACTION_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 8 && saved <= 28 ? saved : DEFAULT_INLINE_VIZ_ACTION_SIZE;
+}
+__name(readInlineVizActionSize, "readInlineVizActionSize");
+function writeInlineVizActionSize(size) {
+  safeLocalStorage()?.setItem(INLINE_VIZ_ACTION_SIZE_STORAGE, String(size));
+}
+__name(writeInlineVizActionSize, "writeInlineVizActionSize");
+function applyInlineVizActionSizeVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(
+    INLINE_VIZ_ACTION_SIZE_VAR,
+    `${size}px`
+  );
+}
+__name(applyInlineVizActionSizeVar, "applyInlineVizActionSizeVar");
+function getInlineVizActionSize() {
+  return readInlineVizActionSize();
+}
+__name(getInlineVizActionSize, "getInlineVizActionSize");
+function setInlineVizActionSize(size) {
+  const clamped = Math.max(8, Math.min(28, Math.round(size)));
+  writeInlineVizActionSize(clamped);
+  applyInlineVizActionSizeVar(clamped);
+  for (const cb of Array.from(inlineVizActionSizeListeners)) cb(clamped);
+}
+__name(setInlineVizActionSize, "setInlineVizActionSize");
+function onInlineVizActionSizeChange(cb) {
+  inlineVizActionSizeListeners.add(cb);
+  return () => {
+    inlineVizActionSizeListeners.delete(cb);
+  };
+}
+__name(onInlineVizActionSizeChange, "onInlineVizActionSizeChange");
+function applyPersistedInlineVizActionSize() {
+  applyInlineVizActionSizeVar(readInlineVizActionSize());
+}
+__name(applyPersistedInlineVizActionSize, "applyPersistedInlineVizActionSize");
+var DEFAULT_INLINE_VIZ_RESOLUTION = 512;
+var MIN_INLINE_VIZ_RESOLUTION = 64;
+var MAX_INLINE_VIZ_RESOLUTION = 2048;
+var INLINE_VIZ_RESOLUTION_STORAGE = "stave:inlineVizResolution";
+var inlineVizResolutionListeners = /* @__PURE__ */ new Set();
+function readInlineVizResolution() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_INLINE_VIZ_RESOLUTION;
+  const saved = Number(ls.getItem(INLINE_VIZ_RESOLUTION_STORAGE));
+  return Number.isFinite(saved) && saved >= MIN_INLINE_VIZ_RESOLUTION && saved <= MAX_INLINE_VIZ_RESOLUTION ? saved : DEFAULT_INLINE_VIZ_RESOLUTION;
+}
+__name(readInlineVizResolution, "readInlineVizResolution");
+function writeInlineVizResolution(n) {
+  safeLocalStorage()?.setItem(INLINE_VIZ_RESOLUTION_STORAGE, String(n));
+}
+__name(writeInlineVizResolution, "writeInlineVizResolution");
+function getInlineVizResolution() {
+  return readInlineVizResolution();
+}
+__name(getInlineVizResolution, "getInlineVizResolution");
+function setInlineVizResolution(n) {
+  const clamped = Math.max(
+    MIN_INLINE_VIZ_RESOLUTION,
+    Math.min(MAX_INLINE_VIZ_RESOLUTION, Math.round(n))
+  );
+  writeInlineVizResolution(clamped);
+  for (const cb of Array.from(inlineVizResolutionListeners)) cb(clamped);
+}
+__name(setInlineVizResolution, "setInlineVizResolution");
+function onInlineVizResolutionChange(cb) {
+  inlineVizResolutionListeners.add(cb);
+  return () => {
+    inlineVizResolutionListeners.delete(cb);
+  };
+}
+__name(onInlineVizResolutionChange, "onInlineVizResolutionChange");
+var VIZ_QUALITY_STORAGE = "stave:vizQuality";
+var VIZ_QUALITY_LEVELS = ["high", "balanced", "performance"];
+var vizQualityListeners = /* @__PURE__ */ new Set();
+function readVizQuality() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_VIZ_QUALITY;
+  const saved = ls.getItem(VIZ_QUALITY_STORAGE);
+  return VIZ_QUALITY_LEVELS.includes(saved) ? saved : DEFAULT_VIZ_QUALITY;
+}
+__name(readVizQuality, "readVizQuality");
+function writeVizQuality(level) {
+  safeLocalStorage()?.setItem(VIZ_QUALITY_STORAGE, level);
+}
+__name(writeVizQuality, "writeVizQuality");
+function applyVizQuality(level) {
+  const { resolution, density } = deriveVizQuality(level);
+  setInlineVizResolution(resolution);
+  updateVizConfig({ density });
+}
+__name(applyVizQuality, "applyVizQuality");
+function getVizQuality() {
+  return readVizQuality();
+}
+__name(getVizQuality, "getVizQuality");
+function setVizQuality(level) {
+  const safe2 = VIZ_QUALITY_LEVELS.includes(level) ? level : DEFAULT_VIZ_QUALITY;
+  writeVizQuality(safe2);
+  applyVizQuality(safe2);
+  for (const cb of Array.from(vizQualityListeners)) cb(safe2);
+}
+__name(setVizQuality, "setVizQuality");
+function onVizQualityChange(cb) {
+  vizQualityListeners.add(cb);
+  return () => {
+    vizQualityListeners.delete(cb);
+  };
+}
+__name(onVizQualityChange, "onVizQualityChange");
+function applyPersistedVizQuality() {
+  const { density } = deriveVizQuality(readVizQuality());
+  updateVizConfig({ density });
+}
+__name(applyPersistedVizQuality, "applyPersistedVizQuality");
+var INLINE_VIZ_TEARDOWN_MS = 6e4;
+var DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true;
+var INLINE_VIZ_TEARDOWN_STORAGE = "stave:inlineVizTeardown";
+var inlineVizTeardownListeners = /* @__PURE__ */ new Set();
+function readInlineVizTeardownEnabled() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
+  const saved = ls.getItem(INLINE_VIZ_TEARDOWN_STORAGE);
+  if (saved === null) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
+  return saved === "1";
+}
+__name(readInlineVizTeardownEnabled, "readInlineVizTeardownEnabled");
+function getInlineVizTeardownEnabled() {
+  return readInlineVizTeardownEnabled();
+}
+__name(getInlineVizTeardownEnabled, "getInlineVizTeardownEnabled");
+function setInlineVizTeardownEnabled(on) {
+  safeLocalStorage()?.setItem(INLINE_VIZ_TEARDOWN_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(inlineVizTeardownListeners)) cb(on);
+}
+__name(setInlineVizTeardownEnabled, "setInlineVizTeardownEnabled");
+function onInlineVizTeardownChange(cb) {
+  inlineVizTeardownListeners.add(cb);
+  return () => {
+    inlineVizTeardownListeners.delete(cb);
+  };
+}
+__name(onInlineVizTeardownChange, "onInlineVizTeardownChange");
+var DEFAULT_TRACK_COLOUR_BARS_ENABLED = true;
+var TRACK_COLOUR_BARS_STORAGE = "stave:trackColourBars";
+var trackColourBarsListeners = /* @__PURE__ */ new Set();
+function readTrackColourBarsEnabled() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_TRACK_COLOUR_BARS_ENABLED;
+  const saved = ls.getItem(TRACK_COLOUR_BARS_STORAGE);
+  if (saved === null) return DEFAULT_TRACK_COLOUR_BARS_ENABLED;
+  return saved === "1";
+}
+__name(readTrackColourBarsEnabled, "readTrackColourBarsEnabled");
+function getTrackColourBarsEnabled() {
+  return readTrackColourBarsEnabled();
+}
+__name(getTrackColourBarsEnabled, "getTrackColourBarsEnabled");
+function setTrackColourBarsEnabled(on) {
+  safeLocalStorage()?.setItem(TRACK_COLOUR_BARS_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(trackColourBarsListeners)) cb(on);
+}
+__name(setTrackColourBarsEnabled, "setTrackColourBarsEnabled");
+function onTrackColourBarsChange(cb) {
+  trackColourBarsListeners.add(cb);
+  return () => {
+    trackColourBarsListeners.delete(cb);
+  };
+}
+__name(onTrackColourBarsChange, "onTrackColourBarsChange");
+var DEFAULT_PLAY_VIZ_ON_HOVER = false;
+var PLAY_VIZ_ON_HOVER_STORAGE = "stave:playVizOnHover";
+var playVizOnHoverListeners = /* @__PURE__ */ new Set();
+function readPlayVizOnHoverEnabled() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_PLAY_VIZ_ON_HOVER;
+  const saved = ls.getItem(PLAY_VIZ_ON_HOVER_STORAGE);
+  if (saved === null) return DEFAULT_PLAY_VIZ_ON_HOVER;
+  return saved === "1";
+}
+__name(readPlayVizOnHoverEnabled, "readPlayVizOnHoverEnabled");
+function getPlayVizOnHoverEnabled() {
+  return readPlayVizOnHoverEnabled();
+}
+__name(getPlayVizOnHoverEnabled, "getPlayVizOnHoverEnabled");
+function setPlayVizOnHoverEnabled(on) {
+  safeLocalStorage()?.setItem(PLAY_VIZ_ON_HOVER_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(playVizOnHoverListeners)) cb(on);
+}
+__name(setPlayVizOnHoverEnabled, "setPlayVizOnHoverEnabled");
+function onPlayVizOnHoverChange(cb) {
+  playVizOnHoverListeners.add(cb);
+  return () => {
+    playVizOnHoverListeners.delete(cb);
+  };
+}
+__name(onPlayVizOnHoverChange, "onPlayVizOnHoverChange");
+var DEFAULT_BACKDROP_VIZ_SPAN = "file";
+var BACKDROP_VIZ_SPAN_STORAGE = "stave:backdropVizSpan";
+var backdropVizSpanListeners = /* @__PURE__ */ new Set();
+function readBackdropVizSpan() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_BACKDROP_VIZ_SPAN;
+  return ls.getItem(BACKDROP_VIZ_SPAN_STORAGE) === "workspace" ? "workspace" : "file";
+}
+__name(readBackdropVizSpan, "readBackdropVizSpan");
+function getBackdropVizSpan() {
+  return readBackdropVizSpan();
+}
+__name(getBackdropVizSpan, "getBackdropVizSpan");
+function setBackdropVizSpan(span) {
+  safeLocalStorage()?.setItem(BACKDROP_VIZ_SPAN_STORAGE, span);
+  for (const cb of Array.from(backdropVizSpanListeners)) cb(span);
+}
+__name(setBackdropVizSpan, "setBackdropVizSpan");
+function onBackdropVizSpanChange(cb) {
+  backdropVizSpanListeners.add(cb);
+  return () => {
+    backdropVizSpanListeners.delete(cb);
+  };
+}
+__name(onBackdropVizSpanChange, "onBackdropVizSpanChange");
+function getInlineVizTeardownMs() {
+  if (!readInlineVizTeardownEnabled()) return 0;
+  try {
+    const raw = safeLocalStorage()?.getItem("stave:inlineVizTeardownMs");
+    if (raw != null) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 1e3) return n;
+    }
+  } catch {
+  }
+  return INLINE_VIZ_TEARDOWN_MS;
+}
+__name(getInlineVizTeardownMs, "getInlineVizTeardownMs");
+var DEFAULT_VIZ_INPUTS_LIVE_VALUES = true;
+var VIZ_INPUTS_LIVE_VALUES_STORAGE = "stave:vizInputsLiveValues";
+var vizInputsLiveValuesListeners = /* @__PURE__ */ new Set();
+function readVizInputsLiveValuesEnabled() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_VIZ_INPUTS_LIVE_VALUES;
+  const saved = ls.getItem(VIZ_INPUTS_LIVE_VALUES_STORAGE);
+  if (saved === null) return DEFAULT_VIZ_INPUTS_LIVE_VALUES;
+  return saved === "1";
+}
+__name(readVizInputsLiveValuesEnabled, "readVizInputsLiveValuesEnabled");
+function getVizInputsLiveValuesEnabled() {
+  return readVizInputsLiveValuesEnabled();
+}
+__name(getVizInputsLiveValuesEnabled, "getVizInputsLiveValuesEnabled");
+function setVizInputsLiveValuesEnabled(on) {
+  safeLocalStorage()?.setItem(VIZ_INPUTS_LIVE_VALUES_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(vizInputsLiveValuesListeners)) cb(on);
+}
+__name(setVizInputsLiveValuesEnabled, "setVizInputsLiveValuesEnabled");
+function onVizInputsLiveValuesChange(cb) {
+  vizInputsLiveValuesListeners.add(cb);
+  return () => {
+    vizInputsLiveValuesListeners.delete(cb);
+  };
+}
+__name(onVizInputsLiveValuesChange, "onVizInputsLiveValuesChange");
+var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 25;
+var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN = 12;
+var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX = 48;
+var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
+var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
+function readMusicalTimelineSubRowHeight() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
+  const saved = Number(ls.getItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE));
+  return Number.isFinite(saved) && saved >= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN && saved <= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX ? saved : DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
+}
+__name(readMusicalTimelineSubRowHeight, "readMusicalTimelineSubRowHeight");
+function writeMusicalTimelineSubRowHeight(h) {
+  safeLocalStorage()?.setItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE, String(h));
+}
+__name(writeMusicalTimelineSubRowHeight, "writeMusicalTimelineSubRowHeight");
+function getMusicalTimelineSubRowHeight() {
+  return readMusicalTimelineSubRowHeight();
+}
+__name(getMusicalTimelineSubRowHeight, "getMusicalTimelineSubRowHeight");
+function setMusicalTimelineSubRowHeight(h) {
+  const clamped = Math.max(
+    MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN,
+    Math.min(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, Math.round(h))
+  );
+  writeMusicalTimelineSubRowHeight(clamped);
+  for (const cb of Array.from(musicalTimelineSubRowHeightListeners)) cb(clamped);
+}
+__name(setMusicalTimelineSubRowHeight, "setMusicalTimelineSubRowHeight");
+function onMusicalTimelineSubRowHeightChange(cb) {
+  musicalTimelineSubRowHeightListeners.add(cb);
+  return () => {
+    musicalTimelineSubRowHeightListeners.delete(cb);
+  };
+}
+__name(onMusicalTimelineSubRowHeightChange, "onMusicalTimelineSubRowHeightChange");
+var DEFAULT_BACKDROP_BLUR = 8;
+var BACKDROP_BLUR_STORAGE = "stave:backdropBlur";
+var BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
+function readBackdropBlur() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_BACKDROP_BLUR;
+  const raw = ls.getItem(BACKDROP_BLUR_STORAGE);
+  if (raw == null || raw === "") return DEFAULT_BACKDROP_BLUR;
+  const saved = Number(raw);
+  return Number.isFinite(saved) && saved >= 0 && saved <= 40 ? saved : DEFAULT_BACKDROP_BLUR;
+}
+__name(readBackdropBlur, "readBackdropBlur");
+function writeBackdropBlur(size) {
+  safeLocalStorage()?.setItem(BACKDROP_BLUR_STORAGE, String(size));
+}
+__name(writeBackdropBlur, "writeBackdropBlur");
+function applyBackdropBlurVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(
+    BACKDROP_BLUR_VAR,
+    `${size}px`
+  );
+}
+__name(applyBackdropBlurVar, "applyBackdropBlurVar");
+function getEditorBackdropBlur() {
+  return readBackdropBlur();
+}
+__name(getEditorBackdropBlur, "getEditorBackdropBlur");
+function setEditorBackdropBlur(size) {
+  const clamped = Math.max(0, Math.min(40, Math.round(size)));
+  writeBackdropBlur(clamped);
+  applyBackdropBlurVar(clamped);
+}
+__name(setEditorBackdropBlur, "setEditorBackdropBlur");
+function applyPersistedBackdropBlur() {
+  applyBackdropBlurVar(readBackdropBlur());
+}
+__name(applyPersistedBackdropBlur, "applyPersistedBackdropBlur");
+var DEFAULT_BACKDROP_OPACITY = 1;
+var BACKDROP_OPACITY_STORAGE = "stave:backdropOpacity";
+var backdropOpacityListeners = /* @__PURE__ */ new Set();
+function readBackdropOpacity() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_BACKDROP_OPACITY;
+  const raw = ls.getItem(BACKDROP_OPACITY_STORAGE);
+  if (raw == null || raw === "") return DEFAULT_BACKDROP_OPACITY;
+  const saved = Number(raw);
+  return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
+}
+__name(readBackdropOpacity, "readBackdropOpacity");
+function writeBackdropOpacity(o) {
+  safeLocalStorage()?.setItem(BACKDROP_OPACITY_STORAGE, String(o));
+}
+__name(writeBackdropOpacity, "writeBackdropOpacity");
+function getBackdropOpacity() {
+  return readBackdropOpacity();
+}
+__name(getBackdropOpacity, "getBackdropOpacity");
+function setBackdropOpacity(o) {
+  const clamped = Math.max(0, Math.min(1, o));
+  writeBackdropOpacity(clamped);
+  for (const cb of Array.from(backdropOpacityListeners)) cb(clamped);
+}
+__name(setBackdropOpacity, "setBackdropOpacity");
+function onBackdropOpacityChange(cb) {
+  backdropOpacityListeners.add(cb);
+  return () => {
+    backdropOpacityListeners.delete(cb);
+  };
+}
+__name(onBackdropOpacityChange, "onBackdropOpacityChange");
+var DEFAULT_STORED_ALIASES = {};
+var SIGNAL_ALIASES_STORAGE = "stave:signalAliases";
+var signalAliasesListeners = /* @__PURE__ */ new Set();
+function isNonEmptyString(v) {
+  return typeof v === "string" && v.length > 0;
+}
+__name(isNonEmptyString, "isNonEmptyString");
+function sanitizeAliasValue(v) {
+  if (isNonEmptyString(v)) return v;
+  if (Array.isArray(v) && v.length > 0 && v.every(isNonEmptyString)) {
+    return v;
+  }
+  return null;
+}
+__name(sanitizeAliasValue, "sanitizeAliasValue");
+function sanitizeStoredSignalAliases(raw) {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [key2, value] of Object.entries(raw)) {
+    if (!isNonEmptyString(key2)) continue;
+    const legacy = sanitizeAliasValue(value);
+    if (legacy != null) {
+      out[key2] = { [DEFAULT_VIZ_ENGINE]: legacy };
+      continue;
+    }
+    if (value != null && typeof value === "object" && !Array.isArray(value)) {
+      const slot = {};
+      for (const [eng, ev] of Object.entries(value)) {
+        if (!isNonEmptyString(eng)) continue;
+        const sv = sanitizeAliasValue(ev);
+        if (sv != null) slot[eng] = sv;
+      }
+      if (Object.keys(slot).length > 0) out[key2] = slot;
+    }
+  }
+  return out;
+}
+__name(sanitizeStoredSignalAliases, "sanitizeStoredSignalAliases");
+function readStoredSignalAliases() {
+  const ls = safeLocalStorage();
+  if (!ls) return { ...DEFAULT_STORED_ALIASES };
+  try {
+    const saved = ls.getItem(SIGNAL_ALIASES_STORAGE);
+    if (saved == null) return { ...DEFAULT_STORED_ALIASES };
+    return sanitizeStoredSignalAliases(JSON.parse(saved));
+  } catch {
+    return { ...DEFAULT_STORED_ALIASES };
+  }
+}
+__name(readStoredSignalAliases, "readStoredSignalAliases");
+function writeStoredSignalAliases(map) {
+  try {
+    safeLocalStorage()?.setItem(SIGNAL_ALIASES_STORAGE, JSON.stringify(map));
+  } catch {
+  }
+}
+__name(writeStoredSignalAliases, "writeStoredSignalAliases");
+function flattenForEngine(stored, engine) {
+  const out = {};
+  for (const [name, slot] of Object.entries(stored)) {
+    const v = slot[engine];
+    if (v != null) out[name] = v;
+  }
+  return out;
+}
+__name(flattenForEngine, "flattenForEngine");
+function getStoredSignalAliases() {
+  return readStoredSignalAliases();
+}
+__name(getStoredSignalAliases, "getStoredSignalAliases");
+function getSignalAliases(engine = DEFAULT_VIZ_ENGINE) {
+  return flattenForEngine(readStoredSignalAliases(), engine);
+}
+__name(getSignalAliases, "getSignalAliases");
+function setSignalAliases(map, engine = DEFAULT_VIZ_ENGINE) {
+  const prev = readStoredSignalAliases();
+  const next = {};
+  for (const [name, value] of Object.entries(map)) {
+    if (!isNonEmptyString(name)) continue;
+    const sv = sanitizeAliasValue(value);
+    if (sv == null) continue;
+    next[name] = { ...prev[name] ?? {}, [engine]: sv };
+  }
+  writeStoredSignalAliases(next);
+  const flat = flattenForEngine(next, engine);
+  for (const cb of Array.from(signalAliasesListeners)) cb(flat);
+}
+__name(setSignalAliases, "setSignalAliases");
+function onSignalAliasesChange(cb) {
+  signalAliasesListeners.add(cb);
+  return () => {
+    signalAliasesListeners.delete(cb);
+  };
+}
+__name(onSignalAliasesChange, "onSignalAliasesChange");
+var DEFAULT_BACKDROP_QUALITY = "half";
+var BACKDROP_QUALITY_STORAGE = "stave:backdropQuality";
+var backdropQualityListeners = /* @__PURE__ */ new Set();
+function readBackdropQuality() {
+  const ls = safeLocalStorage();
+  const v = ls?.getItem(BACKDROP_QUALITY_STORAGE);
+  return v === "full" || v === "half" || v === "quarter" ? v : DEFAULT_BACKDROP_QUALITY;
+}
+__name(readBackdropQuality, "readBackdropQuality");
+function writeBackdropQuality(q) {
+  safeLocalStorage()?.setItem(BACKDROP_QUALITY_STORAGE, q);
+}
+__name(writeBackdropQuality, "writeBackdropQuality");
+function getBackdropQuality() {
+  return readBackdropQuality();
+}
+__name(getBackdropQuality, "getBackdropQuality");
+function setBackdropQuality(q) {
+  writeBackdropQuality(q);
+  for (const cb of Array.from(backdropQualityListeners)) cb(q);
+}
+__name(setBackdropQuality, "setBackdropQuality");
+function onBackdropQualityChange(cb) {
+  backdropQualityListeners.add(cb);
+  return () => {
+    backdropQualityListeners.delete(cb);
+  };
+}
+__name(onBackdropQualityChange, "onBackdropQualityChange");
+function backdropQualityFactor(q) {
+  return q === "full" ? 1 : q === "quarter" ? 0.25 : 0.5;
+}
+__name(backdropQualityFactor, "backdropQualityFactor");
+function applyPersistedEditorOptions(editor) {
+  applyOptionsToEditor(editor);
+}
+__name(applyPersistedEditorOptions, "applyPersistedEditorOptions");
+var THEME_STORAGE = "stave:editorTheme";
+function readTheme() {
+  const ls = safeLocalStorage();
+  const v = ls?.getItem(THEME_STORAGE);
+  return v === "light" || v === "system" ? v : v === "dark" ? "dark" : "dark";
+}
+__name(readTheme, "readTheme");
+function writeTheme(t) {
+  safeLocalStorage()?.setItem(THEME_STORAGE, t);
+}
+__name(writeTheme, "writeTheme");
+function systemPrefersLight() {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-color-scheme: light)").matches;
+}
+__name(systemPrefersLight, "systemPrefersLight");
+function resolveTheme(t) {
+  if (t === "dark" || t === "light") return t;
+  return systemPrefersLight() ? "light" : "dark";
+}
+__name(resolveTheme, "resolveTheme");
+var themeListeners = /* @__PURE__ */ new Set();
+var systemMqlWired = false;
+var systemMql = null;
+function notifyThemeListeners(resolved) {
+  for (const fn of themeListeners) {
+    try {
+      fn(resolved);
+    } catch {
+    }
+  }
+}
+__name(notifyThemeListeners, "notifyThemeListeners");
+function wireSystemMqlOnce() {
+  if (systemMqlWired || typeof window === "undefined" || !window.matchMedia) return;
+  systemMqlWired = true;
+  systemMql = window.matchMedia("(prefers-color-scheme: light)");
+  const onChange = /* @__PURE__ */ __name(() => {
+    if (readTheme() !== "system") return;
+    applyResolvedTheme(resolveTheme("system"));
+  }, "onChange");
+  try {
+    systemMql.addEventListener("change", onChange);
+  } catch {
+    systemMql.addListener?.(onChange);
+  }
+}
+__name(wireSystemMqlOnce, "wireSystemMqlOnce");
+function applyResolvedTheme(resolved) {
+  if (monacoNs?.editor?.setTheme) {
+    monacoNs.editor.setTheme(resolved === "light" ? "stave-light" : "stave-dark");
+  }
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-stave-theme", resolved);
+  }
+  notifyThemeListeners(resolved);
+}
+__name(applyResolvedTheme, "applyResolvedTheme");
+function getEditorTheme() {
+  return readTheme();
+}
+__name(getEditorTheme, "getEditorTheme");
+function getResolvedTheme() {
+  return resolveTheme(readTheme());
+}
+__name(getResolvedTheme, "getResolvedTheme");
+function setEditorTheme(theme) {
+  writeTheme(theme);
+  wireSystemMqlOnce();
+  applyResolvedTheme(resolveTheme(theme));
+}
+__name(setEditorTheme, "setEditorTheme");
+function cycleEditorTheme() {
+  const next = readTheme() === "dark" ? "light" : readTheme() === "light" ? "system" : "dark";
+  setEditorTheme(next);
+  return next;
+}
+__name(cycleEditorTheme, "cycleEditorTheme");
+function onThemeChange(fn) {
+  themeListeners.add(fn);
+  return () => {
+    themeListeners.delete(fn);
+  };
+}
+__name(onThemeChange, "onThemeChange");
+function applyPersistedTheme() {
+  wireSystemMqlOnce();
+  setEditorTheme(readTheme());
+}
+__name(applyPersistedTheme, "applyPersistedTheme");
+var PERF_ENABLED_STORAGE = "stave:perfEnabled";
+var perfEnabledListeners = /* @__PURE__ */ new Set();
+function readPerfEnabled() {
+  try {
+    if (globalThis.__STAVE_PERF__ === true) {
+      return true;
+    }
+  } catch {
+  }
+  return safeLocalStorage()?.getItem(PERF_ENABLED_STORAGE) === "1";
+}
+__name(readPerfEnabled, "readPerfEnabled");
+function getPerfEnabled() {
+  return readPerfEnabled();
+}
+__name(getPerfEnabled, "getPerfEnabled");
+function setPerfEnabled(on) {
+  try {
+    safeLocalStorage()?.setItem(PERF_ENABLED_STORAGE, on ? "1" : "0");
+  } catch {
+  }
+  perf.setEnabled(on);
+  for (const cb of Array.from(perfEnabledListeners)) cb(on);
+}
+__name(setPerfEnabled, "setPerfEnabled");
+function togglePerfEnabled() {
+  const next = !readPerfEnabled();
+  setPerfEnabled(next);
+  return next;
+}
+__name(togglePerfEnabled, "togglePerfEnabled");
+function onPerfEnabledChange(cb) {
+  perfEnabledListeners.add(cb);
+  return () => {
+    perfEnabledListeners.delete(cb);
+  };
+}
+__name(onPerfEnabledChange, "onPerfEnabledChange");
+function applyPersistedPerfEnabled() {
+  perf.setEnabled(readPerfEnabled());
+}
+__name(applyPersistedPerfEnabled, "applyPersistedPerfEnabled");
+var ADAPTIVE_PERF_STORAGE = "stave.viz.governor";
+var adaptivePerfListeners = /* @__PURE__ */ new Set();
+function readAdaptivePerf() {
+  return safeLocalStorage()?.getItem(ADAPTIVE_PERF_STORAGE) !== "0";
+}
+__name(readAdaptivePerf, "readAdaptivePerf");
+function getAdaptivePerfEnabled() {
+  return readAdaptivePerf();
+}
+__name(getAdaptivePerfEnabled, "getAdaptivePerfEnabled");
+function setAdaptivePerfEnabled(on) {
+  try {
+    safeLocalStorage()?.setItem(ADAPTIVE_PERF_STORAGE, on ? "1" : "0");
+  } catch {
+  }
+  vizGovernor.setEnabled(on);
+  for (const cb of Array.from(adaptivePerfListeners)) cb(on);
+}
+__name(setAdaptivePerfEnabled, "setAdaptivePerfEnabled");
+function toggleAdaptivePerfEnabled() {
+  const next = !readAdaptivePerf();
+  setAdaptivePerfEnabled(next);
+  return next;
+}
+__name(toggleAdaptivePerfEnabled, "toggleAdaptivePerfEnabled");
+function onAdaptivePerfChange(cb) {
+  adaptivePerfListeners.add(cb);
+  return () => {
+    adaptivePerfListeners.delete(cb);
+  };
+}
+__name(onAdaptivePerfChange, "onAdaptivePerfChange");
+function applyPersistedAdaptivePerf() {
+  vizGovernor.setEnabled(readAdaptivePerf());
+}
+__name(applyPersistedAdaptivePerf, "applyPersistedAdaptivePerf");
+
+// src/codeView/writeback.ts
+var REEVAL_DEBOUNCE_MS = 120;
+function formatNumber(v, maxDecimals = 4) {
+  if (!Number.isFinite(v)) return "0";
+  if (Number.isInteger(v)) return String(v);
+  const fixed = v.toFixed(maxDecimals);
+  return fixed.replace(/\.?0+$/, "");
+}
+__name(formatNumber, "formatNumber");
+function normalizeEdits(edits) {
+  for (const e of edits) {
+    if (e.range[0] > e.range[1]) {
+      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
+    }
+  }
+  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1].range;
+    const cur = sorted[i].range;
+    if (cur[0] < prev[1]) {
+      throw new Error(
+        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
+      );
+    }
+  }
+  return sorted;
+}
+__name(normalizeEdits, "normalizeEdits");
+function applyEdits(doc, edits) {
+  const sorted = normalizeEdits(edits);
+  let out = doc;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const { range: range2, text } = sorted[i];
+    out = out.slice(0, range2[0]) + text + out.slice(range2[1]);
+  }
+  return out;
+}
+__name(applyEdits, "applyEdits");
+var _Writeback = class _Writeback {
+  constructor(editor, monaco) {
+    this.editor = editor;
+    this.monaco = monaco;
+    this.writingSource = null;
+    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+    this.inGesture = false;
+    /** whether the in-flight gesture has applied any edit — gates the one re-eval
+     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
+    this.gestureDidEdit = false;
+    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
+    this.reevalTimer = null;
+  }
+  /**
+   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+   * the undo grouping is affected. Idempotent if already in a gesture.
+   */
+  beginGesture() {
+    if (this.inGesture) return;
+    const model = this.editor.getModel();
+    if (!model) return;
+    model.pushStackElement();
+    this.inGesture = true;
+    this.gestureDidEdit = false;
+  }
+  /** Close the gesture, sealing all its edits as one undo step — and, if the
+   * gesture changed anything, make it audible immediately (one re-eval on
+   * release, not per drag frame). */
+  endGesture() {
+    if (!this.inGesture) return;
+    this.inGesture = false;
+    this.editor.getModel()?.pushStackElement();
+    if (this.gestureDidEdit) {
+      this.gestureDidEdit = false;
+      this.requestLiveReeval();
+    }
+  }
+  /**
+   * The source of the edit currently being applied, or null. The host's
+   * `onDidChangeModelContent` listener reads this synchronously to attribute
+   * the change. It is non-null ONLY for the duration of `apply`.
+   */
+  get currentSource() {
+    return this.writingSource;
+  }
+  /** Replace a single offset range. One undo step. */
+  replaceRange(range2, text, source) {
+    this.apply([{ range: range2, text }], source);
+  }
+  /**
+   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
+   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
+   * the whole gesture).
+   */
+  replaceRanges(edits, source) {
+    this.apply(edits, source);
+  }
+  /** Insert text at an offset (zero-width edit). */
+  insertAt(offset, text, source) {
+    this.apply([{ range: [offset, offset], text }], source);
+  }
+  /** Delete an offset range. */
+  deleteRange(range2, source) {
+    this.apply([{ range: range2, text: "" }], source);
+  }
+  /**
+   * Freshness-guarded write. Re-reads the live model text and refuses the edit
+   * if the chunk's statement no longer matches what it was detected from
+   * (the doc changed under the panel). Returns true if applied, false if stale.
+   * Prefer this over the raw methods on any path that can race a typed edit.
+   */
+  applyFresh(chunk, edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return false;
+    if (!isChunkFresh(model.getValue(), chunk)) return false;
+    this.apply(edits, source);
+    return true;
+  }
+  apply(edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return;
+    const normalized = normalizeEdits(edits);
+    const ops = normalized.map((e) => {
+      const start = model.getPositionAt(e.range[0]);
+      const end = model.getPositionAt(e.range[1]);
+      return {
+        range: new this.monaco.Range(
+          start.lineNumber,
+          start.column,
+          end.lineNumber,
+          end.column
+        ),
+        text: e.text,
+        forceMoveMarkers: true
+      };
+    });
+    if (!this.inGesture) model.pushStackElement();
+    this.writingSource = source;
+    try {
+      model.pushEditOperations([], ops, () => null);
+    } finally {
+      this.writingSource = null;
+    }
+    if (!this.inGesture) model.pushStackElement();
+    if (this.inGesture) this.gestureDidEdit = true;
+    else this.requestLiveReeval();
+  }
+  /**
+   * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
+   * the moment it commits. Centralised here so every visual surface — sequencer,
+   * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
+   * re-evals only a PLAYING file, and only when live mode isn't already doing
+   * it, so this never auto-starts audio nor double-evaluates.
+   *
+   * Trailing-debounced: rapid successive commits (e.g. clearing several
+   * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
+   * which also lets the Monaco→file-store sync settle so the re-eval reads the
+   * final content rather than racing a not-yet-synced edit.
+   */
+  requestLiveReeval() {
+    if (this.reevalTimer) clearTimeout(this.reevalTimer);
+    this.reevalTimer = setTimeout(() => {
+      this.reevalTimer = null;
+      requestReeval(getFileIdForEditor(this.editor));
+    }, REEVAL_DEBOUNCE_MS);
+  }
+};
+__name(_Writeback, "Writeback");
+var Writeback = _Writeback;
+
+// src/codeView/mixer/masterEdit.ts
+var MASTER_UNITY_GAIN = 1;
+function matchAllArrow(node) {
+  if (!node || node.type !== "ExpressionStatement") return null;
+  const expr = node.expression;
+  if (!expr || expr.type !== "CallExpression" || expr.callee.type !== "Identifier" || expr.callee.name !== "all" || expr.arguments.length < 1) {
+    return null;
+  }
+  const arrow = expr.arguments[0];
+  if (!arrow || arrow.type !== "ArrowFunctionExpression") return null;
+  if (arrow.body.type === "BlockStatement") return null;
+  return { body: arrow.body };
+}
+__name(matchAllArrow, "matchAllArrow");
+function detectMasterAll(doc) {
+  return detectMasterAllWithBodies(doc).map((l) => l.m);
+}
+__name(detectMasterAll, "detectMasterAll");
+function detectMasterAllWithBodies(doc) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return [];
+  const out = [];
+  for (const node of statements) {
+    const arrow = matchAllArrow(node);
+    if (!arrow) continue;
+    const headOut = { ref: null };
+    const chain = collectChain(doc, arrow.body, headOut);
+    out.push({
+      m: {
+        statementRange: [node.start, node.end],
+        statementText: doc.slice(node.start, node.end),
+        arrowBodyRange: [arrow.body.start, arrow.body.end],
+        chain
+      },
+      body: arrow.body
+    });
+  }
+  return out;
+}
+__name(detectMasterAllWithBodies, "detectMasterAllWithBodies");
+var MASTER_GAIN_CONTROL = "postgain";
+var LEGACY_MASTER_CONTROLS = ["gain", MASTER_GAIN_CONTROL];
+function findScaleSite(doc, body, chain) {
+  let node = body;
+  while (node && node.type === "CallExpression" && node.callee.type === "MemberExpression") {
+    const callee = node.callee;
+    const inner = node.arguments[0];
+    if (!callee.computed && callee.property.type === "Identifier" && callee.property.name === "mul" && node.arguments.length === 1 && inner.type === "CallExpression" && inner.callee.type === "Identifier" && inner.callee.name === MASTER_GAIN_CONTROL && inner.arguments.length === 1) {
+      const dot = doc.lastIndexOf(".", callee.property.start);
+      const call = chain.find((c) => c.name === "mul" && c.range[0] === dot);
+      if (call) return { kind: "scale", call, arg: toArg(doc, inner.arguments[0]) };
+    }
+    node = callee.object;
+  }
+  return void 0;
+}
+__name(findScaleSite, "findScaleSite");
+function gainSiteOf(doc, m, body) {
+  const scale = findScaleSite(doc, body, m.chain);
+  if (scale) return scale;
+  for (const name of LEGACY_MASTER_CONTROLS) {
+    const call = m.chain.find((c) => c.name === name);
+    if (call) return { kind: "legacy", call, arg: call.args[0] };
+  }
+  return void 0;
+}
+__name(gainSiteOf, "gainSiteOf");
+function findMasterGainSite(doc) {
+  const lines = detectMasterAllWithBodies(doc);
+  for (const { m, body } of lines) {
+    const scale = findScaleSite(doc, body, m.chain);
+    if (scale) return scale;
+  }
+  for (const { m, body } of lines) {
+    const site = gainSiteOf(doc, m, body);
+    if (site) return site;
+  }
+  return void 0;
+}
+__name(findMasterGainSite, "findMasterGainSite");
+function arrowBodyText(doc, m) {
+  return doc.slice(m.arrowBodyRange[0], m.arrowBodyRange[1]).trim();
+}
+__name(arrowBodyText, "arrowBodyText");
+function findMuteLine(doc) {
+  return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === "silence");
+}
+__name(findMuteLine, "findMuteLine");
+function findVizBackdropCall(m) {
+  return m.chain.find(
+    (c) => c.name === "viz" && c.args.some((a) => /\bbackdrop\s*:\s*true\b/.test(a.raw))
+  );
+}
+__name(findVizBackdropCall, "findVizBackdropCall");
+function vizNameArg(c) {
+  return c.args.find((a) => /^['"`]/.test(a.raw));
+}
+__name(vizNameArg, "vizNameArg");
+function readMasterGain(doc) {
+  const site = findMasterGainSite(doc);
+  if (!site) return { value: MASTER_UNITY_GAIN, foreign: false };
+  const arg = site.arg;
+  if (!arg) return { value: MASTER_UNITY_GAIN, foreign: true };
+  if (arg.numeric === null) return { value: MASTER_UNITY_GAIN, foreign: true };
+  return { value: arg.numeric, foreign: false };
+}
+__name(readMasterGain, "readMasterGain");
+function readMasterMute(doc) {
+  return findMuteLine(doc) !== void 0;
+}
+__name(readMasterMute, "readMasterMute");
+function detectMasterAudioAll(doc) {
+  return detectMasterAll(doc).find((m) => {
+    if (arrowBodyText(doc, m) === "silence") return false;
+    if (m.chain.length >= 1 && m.chain.every((c) => c.name === "viz")) return false;
+    return true;
+  });
+}
+__name(detectMasterAudioAll, "detectMasterAudioAll");
+function adaptMasterChunk(doc, m) {
+  const head = {
+    name: "x",
+    // the arrow param — inert: index 0 is never edited by MixerBody
+    args: [],
+    range: [m.arrowBodyRange[0], m.arrowBodyRange[0]]
+  };
+  return {
+    statementRange: m.statementRange,
+    statementText: m.statementText,
+    exprRange: m.arrowBodyRange,
+    label: null,
+    headFn: null,
+    miniRange: null,
+    miniString: null,
+    miniVia: null,
+    miniAnchor: null,
+    chain: [head, ...m.chain],
+    type: "knobs",
+    nested: false
+  };
+}
+__name(adaptMasterChunk, "adaptMasterChunk");
+function readMasterViz(doc) {
+  for (const m of detectMasterAll(doc)) {
+    const v = findVizBackdropCall(m);
+    if (!v) continue;
+    const nameArg = vizNameArg(v);
+    if (!nameArg) continue;
+    return { name: nameArg.raw.slice(1, -1) };
+  }
+  return null;
+}
+__name(readMasterViz, "readMasterViz");
+function scaleCall(value) {
+  return `.mul(${MASTER_GAIN_CONTROL}(${formatNumber(value)}))`;
+}
+__name(scaleCall, "scaleCall");
+function masterGainEdit(doc, value) {
+  const site = findMasterGainSite(doc);
+  if (!site) return insertStatement(doc, `all(x => x${scaleCall(value)})`);
+  const arg = site.arg;
+  if (!arg || arg.numeric === null) return null;
+  if (site.kind === "scale") return { range: arg.range, text: formatNumber(value) };
+  return { range: site.call.range, text: scaleCall(value) };
+}
+__name(masterGainEdit, "masterGainEdit");
+function masterMuteEdit(doc, muted3) {
+  const line = findMuteLine(doc);
+  if (muted3) return line ? null : insertStatement(doc, "all(x => silence)");
+  return line ? removeStatement(doc, line.statementRange) : null;
+}
+__name(masterMuteEdit, "masterMuteEdit");
+function masterVizEdit(doc, name) {
+  for (const m of detectMasterAll(doc)) {
+    const v = findVizBackdropCall(m);
+    if (!v) continue;
+    if (name === null) {
+      if (m.chain.length === 1) return removeStatement(doc, m.statementRange);
+      return { range: v.range, text: "" };
+    }
+    const nameArg = vizNameArg(v);
+    if (!nameArg) return null;
+    return { range: nameArg.range, text: JSON.stringify(name) };
+  }
+  if (name === null) return null;
+  return insertStatement(doc, `all(x => x.viz(${JSON.stringify(name)}, { backdrop: true }))`);
+}
+__name(masterVizEdit, "masterVizEdit");
+function insertStatement(doc, statement) {
+  const pos = doc.length;
+  const lead = doc.length === 0 || doc.endsWith("\n") ? "" : "\n";
+  return { range: [pos, pos], text: `${lead}${statement}` };
+}
+__name(insertStatement, "insertStatement");
+function removeStatement(doc, stmt) {
+  let start = stmt[0];
+  let end = stmt[1];
+  const prevNL = doc.lastIndexOf("\n", start - 1);
+  if (prevNL >= 0 && doc.slice(prevNL + 1, start).trim() === "") {
+    start = prevNL;
+  } else if (doc[end] === "\n") {
+    end = end + 1;
+  }
+  return { range: [start, end], text: "" };
+}
+__name(removeStatement, "removeStatement");
+
+// src/codeView/patternKind.ts
+function isStepChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "s" || chunk.headFn === "sound");
+}
+__name(isStepChunk, "isStepChunk");
+function isRollChunk(chunk) {
+  return chunk.miniString !== null && (chunk.headFn === "note" || chunk.headFn === "n");
+}
+__name(isRollChunk, "isRollChunk");
+function patternKind(chunk) {
+  if (!chunk) return null;
+  if (isStepChunk(chunk)) return "step";
+  if (isRollChunk(chunk)) return "roll";
+  return null;
+}
+__name(patternKind, "patternKind");
+
+// src/codeView/trackColor.ts
+var TRACK_PALETTE_32 = [
+  // Drums (orange family) — 8 lightness steps
+  "#fed7aa",
+  "#fdba74",
+  "#fb923c",
+  "#f97316",
+  "#ea580c",
+  "#c2410c",
+  "#9a3412",
+  "#7c2d12",
+  // Bass (cyan family) — 8 lightness steps
+  "#a5f3fc",
+  "#67e8f9",
+  "#22d3ee",
+  "#06b6d4",
+  "#0891b2",
+  "#0e7490",
+  "#155e75",
+  "#164e63",
+  // Pad (green family) — 8 lightness steps
+  "#a7f3d0",
+  "#6ee7b7",
+  "#34d399",
+  "#10b981",
+  "#059669",
+  "#047857",
+  "#065f46",
+  "#064e3b",
+  // Melody (purple family) — 8 lightness steps
+  "#ddd6fe",
+  "#c4b5fd",
+  "#a78bfa",
+  "#8b5cf6",
+  "#7c3aed",
+  "#6d28d9",
+  "#5b21b6",
+  "#4c1d95"
+];
+var STEM_PATTERNS = [
+  // Family 0 — drums
+  /^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i,
+  // Family 1 — bass
+  /^(?:bass|sub|808)/i,
+  // Family 2 — pads
+  /^(?:pad|pads)/i,
+  // Family 3 — melody / lead / synth / piano / keys / guitar
+  /^(?:lead|melody|synth|piano|keys|guitar)/i
+];
+function fnv1a32(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h = (h ^ str.charCodeAt(i)) >>> 0;
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+__name(fnv1a32, "fnv1a32");
+function stemHueGroup(sample) {
+  if (!sample) return 3;
+  for (let i = 0; i < STEM_PATTERNS.length; i++) {
+    if (STEM_PATTERNS[i].test(sample)) return i;
+  }
+  return 3;
+}
+__name(stemHueGroup, "stemHueGroup");
+function trackIndexOf(trackId) {
+  const m = trackId.match(/^d(\d+)$/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n >= 1) return ((n - 1) % 32 + 32) % 32;
+  }
+  return fnv1a32(trackId) % 32;
+}
+__name(trackIndexOf, "trackIndexOf");
+function paletteForTrack(trackIndex, sampleHint) {
+  const hueGroup = stemHueGroup(sampleHint);
+  const slot = ((trackIndex * 4 + hueGroup) % 32 + 32) % 32;
+  return TRACK_PALETTE_32[slot];
+}
+__name(paletteForTrack, "paletteForTrack");
+function colorForTrack(key2) {
+  return paletteForTrack(trackIndexOf(key2), key2);
+}
+__name(colorForTrack, "colorForTrack");
+function trackIdentity(key2, customColor) {
+  return { key: key2, name: key2, color: customColor ?? colorForTrack(key2) };
+}
+__name(trackIdentity, "trackIdentity");
+
+// src/codeView/mixer/gain.ts
+var GAIN_TOKEN = /^(\d+(?:\.\d+)?)(@\d+)?$/;
+function parseManagedGain(raw) {
+  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
+  if (!quote || raw[raw.length - 1] !== quote) return null;
+  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== "");
+  if (tokens.length < 2) return null;
+  let ceiling = 0;
+  for (const t of tokens) {
+    if (t === "~") continue;
+    const m = GAIN_TOKEN.exec(t);
+    if (!m) return null;
+    ceiling = Math.max(ceiling, parseFloat(m[1]));
+  }
+  return { tokens, ceiling, quote };
+}
+__name(parseManagedGain, "parseManagedGain");
+function scaleManagedGain(mg, value) {
+  const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
+  const out = mg.tokens.map((t) => {
+    if (t === "~") return "~";
+    const m = GAIN_TOKEN.exec(t);
+    const nv = factor === null ? value : parseFloat(m[1]) * factor;
+    return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
+  });
+  return mg.quote + out.join(" ") + mg.quote;
+}
+__name(scaleManagedGain, "scaleManagedGain");
+var CHILD_GAIN_HEADS = /* @__PURE__ */ new Set([
+  "pick",
+  "pickRestart",
+  "pickReset",
+  "stack",
+  "cat",
+  "layer",
+  "arrange"
+]);
+function hasChildGain(chunk) {
+  const call = chunk.chain.find((c) => CHILD_GAIN_HEADS.has(c.name));
+  return call ? call.args.some((a) => /\.gain\s*\(/.test(a.raw)) : false;
+}
+__name(hasChildGain, "hasChildGain");
+function readGainState(chunk) {
+  const call = chunk.chain.find((c) => c.name === "gain" && c.args.length >= 1);
+  const arg = call?.args[0];
+  if (!call || !arg) {
+    return hasChildGain(chunk) ? { kind: "foreign" } : { kind: "absent" };
+  }
+  if (arg.numeric !== null) return { kind: "scalar", value: arg.numeric, range: arg.range };
+  const mg = parseManagedGain(arg.raw);
+  if (mg) return { kind: "managed", ceiling: mg.ceiling, mg, range: arg.range };
+  return { kind: "foreign" };
+}
+__name(readGainState, "readGainState");
+
+// src/codeView/mixer/stripModel.ts
+function namedLabel(label) {
+  return label && label !== "$" ? label : null;
+}
+__name(namedLabel, "namedLabel");
+function isMuted(label) {
+  return label != null && isMutedLabel(label);
+}
+__name(isMuted, "isMuted");
+function bareLabel(label) {
+  if (label == null) return null;
+  return namedLabel(splitMuteMarker(label).bare);
+}
+__name(bareLabel, "bareLabel");
+function isTrackChunk(chunk) {
+  if (chunk.label !== null) return true;
+  return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
+}
+__name(isTrackChunk, "isTrackChunk");
+function unjoinableId(index) {
+  return `~$${index}`;
+}
+__name(unjoinableId, "unjoinableId");
+function bareCaptureIdFor(tracks) {
+  if (tracks.length === 0) return null;
+  if (tracks.some((t) => t.label !== null && !isMutedLabel(t.label))) return null;
+  if (tracks[tracks.length - 1].label !== null) return null;
+  return `$${tracks.length - 1}`;
+}
+__name(bareCaptureIdFor, "bareCaptureIdFor");
+var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
+function stripKind(chunk) {
+  const k = patternKind(chunk);
+  if (k) return k;
+  if (chunk.headFn && GROUP_HEADS.has(chunk.headFn)) return "group";
+  return "unknown";
+}
+__name(stripKind, "stripKind");
+function readSource(chunk, kind) {
+  if (kind === "step") return readChainMethod(chunk, ["bank"])?.value ?? null;
+  if (kind === "roll") return readChainMethod(chunk, ["sound", "s"])?.value ?? null;
+  return readChainMethod(chunk, ["sound", "s", "bank"])?.value ?? null;
+}
+__name(readSource, "readSource");
+function readScalar(chunk, name) {
+  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
+  const arg = call?.args[0];
+  return arg && arg.numeric !== null ? arg.numeric : null;
+}
+__name(readScalar, "readScalar");
+function isForeign(chunk, name) {
+  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
+  return call !== void 0 && call.args[0].numeric === null;
+}
+__name(isForeign, "isForeign");
+function displayKeys(trackChunks, doc) {
+  const idAtLine = trackIdsByLine(doc);
+  const taken = new Set(idAtLine.values());
+  return trackChunks.map((chunk, i) => {
+    let line = chunk.statementRange[0];
+    while (line > 0 && (doc[line - 1] === " " || doc[line - 1] === "	")) line--;
+    const id = idAtLine.get(line) ?? idAtLine.get(chunk.statementRange[0]);
+    if (id !== void 0) return id;
+    let n = i + 1;
+    while (taken.has(`d${n}`)) n++;
+    taken.add(`d${n}`);
+    return `d${n}`;
+  });
+}
+__name(displayKeys, "displayKeys");
+var cachedDoc = null;
+var cachedIds = /* @__PURE__ */ new Map();
+function trackIdsByLine(doc) {
+  if (doc === cachedDoc) return cachedIds;
+  const ir = parseStrudel(doc);
+  const roots = ir.tag === "Stack" ? ir.tracks : [ir];
+  const ids = /* @__PURE__ */ new Map();
+  for (const node of roots) {
+    if (node.tag !== "Track") continue;
+    const at = node.loc?.[0]?.start;
+    if (typeof at === "number" && !ids.has(at)) ids.set(at, node.trackId);
+  }
+  cachedDoc = doc;
+  cachedIds = ids;
+  return ids;
+}
+__name(trackIdsByLine, "trackIdsByLine");
+function buildStripModel(chunk, index, displayKey, id, captureId) {
+  const kind = stripKind(chunk);
+  const source = readSource(chunk, kind);
+  const identity = trackIdentity(displayKey);
+  return {
+    id,
+    index,
+    kind,
+    label: bareLabel(chunk.label),
+    name: identity.name,
+    headFn: chunk.headFn,
+    miniString: chunk.miniString,
+    source,
+    gain: readGainState(chunk),
+    pan: readScalar(chunk, "pan"),
+    panForeign: isForeign(chunk, "pan"),
+    sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
+    muted: isMuted(chunk.label),
+    muteable: chunk.label != null,
+    color: identity.color,
+    chain: chunk.chain,
+    exprRange: chunk.exprRange,
+    statementRange: chunk.statementRange,
+    captureId
+  };
+}
+__name(buildStripModel, "buildStripModel");
+function buildStripModels(chunks, doc) {
+  let anonAll = 0;
+  let anonLive = 0;
+  let ordinal = 0;
+  const models = [];
+  const registers = chunks.some((c) => c.label !== null && !isMutedLabel(c.label));
+  const trackChunks = chunks.filter(
+    (c) => isTrackChunk(c) && (c.label !== null || !registers)
+  );
+  const drawn = new Set(trackChunks);
+  const keys = displayKeys(trackChunks, doc);
+  const bareId = bareCaptureIdFor(trackChunks);
+  const bareOwner = bareId === null ? null : trackChunks[trackChunks.length - 1];
+  chunks.forEach((chunk, index) => {
+    if (!isTrackChunk(chunk)) return;
+    if (!drawn.has(chunk)) {
+      anonAll++;
+      return;
+    }
+    ordinal++;
+    const bare = bareLabel(chunk.label);
+    const id = bare ?? `#${anonAll++}`;
+    let captureId;
+    if (bare !== null) captureId = bare;
+    else if (isMuted(chunk.label)) captureId = `_$${index}`;
+    else if (chunk.label === null)
+      captureId = bareId !== null && chunk === bareOwner ? bareId : unjoinableId(index);
+    else captureId = `$${anonLive++}`;
+    models.push(buildStripModel(chunk, index, keys[ordinal - 1], id, captureId));
+  });
+  return models;
+}
+__name(buildStripModels, "buildStripModels");
+function statementOffsetForSource(doc, source) {
+  const strip = buildStripModels(detectAllChunks(doc), doc).find((s) => s.source === source);
+  return strip ? strip.statementRange[0] : null;
+}
+__name(statementOffsetForSource, "statementOffsetForSource");
+function otherTrackNames(doc, selfStatementStart) {
+  return buildStripModels(detectAllChunks(doc), doc).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
+}
+__name(otherTrackNames, "otherTrackNames");
+function stripContainingOffset(strips, offset) {
+  return strips.find(
+    (s) => s.statementRange[0] <= offset && offset < s.statementRange[1]
+  );
+}
+__name(stripContainingOffset, "stripContainingOffset");
+
+// src/codeView/mixer/writeStrip.ts
+function gainEdit(fresh, value) {
+  const g = readGainState(fresh);
+  switch (g.kind) {
+    case "scalar":
+      return { range: g.range, text: formatNumber(value) };
+    case "managed":
+      return { range: g.range, text: scaleManagedGain(g.mg, value) };
+    case "absent":
+      return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${formatNumber(value)})` };
+    case "foreign":
+      return null;
+  }
+}
+__name(gainEdit, "gainEdit");
+function panEdit(fresh, value) {
+  const call = fresh.chain.find((c) => c.name === "pan" && c.args.length >= 1);
+  if (!call) {
+    return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.pan(${formatNumber(value)})` };
+  }
+  const arg = call.args[0];
+  if (arg.numeric === null) return null;
+  return { range: arg.range, text: formatNumber(value) };
+}
+__name(panEdit, "panEdit");
+function muteEdit(fresh, muted3) {
+  if (fresh.label === null) return null;
+  const marker = splitMuteMarker(fresh.label);
+  const isMuted2 = marker.prefix || marker.suffix;
+  if (muted3 === isMuted2) return null;
+  const pos = fresh.statementRange[0];
+  if (muted3) return { range: [pos, pos], text: "_" };
+  if (!marker.suffix) return { range: [pos, pos + 1], text: "" };
+  return { range: [pos, pos + fresh.label.length], text: marker.bare };
+}
+__name(muteEdit, "muteEdit");
+var RESERVED_LABELS = /* @__PURE__ */ new Set([
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+  "await",
+  "let",
+  // strict-mode reserved — Strudel transpiles as a module, so these are syntax
+  // errors AS labels too; reject them rather than write a name that breaks eval.
+  "implements",
+  "interface",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "static"
+]);
+function isValidTrackLabel(name) {
+  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u.test(name) && !RESERVED_LABELS.has(name);
+}
+__name(isValidTrackLabel, "isValidTrackLabel");
+function renameEdit(fresh, newLabel, takenNames) {
+  if (fresh.label === null) return null;
+  if (!isValidTrackLabel(newLabel)) return null;
+  const { bare: bareLabel2, prefix, suffix } = splitMuteMarker(fresh.label);
+  if (newLabel === bareLabel2) return null;
+  if (takenNames.has(newLabel)) return null;
+  const start = fresh.statementRange[0] + (prefix ? 1 : 0);
+  const end = fresh.statementRange[0] + fresh.label.length - (suffix ? 1 : 0);
+  return { range: [start, end], text: newLabel };
+}
+__name(renameEdit, "renameEdit");
+
 // src/codeView/notation/pitch.ts
 var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
 var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
@@ -8155,7 +10515,7 @@ function stackSource(parts, divs, elements, partCells, total, given = []) {
   return { source: { prefix: "", suffix: "", parts: out } };
 }
 __name(stackSource, "stackSource");
-var GAIN_TOKEN = /^\d+(\.\d+)?$/;
+var GAIN_TOKEN2 = /^\d+(\.\d+)?$/;
 function parseGainMini(mini, count) {
   const tokens = mini.trim().split(/\s+/).filter((t) => t !== "");
   if (tokens.length !== count) return null;
@@ -8165,7 +10525,7 @@ function parseGainMini(mini, count) {
       out.push(1);
       continue;
     }
-    if (!GAIN_TOKEN.test(t)) return null;
+    if (!GAIN_TOKEN2.test(t)) return null;
     out.push(parseFloat(t));
   }
   return out;
@@ -9542,6 +11902,39 @@ function listSectionParts(doc, call) {
 }
 __name(listSectionParts, "listSectionParts");
 
+// src/codeView/assign/soundAssign.ts
+function planSoundAssignment(doc, offset, sound) {
+  if (!sound) return null;
+  const chunk = detectChunk(doc, offset);
+  if (chunk && patternKind(chunk) === "roll") {
+    const cur = readChainMethod(chunk, ["sound", "s"]);
+    if (cur) return { kind: "replace", range: cur.range, text: `'${sound}'` };
+    return { kind: "insert", offset: chunk.exprRange[1], text: `.sound('${sound}')` };
+  }
+  const lineStart = doc.lastIndexOf("\n", offset - 1) + 1;
+  const nextNewline = doc.indexOf("\n", offset);
+  const lineEnd = nextNewline === -1 ? doc.length : nextNewline;
+  const hasContent = doc.slice(lineStart, lineEnd).trim().length > 0;
+  return {
+    kind: "insert",
+    offset: lineEnd,
+    text: `${hasContent ? "\n" : ""}s("${sound}")`
+  };
+}
+__name(planSoundAssignment, "planSoundAssignment");
+
+// src/codeView/assign/vizAssign.ts
+function planVizAssignment(doc, offset, name) {
+  if (!name) return null;
+  const chunk = detectChunk(doc, offset);
+  if (!chunk) return null;
+  const text = JSON.stringify(name);
+  const cur = readChainMethod(chunk, ["viz"]);
+  if (cur) return { kind: "replace", range: cur.range, text };
+  return { kind: "insert", offset: chunk.exprRange[1], text: `.viz(${text})` };
+}
+__name(planVizAssignment, "planVizAssignment");
+
 // src/codeView/notation/place.ts
 function viewPlacesNotes(model) {
   let asked = 0;
@@ -10310,1719 +12703,6 @@ function quoteLike(oldToken, name) {
   return q === '"' || q === "'" ? `${q}${name}${q}` : name;
 }
 __name(quoteLike, "quoteLike");
-
-// src/visualizers/signals/aliasMap.ts
-var DEFAULT_VIZ_ENGINE = "strudel";
-var BUILTIN_ALIASES = {
-  uKick: { strudel: "bd", sonicpi: "drum_heavy_kick" },
-  uSnare: { strudel: "sd", sonicpi: "drum_snare_hard" },
-  uHat: { strudel: "hh", sonicpi: "drum_cymbal_closed" },
-  uOpenHat: { strudel: "oh", sonicpi: "drum_cymbal_open" },
-  uClap: { strudel: "cp" },
-  uRim: { strudel: "rim" },
-  uTom: {
-    strudel: ["lt", "mt", "ht"],
-    sonicpi: ["drum_tom_lo_hard", "drum_tom_mid_hard", "drum_tom_hi_hard"]
-  }
-};
-function resolveAliasesForEngine(custom, engine) {
-  const out = {};
-  for (const [name, slots] of Object.entries(BUILTIN_ALIASES)) {
-    const v = slots[engine];
-    if (v != null) out[name] = v;
-  }
-  for (const [name, slots] of Object.entries(custom)) {
-    const v = slots[engine];
-    if (v != null) out[name] = v;
-  }
-  return out;
-}
-__name(resolveAliasesForEngine, "resolveAliasesForEngine");
-var ALIAS_MAP = resolveAliasesForEngine(
-  {},
-  DEFAULT_VIZ_ENGINE
-);
-
-// src/perf/profiler.ts
-var RING = 240;
-var DROP_FACTOR = 2;
-var SLOW_FRAME_MS = 1e3 / 30;
-function nowMs() {
-  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : 0;
-}
-__name(nowMs, "nowMs");
-var _Ring = class _Ring {
-  constructor() {
-    this.buf = [];
-    this.head = 0;
-    /** Total pushed since reset (uncapped) — distinct from retained length. */
-    this.total = 0;
-  }
-  push(v) {
-    if (this.buf.length < RING) this.buf.push(v);
-    else this.buf[this.head] = v;
-    this.head = (this.head + 1) % RING;
-    this.total++;
-  }
-  get last() {
-    if (this.buf.length === 0) return 0;
-    const i = (this.head - 1 + RING) % RING;
-    return this.buf[i] ?? 0;
-  }
-  /** Sorted copy of the retained samples (ascending). */
-  sorted() {
-    return this.buf.slice().sort((a, b) => a - b);
-  }
-  stats() {
-    const n = this.buf.length;
-    if (n === 0) {
-      return { count: 0, mean: 0, p50: 0, p95: 0, p99: 0, max: 0, last: 0 };
-    }
-    const s = this.sorted();
-    let sum = 0;
-    for (const v of this.buf) sum += v;
-    return {
-      count: this.total,
-      mean: sum / n,
-      p50: percentile(s, 0.5),
-      p95: percentile(s, 0.95),
-      p99: percentile(s, 0.99),
-      max: s[n - 1],
-      last: this.last
-    };
-  }
-  /** Median over the retained samples (for the drop-detection threshold). */
-  median() {
-    if (this.buf.length === 0) return 0;
-    return percentile(this.sorted(), 0.5);
-  }
-};
-__name(_Ring, "Ring");
-var Ring = _Ring;
-function percentile(sortedAsc, q) {
-  const n = sortedAsc.length;
-  if (n === 0) return 0;
-  if (n === 1) return sortedAsc[0];
-  const idx = Math.min(n - 1, Math.max(0, Math.ceil(q * n) - 1));
-  return sortedAsc[idx];
-}
-__name(percentile, "percentile");
-var _FrameTracker = class _FrameTracker {
-  constructor() {
-    this.intervals = new Ring();
-    this.lastTs = null;
-    this.dropCount = 0;
-    this.slowCount = 0;
-    this.frameCount = 0;
-  }
-  tick(ts) {
-    this.frameCount++;
-    if (this.lastTs != null) {
-      const dt = ts - this.lastTs;
-      const med = this.intervals.median();
-      if (med > 0 && dt > med * DROP_FACTOR) this.dropCount++;
-      if (dt > SLOW_FRAME_MS) this.slowCount++;
-      this.intervals.push(dt);
-    }
-    this.lastTs = ts;
-  }
-  stats() {
-    const s = this.intervals.stats();
-    return {
-      count: this.frameCount,
-      fps: s.p50 > 0 ? 1e3 / s.p50 : 0,
-      p50: s.p50,
-      p95: s.p95,
-      drops: this.dropCount,
-      slowFrames: this.slowCount
-    };
-  }
-};
-__name(_FrameTracker, "FrameTracker");
-var FrameTracker = _FrameTracker;
-var _Profiler = class _Profiler {
-  constructor() {
-    /** Plain field (not a getter) so the hot-path branch is a bare load. */
-    this._enabled = false;
-    this.startTs = 0;
-    this.sections = /* @__PURE__ */ new Map();
-    this.frames = /* @__PURE__ */ new Map();
-    this.counters = /* @__PURE__ */ new Map();
-    /** Live gauges (current-state counts) — survive reset(), unlike counters. */
-    this.gauges = /* @__PURE__ */ new Map();
-    /** Open spans for begin()/end() keyed by label — last-write-wins (a label
-     *  isn't expected to nest with itself within a frame). */
-    this.open = /* @__PURE__ */ new Map();
-    this.longtaskCount = 0;
-    this.longtaskTotalMs = 0;
-    this.longtaskMaxMs = 0;
-    this.ltObserver = null;
-  }
-  get enabled() {
-    return this._enabled;
-  }
-  /** Turn profiling on/off. Enabling (re)starts the longtask observer and
-   *  stamps the uptime origin; disabling tears the observer down so a disabled
-   *  profiler has no live platform hook. Idempotent. */
-  setEnabled(on) {
-    if (on === this._enabled) return;
-    this._enabled = on;
-    if (on) {
-      this.startTs = nowMs();
-      this.startLongtaskObserver();
-    } else {
-      this.ltObserver?.disconnect();
-      this.ltObserver = null;
-    }
-  }
-  startLongtaskObserver() {
-    if (this.ltObserver) return;
-    if (typeof PerformanceObserver === "undefined") return;
-    try {
-      this.ltObserver = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          this.longtaskCount++;
-          this.longtaskTotalMs += entry.duration;
-          if (entry.duration > this.longtaskMaxMs) this.longtaskMaxMs = entry.duration;
-        }
-      });
-      this.ltObserver.observe({ entryTypes: ["longtask"] });
-    } catch {
-      this.ltObserver = null;
-    }
-  }
-  // ── section timing ────────────────────────────────────────────────────────
-  /** Record a section duration directly (ms). Cheap no-op when disabled. */
-  record(name, ms) {
-    if (!this._enabled) return;
-    let ring = this.sections.get(name);
-    if (!ring) {
-      ring = new Ring();
-      this.sections.set(name, ring);
-    }
-    ring.push(ms);
-  }
-  /** Open a span. Pair with `end(name)`. No-op when disabled. */
-  begin(name) {
-    if (!this._enabled) return;
-    this.open.set(name, nowMs());
-  }
-  /** Close a span opened by `begin(name)` and record its duration. No-op when
-   *  disabled or when no matching open span exists. */
-  end(name) {
-    if (!this._enabled) return;
-    const t0 = this.open.get(name);
-    if (t0 === void 0) return;
-    this.open.delete(name);
-    this.record(name, nowMs() - t0);
-  }
-  /** Time a synchronous function and record it under `name`. Returns the fn's
-   *  result. When disabled, calls the fn with no timing overhead. The fn runs
-   *  even if disabled (it's the real work, not just measurement). */
-  time(name, fn) {
-    if (!this._enabled) return fn();
-    const t0 = nowMs();
-    try {
-      return fn();
-    } finally {
-      this.record(name, nowMs() - t0);
-    }
-  }
-  // ── frames ──────────────────────────────────────────────────────────────
-  /** Record a rendered frame for an instance (e.g. `'p5#3'`). No-op when
-   *  disabled. */
-  frame(instanceId) {
-    if (!this._enabled) return;
-    let ft = this.frames.get(instanceId);
-    if (!ft) {
-      ft = new FrameTracker();
-      this.frames.set(instanceId, ft);
-    }
-    ft.tick(nowMs());
-  }
-  /** Forget an instance's frame history (on renderer destroy) so a dead viz
-   *  doesn't linger in the snapshot. No-op when disabled. */
-  dropFrames(instanceId) {
-    if (!this._enabled) return;
-    this.frames.delete(instanceId);
-  }
-  // ── counters ──────────────────────────────────────────────────────────────
-  /** Add to a CUMULATIVE counter (reset() clears it; rate = value/uptime). */
-  inc(name, by = 1) {
-    if (!this._enabled) return;
-    this.counters.set(name, (this.counters.get(name) ?? 0) + by);
-  }
-  dec(name, by = 1) {
-    if (!this._enabled) return;
-    this.counters.set(name, (this.counters.get(name) ?? 0) - by);
-  }
-  /** Adjust a LIVE GAUGE (current-state count, e.g. mounted viz instances).
-   *  Gauges survive reset() — they reflect what's live now, not samples.
-   *  Use +1 on mount, -1 on destroy. */
-  gauge(name, delta) {
-    if (!this._enabled) return;
-    this.gauges.set(name, (this.gauges.get(name) ?? 0) + delta);
-  }
-  // ── read / reset ────────────────────────────────────────────────────────
-  snapshot() {
-    const sections = {};
-    for (const [name, ring] of this.sections) sections[name] = ring.stats();
-    const frames = {};
-    for (const [id, ft] of this.frames) frames[id] = ft.stats();
-    const counters = {};
-    for (const [name, v] of this.counters) counters[name] = v;
-    const gauges = {};
-    for (const [name, v] of this.gauges) gauges[name] = Math.max(0, v);
-    return {
-      enabled: this._enabled,
-      uptimeMs: this._enabled ? nowMs() - this.startTs : 0,
-      sections,
-      frames,
-      counters,
-      gauges,
-      longtasks: {
-        count: this.longtaskCount,
-        totalMs: this.longtaskTotalMs,
-        maxMs: this.longtaskMaxMs
-      }
-    };
-  }
-  /** Clear all samples/counters but keep the enabled state + observer. Use to
-   *  start a clean measurement window (e.g. before driving a heavy patch). */
-  reset() {
-    this.sections.clear();
-    this.frames.clear();
-    this.counters.clear();
-    this.open.clear();
-    this.longtaskCount = 0;
-    this.longtaskTotalMs = 0;
-    this.longtaskMaxMs = 0;
-    this.startTs = nowMs();
-  }
-};
-__name(_Profiler, "Profiler");
-var Profiler = _Profiler;
-var perf = new Profiler();
-try {
-  const g = globalThis;
-  if (g.__STAVE_PERF__ === true) perf.setEnabled(true);
-  g.__stavePerf = {
-    snapshot: /* @__PURE__ */ __name(() => perf.snapshot(), "snapshot"),
-    reset: /* @__PURE__ */ __name(() => perf.reset(), "reset"),
-    setEnabled: /* @__PURE__ */ __name((on) => perf.setEnabled(on), "setEnabled")
-  };
-} catch {
-}
-
-// src/visualizers/vizFlags.ts
-var VIZ_FLAG_KEYS = {
-  worker: "stave.viz.worker",
-  p5direct: "stave.viz.p5direct",
-  pool: "stave.viz.pool",
-  governor: "stave.viz.governor",
-  pump: "stave.viz.pump",
-  maxFps: "stave.viz.maxFps",
-  maxDpr: "stave.viz.maxDpr"
-};
-function read(key2) {
-  try {
-    if (typeof localStorage === "undefined") return null;
-    return localStorage.getItem(key2);
-  } catch {
-    return null;
-  }
-}
-__name(read, "read");
-function enabledByDefault(key2) {
-  return read(key2) !== "0";
-}
-__name(enabledByDefault, "enabledByDefault");
-function optIn(key2) {
-  return read(key2) === "1";
-}
-__name(optIn, "optIn");
-function triState(key2) {
-  const v = read(key2);
-  return v === "1" ? true : v === "0" ? false : null;
-}
-__name(triState, "triState");
-function numFlag(key2) {
-  const n = Number(read(key2));
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-__name(numFlag, "numFlag");
-function isP5DirectCanvasEnabled() {
-  return enabledByDefault(VIZ_FLAG_KEYS.p5direct);
-}
-__name(isP5DirectCanvasEnabled, "isP5DirectCanvasEnabled");
-function isVizGovernorEnabled() {
-  return enabledByDefault(VIZ_FLAG_KEYS.governor);
-}
-__name(isVizGovernorEnabled, "isVizGovernorEnabled");
-function isVizPumpSharedCacheEnabled() {
-  return enabledByDefault(VIZ_FLAG_KEYS.pump);
-}
-__name(isVizPumpSharedCacheEnabled, "isVizPumpSharedCacheEnabled");
-function isVizWorkerPoolEnabled() {
-  return optIn(VIZ_FLAG_KEYS.pool);
-}
-__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
-function getVizWorkerOverride() {
-  return triState(VIZ_FLAG_KEYS.worker);
-}
-__name(getVizWorkerOverride, "getVizWorkerOverride");
-function getVizMaxFpsOverride() {
-  return numFlag(VIZ_FLAG_KEYS.maxFps);
-}
-__name(getVizMaxFpsOverride, "getVizMaxFpsOverride");
-function getVizMaxDprOverride() {
-  return numFlag(VIZ_FLAG_KEYS.maxDpr);
-}
-__name(getVizMaxDprOverride, "getVizMaxDprOverride");
-
-// src/visualizers/vizGovernor.ts
-var HEALTHY_MS = 20;
-var JANK_MS = 45;
-var MIN_FPS = 10;
-var EMA_ALPHA = 0.25;
-var STRESS_RAMP_DOWN = 0.012;
-var IDLE_GAP_MS = 400;
-var RES_MIN_SCALE = 0.5;
-var RES_STRESS_ON = 0.5;
-function computeStress(emaMs, healthy = HEALTHY_MS, jank = JANK_MS) {
-  if (emaMs <= healthy) return 0;
-  if (emaMs >= jank) return 1;
-  return (emaMs - healthy) / (jank - healthy);
-}
-__name(computeStress, "computeStress");
-function maxPerFrame(n, stress) {
-  if (n <= 1) return 1;
-  return Math.max(1, Math.round(n * (1 - stress)));
-}
-__name(maxPerFrame, "maxPerFrame");
-function periodFor(n, stress) {
-  if (n <= 1) return 1;
-  return Math.max(1, Math.ceil(n / maxPerFrame(n, stress)));
-}
-__name(periodFor, "periodFor");
-function minGapMs(stress) {
-  if (stress <= 0) return 0;
-  return stress * (1e3 / MIN_FPS);
-}
-__name(minGapMs, "minGapMs");
-function resolutionScaleFor(stress) {
-  if (stress < RES_STRESS_ON) return 1;
-  const t = (stress - RES_STRESS_ON) / (1 - RES_STRESS_ON);
-  const raw = 1 - t * (1 - RES_MIN_SCALE);
-  return Math.max(RES_MIN_SCALE, Math.round(raw * 4) / 4);
-}
-__name(resolutionScaleFor, "resolutionScaleFor");
-var _VizGovernor = class _VizGovernor {
-  constructor() {
-    this.enabled = true;
-    /** Active (looping) renderer id → its stable round-robin offset. */
-    this.registered = /* @__PURE__ */ new Map();
-    this.lastProduce = /* @__PURE__ */ new Map();
-    this.nextOffset = 0;
-    this.frameIndex = 0;
-    this.lastObserveTs = 0;
-    this.emaMs = HEALTHY_MS;
-    this.stress = 0;
-    this.enabled = isVizGovernorEnabled();
-  }
-  /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */
-  register(id) {
-    if (!this.registered.has(id)) this.registered.set(id, this.nextOffset++);
-  }
-  /** Unregister when the loop STOPS (pause/destroy). Resets stress when the last
-   *  viz leaves so a fresh mount starts from a healthy baseline. */
-  unregister(id) {
-    this.registered.delete(id);
-    this.lastProduce.delete(id);
-    if (this.registered.size === 0) {
-      this.stress = 0;
-      this.emaMs = HEALTHY_MS;
-      this.lastObserveTs = 0;
-    }
-  }
-  /** Feed the cadence monitor — call once per rAF tick from EVERY active loop
-   *  (idempotent per timestamp: only the first call for a new `ts` advances the
-   *  frame + updates stress, so N renderers calling with the same ts is fine). */
-  observeFrame(ts) {
-    if (!this.enabled || this.registered.size === 0) return;
-    if (this.lastObserveTs > 0 && ts > this.lastObserveTs) {
-      const d = ts - this.lastObserveTs;
-      if (d > IDLE_GAP_MS) {
-        this.emaMs = HEALTHY_MS;
-      } else {
-        this.emaMs = this.emaMs * (1 - EMA_ALPHA) + d * EMA_ALPHA;
-      }
-      const target = computeStress(this.emaMs);
-      this.stress = target > this.stress ? target : Math.max(target, this.stress - STRESS_RAMP_DOWN);
-      this.frameIndex++;
-      perf.record("viz.governor.stress", Math.round(this.stress * 100));
-    }
-    if (ts > this.lastObserveTs) this.lastObserveTs = ts;
-  }
-  /** Gate: may renderer `id` produce a frame at `ts`? Composed with (and called
-   *  after) the renderer's own backpressure + maxFps checks. */
-  mayProduce(id, ts) {
-    if (!this.enabled) return true;
-    const n = this.registered.size;
-    if (n === 0 || this.stress <= 0) return true;
-    const gap = minGapMs(this.stress);
-    if (gap > 0) {
-      const last = this.lastProduce.get(id) ?? 0;
-      if (last > 0 && ts - last < gap - 1) return false;
-    }
-    if (n > 1) {
-      const period = periodFor(n, this.stress);
-      if (period > 1) {
-        const offset = this.registered.get(id) ?? 0;
-        if ((this.frameIndex + offset) % period !== 0) return false;
-      }
-    }
-    this.lastProduce.set(id, ts);
-    return true;
-  }
-  /** Render-resolution scale (lever 3) the renderer should apply to its backing
-   *  store at the current stress, in `[RES_MIN_SCALE, 1]`. 1 (full) when disabled
-   *  or smooth — so a renderer multiplying its `resize` w,h by this is a total
-   *  no-op in the common case (transparency, PV91). The `WorkerVizRenderer` reads
-   *  this each rAF and re-posts a scaled `resize` only when the quantized step
-   *  changes (the backing-store realloc is relatively expensive). */
-  resolutionScale() {
-    if (!this.enabled || this.stress <= 0) return 1;
-    return resolutionScaleFor(this.stress);
-  }
-  /** Observability / test hook. */
-  state() {
-    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() };
-  }
-  /** Live enable/disable (the "Adaptive performance" toggle, persisted via
-   *  editorRegistry under the SAME `stave.viz.governor` key this reads at
-   *  construction). Unlike `_setEnabledForTest` it KEEPS the registered renderers
-   *  (live viz stay tracked) — it only flips the gate. Disabling resets stress so
-   *  the levers release immediately: `mayProduce` returns true and
-   *  `resolutionScale` returns 1, so each WorkerVizRenderer's next tick re-posts a
-   *  full-resolution resize and stops being throttled. Re-enabling lets stress
-   *  rebuild from the live rAF cadence via observeFrame. */
-  setEnabled(on) {
-    this.enabled = on;
-    if (!on) {
-      this.stress = 0;
-      this.emaMs = HEALTHY_MS;
-      this.lastObserveTs = 0;
-    }
-  }
-  /** Test helper — force enabled state (and reset) deterministically. */
-  _setEnabledForTest(on) {
-    this.enabled = on;
-    this.registered.clear();
-    this.lastProduce.clear();
-    this.nextOffset = 0;
-    this.frameIndex = 0;
-    this.lastObserveTs = 0;
-    this.emaMs = HEALTHY_MS;
-    this.stress = 0;
-  }
-};
-__name(_VizGovernor, "VizGovernor");
-var VizGovernor = _VizGovernor;
-var vizGovernor = new VizGovernor();
-
-// src/visualizers/vizConfig.ts
-var DEFAULT_VIZ_CONFIG = {
-  // Resolver
-  defaultRenderer: "p5",
-  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
-  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
-  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
-  // automatic fallback when a browser can't offload (no OffscreenCanvas /
-  // transferControlToOffscreen / worker factory). Opt OUT per project via
-  // localStorage['stave.viz.worker'] = '0'.
-  workerRenderer: true,
-  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
-  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
-  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
-  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
-  // composite wall measured for multi-instance inline viz.
-  maxFps: 60,
-  maxDpr: 1,
-  // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
-  // values are opted into via "performance mode" (deriveVizQuality) and read by
-  // sketches as `sig.density`. Marshalled to the worker via the config channel.
-  density: 1,
-  // Inline view zones
-  inlineZoneHeight: 150,
-  // Audio analysis
-  fftSize: 2048,
-  smoothingTimeConstant: 0.8,
-  // Hydra
-  hydraAudioBins: 4,
-  hydraAutoLoop: true,
-  // Pianoroll
-  pianorollWindowSeconds: 6,
-  pianorollCycles: 4,
-  pianorollPlayhead: 0.5,
-  pianorollMidiMin: 24,
-  pianorollMidiMax: 96,
-  // Scope / FScope
-  scopeWindowSeconds: 4,
-  scopeAmplitudeScale: 0.25,
-  scopeBaseline: 0.75,
-  // Spectrum
-  spectrumMinDb: -80,
-  spectrumMaxDb: 0,
-  spectrumScrollSpeed: 2,
-  // Colors
-  backgroundColor: "#090912",
-  accentColor: "#75baff",
-  activeColor: "#FFCA28",
-  playheadColor: "rgba(255,255,255,0.5)"
-};
-function createVizConfig(overrides) {
-  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
-}
-__name(createVizConfig, "createVizConfig");
-var DEFAULT_VIZ_QUALITY = "balanced";
-function deriveVizQuality(level) {
-  switch (level) {
-    case "high":
-      return { resolution: 1024, density: 1 };
-    case "performance":
-      return { resolution: 256, density: 0.5 };
-    case "balanced":
-    default:
-      return { resolution: 512, density: 1 };
-  }
-}
-__name(deriveVizQuality, "deriveVizQuality");
-var _active = { ...DEFAULT_VIZ_CONFIG };
-var _listeners = /* @__PURE__ */ new Set();
-function notify() {
-  for (const cb of Array.from(_listeners)) cb(_active);
-}
-__name(notify, "notify");
-function getVizConfig() {
-  return _active;
-}
-__name(getVizConfig, "getVizConfig");
-function setVizConfig(config) {
-  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
-  notify();
-}
-__name(setVizConfig, "setVizConfig");
-function updateVizConfig(patch) {
-  _active = { ..._active, ...patch };
-  notify();
-}
-__name(updateVizConfig, "updateVizConfig");
-function onVizConfigChange(cb) {
-  _listeners.add(cb);
-  return () => {
-    _listeners.delete(cb);
-  };
-}
-__name(onVizConfigChange, "onVizConfigChange");
-var WORKER_VIZ_CONFIG_KEYS = ["hydraAudioBins", "density"];
-function pickWorkerVizConfig(config = _active) {
-  return WORKER_VIZ_CONFIG_KEYS.reduce((acc, k) => {
-    acc[k] = config[k];
-    return acc;
-  }, {});
-}
-__name(pickWorkerVizConfig, "pickWorkerVizConfig");
-
-// src/workspace/editorRegistry.ts
-var editors = /* @__PURE__ */ new Map();
-var monacoNs = null;
-function registerMonacoNamespace(monaco) {
-  if (!monacoNs) monacoNs = monaco;
-}
-__name(registerMonacoNamespace, "registerMonacoNamespace");
-function getMonacoNamespace() {
-  return monacoNs;
-}
-__name(getMonacoNamespace, "getMonacoNamespace");
-function registerEditor(fileId, editor) {
-  editors.set(fileId, editor);
-}
-__name(registerEditor, "registerEditor");
-function unregisterEditor(fileId, editor) {
-  if (editors.get(fileId) === editor) editors.delete(fileId);
-  if (activeEditor === editor) setActiveEditor(null);
-}
-__name(unregisterEditor, "unregisterEditor");
-function getEditorForFile(fileId) {
-  return editors.get(fileId);
-}
-__name(getEditorForFile, "getEditorForFile");
-var activeEditor = null;
-var activeEditorListeners = /* @__PURE__ */ new Set();
-function setActiveEditor(editor) {
-  if (activeEditor === editor) return;
-  activeEditor = editor;
-  for (const l of activeEditorListeners) {
-    try {
-      l();
-    } catch {
-    }
-  }
-}
-__name(setActiveEditor, "setActiveEditor");
-function getActiveEditor() {
-  return activeEditor;
-}
-__name(getActiveEditor, "getActiveEditor");
-function getActiveFileId() {
-  if (!activeEditor) return null;
-  for (const [fileId, ed] of editors) {
-    if (ed === activeEditor) return fileId;
-  }
-  return null;
-}
-__name(getActiveFileId, "getActiveFileId");
-function getFileIdForEditor(editor) {
-  for (const [fileId, ed] of editors) {
-    if (ed === editor) return fileId;
-  }
-  return null;
-}
-__name(getFileIdForEditor, "getFileIdForEditor");
-function onActiveEditorChange(cb) {
-  activeEditorListeners.add(cb);
-  return () => {
-    activeEditorListeners.delete(cb);
-  };
-}
-__name(onActiveEditorChange, "onActiveEditorChange");
-var reevalHandler = null;
-function registerReevalHandler(fn) {
-  reevalHandler = fn;
-  return () => {
-    if (reevalHandler === fn) reevalHandler = null;
-  };
-}
-__name(registerReevalHandler, "registerReevalHandler");
-function requestReeval(fileId) {
-  if (fileId) reevalHandler?.(fileId);
-}
-__name(requestReeval, "requestReeval");
-var evalSourceTransform = null;
-function registerEvalSourceTransform(fn) {
-  evalSourceTransform = fn;
-  return () => {
-    if (evalSourceTransform === fn) evalSourceTransform = null;
-  };
-}
-__name(registerEvalSourceTransform, "registerEvalSourceTransform");
-function applyEvalSourceTransform(fileId, raw) {
-  if (!evalSourceTransform) return raw;
-  try {
-    return evalSourceTransform(fileId, raw);
-  } catch {
-    return raw;
-  }
-}
-__name(applyEvalSourceTransform, "applyEvalSourceTransform");
-function revealLineInFile(fileId, line) {
-  const editor = editors.get(fileId);
-  if (!editor) return false;
-  try {
-    editor.revealLineInCenter?.(line);
-    editor.setPosition?.({ lineNumber: line, column: 1 });
-    editor.focus?.();
-    return true;
-  } catch {
-    return false;
-  }
-}
-__name(revealLineInFile, "revealLineInFile");
-function revealOffsetInFile(fileId, offset) {
-  const editor = editors.get(fileId);
-  if (!editor) return false;
-  try {
-    const pos = editor.getModel?.()?.getPositionAt?.(offset);
-    if (!pos) return false;
-    editor.revealLineInCenter?.(pos.lineNumber);
-    editor.setPosition?.(pos);
-    editor.focus?.();
-    return true;
-  } catch {
-    return false;
-  }
-}
-__name(revealOffsetInFile, "revealOffsetInFile");
-function applyOffsetEditsToFile(fileId, edits, source, expectedDoc) {
-  const editor = editors.get(fileId);
-  if (!editor) return "no-editor";
-  if (!monacoNs) return "no-monaco";
-  if (edits.length === 0) return "no-edits";
-  if (expectedDoc != null && editor.getModel?.()?.getValue?.() !== expectedDoc) {
-    return "stale-document";
-  }
-  try {
-    new Writeback(editor, monacoNs).replaceRanges(edits, source);
-    return "applied";
-  } catch {
-    return "writeback-threw";
-  }
-}
-__name(applyOffsetEditsToFile, "applyOffsetEditsToFile");
-var DEFAULT_FONT_SIZE = 14;
-var FONT_SIZE_STORAGE = "stave:editorFontSize";
-var MINIMAP_STORAGE = "stave:editorMinimap";
-var DEFAULT_UI_ICON_SIZE = 25;
-var UI_ICON_SIZE_STORAGE = "stave:uiIconSize";
-var UI_ICON_SIZE_VAR = "--ui-icon-size";
-var DEFAULT_INLINE_VIZ_ACTION_SIZE = 11;
-var INLINE_VIZ_ACTION_SIZE_STORAGE = "stave:inlineVizActionSize";
-var INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
-function safeLocalStorage() {
-  try {
-    if (typeof window === "undefined") return null;
-    if (typeof window.localStorage?.getItem !== "function") return null;
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-__name(safeLocalStorage, "safeLocalStorage");
-function readFontSize() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_FONT_SIZE;
-  const saved = Number(ls.getItem(FONT_SIZE_STORAGE));
-  return Number.isFinite(saved) && saved >= 8 && saved <= 40 ? saved : DEFAULT_FONT_SIZE;
-}
-__name(readFontSize, "readFontSize");
-function readMinimap() {
-  const ls = safeLocalStorage();
-  return ls?.getItem(MINIMAP_STORAGE) === "1";
-}
-__name(readMinimap, "readMinimap");
-function writeFontSize(size) {
-  safeLocalStorage()?.setItem(FONT_SIZE_STORAGE, String(size));
-}
-__name(writeFontSize, "writeFontSize");
-function writeMinimap(on) {
-  safeLocalStorage()?.setItem(MINIMAP_STORAGE, on ? "1" : "0");
-}
-__name(writeMinimap, "writeMinimap");
-function applyOptionsToEditor(editor) {
-  const fontSize = readFontSize();
-  const minimap = readMinimap();
-  editor.updateOptions?.({ fontSize, minimap: { enabled: minimap } });
-}
-__name(applyOptionsToEditor, "applyOptionsToEditor");
-function getEditorFontSize() {
-  return readFontSize();
-}
-__name(getEditorFontSize, "getEditorFontSize");
-function getEditorMinimap() {
-  return readMinimap();
-}
-__name(getEditorMinimap, "getEditorMinimap");
-function setEditorFontSize(size) {
-  const clamped = Math.max(8, Math.min(40, Math.round(size)));
-  writeFontSize(clamped);
-  for (const ed of editors.values()) ed.updateOptions?.({ fontSize: clamped });
-}
-__name(setEditorFontSize, "setEditorFontSize");
-function bumpEditorFontSize(delta) {
-  setEditorFontSize(readFontSize() + delta);
-}
-__name(bumpEditorFontSize, "bumpEditorFontSize");
-function toggleEditorMinimap() {
-  const next = !readMinimap();
-  writeMinimap(next);
-  for (const ed of editors.values()) ed.updateOptions?.({ minimap: { enabled: next } });
-}
-__name(toggleEditorMinimap, "toggleEditorMinimap");
-var uiIconSizeListeners = /* @__PURE__ */ new Set();
-function readUiIconSize() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_UI_ICON_SIZE;
-  const saved = Number(ls.getItem(UI_ICON_SIZE_STORAGE));
-  return Number.isFinite(saved) && saved >= 10 && saved <= 40 ? saved : DEFAULT_UI_ICON_SIZE;
-}
-__name(readUiIconSize, "readUiIconSize");
-function writeUiIconSize(size) {
-  safeLocalStorage()?.setItem(UI_ICON_SIZE_STORAGE, String(size));
-}
-__name(writeUiIconSize, "writeUiIconSize");
-function applyUiIconSizeVar(size) {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.setProperty(UI_ICON_SIZE_VAR, `${size}px`);
-}
-__name(applyUiIconSizeVar, "applyUiIconSizeVar");
-function getEditorUiIconSize() {
-  return readUiIconSize();
-}
-__name(getEditorUiIconSize, "getEditorUiIconSize");
-function setEditorUiIconSize(size) {
-  const clamped = Math.max(10, Math.min(40, Math.round(size)));
-  writeUiIconSize(clamped);
-  applyUiIconSizeVar(clamped);
-  for (const cb of Array.from(uiIconSizeListeners)) cb(clamped);
-}
-__name(setEditorUiIconSize, "setEditorUiIconSize");
-function onUiIconSizeChange(cb) {
-  uiIconSizeListeners.add(cb);
-  return () => {
-    uiIconSizeListeners.delete(cb);
-  };
-}
-__name(onUiIconSizeChange, "onUiIconSizeChange");
-function applyPersistedUiIconSize() {
-  applyUiIconSizeVar(readUiIconSize());
-}
-__name(applyPersistedUiIconSize, "applyPersistedUiIconSize");
-var inlineVizActionSizeListeners = /* @__PURE__ */ new Set();
-function readInlineVizActionSize() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_INLINE_VIZ_ACTION_SIZE;
-  const saved = Number(ls.getItem(INLINE_VIZ_ACTION_SIZE_STORAGE));
-  return Number.isFinite(saved) && saved >= 8 && saved <= 28 ? saved : DEFAULT_INLINE_VIZ_ACTION_SIZE;
-}
-__name(readInlineVizActionSize, "readInlineVizActionSize");
-function writeInlineVizActionSize(size) {
-  safeLocalStorage()?.setItem(INLINE_VIZ_ACTION_SIZE_STORAGE, String(size));
-}
-__name(writeInlineVizActionSize, "writeInlineVizActionSize");
-function applyInlineVizActionSizeVar(size) {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.setProperty(
-    INLINE_VIZ_ACTION_SIZE_VAR,
-    `${size}px`
-  );
-}
-__name(applyInlineVizActionSizeVar, "applyInlineVizActionSizeVar");
-function getInlineVizActionSize() {
-  return readInlineVizActionSize();
-}
-__name(getInlineVizActionSize, "getInlineVizActionSize");
-function setInlineVizActionSize(size) {
-  const clamped = Math.max(8, Math.min(28, Math.round(size)));
-  writeInlineVizActionSize(clamped);
-  applyInlineVizActionSizeVar(clamped);
-  for (const cb of Array.from(inlineVizActionSizeListeners)) cb(clamped);
-}
-__name(setInlineVizActionSize, "setInlineVizActionSize");
-function onInlineVizActionSizeChange(cb) {
-  inlineVizActionSizeListeners.add(cb);
-  return () => {
-    inlineVizActionSizeListeners.delete(cb);
-  };
-}
-__name(onInlineVizActionSizeChange, "onInlineVizActionSizeChange");
-function applyPersistedInlineVizActionSize() {
-  applyInlineVizActionSizeVar(readInlineVizActionSize());
-}
-__name(applyPersistedInlineVizActionSize, "applyPersistedInlineVizActionSize");
-var DEFAULT_INLINE_VIZ_RESOLUTION = 512;
-var MIN_INLINE_VIZ_RESOLUTION = 64;
-var MAX_INLINE_VIZ_RESOLUTION = 2048;
-var INLINE_VIZ_RESOLUTION_STORAGE = "stave:inlineVizResolution";
-var inlineVizResolutionListeners = /* @__PURE__ */ new Set();
-function readInlineVizResolution() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_INLINE_VIZ_RESOLUTION;
-  const saved = Number(ls.getItem(INLINE_VIZ_RESOLUTION_STORAGE));
-  return Number.isFinite(saved) && saved >= MIN_INLINE_VIZ_RESOLUTION && saved <= MAX_INLINE_VIZ_RESOLUTION ? saved : DEFAULT_INLINE_VIZ_RESOLUTION;
-}
-__name(readInlineVizResolution, "readInlineVizResolution");
-function writeInlineVizResolution(n) {
-  safeLocalStorage()?.setItem(INLINE_VIZ_RESOLUTION_STORAGE, String(n));
-}
-__name(writeInlineVizResolution, "writeInlineVizResolution");
-function getInlineVizResolution() {
-  return readInlineVizResolution();
-}
-__name(getInlineVizResolution, "getInlineVizResolution");
-function setInlineVizResolution(n) {
-  const clamped = Math.max(
-    MIN_INLINE_VIZ_RESOLUTION,
-    Math.min(MAX_INLINE_VIZ_RESOLUTION, Math.round(n))
-  );
-  writeInlineVizResolution(clamped);
-  for (const cb of Array.from(inlineVizResolutionListeners)) cb(clamped);
-}
-__name(setInlineVizResolution, "setInlineVizResolution");
-function onInlineVizResolutionChange(cb) {
-  inlineVizResolutionListeners.add(cb);
-  return () => {
-    inlineVizResolutionListeners.delete(cb);
-  };
-}
-__name(onInlineVizResolutionChange, "onInlineVizResolutionChange");
-var VIZ_QUALITY_STORAGE = "stave:vizQuality";
-var VIZ_QUALITY_LEVELS = ["high", "balanced", "performance"];
-var vizQualityListeners = /* @__PURE__ */ new Set();
-function readVizQuality() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_VIZ_QUALITY;
-  const saved = ls.getItem(VIZ_QUALITY_STORAGE);
-  return VIZ_QUALITY_LEVELS.includes(saved) ? saved : DEFAULT_VIZ_QUALITY;
-}
-__name(readVizQuality, "readVizQuality");
-function writeVizQuality(level) {
-  safeLocalStorage()?.setItem(VIZ_QUALITY_STORAGE, level);
-}
-__name(writeVizQuality, "writeVizQuality");
-function applyVizQuality(level) {
-  const { resolution, density } = deriveVizQuality(level);
-  setInlineVizResolution(resolution);
-  updateVizConfig({ density });
-}
-__name(applyVizQuality, "applyVizQuality");
-function getVizQuality() {
-  return readVizQuality();
-}
-__name(getVizQuality, "getVizQuality");
-function setVizQuality(level) {
-  const safe2 = VIZ_QUALITY_LEVELS.includes(level) ? level : DEFAULT_VIZ_QUALITY;
-  writeVizQuality(safe2);
-  applyVizQuality(safe2);
-  for (const cb of Array.from(vizQualityListeners)) cb(safe2);
-}
-__name(setVizQuality, "setVizQuality");
-function onVizQualityChange(cb) {
-  vizQualityListeners.add(cb);
-  return () => {
-    vizQualityListeners.delete(cb);
-  };
-}
-__name(onVizQualityChange, "onVizQualityChange");
-function applyPersistedVizQuality() {
-  const { density } = deriveVizQuality(readVizQuality());
-  updateVizConfig({ density });
-}
-__name(applyPersistedVizQuality, "applyPersistedVizQuality");
-var INLINE_VIZ_TEARDOWN_MS = 6e4;
-var DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true;
-var INLINE_VIZ_TEARDOWN_STORAGE = "stave:inlineVizTeardown";
-var inlineVizTeardownListeners = /* @__PURE__ */ new Set();
-function readInlineVizTeardownEnabled() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
-  const saved = ls.getItem(INLINE_VIZ_TEARDOWN_STORAGE);
-  if (saved === null) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
-  return saved === "1";
-}
-__name(readInlineVizTeardownEnabled, "readInlineVizTeardownEnabled");
-function getInlineVizTeardownEnabled() {
-  return readInlineVizTeardownEnabled();
-}
-__name(getInlineVizTeardownEnabled, "getInlineVizTeardownEnabled");
-function setInlineVizTeardownEnabled(on) {
-  safeLocalStorage()?.setItem(INLINE_VIZ_TEARDOWN_STORAGE, on ? "1" : "0");
-  for (const cb of Array.from(inlineVizTeardownListeners)) cb(on);
-}
-__name(setInlineVizTeardownEnabled, "setInlineVizTeardownEnabled");
-function onInlineVizTeardownChange(cb) {
-  inlineVizTeardownListeners.add(cb);
-  return () => {
-    inlineVizTeardownListeners.delete(cb);
-  };
-}
-__name(onInlineVizTeardownChange, "onInlineVizTeardownChange");
-var DEFAULT_TRACK_COLOUR_BARS_ENABLED = true;
-var TRACK_COLOUR_BARS_STORAGE = "stave:trackColourBars";
-var trackColourBarsListeners = /* @__PURE__ */ new Set();
-function readTrackColourBarsEnabled() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_TRACK_COLOUR_BARS_ENABLED;
-  const saved = ls.getItem(TRACK_COLOUR_BARS_STORAGE);
-  if (saved === null) return DEFAULT_TRACK_COLOUR_BARS_ENABLED;
-  return saved === "1";
-}
-__name(readTrackColourBarsEnabled, "readTrackColourBarsEnabled");
-function getTrackColourBarsEnabled() {
-  return readTrackColourBarsEnabled();
-}
-__name(getTrackColourBarsEnabled, "getTrackColourBarsEnabled");
-function setTrackColourBarsEnabled(on) {
-  safeLocalStorage()?.setItem(TRACK_COLOUR_BARS_STORAGE, on ? "1" : "0");
-  for (const cb of Array.from(trackColourBarsListeners)) cb(on);
-}
-__name(setTrackColourBarsEnabled, "setTrackColourBarsEnabled");
-function onTrackColourBarsChange(cb) {
-  trackColourBarsListeners.add(cb);
-  return () => {
-    trackColourBarsListeners.delete(cb);
-  };
-}
-__name(onTrackColourBarsChange, "onTrackColourBarsChange");
-var DEFAULT_PLAY_VIZ_ON_HOVER = false;
-var PLAY_VIZ_ON_HOVER_STORAGE = "stave:playVizOnHover";
-var playVizOnHoverListeners = /* @__PURE__ */ new Set();
-function readPlayVizOnHoverEnabled() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_PLAY_VIZ_ON_HOVER;
-  const saved = ls.getItem(PLAY_VIZ_ON_HOVER_STORAGE);
-  if (saved === null) return DEFAULT_PLAY_VIZ_ON_HOVER;
-  return saved === "1";
-}
-__name(readPlayVizOnHoverEnabled, "readPlayVizOnHoverEnabled");
-function getPlayVizOnHoverEnabled() {
-  return readPlayVizOnHoverEnabled();
-}
-__name(getPlayVizOnHoverEnabled, "getPlayVizOnHoverEnabled");
-function setPlayVizOnHoverEnabled(on) {
-  safeLocalStorage()?.setItem(PLAY_VIZ_ON_HOVER_STORAGE, on ? "1" : "0");
-  for (const cb of Array.from(playVizOnHoverListeners)) cb(on);
-}
-__name(setPlayVizOnHoverEnabled, "setPlayVizOnHoverEnabled");
-function onPlayVizOnHoverChange(cb) {
-  playVizOnHoverListeners.add(cb);
-  return () => {
-    playVizOnHoverListeners.delete(cb);
-  };
-}
-__name(onPlayVizOnHoverChange, "onPlayVizOnHoverChange");
-var DEFAULT_BACKDROP_VIZ_SPAN = "file";
-var BACKDROP_VIZ_SPAN_STORAGE = "stave:backdropVizSpan";
-var backdropVizSpanListeners = /* @__PURE__ */ new Set();
-function readBackdropVizSpan() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_BACKDROP_VIZ_SPAN;
-  return ls.getItem(BACKDROP_VIZ_SPAN_STORAGE) === "workspace" ? "workspace" : "file";
-}
-__name(readBackdropVizSpan, "readBackdropVizSpan");
-function getBackdropVizSpan() {
-  return readBackdropVizSpan();
-}
-__name(getBackdropVizSpan, "getBackdropVizSpan");
-function setBackdropVizSpan(span) {
-  safeLocalStorage()?.setItem(BACKDROP_VIZ_SPAN_STORAGE, span);
-  for (const cb of Array.from(backdropVizSpanListeners)) cb(span);
-}
-__name(setBackdropVizSpan, "setBackdropVizSpan");
-function onBackdropVizSpanChange(cb) {
-  backdropVizSpanListeners.add(cb);
-  return () => {
-    backdropVizSpanListeners.delete(cb);
-  };
-}
-__name(onBackdropVizSpanChange, "onBackdropVizSpanChange");
-function getInlineVizTeardownMs() {
-  if (!readInlineVizTeardownEnabled()) return 0;
-  try {
-    const raw = safeLocalStorage()?.getItem("stave:inlineVizTeardownMs");
-    if (raw != null) {
-      const n = Number(raw);
-      if (Number.isFinite(n) && n >= 1e3) return n;
-    }
-  } catch {
-  }
-  return INLINE_VIZ_TEARDOWN_MS;
-}
-__name(getInlineVizTeardownMs, "getInlineVizTeardownMs");
-var DEFAULT_VIZ_INPUTS_LIVE_VALUES = true;
-var VIZ_INPUTS_LIVE_VALUES_STORAGE = "stave:vizInputsLiveValues";
-var vizInputsLiveValuesListeners = /* @__PURE__ */ new Set();
-function readVizInputsLiveValuesEnabled() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_VIZ_INPUTS_LIVE_VALUES;
-  const saved = ls.getItem(VIZ_INPUTS_LIVE_VALUES_STORAGE);
-  if (saved === null) return DEFAULT_VIZ_INPUTS_LIVE_VALUES;
-  return saved === "1";
-}
-__name(readVizInputsLiveValuesEnabled, "readVizInputsLiveValuesEnabled");
-function getVizInputsLiveValuesEnabled() {
-  return readVizInputsLiveValuesEnabled();
-}
-__name(getVizInputsLiveValuesEnabled, "getVizInputsLiveValuesEnabled");
-function setVizInputsLiveValuesEnabled(on) {
-  safeLocalStorage()?.setItem(VIZ_INPUTS_LIVE_VALUES_STORAGE, on ? "1" : "0");
-  for (const cb of Array.from(vizInputsLiveValuesListeners)) cb(on);
-}
-__name(setVizInputsLiveValuesEnabled, "setVizInputsLiveValuesEnabled");
-function onVizInputsLiveValuesChange(cb) {
-  vizInputsLiveValuesListeners.add(cb);
-  return () => {
-    vizInputsLiveValuesListeners.delete(cb);
-  };
-}
-__name(onVizInputsLiveValuesChange, "onVizInputsLiveValuesChange");
-var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 25;
-var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN = 12;
-var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX = 48;
-var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
-var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
-function readMusicalTimelineSubRowHeight() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
-  const saved = Number(ls.getItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE));
-  return Number.isFinite(saved) && saved >= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN && saved <= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX ? saved : DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
-}
-__name(readMusicalTimelineSubRowHeight, "readMusicalTimelineSubRowHeight");
-function writeMusicalTimelineSubRowHeight(h) {
-  safeLocalStorage()?.setItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE, String(h));
-}
-__name(writeMusicalTimelineSubRowHeight, "writeMusicalTimelineSubRowHeight");
-function getMusicalTimelineSubRowHeight() {
-  return readMusicalTimelineSubRowHeight();
-}
-__name(getMusicalTimelineSubRowHeight, "getMusicalTimelineSubRowHeight");
-function setMusicalTimelineSubRowHeight(h) {
-  const clamped = Math.max(
-    MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN,
-    Math.min(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, Math.round(h))
-  );
-  writeMusicalTimelineSubRowHeight(clamped);
-  for (const cb of Array.from(musicalTimelineSubRowHeightListeners)) cb(clamped);
-}
-__name(setMusicalTimelineSubRowHeight, "setMusicalTimelineSubRowHeight");
-function onMusicalTimelineSubRowHeightChange(cb) {
-  musicalTimelineSubRowHeightListeners.add(cb);
-  return () => {
-    musicalTimelineSubRowHeightListeners.delete(cb);
-  };
-}
-__name(onMusicalTimelineSubRowHeightChange, "onMusicalTimelineSubRowHeightChange");
-var DEFAULT_BACKDROP_BLUR = 8;
-var BACKDROP_BLUR_STORAGE = "stave:backdropBlur";
-var BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
-function readBackdropBlur() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_BACKDROP_BLUR;
-  const raw = ls.getItem(BACKDROP_BLUR_STORAGE);
-  if (raw == null || raw === "") return DEFAULT_BACKDROP_BLUR;
-  const saved = Number(raw);
-  return Number.isFinite(saved) && saved >= 0 && saved <= 40 ? saved : DEFAULT_BACKDROP_BLUR;
-}
-__name(readBackdropBlur, "readBackdropBlur");
-function writeBackdropBlur(size) {
-  safeLocalStorage()?.setItem(BACKDROP_BLUR_STORAGE, String(size));
-}
-__name(writeBackdropBlur, "writeBackdropBlur");
-function applyBackdropBlurVar(size) {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.setProperty(
-    BACKDROP_BLUR_VAR,
-    `${size}px`
-  );
-}
-__name(applyBackdropBlurVar, "applyBackdropBlurVar");
-function getEditorBackdropBlur() {
-  return readBackdropBlur();
-}
-__name(getEditorBackdropBlur, "getEditorBackdropBlur");
-function setEditorBackdropBlur(size) {
-  const clamped = Math.max(0, Math.min(40, Math.round(size)));
-  writeBackdropBlur(clamped);
-  applyBackdropBlurVar(clamped);
-}
-__name(setEditorBackdropBlur, "setEditorBackdropBlur");
-function applyPersistedBackdropBlur() {
-  applyBackdropBlurVar(readBackdropBlur());
-}
-__name(applyPersistedBackdropBlur, "applyPersistedBackdropBlur");
-var DEFAULT_BACKDROP_OPACITY = 1;
-var BACKDROP_OPACITY_STORAGE = "stave:backdropOpacity";
-var backdropOpacityListeners = /* @__PURE__ */ new Set();
-function readBackdropOpacity() {
-  const ls = safeLocalStorage();
-  if (!ls) return DEFAULT_BACKDROP_OPACITY;
-  const raw = ls.getItem(BACKDROP_OPACITY_STORAGE);
-  if (raw == null || raw === "") return DEFAULT_BACKDROP_OPACITY;
-  const saved = Number(raw);
-  return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
-}
-__name(readBackdropOpacity, "readBackdropOpacity");
-function writeBackdropOpacity(o) {
-  safeLocalStorage()?.setItem(BACKDROP_OPACITY_STORAGE, String(o));
-}
-__name(writeBackdropOpacity, "writeBackdropOpacity");
-function getBackdropOpacity() {
-  return readBackdropOpacity();
-}
-__name(getBackdropOpacity, "getBackdropOpacity");
-function setBackdropOpacity(o) {
-  const clamped = Math.max(0, Math.min(1, o));
-  writeBackdropOpacity(clamped);
-  for (const cb of Array.from(backdropOpacityListeners)) cb(clamped);
-}
-__name(setBackdropOpacity, "setBackdropOpacity");
-function onBackdropOpacityChange(cb) {
-  backdropOpacityListeners.add(cb);
-  return () => {
-    backdropOpacityListeners.delete(cb);
-  };
-}
-__name(onBackdropOpacityChange, "onBackdropOpacityChange");
-var DEFAULT_STORED_ALIASES = {};
-var SIGNAL_ALIASES_STORAGE = "stave:signalAliases";
-var signalAliasesListeners = /* @__PURE__ */ new Set();
-function isNonEmptyString(v) {
-  return typeof v === "string" && v.length > 0;
-}
-__name(isNonEmptyString, "isNonEmptyString");
-function sanitizeAliasValue(v) {
-  if (isNonEmptyString(v)) return v;
-  if (Array.isArray(v) && v.length > 0 && v.every(isNonEmptyString)) {
-    return v;
-  }
-  return null;
-}
-__name(sanitizeAliasValue, "sanitizeAliasValue");
-function sanitizeStoredSignalAliases(raw) {
-  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out = {};
-  for (const [key2, value] of Object.entries(raw)) {
-    if (!isNonEmptyString(key2)) continue;
-    const legacy = sanitizeAliasValue(value);
-    if (legacy != null) {
-      out[key2] = { [DEFAULT_VIZ_ENGINE]: legacy };
-      continue;
-    }
-    if (value != null && typeof value === "object" && !Array.isArray(value)) {
-      const slot = {};
-      for (const [eng, ev] of Object.entries(value)) {
-        if (!isNonEmptyString(eng)) continue;
-        const sv = sanitizeAliasValue(ev);
-        if (sv != null) slot[eng] = sv;
-      }
-      if (Object.keys(slot).length > 0) out[key2] = slot;
-    }
-  }
-  return out;
-}
-__name(sanitizeStoredSignalAliases, "sanitizeStoredSignalAliases");
-function readStoredSignalAliases() {
-  const ls = safeLocalStorage();
-  if (!ls) return { ...DEFAULT_STORED_ALIASES };
-  try {
-    const saved = ls.getItem(SIGNAL_ALIASES_STORAGE);
-    if (saved == null) return { ...DEFAULT_STORED_ALIASES };
-    return sanitizeStoredSignalAliases(JSON.parse(saved));
-  } catch {
-    return { ...DEFAULT_STORED_ALIASES };
-  }
-}
-__name(readStoredSignalAliases, "readStoredSignalAliases");
-function writeStoredSignalAliases(map) {
-  try {
-    safeLocalStorage()?.setItem(SIGNAL_ALIASES_STORAGE, JSON.stringify(map));
-  } catch {
-  }
-}
-__name(writeStoredSignalAliases, "writeStoredSignalAliases");
-function flattenForEngine(stored, engine) {
-  const out = {};
-  for (const [name, slot] of Object.entries(stored)) {
-    const v = slot[engine];
-    if (v != null) out[name] = v;
-  }
-  return out;
-}
-__name(flattenForEngine, "flattenForEngine");
-function getStoredSignalAliases() {
-  return readStoredSignalAliases();
-}
-__name(getStoredSignalAliases, "getStoredSignalAliases");
-function getSignalAliases(engine = DEFAULT_VIZ_ENGINE) {
-  return flattenForEngine(readStoredSignalAliases(), engine);
-}
-__name(getSignalAliases, "getSignalAliases");
-function setSignalAliases(map, engine = DEFAULT_VIZ_ENGINE) {
-  const prev = readStoredSignalAliases();
-  const next = {};
-  for (const [name, value] of Object.entries(map)) {
-    if (!isNonEmptyString(name)) continue;
-    const sv = sanitizeAliasValue(value);
-    if (sv == null) continue;
-    next[name] = { ...prev[name] ?? {}, [engine]: sv };
-  }
-  writeStoredSignalAliases(next);
-  const flat = flattenForEngine(next, engine);
-  for (const cb of Array.from(signalAliasesListeners)) cb(flat);
-}
-__name(setSignalAliases, "setSignalAliases");
-function onSignalAliasesChange(cb) {
-  signalAliasesListeners.add(cb);
-  return () => {
-    signalAliasesListeners.delete(cb);
-  };
-}
-__name(onSignalAliasesChange, "onSignalAliasesChange");
-var DEFAULT_BACKDROP_QUALITY = "half";
-var BACKDROP_QUALITY_STORAGE = "stave:backdropQuality";
-var backdropQualityListeners = /* @__PURE__ */ new Set();
-function readBackdropQuality() {
-  const ls = safeLocalStorage();
-  const v = ls?.getItem(BACKDROP_QUALITY_STORAGE);
-  return v === "full" || v === "half" || v === "quarter" ? v : DEFAULT_BACKDROP_QUALITY;
-}
-__name(readBackdropQuality, "readBackdropQuality");
-function writeBackdropQuality(q) {
-  safeLocalStorage()?.setItem(BACKDROP_QUALITY_STORAGE, q);
-}
-__name(writeBackdropQuality, "writeBackdropQuality");
-function getBackdropQuality() {
-  return readBackdropQuality();
-}
-__name(getBackdropQuality, "getBackdropQuality");
-function setBackdropQuality(q) {
-  writeBackdropQuality(q);
-  for (const cb of Array.from(backdropQualityListeners)) cb(q);
-}
-__name(setBackdropQuality, "setBackdropQuality");
-function onBackdropQualityChange(cb) {
-  backdropQualityListeners.add(cb);
-  return () => {
-    backdropQualityListeners.delete(cb);
-  };
-}
-__name(onBackdropQualityChange, "onBackdropQualityChange");
-function backdropQualityFactor(q) {
-  return q === "full" ? 1 : q === "quarter" ? 0.25 : 0.5;
-}
-__name(backdropQualityFactor, "backdropQualityFactor");
-function applyPersistedEditorOptions(editor) {
-  applyOptionsToEditor(editor);
-}
-__name(applyPersistedEditorOptions, "applyPersistedEditorOptions");
-var THEME_STORAGE = "stave:editorTheme";
-function readTheme() {
-  const ls = safeLocalStorage();
-  const v = ls?.getItem(THEME_STORAGE);
-  return v === "light" || v === "system" ? v : v === "dark" ? "dark" : "dark";
-}
-__name(readTheme, "readTheme");
-function writeTheme(t) {
-  safeLocalStorage()?.setItem(THEME_STORAGE, t);
-}
-__name(writeTheme, "writeTheme");
-function systemPrefersLight() {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  return window.matchMedia("(prefers-color-scheme: light)").matches;
-}
-__name(systemPrefersLight, "systemPrefersLight");
-function resolveTheme(t) {
-  if (t === "dark" || t === "light") return t;
-  return systemPrefersLight() ? "light" : "dark";
-}
-__name(resolveTheme, "resolveTheme");
-var themeListeners = /* @__PURE__ */ new Set();
-var systemMqlWired = false;
-var systemMql = null;
-function notifyThemeListeners(resolved) {
-  for (const fn of themeListeners) {
-    try {
-      fn(resolved);
-    } catch {
-    }
-  }
-}
-__name(notifyThemeListeners, "notifyThemeListeners");
-function wireSystemMqlOnce() {
-  if (systemMqlWired || typeof window === "undefined" || !window.matchMedia) return;
-  systemMqlWired = true;
-  systemMql = window.matchMedia("(prefers-color-scheme: light)");
-  const onChange = /* @__PURE__ */ __name(() => {
-    if (readTheme() !== "system") return;
-    applyResolvedTheme(resolveTheme("system"));
-  }, "onChange");
-  try {
-    systemMql.addEventListener("change", onChange);
-  } catch {
-    systemMql.addListener?.(onChange);
-  }
-}
-__name(wireSystemMqlOnce, "wireSystemMqlOnce");
-function applyResolvedTheme(resolved) {
-  if (monacoNs?.editor?.setTheme) {
-    monacoNs.editor.setTheme(resolved === "light" ? "stave-light" : "stave-dark");
-  }
-  if (typeof document !== "undefined") {
-    document.documentElement.setAttribute("data-stave-theme", resolved);
-  }
-  notifyThemeListeners(resolved);
-}
-__name(applyResolvedTheme, "applyResolvedTheme");
-function getEditorTheme() {
-  return readTheme();
-}
-__name(getEditorTheme, "getEditorTheme");
-function getResolvedTheme() {
-  return resolveTheme(readTheme());
-}
-__name(getResolvedTheme, "getResolvedTheme");
-function setEditorTheme(theme) {
-  writeTheme(theme);
-  wireSystemMqlOnce();
-  applyResolvedTheme(resolveTheme(theme));
-}
-__name(setEditorTheme, "setEditorTheme");
-function cycleEditorTheme() {
-  const next = readTheme() === "dark" ? "light" : readTheme() === "light" ? "system" : "dark";
-  setEditorTheme(next);
-  return next;
-}
-__name(cycleEditorTheme, "cycleEditorTheme");
-function onThemeChange(fn) {
-  themeListeners.add(fn);
-  return () => {
-    themeListeners.delete(fn);
-  };
-}
-__name(onThemeChange, "onThemeChange");
-function applyPersistedTheme() {
-  wireSystemMqlOnce();
-  setEditorTheme(readTheme());
-}
-__name(applyPersistedTheme, "applyPersistedTheme");
-var PERF_ENABLED_STORAGE = "stave:perfEnabled";
-var perfEnabledListeners = /* @__PURE__ */ new Set();
-function readPerfEnabled() {
-  try {
-    if (globalThis.__STAVE_PERF__ === true) {
-      return true;
-    }
-  } catch {
-  }
-  return safeLocalStorage()?.getItem(PERF_ENABLED_STORAGE) === "1";
-}
-__name(readPerfEnabled, "readPerfEnabled");
-function getPerfEnabled() {
-  return readPerfEnabled();
-}
-__name(getPerfEnabled, "getPerfEnabled");
-function setPerfEnabled(on) {
-  try {
-    safeLocalStorage()?.setItem(PERF_ENABLED_STORAGE, on ? "1" : "0");
-  } catch {
-  }
-  perf.setEnabled(on);
-  for (const cb of Array.from(perfEnabledListeners)) cb(on);
-}
-__name(setPerfEnabled, "setPerfEnabled");
-function togglePerfEnabled() {
-  const next = !readPerfEnabled();
-  setPerfEnabled(next);
-  return next;
-}
-__name(togglePerfEnabled, "togglePerfEnabled");
-function onPerfEnabledChange(cb) {
-  perfEnabledListeners.add(cb);
-  return () => {
-    perfEnabledListeners.delete(cb);
-  };
-}
-__name(onPerfEnabledChange, "onPerfEnabledChange");
-function applyPersistedPerfEnabled() {
-  perf.setEnabled(readPerfEnabled());
-}
-__name(applyPersistedPerfEnabled, "applyPersistedPerfEnabled");
-var ADAPTIVE_PERF_STORAGE = "stave.viz.governor";
-var adaptivePerfListeners = /* @__PURE__ */ new Set();
-function readAdaptivePerf() {
-  return safeLocalStorage()?.getItem(ADAPTIVE_PERF_STORAGE) !== "0";
-}
-__name(readAdaptivePerf, "readAdaptivePerf");
-function getAdaptivePerfEnabled() {
-  return readAdaptivePerf();
-}
-__name(getAdaptivePerfEnabled, "getAdaptivePerfEnabled");
-function setAdaptivePerfEnabled(on) {
-  try {
-    safeLocalStorage()?.setItem(ADAPTIVE_PERF_STORAGE, on ? "1" : "0");
-  } catch {
-  }
-  vizGovernor.setEnabled(on);
-  for (const cb of Array.from(adaptivePerfListeners)) cb(on);
-}
-__name(setAdaptivePerfEnabled, "setAdaptivePerfEnabled");
-function toggleAdaptivePerfEnabled() {
-  const next = !readAdaptivePerf();
-  setAdaptivePerfEnabled(next);
-  return next;
-}
-__name(toggleAdaptivePerfEnabled, "toggleAdaptivePerfEnabled");
-function onAdaptivePerfChange(cb) {
-  adaptivePerfListeners.add(cb);
-  return () => {
-    adaptivePerfListeners.delete(cb);
-  };
-}
-__name(onAdaptivePerfChange, "onAdaptivePerfChange");
-function applyPersistedAdaptivePerf() {
-  vizGovernor.setEnabled(readAdaptivePerf());
-}
-__name(applyPersistedAdaptivePerf, "applyPersistedAdaptivePerf");
-
-// src/codeView/writeback.ts
-var REEVAL_DEBOUNCE_MS = 120;
-function formatNumber(v, maxDecimals = 4) {
-  if (!Number.isFinite(v)) return "0";
-  if (Number.isInteger(v)) return String(v);
-  const fixed = v.toFixed(maxDecimals);
-  return fixed.replace(/\.?0+$/, "");
-}
-__name(formatNumber, "formatNumber");
-function normalizeEdits(edits) {
-  for (const e of edits) {
-    if (e.range[0] > e.range[1]) {
-      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
-    }
-  }
-  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1].range;
-    const cur = sorted[i].range;
-    if (cur[0] < prev[1]) {
-      throw new Error(
-        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
-      );
-    }
-  }
-  return sorted;
-}
-__name(normalizeEdits, "normalizeEdits");
-function applyEdits(doc, edits) {
-  const sorted = normalizeEdits(edits);
-  let out = doc;
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const { range: range2, text } = sorted[i];
-    out = out.slice(0, range2[0]) + text + out.slice(range2[1]);
-  }
-  return out;
-}
-__name(applyEdits, "applyEdits");
-var _Writeback = class _Writeback {
-  constructor(editor, monaco) {
-    this.editor = editor;
-    this.monaco = monaco;
-    this.writingSource = null;
-    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
-    this.inGesture = false;
-    /** whether the in-flight gesture has applied any edit — gates the one re-eval
-     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
-    this.gestureDidEdit = false;
-    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
-    this.reevalTimer = null;
-  }
-  /**
-   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
-   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
-   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
-   * the undo grouping is affected. Idempotent if already in a gesture.
-   */
-  beginGesture() {
-    if (this.inGesture) return;
-    const model = this.editor.getModel();
-    if (!model) return;
-    model.pushStackElement();
-    this.inGesture = true;
-    this.gestureDidEdit = false;
-  }
-  /** Close the gesture, sealing all its edits as one undo step — and, if the
-   * gesture changed anything, make it audible immediately (one re-eval on
-   * release, not per drag frame). */
-  endGesture() {
-    if (!this.inGesture) return;
-    this.inGesture = false;
-    this.editor.getModel()?.pushStackElement();
-    if (this.gestureDidEdit) {
-      this.gestureDidEdit = false;
-      this.requestLiveReeval();
-    }
-  }
-  /**
-   * The source of the edit currently being applied, or null. The host's
-   * `onDidChangeModelContent` listener reads this synchronously to attribute
-   * the change. It is non-null ONLY for the duration of `apply`.
-   */
-  get currentSource() {
-    return this.writingSource;
-  }
-  /** Replace a single offset range. One undo step. */
-  replaceRange(range2, text, source) {
-    this.apply([{ range: range2, text }], source);
-  }
-  /**
-   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
-   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
-   * the whole gesture).
-   */
-  replaceRanges(edits, source) {
-    this.apply(edits, source);
-  }
-  /** Insert text at an offset (zero-width edit). */
-  insertAt(offset, text, source) {
-    this.apply([{ range: [offset, offset], text }], source);
-  }
-  /** Delete an offset range. */
-  deleteRange(range2, source) {
-    this.apply([{ range: range2, text: "" }], source);
-  }
-  /**
-   * Freshness-guarded write. Re-reads the live model text and refuses the edit
-   * if the chunk's statement no longer matches what it was detected from
-   * (the doc changed under the panel). Returns true if applied, false if stale.
-   * Prefer this over the raw methods on any path that can race a typed edit.
-   */
-  applyFresh(chunk, edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return false;
-    if (!isChunkFresh(model.getValue(), chunk)) return false;
-    this.apply(edits, source);
-    return true;
-  }
-  apply(edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return;
-    const normalized = normalizeEdits(edits);
-    const ops = normalized.map((e) => {
-      const start = model.getPositionAt(e.range[0]);
-      const end = model.getPositionAt(e.range[1]);
-      return {
-        range: new this.monaco.Range(
-          start.lineNumber,
-          start.column,
-          end.lineNumber,
-          end.column
-        ),
-        text: e.text,
-        forceMoveMarkers: true
-      };
-    });
-    if (!this.inGesture) model.pushStackElement();
-    this.writingSource = source;
-    try {
-      model.pushEditOperations([], ops, () => null);
-    } finally {
-      this.writingSource = null;
-    }
-    if (!this.inGesture) model.pushStackElement();
-    if (this.inGesture) this.gestureDidEdit = true;
-    else this.requestLiveReeval();
-  }
-  /**
-   * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
-   * the moment it commits. Centralised here so every visual surface — sequencer,
-   * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
-   * re-evals only a PLAYING file, and only when live mode isn't already doing
-   * it, so this never auto-starts audio nor double-evaluates.
-   *
-   * Trailing-debounced: rapid successive commits (e.g. clearing several
-   * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
-   * which also lets the Monaco→file-store sync settle so the re-eval reads the
-   * final content rather than racing a not-yet-synced edit.
-   */
-  requestLiveReeval() {
-    if (this.reevalTimer) clearTimeout(this.reevalTimer);
-    this.reevalTimer = setTimeout(() => {
-      this.reevalTimer = null;
-      requestReeval(getFileIdForEditor(this.editor));
-    }, REEVAL_DEBOUNCE_MS);
-  }
-};
-__name(_Writeback, "Writeback");
-var Writeback = _Writeback;
 
 // src/engine/noteToMidi.ts
 function noteToMidi(note) {
@@ -13879,344 +14559,6 @@ function installMiniStringParser(deps) {
   });
 }
 __name(installMiniStringParser, "installMiniStringParser");
-
-// src/visualEdit/panels/patternKind.ts
-function isStepChunk(chunk) {
-  return chunk.miniString !== null && (chunk.headFn === "s" || chunk.headFn === "sound");
-}
-__name(isStepChunk, "isStepChunk");
-function isRollChunk(chunk) {
-  return chunk.miniString !== null && (chunk.headFn === "note" || chunk.headFn === "n");
-}
-__name(isRollChunk, "isRollChunk");
-function patternKind(chunk) {
-  if (!chunk) return null;
-  if (isStepChunk(chunk)) return "step";
-  if (isRollChunk(chunk)) return "roll";
-  return null;
-}
-__name(patternKind, "patternKind");
-
-// src/visualEdit/panels/chainMethod.ts
-function readChainMethod(chunk, names) {
-  const call = chunk.chain.find((c) => names.includes(c.name) && c.args.length >= 1);
-  const arg = call?.args[0];
-  if (!call || !arg) return null;
-  const q = arg.raw[0];
-  if ((q === '"' || q === "'" || q === "`") && arg.raw[arg.raw.length - 1] === q) {
-    return { name: call.name, value: arg.raw.slice(1, -1), range: arg.range };
-  }
-  return null;
-}
-__name(readChainMethod, "readChainMethod");
-
-// src/visualEdit/trackColor.ts
-var TRACK_PALETTE_32 = [
-  // Drums (orange family) — 8 lightness steps
-  "#fed7aa",
-  "#fdba74",
-  "#fb923c",
-  "#f97316",
-  "#ea580c",
-  "#c2410c",
-  "#9a3412",
-  "#7c2d12",
-  // Bass (cyan family) — 8 lightness steps
-  "#a5f3fc",
-  "#67e8f9",
-  "#22d3ee",
-  "#06b6d4",
-  "#0891b2",
-  "#0e7490",
-  "#155e75",
-  "#164e63",
-  // Pad (green family) — 8 lightness steps
-  "#a7f3d0",
-  "#6ee7b7",
-  "#34d399",
-  "#10b981",
-  "#059669",
-  "#047857",
-  "#065f46",
-  "#064e3b",
-  // Melody (purple family) — 8 lightness steps
-  "#ddd6fe",
-  "#c4b5fd",
-  "#a78bfa",
-  "#8b5cf6",
-  "#7c3aed",
-  "#6d28d9",
-  "#5b21b6",
-  "#4c1d95"
-];
-var STEM_PATTERNS = [
-  // Family 0 — drums
-  /^(?:bd|hh|sd|cp|hat|kick|snare|drum|perc|ride|crash|tom)/i,
-  // Family 1 — bass
-  /^(?:bass|sub|808)/i,
-  // Family 2 — pads
-  /^(?:pad|pads)/i,
-  // Family 3 — melody / lead / synth / piano / keys / guitar
-  /^(?:lead|melody|synth|piano|keys|guitar)/i
-];
-function fnv1a32(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h = (h ^ str.charCodeAt(i)) >>> 0;
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h >>> 0;
-}
-__name(fnv1a32, "fnv1a32");
-function stemHueGroup(sample) {
-  if (!sample) return 3;
-  for (let i = 0; i < STEM_PATTERNS.length; i++) {
-    if (STEM_PATTERNS[i].test(sample)) return i;
-  }
-  return 3;
-}
-__name(stemHueGroup, "stemHueGroup");
-function trackIndexOf(trackId) {
-  const m = trackId.match(/^d(\d+)$/);
-  if (m) {
-    const n = parseInt(m[1], 10);
-    if (n >= 1) return ((n - 1) % 32 + 32) % 32;
-  }
-  return fnv1a32(trackId) % 32;
-}
-__name(trackIndexOf, "trackIndexOf");
-function paletteForTrack(trackIndex, sampleHint) {
-  const hueGroup = stemHueGroup(sampleHint);
-  const slot = ((trackIndex * 4 + hueGroup) % 32 + 32) % 32;
-  return TRACK_PALETTE_32[slot];
-}
-__name(paletteForTrack, "paletteForTrack");
-function colorForTrack(key2) {
-  return paletteForTrack(trackIndexOf(key2), key2);
-}
-__name(colorForTrack, "colorForTrack");
-function trackIdentity(key2, customColor) {
-  return { key: key2, name: key2, color: customColor ?? colorForTrack(key2) };
-}
-__name(trackIdentity, "trackIdentity");
-
-// src/visualEdit/mixer/gain.ts
-var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
-function parseManagedGain(raw) {
-  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
-  if (!quote || raw[raw.length - 1] !== quote) return null;
-  const tokens = raw.slice(1, -1).trim().split(/\s+/).filter((t) => t !== "");
-  if (tokens.length < 2) return null;
-  let ceiling = 0;
-  for (const t of tokens) {
-    if (t === "~") continue;
-    const m = GAIN_TOKEN2.exec(t);
-    if (!m) return null;
-    ceiling = Math.max(ceiling, parseFloat(m[1]));
-  }
-  return { tokens, ceiling, quote };
-}
-__name(parseManagedGain, "parseManagedGain");
-function scaleManagedGain(mg, value) {
-  const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
-  const out = mg.tokens.map((t) => {
-    if (t === "~") return "~";
-    const m = GAIN_TOKEN2.exec(t);
-    const nv = factor === null ? value : parseFloat(m[1]) * factor;
-    return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
-  });
-  return mg.quote + out.join(" ") + mg.quote;
-}
-__name(scaleManagedGain, "scaleManagedGain");
-var CHILD_GAIN_HEADS = /* @__PURE__ */ new Set([
-  "pick",
-  "pickRestart",
-  "pickReset",
-  "stack",
-  "cat",
-  "layer",
-  "arrange"
-]);
-function hasChildGain(chunk) {
-  const call = chunk.chain.find((c) => CHILD_GAIN_HEADS.has(c.name));
-  return call ? call.args.some((a) => /\.gain\s*\(/.test(a.raw)) : false;
-}
-__name(hasChildGain, "hasChildGain");
-function readGainState(chunk) {
-  const call = chunk.chain.find((c) => c.name === "gain" && c.args.length >= 1);
-  const arg = call?.args[0];
-  if (!call || !arg) {
-    return hasChildGain(chunk) ? { kind: "foreign" } : { kind: "absent" };
-  }
-  if (arg.numeric !== null) return { kind: "scalar", value: arg.numeric, range: arg.range };
-  const mg = parseManagedGain(arg.raw);
-  if (mg) return { kind: "managed", ceiling: mg.ceiling, mg, range: arg.range };
-  return { kind: "foreign" };
-}
-__name(readGainState, "readGainState");
-
-// src/visualEdit/mixer/stripModel.ts
-function namedLabel(label) {
-  return label && label !== "$" ? label : null;
-}
-__name(namedLabel, "namedLabel");
-function isMuted(label) {
-  return label != null && isMutedLabel(label);
-}
-__name(isMuted, "isMuted");
-function bareLabel(label) {
-  if (label == null) return null;
-  return namedLabel(splitMuteMarker(label).bare);
-}
-__name(bareLabel, "bareLabel");
-function isTrackChunk(chunk) {
-  if (chunk.label !== null) return true;
-  return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
-}
-__name(isTrackChunk, "isTrackChunk");
-function unjoinableId(index) {
-  return `~$${index}`;
-}
-__name(unjoinableId, "unjoinableId");
-function bareCaptureIdFor(tracks) {
-  if (tracks.length === 0) return null;
-  if (tracks.some((t) => t.label !== null && !isMutedLabel(t.label))) return null;
-  if (tracks[tracks.length - 1].label !== null) return null;
-  return `$${tracks.length - 1}`;
-}
-__name(bareCaptureIdFor, "bareCaptureIdFor");
-var GROUP_HEADS = /* @__PURE__ */ new Set(["stack", "cat", "layer", "arrange"]);
-function stripKind(chunk) {
-  const k = patternKind(chunk);
-  if (k) return k;
-  if (chunk.headFn && GROUP_HEADS.has(chunk.headFn)) return "group";
-  return "unknown";
-}
-__name(stripKind, "stripKind");
-function readSource(chunk, kind) {
-  if (kind === "step") return readChainMethod(chunk, ["bank"])?.value ?? null;
-  if (kind === "roll") return readChainMethod(chunk, ["sound", "s"])?.value ?? null;
-  return readChainMethod(chunk, ["sound", "s", "bank"])?.value ?? null;
-}
-__name(readSource, "readSource");
-function readScalar(chunk, name) {
-  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
-  const arg = call?.args[0];
-  return arg && arg.numeric !== null ? arg.numeric : null;
-}
-__name(readScalar, "readScalar");
-function isForeign(chunk, name) {
-  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1);
-  return call !== void 0 && call.args[0].numeric === null;
-}
-__name(isForeign, "isForeign");
-function displayKeys(trackChunks, doc) {
-  const idAtLine = trackIdsByLine(doc);
-  const taken = new Set(idAtLine.values());
-  return trackChunks.map((chunk, i) => {
-    let line = chunk.statementRange[0];
-    while (line > 0 && (doc[line - 1] === " " || doc[line - 1] === "	")) line--;
-    const id = idAtLine.get(line) ?? idAtLine.get(chunk.statementRange[0]);
-    if (id !== void 0) return id;
-    let n = i + 1;
-    while (taken.has(`d${n}`)) n++;
-    taken.add(`d${n}`);
-    return `d${n}`;
-  });
-}
-__name(displayKeys, "displayKeys");
-var cachedDoc = null;
-var cachedIds = /* @__PURE__ */ new Map();
-function trackIdsByLine(doc) {
-  if (doc === cachedDoc) return cachedIds;
-  const ir = parseStrudel(doc);
-  const roots = ir.tag === "Stack" ? ir.tracks : [ir];
-  const ids = /* @__PURE__ */ new Map();
-  for (const node of roots) {
-    if (node.tag !== "Track") continue;
-    const at = node.loc?.[0]?.start;
-    if (typeof at === "number" && !ids.has(at)) ids.set(at, node.trackId);
-  }
-  cachedDoc = doc;
-  cachedIds = ids;
-  return ids;
-}
-__name(trackIdsByLine, "trackIdsByLine");
-function buildStripModel(chunk, index, displayKey, id, captureId) {
-  const kind = stripKind(chunk);
-  const source = readSource(chunk, kind);
-  const identity = trackIdentity(displayKey);
-  return {
-    id,
-    index,
-    kind,
-    label: bareLabel(chunk.label),
-    name: identity.name,
-    headFn: chunk.headFn,
-    miniString: chunk.miniString,
-    source,
-    gain: readGainState(chunk),
-    pan: readScalar(chunk, "pan"),
-    panForeign: isForeign(chunk, "pan"),
-    sends: { room: readScalar(chunk, "room"), delay: readScalar(chunk, "delay") },
-    muted: isMuted(chunk.label),
-    muteable: chunk.label != null,
-    color: identity.color,
-    chain: chunk.chain,
-    exprRange: chunk.exprRange,
-    statementRange: chunk.statementRange,
-    captureId
-  };
-}
-__name(buildStripModel, "buildStripModel");
-function buildStripModels(chunks, doc) {
-  let anonAll = 0;
-  let anonLive = 0;
-  let ordinal = 0;
-  const models = [];
-  const registers = chunks.some((c) => c.label !== null && !isMutedLabel(c.label));
-  const trackChunks = chunks.filter(
-    (c) => isTrackChunk(c) && (c.label !== null || !registers)
-  );
-  const drawn = new Set(trackChunks);
-  const keys = displayKeys(trackChunks, doc);
-  const bareId = bareCaptureIdFor(trackChunks);
-  const bareOwner = bareId === null ? null : trackChunks[trackChunks.length - 1];
-  chunks.forEach((chunk, index) => {
-    if (!isTrackChunk(chunk)) return;
-    if (!drawn.has(chunk)) {
-      anonAll++;
-      return;
-    }
-    ordinal++;
-    const bare = bareLabel(chunk.label);
-    const id = bare ?? `#${anonAll++}`;
-    let captureId;
-    if (bare !== null) captureId = bare;
-    else if (isMuted(chunk.label)) captureId = `_$${index}`;
-    else if (chunk.label === null)
-      captureId = bareId !== null && chunk === bareOwner ? bareId : unjoinableId(index);
-    else captureId = `$${anonLive++}`;
-    models.push(buildStripModel(chunk, index, keys[ordinal - 1], id, captureId));
-  });
-  return models;
-}
-__name(buildStripModels, "buildStripModels");
-function statementOffsetForSource(doc, source) {
-  const strip = buildStripModels(detectAllChunks(doc), doc).find((s) => s.source === source);
-  return strip ? strip.statementRange[0] : null;
-}
-__name(statementOffsetForSource, "statementOffsetForSource");
-function otherTrackNames(doc, selfStatementStart) {
-  return buildStripModels(detectAllChunks(doc), doc).filter((s) => s.statementRange[0] !== selfStatementStart).map((s) => s.name);
-}
-__name(otherTrackNames, "otherTrackNames");
-function stripContainingOffset(strips, offset) {
-  return strips.find(
-    (s) => s.statementRange[0] <= offset && offset < s.statementRange[1]
-  );
-}
-__name(stripContainingOffset, "stripContainingOffset");
 
 // src/engine/bareCapture.ts
 function resolveBareCaptureId(code) {
@@ -33684,39 +34026,6 @@ function HistoryViewOverlay({
 }
 __name(HistoryViewOverlay, "HistoryViewOverlay");
 
-// src/visualEdit/soundAssign.ts
-function planSoundAssignment(doc, offset, sound) {
-  if (!sound) return null;
-  const chunk = detectChunk(doc, offset);
-  if (chunk && patternKind(chunk) === "roll") {
-    const cur = readChainMethod(chunk, ["sound", "s"]);
-    if (cur) return { kind: "replace", range: cur.range, text: `'${sound}'` };
-    return { kind: "insert", offset: chunk.exprRange[1], text: `.sound('${sound}')` };
-  }
-  const lineStart = doc.lastIndexOf("\n", offset - 1) + 1;
-  const nextNewline = doc.indexOf("\n", offset);
-  const lineEnd = nextNewline === -1 ? doc.length : nextNewline;
-  const hasContent = doc.slice(lineStart, lineEnd).trim().length > 0;
-  return {
-    kind: "insert",
-    offset: lineEnd,
-    text: `${hasContent ? "\n" : ""}s("${sound}")`
-  };
-}
-__name(planSoundAssignment, "planSoundAssignment");
-
-// src/visualEdit/vizAssign.ts
-function planVizAssignment(doc, offset, name) {
-  if (!name) return null;
-  const chunk = detectChunk(doc, offset);
-  if (!chunk) return null;
-  const text = JSON.stringify(name);
-  const cur = readChainMethod(chunk, ["viz"]);
-  if (cur) return { kind: "replace", range: cur.range, text };
-  return { kind: "insert", offset: chunk.exprRange[1], text: `.viz(${text})` };
-}
-__name(planVizAssignment, "planVizAssignment");
-
 // src/workspace/backdropPrecedence.ts
 function resolveBackdropFileId(stickyFileId, overrideFileId) {
   return overrideFileId ?? stickyFileId;
@@ -35395,215 +35704,6 @@ function ResolutionControl({
   );
 }
 __name(ResolutionControl, "ResolutionControl");
-
-// src/visualEdit/mixer/masterEdit.ts
-var MASTER_UNITY_GAIN = 1;
-function matchAllArrow(node) {
-  if (!node || node.type !== "ExpressionStatement") return null;
-  const expr = node.expression;
-  if (!expr || expr.type !== "CallExpression" || expr.callee.type !== "Identifier" || expr.callee.name !== "all" || expr.arguments.length < 1) {
-    return null;
-  }
-  const arrow = expr.arguments[0];
-  if (!arrow || arrow.type !== "ArrowFunctionExpression") return null;
-  if (arrow.body.type === "BlockStatement") return null;
-  return { body: arrow.body };
-}
-__name(matchAllArrow, "matchAllArrow");
-function detectMasterAll(doc) {
-  return detectMasterAllWithBodies(doc).map((l) => l.m);
-}
-__name(detectMasterAll, "detectMasterAll");
-function detectMasterAllWithBodies(doc) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return [];
-  const out = [];
-  for (const node of statements) {
-    const arrow = matchAllArrow(node);
-    if (!arrow) continue;
-    const headOut = { ref: null };
-    const chain = collectChain(doc, arrow.body, headOut);
-    out.push({
-      m: {
-        statementRange: [node.start, node.end],
-        statementText: doc.slice(node.start, node.end),
-        arrowBodyRange: [arrow.body.start, arrow.body.end],
-        chain
-      },
-      body: arrow.body
-    });
-  }
-  return out;
-}
-__name(detectMasterAllWithBodies, "detectMasterAllWithBodies");
-var MASTER_GAIN_CONTROL = "postgain";
-var LEGACY_MASTER_CONTROLS = ["gain", MASTER_GAIN_CONTROL];
-function findScaleSite(doc, body, chain) {
-  let node = body;
-  while (node && node.type === "CallExpression" && node.callee.type === "MemberExpression") {
-    const callee = node.callee;
-    const inner = node.arguments[0];
-    if (!callee.computed && callee.property.type === "Identifier" && callee.property.name === "mul" && node.arguments.length === 1 && inner.type === "CallExpression" && inner.callee.type === "Identifier" && inner.callee.name === MASTER_GAIN_CONTROL && inner.arguments.length === 1) {
-      const dot = doc.lastIndexOf(".", callee.property.start);
-      const call = chain.find((c) => c.name === "mul" && c.range[0] === dot);
-      if (call) return { kind: "scale", call, arg: toArg(doc, inner.arguments[0]) };
-    }
-    node = callee.object;
-  }
-  return void 0;
-}
-__name(findScaleSite, "findScaleSite");
-function gainSiteOf(doc, m, body) {
-  const scale = findScaleSite(doc, body, m.chain);
-  if (scale) return scale;
-  for (const name of LEGACY_MASTER_CONTROLS) {
-    const call = m.chain.find((c) => c.name === name);
-    if (call) return { kind: "legacy", call, arg: call.args[0] };
-  }
-  return void 0;
-}
-__name(gainSiteOf, "gainSiteOf");
-function findMasterGainSite(doc) {
-  const lines = detectMasterAllWithBodies(doc);
-  for (const { m, body } of lines) {
-    const scale = findScaleSite(doc, body, m.chain);
-    if (scale) return scale;
-  }
-  for (const { m, body } of lines) {
-    const site = gainSiteOf(doc, m, body);
-    if (site) return site;
-  }
-  return void 0;
-}
-__name(findMasterGainSite, "findMasterGainSite");
-function arrowBodyText(doc, m) {
-  return doc.slice(m.arrowBodyRange[0], m.arrowBodyRange[1]).trim();
-}
-__name(arrowBodyText, "arrowBodyText");
-function findMuteLine(doc) {
-  return detectMasterAll(doc).find((m) => arrowBodyText(doc, m) === "silence");
-}
-__name(findMuteLine, "findMuteLine");
-function findVizBackdropCall(m) {
-  return m.chain.find(
-    (c) => c.name === "viz" && c.args.some((a) => /\bbackdrop\s*:\s*true\b/.test(a.raw))
-  );
-}
-__name(findVizBackdropCall, "findVizBackdropCall");
-function vizNameArg(c) {
-  return c.args.find((a) => /^['"`]/.test(a.raw));
-}
-__name(vizNameArg, "vizNameArg");
-function readMasterGain(doc) {
-  const site = findMasterGainSite(doc);
-  if (!site) return { value: MASTER_UNITY_GAIN, foreign: false };
-  const arg = site.arg;
-  if (!arg) return { value: MASTER_UNITY_GAIN, foreign: true };
-  if (arg.numeric === null) return { value: MASTER_UNITY_GAIN, foreign: true };
-  return { value: arg.numeric, foreign: false };
-}
-__name(readMasterGain, "readMasterGain");
-function readMasterMute(doc) {
-  return findMuteLine(doc) !== void 0;
-}
-__name(readMasterMute, "readMasterMute");
-function detectMasterAudioAll(doc) {
-  return detectMasterAll(doc).find((m) => {
-    if (arrowBodyText(doc, m) === "silence") return false;
-    if (m.chain.length >= 1 && m.chain.every((c) => c.name === "viz")) return false;
-    return true;
-  });
-}
-__name(detectMasterAudioAll, "detectMasterAudioAll");
-function adaptMasterChunk(doc, m) {
-  const head = {
-    name: "x",
-    // the arrow param — inert: index 0 is never edited by MixerBody
-    args: [],
-    range: [m.arrowBodyRange[0], m.arrowBodyRange[0]]
-  };
-  return {
-    statementRange: m.statementRange,
-    statementText: m.statementText,
-    exprRange: m.arrowBodyRange,
-    label: null,
-    headFn: null,
-    miniRange: null,
-    miniString: null,
-    miniVia: null,
-    miniAnchor: null,
-    chain: [head, ...m.chain],
-    type: "knobs",
-    nested: false
-  };
-}
-__name(adaptMasterChunk, "adaptMasterChunk");
-function readMasterViz(doc) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
-    const nameArg = vizNameArg(v);
-    if (!nameArg) continue;
-    return { name: nameArg.raw.slice(1, -1) };
-  }
-  return null;
-}
-__name(readMasterViz, "readMasterViz");
-function scaleCall(value) {
-  return `.mul(${MASTER_GAIN_CONTROL}(${formatNumber(value)}))`;
-}
-__name(scaleCall, "scaleCall");
-function masterGainEdit(doc, value) {
-  const site = findMasterGainSite(doc);
-  if (!site) return insertStatement(doc, `all(x => x${scaleCall(value)})`);
-  const arg = site.arg;
-  if (!arg || arg.numeric === null) return null;
-  if (site.kind === "scale") return { range: arg.range, text: formatNumber(value) };
-  return { range: site.call.range, text: scaleCall(value) };
-}
-__name(masterGainEdit, "masterGainEdit");
-function masterMuteEdit(doc, muted3) {
-  const line = findMuteLine(doc);
-  if (muted3) return line ? null : insertStatement(doc, "all(x => silence)");
-  return line ? removeStatement(doc, line.statementRange) : null;
-}
-__name(masterMuteEdit, "masterMuteEdit");
-function masterVizEdit(doc, name) {
-  for (const m of detectMasterAll(doc)) {
-    const v = findVizBackdropCall(m);
-    if (!v) continue;
-    if (name === null) {
-      if (m.chain.length === 1) return removeStatement(doc, m.statementRange);
-      return { range: v.range, text: "" };
-    }
-    const nameArg = vizNameArg(v);
-    if (!nameArg) return null;
-    return { range: nameArg.range, text: JSON.stringify(name) };
-  }
-  if (name === null) return null;
-  return insertStatement(doc, `all(x => x.viz(${JSON.stringify(name)}, { backdrop: true }))`);
-}
-__name(masterVizEdit, "masterVizEdit");
-function insertStatement(doc, statement) {
-  const pos = doc.length;
-  const lead = doc.length === 0 || doc.endsWith("\n") ? "" : "\n";
-  return { range: [pos, pos], text: `${lead}${statement}` };
-}
-__name(insertStatement, "insertStatement");
-function removeStatement(doc, stmt) {
-  let start = stmt[0];
-  let end = stmt[1];
-  const prevNL = doc.lastIndexOf("\n", start - 1);
-  if (prevNL >= 0 && doc.slice(prevNL + 1, start).trim() === "") {
-    start = prevNL;
-  } else if (doc[end] === "\n") {
-    end = end + 1;
-  }
-  return { range: [start, end], text: "" };
-}
-__name(removeStatement, "removeStatement");
-
-// src/visualEdit/mixer/useMixerModel.ts
 function emptyMasterChunk(doc) {
   const pos = doc.length;
   return {
@@ -35970,108 +36070,6 @@ function StripColorPopover({
   );
 }
 __name(StripColorPopover, "StripColorPopover");
-
-// src/visualEdit/mixer/writeStrip.ts
-function gainEdit(fresh, value) {
-  const g = readGainState(fresh);
-  switch (g.kind) {
-    case "scalar":
-      return { range: g.range, text: formatNumber(value) };
-    case "managed":
-      return { range: g.range, text: scaleManagedGain(g.mg, value) };
-    case "absent":
-      return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${formatNumber(value)})` };
-    case "foreign":
-      return null;
-  }
-}
-__name(gainEdit, "gainEdit");
-function panEdit(fresh, value) {
-  const call = fresh.chain.find((c) => c.name === "pan" && c.args.length >= 1);
-  if (!call) {
-    return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.pan(${formatNumber(value)})` };
-  }
-  const arg = call.args[0];
-  if (arg.numeric === null) return null;
-  return { range: arg.range, text: formatNumber(value) };
-}
-__name(panEdit, "panEdit");
-function muteEdit(fresh, muted3) {
-  if (fresh.label === null) return null;
-  const marker = splitMuteMarker(fresh.label);
-  const isMuted2 = marker.prefix || marker.suffix;
-  if (muted3 === isMuted2) return null;
-  const pos = fresh.statementRange[0];
-  if (muted3) return { range: [pos, pos], text: "_" };
-  if (!marker.suffix) return { range: [pos, pos + 1], text: "" };
-  return { range: [pos, pos + fresh.label.length], text: marker.bare };
-}
-__name(muteEdit, "muteEdit");
-var RESERVED_LABELS = /* @__PURE__ */ new Set([
-  "break",
-  "case",
-  "catch",
-  "class",
-  "const",
-  "continue",
-  "debugger",
-  "default",
-  "delete",
-  "do",
-  "else",
-  "enum",
-  "export",
-  "extends",
-  "false",
-  "finally",
-  "for",
-  "function",
-  "if",
-  "import",
-  "in",
-  "instanceof",
-  "new",
-  "null",
-  "return",
-  "super",
-  "switch",
-  "this",
-  "throw",
-  "true",
-  "try",
-  "typeof",
-  "var",
-  "void",
-  "while",
-  "with",
-  "yield",
-  "await",
-  "let",
-  // strict-mode reserved — Strudel transpiles as a module, so these are syntax
-  // errors AS labels too; reject them rather than write a name that breaks eval.
-  "implements",
-  "interface",
-  "package",
-  "private",
-  "protected",
-  "public",
-  "static"
-]);
-function isValidTrackLabel(name) {
-  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u.test(name) && !RESERVED_LABELS.has(name);
-}
-__name(isValidTrackLabel, "isValidTrackLabel");
-function renameEdit(fresh, newLabel, takenNames) {
-  if (fresh.label === null) return null;
-  if (!isValidTrackLabel(newLabel)) return null;
-  const { bare: bareLabel2, prefix, suffix } = splitMuteMarker(fresh.label);
-  if (newLabel === bareLabel2) return null;
-  if (takenNames.has(newLabel)) return null;
-  const start = fresh.statementRange[0] + (prefix ? 1 : 0);
-  const end = fresh.statementRange[0] + fresh.label.length - (suffix ? 1 : 0);
-  return { range: [start, end], text: newLabel };
-}
-__name(renameEdit, "renameEdit");
 function PatternTrackChip() {
   const { chunk } = useActiveChunk();
   const { strips, applyToStripAt } = useMixerModel();

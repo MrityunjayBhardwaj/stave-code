@@ -147,8 +147,8 @@ import {
 // `.sound()` / `s()` into the code at the cursor via `assignSoundToCursor`,
 // reusing the same chunk-detection + writeback spine the Mixer picker uses.
 import { Writeback } from '../codeView'
-import { planSoundAssignment } from '../visualEdit/soundAssign'
-import { planVizAssignment } from '../visualEdit/vizAssign'
+import { planSoundAssignment } from '../codeView'
+import { planVizAssignment } from '../codeView'
 import type { WorkspaceShellActions } from './commands/CommandRegistry'
 import type {
   WorkspaceGroupState,

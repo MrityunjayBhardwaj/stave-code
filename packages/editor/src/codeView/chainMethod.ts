@@ -10,7 +10,7 @@
  * Single-quoted literals are emitted on write (PV44/P62 — the transpiler reifies
  * double-quoted strings to mini Patterns; a single-quoted id is left alone).
  */
-import type { ChunkInfo } from '../../codeView'
+import type { ChunkInfo } from './'
 
 export interface ChainMethodValue {
   /** the method name that matched (e.g. `sound` or `s`) */

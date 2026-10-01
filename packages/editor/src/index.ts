@@ -770,11 +770,11 @@ export {
 // Locate a runtime error (e.g. soundfont out-of-range, #567) back to the owning
 // track's line by its instrument — the app's onError uses this when the error's
 // stack is bundle-only.
-export { statementOffsetForSource } from './visualEdit/mixer/stripModel'
+export { statementOffsetForSource } from './codeView'
 // Track rename (#580, Phase C) — the pure label-rewrite primitive + its
 // validator, so the app's Song Timeline can rename a lane (the Mixer uses them
 // internally). `StripEdit` is the surgical {range,text} the caller applies.
-export { renameEdit, isValidTrackLabel, type StripEdit } from './visualEdit/mixer/writeStrip'
+export { renameEdit, isValidTrackLabel, type StripEdit } from './codeView'
 // Region trim (#1527) — the pure write decisions for the slice of a sample file
 // a mark plays, so the app's Song Timeline can turn a dragged mark edge into
 // `.begin(0.25)`. `readRegionControl` is exported alongside because the caller
@@ -807,13 +807,13 @@ export {
   MASTER_UNITY_GAIN,
   type MasterAll,
   type MasterGainState,
-} from './visualEdit/mixer/masterEdit'
+} from './codeView'
 // The display names of the OTHER tracks in a doc (#585) — the set the Song
 // Timeline's rename handler passes to `renameEdit` as `takenNames` so a rename
 // can't silently create a duplicate track name (which would collide on the
 // meter join + the colour-override key). The Mixer/Pattern chip derive this from
 // their already-loaded `strips`; the Timeline has only the code, so it calls this.
-export { otherTrackNames } from './visualEdit/mixer/stripModel'
+export { otherTrackNames } from './codeView'
 // Per-eval trackMeta cleanup (#583) — the app calls this on each successful
 // evaluate to drop colour overrides for tracks that no longer exist (keys the
 // current track set from the same `buildStripModels` projection the Mixer uses).

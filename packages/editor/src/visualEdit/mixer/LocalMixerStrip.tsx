@@ -26,7 +26,7 @@ import { useMixerModel } from './useMixerModel'
 import { useTrackMeters } from './useTrackMeters'
 import { useSoloMuteSync } from './soloMuteSync'
 import { ChannelStrip } from './ChannelStrip'
-import { gainEdit, panEdit, muteEdit } from './writeStrip'
+import { gainEdit, panEdit, muteEdit } from '../../codeView'
 
 export function LocalMixerStrip(): React.ReactElement | null {
   const { chunk } = useActiveChunk()

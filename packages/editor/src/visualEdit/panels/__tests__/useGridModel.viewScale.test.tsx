@@ -64,7 +64,7 @@ vi.mock('../../../workspace/editorRegistry', () => ({
 import { parseStepGrid, applyStepGain } from '../../../codeView/notation/parse'
 import { serializeStepGrid, serializeStepGain } from '../../../codeView/notation/serialize'
 import { collapseStepGridToDocument } from '../../../codeView/notation/resolution'
-import { isStepChunk } from '../patternKind'
+import { isStepChunk } from '../../../codeView/patternKind'
 import { useGridModel } from '../useGridModel'
 import { setColumnGain } from '../inspector'
 import { toggleCell } from '../../../codeView/notation/place'

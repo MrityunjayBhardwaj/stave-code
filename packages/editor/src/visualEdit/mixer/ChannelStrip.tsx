@@ -18,7 +18,7 @@
  */
 import * as React from 'react'
 
-import type { StripModel } from './stripModel'
+import type { StripModel } from '../../codeView'
 import { gainToFaderPos, faderPosToGain, formatDb } from './faderTaper'
 import type { MeterController } from './useTrackMeters'
 import { StripColorPopover } from './StripColorPopover'

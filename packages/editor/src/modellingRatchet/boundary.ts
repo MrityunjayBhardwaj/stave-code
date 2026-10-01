@@ -301,6 +301,40 @@ export function measureBoundary(opts: MeasureOptions = {}): Measurement {
   return { examined: subjects.length, reaches }
 }
 
+/**
+ * Product files INSIDE the area that import its entry. The entry is the door for the outside;
+ * a file inside that walks back in through it makes a cycle (entry → file → entry) and hides
+ * which module it really depends on. Inside, a file imports the module that has the name.
+ */
+export function entryImportsInside(opts: Pick<MeasureOptions, 'root' | 'overlay'> = {}): string[] {
+  const root = opts.root ?? REPO_ROOT
+  const overlay = new Map(Object.entries(opts.overlay ?? {}))
+  const all: string[] = []
+  walk(root, EDITOR_SRC, all)
+  for (const f of overlay.keys()) if (!all.includes(f)) all.push(f)
+  const known = new Set(all)
+  const out: string[] = []
+  for (const rel of all.filter((f) => f.startsWith(AREA) && f !== ENTRY && isProductFile(f)).sort()) {
+    const text = overlay.get(rel) ?? fs.readFileSync(path.join(root, rel), 'utf8')
+    const sf = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true, rel.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
+    const visit = (n: ts.Node): void => {
+      const spec =
+        (ts.isImportDeclaration(n) || ts.isExportDeclaration(n)) && n.moduleSpecifier && ts.isStringLiteral(n.moduleSpecifier)
+          ? n.moduleSpecifier.text
+          : ts.isCallExpression(n) && n.expression.kind === ts.SyntaxKind.ImportKeyword && n.arguments[0] && ts.isStringLiteralLike(n.arguments[0])
+            ? n.arguments[0].text
+            : null
+      if (spec?.startsWith('.')) {
+        const base = toPosix(path.posix.normalize(path.posix.join(path.posix.dirname(rel), spec)))
+        if ([base, `${base}.ts`, `${base}/index.ts`].find((c) => known.has(c)) === ENTRY) out.push(rel)
+      }
+      ts.forEachChild(n, visit)
+    }
+    visit(sf)
+  }
+  return [...new Set(out)]
+}
+
 // ── the exception list ──────────────────────────────────────────────────────
 
 export interface EnforcedException {

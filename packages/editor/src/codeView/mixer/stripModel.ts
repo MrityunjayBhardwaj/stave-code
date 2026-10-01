@@ -14,15 +14,15 @@
  * numbering rule); it is verified against the engine in S2 (grounding gate GR1)
  * before any meter trusts it.
  */
-import { detectAllChunks } from '../../codeView/chunkDetect'
-import type { ChunkInfo, ChainCall } from '../../codeView'
-import { patternKind } from '../panels/patternKind'
-import { readChainMethod } from '../panels/chainMethod'
+import { detectAllChunks } from '../chunkDetect'
+import type { ChunkInfo, ChainCall } from '../chunkDetect'
+import { patternKind } from '../patternKind'
+import { readChainMethod } from '../chainMethod'
 import { trackIdentity } from '../trackColor'
 import { type GainState, readGainState } from './gain'
-import { NON_TRACK_HEADS } from '../../codeView/ir/statementHeads'
-import { trackIdsFromLabels, isMutedLabel, splitMuteMarker } from '../../codeView/ir/trackId'
-import { parseStrudel } from '../../codeView/ir/parseStrudel'
+import { NON_TRACK_HEADS } from '../ir/statementHeads'
+import { trackIdsFromLabels, isMutedLabel, splitMuteMarker } from '../ir/trackId'
+import { parseStrudel } from '../ir/parseStrudel'
 
 /** which surface a strip's pattern belongs to (mirrors `ChunkType` + groups). */
 export type StripKind = 'step' | 'roll' | 'group' | 'unknown'

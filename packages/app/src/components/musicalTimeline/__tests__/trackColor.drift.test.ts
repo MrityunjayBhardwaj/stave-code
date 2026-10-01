@@ -31,7 +31,7 @@ import {
   paletteForTrack as editorPaletteForTrack,
   colorForTrack as editorColorForTrack,
   trackIdentity as editorTrackIdentity,
-} from '../../../../../editor/src/visualEdit/trackColor'
+} from '../../../../../editor/src/codeView/trackColor'
 
 // A spread of keys exercising every branch: `d{N}` sequential + wrap, stem-family
 // hints (drums/bass/pad/melody), the Mixer's positional `#k` ids, anonymous

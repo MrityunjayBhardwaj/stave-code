@@ -12,7 +12,7 @@
  * document order so a folder sorts the way the song reads.
  */
 import { detectAllChunks } from '../../codeView'
-import { buildStripModels } from './stripModel'
+import { buildStripModels } from '../../codeView'
 import { SONG_LEVEL_STEM } from '../../engine/stemSplit'
 
 /** What a song-level stem (sound `all(...)` adds that no track owns) is called. */
