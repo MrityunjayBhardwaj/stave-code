@@ -1,11 +1,115 @@
 import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-BaAuVFzG.cjs';
 export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-BaAuVFzG.cjs';
+import * as Monaco from 'monaco-editor';
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
 import React__default, { ReactNode } from 'react';
-import * as Monaco from 'monaco-editor';
 import { getSound, getSampleInfo, getCachedBuffer, loadBuffer, getAudioContext } from '@strudel/webaudio';
 import 'p5';
+
+/** Top-level statement nodes, or null when the doc doesn't parse
+ * (mid-keystroke syntax error — the caller keeps the last good chunk). */
+declare function parseTopLevel(doc: string): any[] | null;
+/** Does the doc parse at all? Distinguishes "no statement here" from "broken doc". */
+declare function docParses(doc: string): boolean;
+
+/** Coarse hint for which editor a chunk can open. Panels still read the
+ * structured fields below to decide what they can actually edit. */
+type ChunkType = 'step' | 'roll' | 'knobs' | 'unknown';
+interface ChainArg {
+    /** source text of the argument expression, verbatim */
+    raw: string;
+    /** numeric value when the arg is a (possibly negated) number literal, else null */
+    numeric: number | null;
+    /** absolute doc offsets of the argument expression */
+    range: [number, number];
+}
+interface ChainCall {
+    name: string;
+    args: ChainArg[];
+    /**
+     * For member calls: [dotOffset, callEnd] — replacing/deleting this range
+     * removes the call. For the head call: the full call expression range.
+     */
+    range: [number, number];
+}
+interface ChunkInfo {
+    /** the whole top-level statement (incl. any `$:` label) */
+    statementRange: [number, number];
+    /** the statement's exact source when detected — used to verify freshness */
+    statementText: string;
+    /** the pattern expression, excluding the `$:` label — append `.fx()` here */
+    exprRange: [number, number];
+    /** `$:` label name, or null */
+    label: string | null;
+    /** head function name, e.g. `s`, `note`, `stack` */
+    headFn: string | null;
+    /** contents of the mini string, quotes excluded — see `miniVia` for who found it */
+    miniRange: [number, number] | null;
+    miniString: string | null;
+    /**
+     * WHO FOUND `miniRange` (#1240). `literal` — the head call's first string
+     * argument, the rule this module has always used. `resolver` — `miniSource`
+     * named the span after the literal walk found nothing: a bound reference, a
+     * chained argument, a root literal, a head that is not a content head.
+     *
+     * Carried rather than inferred because the two are DIFFERENT CONFIDENCE
+     * LEVELS and a coverage table that blurs them cannot be read. `null` when
+     * there is no mini span at all.
+     */
+    miniVia: 'literal' | 'resolver' | null;
+    /**
+     * The freshness guard for a mini span that lies OUTSIDE `statementRange` —
+     * `s(drums)` whose content is declared in `const drums = "bd sd"` two
+     * statements up. Null whenever the span is inside the unit's own statement,
+     * which is every `literal` chunk and most resolver ones.
+     *
+     * WHY IT EXISTS. This module's contract is that `isChunkFresh` gates every
+     * write, and it did that by watching `statementRange` — sound while the only
+     * writable span was inside it. A resolver span breaks that premise: the guard
+     * would watch the unit's statement while the write lands in a different one,
+     * so an edit to the declaration between detect and write corrupts unrelated
+     * code and every existing check still passes. The invariant is "every byte we
+     * may write is freshness-guarded", and its span is now two statements — so
+     * the guard widens rather than the feature narrowing (refusing these instead
+     * costs 43 of 125 resolver units, including every `s`/`sound` one).
+     */
+    miniAnchor: {
+        range: [number, number];
+        text: string;
+    } | null;
+    /** calls in source order, head first */
+    chain: ChainCall[];
+    type: ChunkType;
+    /** true when `detectChunk` descended into a combinator argument — i.e. this is
+     *  a NESTED voice inside `stack(...)`/`cat(...)` (#395), not a top-level track.
+     *  The Pattern inspector uses it to offer a per-voice gain knob (#620): a
+     *  top-level track's gain is owned by the channel-strip fader, but a nested
+     *  voice's isn't, so only there does the inspector surface gain. Always false
+     *  for `detectAllChunks` (every chunk there is top-level). */
+    nested: boolean;
+}
+
+/**
+ * A chunk's ranges are only valid against the exact doc it was detected from.
+ * Every write MUST check this first.
+ */
+declare function isChunkFresh(doc: string, chunk: ChunkInfo): boolean;
+/**
+ * The innermost editable chunk under `pos`, or null. Descends into combinator
+ * arguments — a cursor on a track inside `stack(...)` binds THAT track, not the
+ * whole `$: stack(...)` statement (#395). A top-level cursor is unchanged.
+ */
+declare function detectChunk(doc: string, pos: number): ChunkInfo | null;
+/** Every editable chunk in the doc, in source order. */
+declare function detectAllChunks(doc: string): ChunkInfo[];
+/**
+ * Best-guess primary editor for a chunk. Coarse — panels read `chain`/`mini`
+ * directly to decide what they can edit. A pattern with a `note`/`n` head and
+ * a mini string is roll-shaped; an `s`/`sound` head with a mini string is
+ * grid-shaped; anything with a numeric chain literal can at least show knobs.
+ */
+declare function classifyChunk(info: ChunkInfo): ChunkType;
 
 /**
  * Pure transform functions on IREvent arrays.
@@ -1573,6 +1677,1558 @@ declare function runPasses<IR>(input: IR, passes: readonly Pass<IR>[]): {
     name: string;
     ir: IR;
 }[];
+
+/**
+ * One top-level element of the source, and the columns it produced.
+ *
+ * krill's element spans TILE the mini: concatenating them reconstructs the
+ * input byte-for-byte, whitespace and all. Verified over the 1352 flat minis in
+ * the real corpus (and all 380 the roll opens), and re-checked per parse — that
+ * tiling is the whole basis for putting back exactly what we read.
+ *
+ * Where the whitespace LANDS inside a span is not something to have beliefs
+ * about: `bd sd` spans as `"bd "` + `"sd"` (trailing) while `bd!3 sd` spans as
+ * `"bd!3"` + `" sd"` (leading). So an untouched region is written back as its
+ * whole `raw` span and no rule is needed; only a region we re-emit has to know
+ * which side its padding sits on.
+ *
+ * `C` is what the element produced IN THE VIEW'S OWN TERMS — cells for the grid,
+ * notes for the roll. The spans are the same fact about the source either way;
+ * only the answer to "did the user change this?" is the view's.
+ */
+interface SourceRegion<C> {
+    /** the element's bytes exactly as written, whitespace included */
+    raw: string;
+    /** `raw`'s padding, split out so a re-emit keeps the spacing around it */
+    leading: string;
+    trailing: string;
+    /** `[from, to)` — the columns this element expanded to */
+    from: number;
+    to: number;
+    /**
+     * The element's weight as the parser read it (`ElementSpan.weight`: `bd` 1, `bd@3` 3,
+     * `bd!3` 3, `[a b]` 1, `hh*8` 1) — the number that sized `[from, to)`. Strudel counts
+     * the element as this many steps, so the Pattern tab's ruler does too (#1845). Absent
+     * on a region built without one: it then counts as a single step.
+     */
+    weight?: number;
+    /**
+     * What the VIEW showed for these columns at parse time — the basis for "did
+     * the user change this region?". Deliberately the model's own view rather
+     * than the raw atoms: `[sd,sd]` is one lane to a grid that has one lane per
+     * distinct sound, so comparing against the raw pair would report a change
+     * nobody made and rewrite the region for nothing.
+     */
+    content: C;
+}
+/**
+ * Source for a `<...>` alternation used as a sequence ELEMENT (`bd <sd hh>`),
+ * not around the whole cycle (#920). The model bar-expands — one alternative per
+ * bar, so `bd <sd hh>` is a 2-bar grid — but the SOURCE stays a single cycle:
+ * the elements the user actually wrote (`bd`, `<sd hh>`). Each region owns a
+ * within-bar column span and remembers what it showed IN EACH BAR, so the writer
+ * copies an unchanged element's bytes through verbatim and re-emits only the one
+ * edited — as `<...>` when its bars now differ, plain when they agree, promoting
+ * a static cell to an alternation when an edit makes it vary.
+ *
+ * Distinct from `source`: there a region's `[from,to)` are the model's own
+ * columns; here they are SINGLE-CYCLE columns, gathered strided across `bars`.
+ * A model carries `altSource` XOR `source`, never both.
+ */
+interface AltRegion<C> {
+    raw: string;
+    leading: string;
+    trailing: string;
+    /** `[from, to)` columns WITHIN one bar (single-cycle space) */
+    from: number;
+    to: number;
+    /** what the view showed for this element in each of `bars` cycles, at parse */
+    perBar: C[];
+}
+interface AltSource<C> {
+    /** columns per bar (one cycle) */
+    perBar: number;
+    bars: number;
+    /** finest subdivision, so a re-emitted region splits on whole columns */
+    div: number;
+    /** the single-cycle top-level elements, tiling the source in order */
+    regions: AltRegion<C>[];
+}
+/**
+ * What a step grid shows for one column: each sound STARTING there, with how long
+ * it sounds, in columns.
+ *
+ * Carried the length as of #1010 P4c (#1045). Sounds alone were enough while the
+ * printer re-derived every length, because a length could not differ from what the
+ * bytes already said. Once the printer PRESERVES lengths, "did the user change this
+ * region?" has to include them, or the honouring is undetectable for exactly the
+ * edits it exists for — a region whose only change is a length compares equal and is
+ * copied back verbatim.
+ */
+interface GridCell {
+    token: string;
+    /** length in COLUMNS (see `StepNote.duration`) */
+    duration: number;
+}
+/** what a step grid shows for a span of columns: the sounds in each, with their lengths */
+type GridCells = GridCell[][];
+/**
+ * A leaf atom's OWN source span — `[start, end)` into the inner mini string.
+ *
+ * Read from a hap's `context.locations` (Strudel's `mini()` calls `.withLoc` per
+ * atom), never computed here: a nested atom carries its own token span, not its
+ * container's, so `s("a [b c]")` gives the `c` hap the span of `c` and never of
+ * `[b c]` (#987).
+ */
+interface LeafSpan {
+    start: number;
+    end: number;
+}
+/**
+ * one atom sounding in a column, paired with the source leaf it was read from
+ *
+ * ⚠ `duration` IS HERE SO THE WRITER CAN REFUSE, NOT SO IT CAN WRITE (#1235). This
+ * anchor's whole point is a byte replacement at `span`, and a note's LENGTH has no
+ * bytes of its own to replace — it is spelled by what surrounds the token (`_`, `@n`,
+ * a bracket group), which is notation this writer must never author. Carrying the
+ * length anyway is what lets `spliceByLeaf` NOTICE that a length changed and decline,
+ * instead of comparing tokens, finding no difference, and returning the source bytes
+ * as a successful write. A writer's contract has to state what it can notice, not only
+ * what it can spell.
+ *
+ * Read from the same expression that fills the lane cells (`projectStepGridByLeaf`),
+ * never derived a second time: the comparison is only meaningful if both sides come
+ * from one rule. `RollLeafAnchor` has carried its own for the same reason since #989,
+ * which is why the roll never had this defect.
+ */
+interface LeafAnchor {
+    atom: string;
+    span: LeafSpan;
+    /** length in COLUMNS, the units of `StepNote.duration` */
+    duration: number;
+}
+/**
+ * The source of a LEAF-ANCHORED projection (#986) — the third write-back shape,
+ * and the only one that never re-emits notation.
+ *
+ * `source`/`altSource` pair the view with the source's TOP-LEVEL elements, so an
+ * edited element is re-spelled from the cell model (`reemitRegion`). That re-emit
+ * is a mini-notation printer of our own, and it can only spell flat or one-level
+ * output — which is why anything with internal structure (`[a [b c]]`, `<a b>*4`)
+ * round-trips wrong and is refused.
+ *
+ * A leaf anchor pairs the view with the ATOM instead: an edit replaces that one
+ * note's bytes and every other byte — brackets, spaces, operators, unedited notes
+ * — is copied verbatim. Nothing about the grammar is authored, so the writer
+ * cannot invent syntax; what it cannot express (a note where no leaf exists) it
+ * REFUSES. See `spliceByLeaf`.
+ */
+interface LeafSource {
+    /** the inner mini string the spans index into, byte-for-byte */
+    src: string;
+    /**
+     * Per model column, the atoms sounding there and each one's own leaf span.
+     *
+     * Its LENGTH is also the layout these anchors were read against — the width
+     * `anchorsDescribe` (`serialize.ts`) requires the model to still have before
+     * either leaf writer may write. See `RollLeafSource.steps` for why.
+     */
+    cols: LeafAnchor[][];
+    /**
+     * Per column, the span of the REST (`~` / `-`) occupying it, where there is one.
+     *
+     * Deliberately not an entry in `cols`: an anchor is an atom the grid SHOWS and the
+     * lanes are built from that set, so a rest joining it would draw a `~` lane. This
+     * is the same information for a different purpose — the one span a column can offer
+     * when it has no sounding leaf.
+     *
+     * WHAT IT IS FOR (#1154). Deleting a note on a leaf grid writes `~` over that note's
+     * own bytes, which is right. But a rest produces no hap, so nothing indexed it, and
+     * putting the note back was refused for want of a span — the user could not undo
+     * their own delete anywhere on this path (0 of 402 asks over the corpus).
+     *
+     * ⚠ IT DOES NOT — AND CANNOT — MARK WHICH RESTS ARE OURS. The model is re-read from
+     * the document after every write, so a `~` this writer produced and one the user
+     * typed are the same bytes with the same span and no way to tell them apart. So this
+     * field enables the undo AND placement on any rest a leaf grid shows: 248 of 3,584
+     * empty cells across 17 of 82 leaf units. What is still refused is a column that
+     * holds no leaf at all, where a note would have to AUTHOR a slot.
+     *
+     * Absent, or null at a column, simply means the older refusal still stands there.
+     */
+    rests?: (LeafSpan | null)[];
+    /**
+     * The width of the model these spans were ATTACHED to — `RollLeafSource.attachedSteps`
+     * is the same field on the roll, and both exist for one reason (#1235, [[PV319]]).
+     *
+     * ⚠ IT IS NOT `cols.length`, AND THAT DIFFERENCE IS THE WHOLE POINT. `anchorsDescribe`
+     * compares `cols.length` against the model's `steps`, and where these spans are
+     * OVERLAID (`StepGridModel.surgical`) those two numbers are computed by different code
+     * from different premises: the leaf path anchors per ATOM, the element path counts
+     * EXPANDED columns. So their equality is evidence of nothing, and coincidence is
+     * reachable by an ordinary gesture — a `÷2` moves the element model's width onto the
+     * overlay's, the guard passes against spans describing a different layout, surgery
+     * writes the pre-halved bytes back, and the user's divide-by-two silently does nothing.
+     * Measured before #1233: unreachable on the overlay as it ships (0 of 52 grid and 0 of 43
+     * roll restructures), and 13 grid + 2 roll under its core attachment.
+     *
+     * ⚠ THAT 13 + 2 WAS CONFIRMED WHEN #1233 SHIPPED, BY BREAKING THE REAL THING — and the
+     * confirmation is worth recording because a cheaper reading disagreed with it. Dropping
+     * the re-stamp in `lazyGridLeaf`/`lazyRollLeaf` on the built change swallows exactly 13
+     * grid and 2 roll restructures; re-stamping makes it 0 and 0.
+     *
+     * ⚠⚠ THE CHEAPER READING SAID 2 + 2, AND IT WAS THE INSTRUMENT THAT WAS WRONG. Before
+     * the attachment existed, `_1235-width-coincidence.spec.ts` SIMULATED it by spreading
+     * spans fetched from `projectStepGridDerived` — which carry the DERIVED path's own
+     * `attachedSteps`. That stamp usually disagrees with the core model they were being
+     * pasted onto, so the simulated overlay was refused for a reason the real change never
+     * has, and the figure came out five times too low. A simulation that does not reproduce
+     * the field the guard reads is not measuring the guard. Break the built thing.
+     *
+     * Recording the width at ATTACH time makes "valid" mean "this is the model those spans
+     * were read from", which is the property actually needed. `anchorsDescribe` stays: it
+     * is still NECESSARY, it was only never sufficient.
+     */
+    attachedSteps: number;
+}
+/**
+ * A leaf-span OVERLAY: the width the spans were attached to, plus the spans themselves
+ * behind a thunk that projects them on first use (#1233).
+ *
+ * WHY THE SPANS ARE DEFERRED, and it is a cost fact rather than a style one. Building
+ * them is a second full projection of the mini. They are read only when the writer
+ * answers an EDIT — one write per many parses, and most parses never write at all — so
+ * built eagerly the cost lands on every parse instead of on the writes that use it.
+ * Measured on the path this field exists to reach: attaching eagerly where the syntactic
+ * core answers takes a parse from 57.2us to 1459.8us, x25.5, on the parse that serves 791
+ * of 958 corpus units and re-runs on every keystroke. Deferred, a parse pays one closure
+ * and the projection is paid once by the write that needs it.
+ *
+ * ⚠ THE MEMO IS PART OF THE CONTRACT, NOT AN OPTIMISATION. A writer may ask more than
+ * once, and a fresh projection per ask would put back the cost this shape exists to move.
+ * A FAILED projection memoises too — `undefined` is an answer ("this mini has no leaf
+ * spans"), not an absence — so the flag is separate from the value rather than a null
+ * check, which would re-run the whole projection on every write to rediscover it.
+ *
+ * ⚠ AND IT IS GATED, by counting projections rather than by timing them (#1237). Losing
+ * either the laziness or the memo changes no output, no count and no verdict — only
+ * work — so no gate that reads models can see it, and a wall-clock assertion would be
+ * flaky. `parse.ts` keeps a projection counter for exactly this and nothing else;
+ * `surgicalMemo.test.ts` reads it as a delta around a parse and around repeated asks,
+ * including the failing-projection case that the separate flag exists to serve.
+ *
+ * ⚠ IT IS MEMOISED PER MODEL, NOT PER MINI. A cache keyed on the mini string would help
+ * only repeated parses of unchanged text, and the hot case is TYPING, where the mini
+ * differs every keystroke and every lookup would miss.
+ *
+ * ⚠ `spans()` RETURNS A SOURCE ALREADY STAMPED WITH `attachedSteps` BELOW, so the width
+ * rule stays in the one place that enforces it (`anchorsAreFor`, `serialize.ts`) and no
+ * caller has to remember to re-check it. A source arrives from the leaf projection
+ * describing the LEAF model's layout; overlaid it must describe the model it is landing
+ * on, or the writer compares two independently-derived numbers and their agreement means
+ * nothing ([[PV319]]).
+ *
+ * ⚠⚠ `spans` IS A FUNCTION, AND `JSON.stringify` DROPS FUNCTION-VALUED PROPERTIES. Any
+ * gate that compares models structurally sees this field shrink to `attachedSteps` alone
+ * rather than seeing it disappear — which is why that number stays a plain field. A gate
+ * comparing an overlaid model against a bare one still sees a difference; one comparing
+ * two overlaid models no longer sees their spans differ. `writer-census.test.ts` is the
+ * gate that does this, and it strips the overlay from both sides explicitly rather than
+ * letting `JSON.stringify` decide what it can see — a gate that passes because it went
+ * blind reads exactly like one that passes because nothing changed.
+ */
+interface SurgicalOverlay<S> {
+    /**
+     * The width of the model this overlay was attached to. The writer refuses unless the
+     * model still has it — see `LeafSource.attachedSteps` for the restructure that makes a
+     * bare width comparison unsound.
+     */
+    attachedSteps: number;
+    /** the spans, projected on first call and remembered — including a failure */
+    spans: () => S | undefined;
+}
+/** The grid's overlay — see `SurgicalOverlay` for the contract and both hazards. */
+type LazyLeafSource = SurgicalOverlay<LeafSource>;
+/** The roll's overlay, with the same contract and the same hazards. */
+type LazyRollLeafSource = SurgicalOverlay<RollLeafSource>;
+/**
+ * One played note, paired with the source leaf its PITCH was read from.
+ *
+ * The roll's analogue of `LeafAnchor`, and deliberately not the same shape: a grid
+ * column holds a set of atoms, while a roll note is positioned AND held, so an
+ * anchor has to carry where it starts and how long it lasts as well as what it
+ * plays. Both are still the same fact — "these bytes are this note's own".
+ */
+interface RollLeafAnchor {
+    /** the note as the model carries it — names case-folded, numerics stringified */
+    pitch: string;
+    /** the model column the note starts at, absolute across bars */
+    start: number;
+    /** length in columns */
+    duration: number;
+    /** the PITCH token's own `[start, end)` in `src` — never the `@n` hold (see below) */
+    span: LeafSpan;
+}
+/**
+ * The source of a leaf-anchored ROLL projection (#986 P1b) — `LeafSource` for the
+ * pitched surface.
+ *
+ * Anchored per NOTE rather than per column, because a note is what the roll edits.
+ * A chord contributes one anchor per member, each with its own disjoint leaf, so a
+ * member can be cleared without touching the others.
+ *
+ * DURATION IS NOT WRITABLE HERE, and that is a fact about Strudel, not a shortcut:
+ * a held note's hap carries ONLY its pitch leaf in `context.locations` — the `@n`
+ * never appears as a location of its own (observed by driving `reifyMini` on
+ * `c3@2`, `[c3 e3]@2`, `c3 e3@2 g3`, `0@2 2`: every one reports a single location,
+ * the pitch). So there is no span through which a duration could be spliced, and
+ * writing one would mean AUTHORING `@n` syntax — exactly the modelling this whole
+ * mechanism exists to delete. A resized or moved note is therefore REFUSED by the
+ * writer, never approximated. See `spliceRollByLeaf`.
+ */
+interface RollLeafSource {
+    /** the inner mini string the spans index into, byte-for-byte */
+    src: string;
+    /** one per played note, in play order */
+    anchors: RollLeafAnchor[];
+    /**
+     * The column count these anchors were read against — the roll's equivalent of
+     * the grid's `cols.length`, and a REQUIRED guard rather than bookkeeping.
+     *
+     * Anchors are PROVENANCE: they describe where each note's bytes live in a
+     * source laid out one particular way. A restructure (`resizeRoll`) re-lays the
+     * grid while carrying the model's other fields through, so the anchors survive
+     * describing a layout that no longer exists. Widening leaves every note's start
+     * and length intact, which passes the writer's per-note check and would write
+     * the ORIGINAL source back, silently discarding the resize. Narrowing is worse:
+     * the notes that fell outside the new width look to the writer exactly like
+     * notes the user DELETED, and it would splice `~` over them — data loss from a
+     * gesture that edited nothing.
+     *
+     * So the check belongs at the WIDTH, the thing a restructure changes, not at
+     * the item — and in ONE place: `anchorsDescribe` (`serialize.ts`), which both
+     * leaf writers call ([[P329]], #990).
+     */
+    steps: number;
+    /** the width of the model these anchors were ATTACHED to — see `LeafSource` (#1235) */
+    attachedSteps: number;
+}
+/**
+ * One `,`-separated part of the source, and the columns it produced.
+ *
+ * A flat sequence and a `<…>` alternation are the one-part case; a `,`-stack
+ * has several, each with its OWN resolution. `bd sd, hh*4` lays two columns
+ * against four, and the grid shows both on the finer of the two — so a part's
+ * regions are indexed in its own column space and `factor` maps them onto the
+ * shared grid.
+ */
+interface SourcePart<C> {
+    /** the lane `part` index these regions describe */
+    part: number;
+    /** columns per top-level step INSIDE this part */
+    div: number;
+    /**
+     * Shared-grid columns spanned by each of this part's own columns.
+     *
+     * Always 1 for the roll: `parseRollLanes` requires every part to report the
+     * same step count and refuses the pattern otherwise, so a roll's parts share
+     * one column space by construction. The grid is the view that stretches
+     * (`bd sd, hh*4` lays two columns against four).
+     *
+     * With `bars` present, the stretch is per BAR: one of this part's bars spans one bar
+     * of the shared grid.
+     */
+    factor: number;
+    /**
+     * The bars this part is WRITTEN over, when the stack is longer than some part (#1849).
+     *
+     * `<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd` plays for two bars, but the snare is written
+     * once: Strudel's `stack` asks every part for the same cycle and the snare answers the
+     * same bar again (`mini.mjs` `case 'stack'`). So the model draws this part's `bars`
+     * written bars, then REPEATS them until the stack's own `bars` — never stretches them.
+     * Its regions tile the written bars only (columns `[0, bars × columns-per-bar)` of its
+     * own space). An edit in any bar changes that bar only: the writer spells the part bar
+     * by bar as `<t0 … t(Q-1)>` (`spliceBars`, #1854), and back to the plain part when the
+     * bars agree again.
+     *
+     * Absent on every stack that plays for one bar, which is every stack read before
+     * #1849's `<…>` half — so those models are unchanged. Present → `factor` maps one bar
+     * of this part onto one bar of the shared grid.
+     */
+    bars?: number;
+    /** the bytes before this part's content — its `,` and padding — verbatim */
+    before: string;
+    /** the bytes after it */
+    after: string;
+    /** one entry per top-level element, in source order, tiling the part */
+    regions: SourceRegion<C>[];
+}
+/**
+ * The bytes a model was read from, in the pieces the writer puts back.
+ *
+ * Present only on a model parsed from source and not restructured since —
+ * `resize` drops it, because a re-laid grid makes every region a lie. Absent on
+ * models built from scratch, and then the writer rebuilds from the grid, which
+ * is lossy and always was.
+ */
+interface NotationSource<C> {
+    /**
+     * The wrapper the parts sit inside, written back around them verbatim: `<`
+     * and `>` (with the user's padding) for a multi-bar alternation, empty for a
+     * flat sequence. Kept as bytes rather than a flag so `< a b >` keeps its
+     * spaces.
+     */
+    prefix: string;
+    suffix: string;
+    parts: SourcePart<C>[];
+}
+/** Drum/step grid: lanes (sounds) × steps (columns). */
+interface StepGridModel {
+    /** total columns across all bars */
+    steps: number;
+    /**
+     * The source this model was read from, for span surgery on write (#913).
+     * The writer re-emits ONLY the regions whose content the user actually
+     * changed and copies every other region's bytes through untouched, so an
+     * edit cannot destroy notation it never touched (`bd hh*2 sd cp`, nudge a
+     * cell in the `bd`, and the `*2` survives). Absent → the writer rebuilds the
+     * whole string from the grid, which is lossy and always was.
+     */
+    source?: NotationSource<GridCells>;
+    /**
+     * Set when the alternation sits INSIDE the sequence (`bd <sd hh>`, #920) rather
+     * than around the whole cycle. The writer uses this instead of `source`; the
+     * two are mutually exclusive.
+     */
+    altSource?: AltSource<GridCells>;
+    /**
+     * Set by the LEAF-anchored projection (#986) for patterns whose notation no
+     * element re-emit can reproduce. Takes precedence over both of the above and
+     * is TERMINAL: a leaf grid is never rebuilt from its cells, because rebuilding
+     * is exactly what would destroy the notation it was opened to preserve — an
+     * edit it cannot express as a byte replacement is refused instead.
+     */
+    leafSource?: LeafSource;
+    /**
+     * The same leaf spans, overlaid on a view the ELEMENT writer owns (#1010 P4d) —
+     * a write channel, never a projection.
+     *
+     * `leafSource` above answers two questions at once: which writer owns the view,
+     * and where that writer's spans are. Those are different questions, and binding
+     * them is what made P4d a routing problem. Routing is decided once per model;
+     * both writers answer per EDIT. So a per-model choice between them is silently
+     * wrong for half the gestures either way — measured, the leaf-first form buys 17
+     * more faithful documents and costs 1,763 placements and the finer view on the
+     * same views, because a leaf-anchored view takes a new note only where a rest was
+     * indexed (#1154) and has no span to subdivide for a refine (#1058).
+     *
+     * This field asks only the second question. The view stays the element
+     * projection — its columns, its placements, its view scale are untouched — and
+     * the writer tries byte surgery at the note's own span FIRST, falling back to the
+     * element re-emit for any edit surgery cannot express. Nothing restates the leaf
+     * writer's refusal rule anywhere; it is simply asked.
+     *
+     * ⚠ NOT INTERCHANGEABLE WITH `leafSource`, and the asymmetry is the safety
+     * property. A leaf-PROJECTED view is terminal: an edit it cannot express is
+     * REFUSED, because the re-emit is exactly what would destroy the notation that
+     * view was opened to preserve (`amen/4` clearing its only cell comes back as
+     * `<~ ~ ~ ~>`, and the 275 shared-leaf deletes #1160 declines would start being
+     * written by the other writer). Falling back is permitted only here, where the
+     * element writer was already the incumbent and the fallback restores exactly
+     * today's behaviour.
+     *
+     * ⚠ ASKED THROUGH `spans()`, WHICH PROJECTS ON FIRST USE — see `SurgicalOverlay`. The
+     * field became a thunk when #1233 attached it on the CORE path too, where a second
+     * eager projection is x25.5 rather than the derived path's +59%, because the core parse
+     * is cheap enough that the extra projection IS the cost.
+     */
+    surgical?: LazyLeafSource;
+    /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
+    bars?: number;
+    /**
+     * Each bar's OWN column count, when the bars' counts do not nest (#1827): `[3, 4]`
+     * for `<[a b c] [a b c d]>`. Present → `steps` is their sum and every column this
+     * model holds is a DRAWN column, bar b's cells each one `1/barSteps[b]` of a cycle.
+     * Absent → the uniform layout, `steps / bars` columns per bar. Writers see the
+     * shared grid only, through `toUniform*` in `perBar.ts`.
+     */
+    barSteps?: number[];
+    /**
+     * How much finer than the DOCUMENT this model is drawn (#1055, #1116). Absent =
+     * `UNREFINED` — the document's own resolution, which is what every path that does
+     * not apply a scale reports. That default is what makes `documentSteps(model)`
+     * total: a projection which ignores the scale carries 1, so its document width and
+     * its drawn width are the same number, which is the truth for it.
+     */
+    viewScale?: number;
+    /**
+     * Lanes in presentation order. `sound` is the whole token incl. any
+     * `:variant` (e.g. `bd:3`). `part` is the top-level `,`-stack the lane was
+     * written in (absent = 0) — purely syntactic, kept so a hand-written stack
+     * round-trips as the user wrote it instead of being flattened.
+     */
+    lanes: StepLane[];
+    /**
+     * Per-COLUMN velocity, length `steps`, indexed by serialized column (NOT by
+     * lane — a stacked `[bd,sn]` column shares one gain). `1` is neutral; a model
+     * with every gain at `1` (or `gains` absent) emits no `.gain`. Read from /
+     * written to a parallel `.gain("v1 v2 …")` mini aligned to the columns the
+     * grid serializes (rest columns serialize as `~`). Only single-part,
+     * single-bar grids carry gain in the first cut; richer shapes leave any
+     * existing `.gain` untouched (see `serializeStepGain`).
+     */
+    gains?: number[];
+    /**
+     * Set when a `.gain("…")` string was present on read-back but did NOT align
+     * to the grid columns (wrong length, a broadcast `.gain("0.8")`, an `@`/`*`
+     * we didn't write). The grid then leaves that `.gain` byte-identical and the
+     * velocity drag is disabled — we never delete a gain we didn't author.
+     */
+    gainForeign?: boolean;
+}
+/**
+ * One column of one lane: `false` for no trigger, or the note that starts there.
+ *
+ * WHY THIS IS NOT A BOOLEAN (#1010 P4b). A cell used to be one bit, so how long
+ * its note sounds was not part of the model — and a writer cannot preserve an axis
+ * its model never carried ([[PV239]]). Every duration loss on this surface starts
+ * there: the element re-emit has nothing to write with except the view's own
+ * resolution, so `[hh ~]!16` — sixteen notes each sounding for HALF a column —
+ * comes back as sixteen notes of a full column, twice their length, and the pattern
+ * is quietly a different pattern. The piano roll's note has carried `duration`
+ * since the beginning and has never produced one of these.
+ *
+ * `false` rather than `null`/`undefined` for the off cell, so that the many places
+ * which only ask "is anything here?" keep reading exactly as they did —
+ * truthiness, `.some(Boolean)`, `filter(Boolean)`.
+ */
+type StepCell = false | StepNote;
+/** A note occupying one grid cell. */
+interface StepNote {
+    /**
+     * How long the note SOUNDS, in COLUMNS: `1` is exactly this column, `2` spans
+     * the next one too, `0.5` sounds for the first half of it and is silent after.
+     *
+     * COLUMNS, not cycles, and both units are deliberately in play at this boundary.
+     * `Onset.durs` is cycle-relative so that no reader needs to know the grid's
+     * resolution; a CELL is already positioned in the grid, and every consumer of
+     * this field reasons in columns — the ×2/÷2 resolution ops, resize, and (P4c) the
+     * printer deciding whether a note even needs a `[x ~]` to be spelled.
+     * `RollNote.duration` is the same unit, which is what makes the two surfaces
+     * comparable and is the direction #1032 goes.
+     *
+     * FRACTIONAL IS NORMAL — this is where it differs from the roll's integral `@n`.
+     * Measured over the 1535-unit corpus: ~206 units carry a length that is not 1,
+     * and 5 are sub-column (`[hh ~]!16` → 0.5, `[bd@0.5 - - -]` → 0.1429). A
+     * consumer that assumes integers is wrong about real corpus material.
+     */
+    duration: number;
+}
+interface StepLane {
+    sound: string;
+    part?: number;
+    cells: StepCell[];
+}
+/** A single note in the piano roll. */
+interface RollNote {
+    /** note token, e.g. `c3`, `eb4` */
+    pitch: string;
+    /** column index where the note begins */
+    start: number;
+    /**
+     * Length in COLUMNS — frequently fractional, and not a count of `@n`s. `@n` is a
+     * relative weight (`n / Σweights` of the enclosing sequence), so a whole `@n` lands on
+     * whatever share of a column that works out to. The writer spells this back as `@n`
+     * where it can, including fractionally, and declines below one column.
+     */
+    duration: number;
+    /**
+     * Per-note velocity. `1` (or absent) is neutral and emits no `.gain`. Chord
+     * members sharing a `start` share one gain (like duration); on read-back the
+     * group's gain is applied to all its members. Written to a parallel
+     * `.gain("…")` mini that mirrors the note sequence's group/`@n`/rest
+     * structure. Only single-bar rolls carry gain in the first cut.
+     */
+    gain?: number;
+}
+/** Pitched (melodic) grid: notes placed on a pitch × time grid. */
+interface PianoRollModel {
+    /** total columns across all bars */
+    steps: number;
+    /**
+     * The source this model was read from, for span surgery on write (#916) —
+     * the roll's half of what `StepGridModel.source` does for the grid. A region
+     * owns columns `[from, to)` and the notes STARTING in that range are its own;
+     * unchanged ones write their bytes back, so `C D` stays `C D` rather than
+     * coming back lowercased for the crime of being looked at. Absent → the
+     * writer rebuilds from the model, which is lossy and always was.
+     */
+    source?: NotationSource<RollNote[]>;
+    /**
+     * Set when the alternation sits INSIDE the sequence (`0 <2 3> 5`, #920) rather
+     * than around the whole cycle. The writer uses this instead of `source`; the
+     * two are mutually exclusive.
+     */
+    altSource?: AltSource<RollNote[]>;
+    /**
+     * Set by the LEAF-anchored projection (#986 P1b) for patterns whose notation no
+     * element re-emit can reproduce — the roll's half of `StepGridModel.leafSource`,
+     * and TERMINAL for the same reason: a leaf roll is never rebuilt from its notes,
+     * because rebuilding is what would destroy the notation it was opened to
+     * preserve. An edit it cannot express as a byte replacement is refused instead.
+     */
+    leafSource?: RollLeafSource;
+    /**
+     * The same leaf spans overlaid on a view the ELEMENT writer owns (#1010 P4e) — the
+     * roll's half of `StepGridModel.surgical`, with the same meaning and the same
+     * asymmetry against `leafSource` above.
+     *
+     * `leafSource` answers two questions at once: which writer owns the view, and where
+     * that writer's spans are. This field asks only the second. The view stays the
+     * element projection — its columns, its notes, its view scale untouched — and
+     * `serializePianoRollWithExtent` tries byte surgery at each note's own span FIRST,
+     * falling back to the element paths for anything surgery cannot express.
+     *
+     * ⚠ NOT INTERCHANGEABLE WITH `leafSource`, and the asymmetry is the safety property.
+     * A leaf-PROJECTED roll is terminal: an edit it cannot express is REFUSED, because
+     * the rebuild is what would destroy the notation the view was opened to preserve, and
+     * falling back would hand the re-emit the shared-leaf deletes #1160 declines. Falling
+     * back is permitted only here, where the element writer was already the incumbent, so
+     * it can only restore today's behaviour and never introduce a write.
+     *
+     * ⚠ DECIDED ON THE ROLL, NEVER BY ANALOGY WITH THE GRID. `projectPianoRollDerived`
+     * records the two surfaces answering the same routing flip with opposite signs — the
+     * roll loses ten units of reach where the grid gains five — which is exactly why P4d's
+     * result could not simply be assumed here and why every figure behind this field was
+     * taken on the roll.
+     *
+     * ⚠ ASKED THROUGH `spans()`, exactly as the grid's is — see `SurgicalOverlay` for why
+     * the projection is deferred and what the memo guarantees.
+     */
+    surgical?: LazyRollLeafSource;
+    /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
+    bars?: number;
+    /**
+     * Each bar's OWN column count, when the bars' counts do not nest (#1827): `[3, 4]`
+     * for `<[a b c] [a b c d]>`. Present → `steps` is their sum and every column this
+     * model holds is a DRAWN column, bar b's cells each one `1/barSteps[b]` of a cycle.
+     * Absent → the uniform layout, `steps / bars` columns per bar. Writers see the
+     * shared grid only, through `toUniform*` in `perBar.ts`.
+     */
+    barSteps?: number[];
+    /**
+     * How much finer than the DOCUMENT this model is drawn — the roll's half of
+     * `StepGridModel.viewScale`, with the same meaning and the same default (#1055,
+     * #1116). Absent = `UNREFINED`, which is the truth for every projection that does
+     * not apply a scale and is what keeps `documentSteps(model)` total.
+     *
+     * ⚠ A ROLL COLUMN IS NOT A GRID COLUMN: `steps` here is a column COUNT that
+     * `start`/`duration` are measured in, so a refine multiplies all three together.
+     */
+    viewScale?: number;
+    notes: RollNote[];
+    /** see `StepGridModel.gainForeign` — a `.gain` we read but don't manage. */
+    gainForeign?: boolean;
+    /**
+     * The pitch tokens are bare integers (`note("60 62")` MIDI, `n("0 1 2")`
+     * degrees) rather than note names (#469). Row math is the same (the number
+     * IS the row), but new/dragged notes must emit numbers, not `c4`, so the
+     * pattern round-trips. A pattern mixes one convention or the other, never
+     * both (mixed is rejected at parse).
+     */
+    numeric?: boolean;
+}
+/**
+ * WHY a view declined a pattern — the gate that actually stopped it (#990).
+ *
+ * Three writers stack behind one parse call (syntactic core → element projection
+ * → leaf projection), and before this the `reason` string was whichever one
+ * declined FIRST — almost always the core, describing a subsystem that often had
+ * nothing to do with why the unit was unavailable. Measured over 1500 real units,
+ * every pattern reporting "nested groups are beyond the editable subset" was in
+ * fact stopped by a wrong-surface value or an unstable period; not one was stopped
+ * by anything to do with nesting. A gate names the real cause.
+ *
+ * These are not a new list of features. Each is one face of the single editability
+ * invariant — a played onset is editable iff it maps to a unique disjoint source
+ * span, in a view that stays true:
+ *   - `wrong-surface`      the values belong to the OTHER view (a drum pattern
+ *                          asked of the piano roll, a number asked of the grid).
+ *                          Not an editability failure — a routing fact.
+ *   - `no-note-content`    nothing placeable sounds at all: a params/signal value,
+ *                          a zero-length hap, silence, or a query that threw.
+ *   - `unstable-period`    what it plays does not repeat inside the projection's
+ *                          bar window, so any view of it stops being true.
+ *   - `mixed-pitch-domain` numeric and named pitches in one pattern (roll only).
+ *   - `irrational-onset`   an onset/duration/boundary that lands on no column.
+ *   - `resolution`         the columns needed exceed the step ceiling.
+ *   - `element-tiling`     the source's top-level elements do not tile the played
+ *                          columns — the element writer's half of the bijection.
+ *   - `no-leaf-anchor`     a played note has no source token of its own, or two
+ *                          notes claim overlapping bytes — the leaf writer's half.
+ *   - `note-crosses-bar`   a played note does not fit inside the bar it starts
+ *                          in, so no column layout can hold it. Deliberately NOT
+ *                          folded into `no-leaf-anchor`: such a note has a
+ *                          perfectly good source token, and folding it in would
+ *                          overstate the write-back guard — the exact kind of
+ *                          misattribution this vocabulary exists to end.
+ *   - `edit-unsafe`        the write-back probe and the engine disagreed.
+ *   - `view-unusable`      the view opens but no single edit is expressible.
+ *   - `no-finer-view`      a REFINED request came back unrefined: the path that
+ *                          owns the pattern answered, and its answer does not
+ *                          carry the requested scale. Distinct from
+ *                          `view-resolution`, which is the ceiling saying no —
+ *                          here nothing was too large, the owner simply has no
+ *                          finer view to give. Reachable only through a refined
+ *                          ask, which is why it went unnamed until #1132.
+ *   - `not-a-pattern`      it does not reify at all; the core's own syntax
+ *                          message is the better answer and is kept.
+ */
+type Gate = 'wrong-surface' | 'no-note-content' | 'unstable-period' | 'mixed-pitch-domain' | 'irrational-onset' | 'resolution'
+/**
+ * The VIEW asked for more columns than it may draw (#1055). Distinct from
+ * `resolution`, which is the DOCUMENT's own blow-up guard: this one says the
+ * document is fine and the requested magnification is not. Cannot fire while the
+ * view scale is `UNREFINED`, since the document ceiling (64) is below the view
+ * ceiling (256) — see `viewResolution.ts`.
+ */
+ | 'view-resolution' | 'element-tiling' | 'no-leaf-anchor' | 'note-crosses-bar' | 'edit-unsafe' | 'view-unusable' | 'no-finer-view'
+/**
+ * The source spells this content with a backslash escape (#1254). Narrower than
+ * `not-a-pattern`, and separated from it deliberately: that gate means "nothing
+ * reified, and the core's own message names the syntax", which is the better
+ * answer and is why an unreified refusal is allowed to stay unnamed. This one is
+ * the case where the core's message CANNOT be the better answer, because the
+ * backslash is not something the author wrote into the pattern.
+ *
+ * A double-quoted literal is reified by the transpiler from `node.value`, the
+ * JS-COOKED string, while the editor models the DOCUMENT SLICE between the quotes
+ * — so every JS escape leaves a backslash on our side that the engine never sees.
+ * A backtick literal cannot diverge (the raw text is what runs), and there the
+ * backslash really is in the pattern and krill really does refuse it. The sentence
+ * below is therefore written to be true of both, naming what is observable in the
+ * string rather than a cause only the reader could know.
+ */
+ | 'escaped-source' | 'not-a-pattern';
+/**
+ * Parse outcome. `ok: false` is a first-class result, not an exception — every
+ * panel checks it on open and disables itself (code-only) when the pattern is
+ * outside the editable subset.
+ *
+ * `gate` is present whenever a projection ran and declined — the machine-readable
+ * half of `reason`, so a measurement buckets by cause instead of by string match.
+ * Absent when the refusal is the syntactic core's own (nothing reified).
+ */
+type ParseResult<M> = {
+    ok: true;
+    model: M;
+} | {
+    ok: false;
+    reason: string;
+    gate?: Gate;
+};
+
+/**
+ * How much finer than the document the view draws. A whole-number multiplier ≥ 1;
+ * `1` is the document's own resolution. Never an absolute column count — see the
+ * header for why that distinction is the whole reset rule.
+ */
+type ViewScale = number;
+
+/**
+ * THE PUBLIC ENTRY, and the only place a caller can express a view resolution.
+ *
+ * #1055 threaded `ViewScale` into the DERIVED projections. But the core answers first
+ * and answers for most patterns — 783 of the 958 corpus units that open the grid,
+ * including `bd ~ sn ~`, the case #1052 is named after — so a scale that stopped at
+ * the derived path could not reach 94% of the free-zone offers it exists to serve
+ * (#1116). The core now carries it too, and the scale enters HERE so both halves get
+ * the same number from the same caller.
+ *
+ * The order is unchanged and deliberately so ([[PK58]]): core, then derived. A view
+ * scale must NOT re-route a pattern to a different projection, because the core and
+ * the derived path build different `source` structures and therefore hand the document
+ * to different writers — zooming would silently swap the writer that owns the user's
+ * bytes. The finer view has to come from whichever writer already owns the pattern.
+ *
+ * ⚠ THAT GUARANTEE IS WHY OWNERSHIP IS ASKED AT `UNREFINED`, ALWAYS, and the first
+ * version of this entry did not have it. Asking the core AT THE SCALE conflates two
+ * different noes: "I do not own this pattern" (fall through to the derived path) and
+ * "I own it but cannot draw it finer yet" (the alt-element path's refusal). Both
+ * arrive as `ok: false`, so the scale refusal fell through and the derived projection
+ * answered instead — measured, **20 grid and 17 roll units changed writer on a zoom**,
+ * and 36 of the 37 were faithful magnifications that would have shipped in silence.
+ * Routing is a property of the PATTERN, so it is decided at the pattern's own
+ * resolution and the scale is applied only by the path that already owns it.
+ */
+declare function parseStepGrid(mini: string, viewScale?: ViewScale): ParseResult<StepGridModel>;
+/**
+ * THE PUBLIC ENTRY for the roll, and the only place a caller can express a view
+ * resolution — the roll's twin of `parseStepGrid`, for the same reason and with the
+ * same ordering guarantee (#1116). 412 of the 544 corpus units that open a roll are
+ * core-parsed, so a scale that stopped at the derived projection was unreachable for
+ * 93% of the free-zone offers it exists to serve.
+ *
+ * Core, then derived, unchanged: a view scale must not re-route a pattern to a
+ * different projection, because the two build different `source` structures and so
+ * hand the document to different writers. Ownership is therefore asked at `UNREFINED`
+ * — see `parseStepGrid` for the measurement that forced this, and for why a core that
+ * refuses the SCALE must not read as a core that refuses the PATTERN.
+ */
+declare function parsePianoRoll(mini: string, viewScale?: ViewScale): ParseResult<PianoRollModel>;
+
+/**
+ * Notation models → mini-notation. The round-trip law (golden-tested):
+ *   serialize(parse(s).model) === s   for canonical strings
+ *   parse(serialize(m)).model ≡ m
+ *
+ * Canonical form: single-space separated, lanes in first-appearance order,
+ * multi-bar patterns as a whole-string `<...>` alternation (one slot per bar),
+ * `,`-stack parts in ascending part order. Serializing a model the subset
+ * can't express (overlapping roll notes, a note straddling a bar line) returns
+ * null and the panel keeps the document untouched.
+ */
+
+/**
+ * The mini a grid model writes back, or null where it has no spelling.
+ *
+ * Every caller that only needs the bytes uses this; the extent above is for the
+ * ones asking how much of the document moved. One implementation, so the two can
+ * never disagree about what was written.
+ */
+declare function serializeStepGrid(model: StepGridModel): string | null;
+/**
+ * The mini a roll model writes back, or null where it has no spelling.
+ *
+ * A projection of the function above, never a second implementation, so the bytes a
+ * caller gets and the path the census reads can never describe different writes.
+ */
+declare function serializePianoRoll(model: PianoRollModel): string | null;
+
+/**
+ * Note-token ↔ MIDI helpers for the piano roll's vertical axis.
+ *
+ * Numeric convention matches the engine's `noteToMidi` (`c3 = 48`,
+ * `eb4 = 63`). Accidentals accept Strudel's three spellings on read — `#`,
+ * `b`, and `s` (`cs3`) — and emit `#` on write. Conversion only feeds row
+ * placement and newly-created notes; the round-trip itself stores the token
+ * verbatim, so emission style never threatens fidelity for existing notes.
+ */
+/**
+ * `c3` / `c#3` / `cs3` / `eb4` → MIDI number, or null if not a note token.
+ * The octave is OPTIONAL — a bare name (`c`, `eb`, `f#`) defaults to octave 3,
+ * matching Strudel (`note("c")` plays C3). A bare integer (`60`, `0`, `-7`)
+ * maps to that row directly — `note("60")` is MIDI; `n("0")` is a degree/index.
+ * Either way the number IS the row, and the verbatim token is what the
+ * serializer writes back (#469).
+ */
+declare function pitchToMidi(token: string): number | null;
+/** MIDI number → canonical note token (sharps as `#`). Inverse of pitchToMidi. */
+declare function midiToPitch(midi: number): string;
+/** Is this MIDI pitch a black key (for striping the roll's pitch rows)? */
+declare function isBlackKey(midi: number): boolean;
+
+/**
+ * Insert a note into a roll, resolving overlaps so the result stays a flat,
+ * tileable sequence (what the serializer requires). DAW-style resolution:
+ *  - a group already at `start` → the note joins the chord, adopting its duration.
+ *    ⚠ THAT IS A PRODUCT RULING, NOT A WRITER CONSTRAINT, and the distinction is the
+ *    one #1310 was about. "Chord members share one duration" was true of what this
+ *    file could SPELL, and since the region writer learned parallel lanes it is not:
+ *    `[g3@2 ~ ~, [c3,e3]@4]` says a chord whose members differ, and round-trips. So
+ *    honouring a different requested length is available and we decline it — adding a
+ *    voice to a chord is a gesture that shares the chord's length, and the compact
+ *    spelling is the one the user wrote. Chosen, not forced;
+ *    ⚠ where the notes at `start` DISAGREE about their length there is no single
+ *    duration to adopt, and today the answer is whichever note the array holds first.
+ *    That is live and pre-existing — 856 asks over the corpus reach such a start — and
+ *    it is #1314, to be fixed with #1315 since both change what the writer is asked to
+ *    spell and need one reach measurement between them;
+ *  - an earlier note OF THE SAME PITCH sustaining across `start` → it trims to end at
+ *    `start`. Other pitches sustaining through the column are left alone (#1310): they
+ *    are voices the gesture did not touch, and the region writer can now spell a chord
+ *    whose members have different lengths, so nothing forces them shorter;
+ *  - the next group (or the grid end) caps the new note's duration.
+ */
+declare function placeNote(model: PianoRollModel, pitch: string, start: number, duration: number, opts?: RollWriteOptions): PianoRollModel;
+/** Options a caller may tighten a roll write with. */
+interface RollWriteOptions {
+    /**
+     * Require the result to READ BACK, not merely to spell (#1331). Off by default because
+     * it parses, and the roll's writers run per drag frame; the panel turns it on once at
+     * gesture commit, where one parse is affordable.
+     */
+    readback?: boolean;
+}
+
+type ResizeMode = 'spread' | 'pad';
+/**
+ * Both modes clamp lengths (`clampLane`) for the same reason `quantizeStepGridTo` and
+ * `resizeRoll` do: rounding hits onto a coarser grid, or truncating one, can leave a
+ * note reaching past the next hit or past the end of the grid, and neither is
+ * something the writer could spell. The roll has always clamped here; the grid could
+ * not, because a cell had no length to clamp (#1010 P4b).
+ */
+declare function resizeGrid(model: StepGridModel, nextSteps: number, mode: ResizeMode): StepGridModel;
+declare function resizeRoll(model: PianoRollModel, nextSteps: number, mode: ResizeMode): PianoRollModel;
+
+/**
+ * WHAT SETTING THE GRID TO `target` DID TO THE NOTES — reported by the op, never
+ * reconstructed from its output (#1061).
+ *
+ * The control has to tell the user what a press costs BEFORE they make it, and a
+ * coarsening can cost three different things independently. `SlotState` names the
+ * MECHANISM (`lossless` / `quantize`); this names the CONSEQUENCES, which is what the
+ * copy is actually about. Splitting them is deliberate: one control with one label
+ * covering several effects is what left the last gate certifying a control that no
+ * longer existed, and widening a single verdict until the arithmetic comes out buries
+ * the very distinction the user needs.
+ *
+ * Every field is counted inside the loop that causes it, so a caller cannot describe a
+ * write the op did not make. A DECLINED op reports `NO_EFFECT` — nothing happened, so
+ * nothing is claimed.
+ */
+interface GridResolutionEffect {
+    /**
+     * notes held at one column because scaling would have put them BELOW one, and the
+     * grid has no spelling for half a column. These sound LONGER than they did — the
+     * length grows to the coarsest thing the new grid can say (#1061).
+     */
+    lengthened: number;
+    /** notes whose onset moved off its exact proportional position — i.e. timing changed */
+    snapped: number;
+    /** notes that landed on a column their own lane had already filled, and merged */
+    merged: number;
+}
+/**
+ * how setting the grid to `target` slots behaves, for the control's label/state.
+ *
+ * `view` is the free zone (#1057): the click changes only how finely the panel DRAWS
+ * the pattern and leaves the document byte-identical. Every other member still writes.
+ */
+type SlotState = 'active' | 'view' | 'lossless' | 'quantize' | 'disabled';
+
+/** The literal combinator name — round-trip identity (PV122 #3). */
+type ArrangeMode = 'arrange' | 'cat' | 'slowcat';
+/** Per-arm source ranges within a detected combinator call. One arm = one clip. */
+interface ArrangeArmRange {
+    /**
+     * Absolute `[start, end)` of the weight number literal — present for
+     * `arrange` arms (the `n` in `[n, pat]`), `null` for `cat`/`slowcat` arms
+     * (whose weight is an implicit `1`, with no literal to edit).
+     */
+    weightRange: [number, number] | null;
+    /** Absolute `[start, end)` of the arm's pattern expression. */
+    patternRange: [number, number];
+    /**
+     * Absolute `[start, end)` of the WHOLE arm: the `[n, pat]` array for
+     * `arrange`, else identical to `patternRange`. This is the unit a
+     * reorder/remove/insert op moves.
+     */
+    armRange: [number, number];
+}
+/** A detected `arrange(...)`/`cat(...)`/`slowcat(...)` call and its arms. */
+interface ArrangeCall {
+    mode: ArrangeMode;
+    /** Absolute `[start, end)` of the whole `mode(...)` call expression. */
+    callRange: [number, number];
+    /** Absolute `[start, end)` of the callee identifier (`arrange`/`cat`/…). */
+    calleeRange: [number, number];
+    /** Absolute `[start, end)` of the argument region between `(` and `)`. */
+    argsRange: [number, number];
+    /** Arms in source order; clip order is arm order (PV122 #1). */
+    arms: ArrangeArmRange[];
+}
+/**
+ * The innermost `arrange|cat|slowcat(...)` call whose range contains `pos`, or
+ * null. "Innermost" so a cursor on a clip inside a nested combinator binds THAT
+ * combinator (mirrors `chunkDetect.innermostChainUnder`, #395). `pos` is
+ * typically `Arrange.arms[i].loc[0].start` — the anchor the IR already carries.
+ */
+declare function detectArrangeAt(doc: string, pos: number): ArrangeCall | null;
+/** Every combinator call in the doc, in source order. For tests / sweeps. */
+declare function detectAllArrangeCalls(doc: string): ArrangeCall[];
+/**
+ * The bare PATTERN expression of the top-level track statement containing `pos`,
+ * when that track is NOT already a combinator (so there is no `arrange`/`cat` to
+ * reorder). Returns the expression's absolute `[start, end)` — the range §2.1
+ * `wrapBare` wraps to INTRODUCE a combinator when a steady pattern is first
+ * placed in time (the "move-on-a-bare-track" case).
+ *
+ * Returns null when: the doc doesn't parse; `pos` isn't inside a top-level
+ * expression statement; or that statement already contains a combinator (then
+ * `detectArrangeAt` owns the edit). A `$:`/label prefix and any trailing
+ * statements are excluded — we return the EXPRESSION range only, so a wrap edits
+ * just the pattern and leaves the rest of the line byte-identical.
+ */
+declare function detectBarePattern(doc: string, pos: number): {
+    patternRange: [number, number];
+} | null;
+
+/**
+ * writeback — chunk → document.
+ *
+ * The mutation half of the visual-editing spine. Visual panels read a
+ * `ChunkInfo` (see `chunkDetect.ts`) to learn the doc offsets they may edit,
+ * then route every edit through here so it is:
+ *
+ *  1. **Surgical** — only the named offset range changes; the rest of the
+ *     statement (mini-notation quotes, spacing, indent) stays byte-identical.
+ *     This is the whole reason write-back panels edit TEXT and not the IR:
+ *     `toStrudel` is a whole-statement canonical regenerator that would
+ *     reformat the leaf layer (design doc Appendix A).
+ *  2. **Origin-tagged** — while a panel edit is applied, `currentSource` names
+ *     it, so the host's `onDidChangeModelContent` listener can tell a panel
+ *     edit (re-eval audio, keep panel model) from a typed edit (re-parse the
+ *     panel model). Monaco's content-change event carries no source of its
+ *     own, so the flag is set synchronously around the edit — the listener
+ *     fires inside `pushEditOperations`, while the flag is up.
+ *  3. **One undo step** — every call is a single `pushEditOperations`, so even
+ *     a multi-cell drag (`replaceRanges`) is one Ctrl-Z.
+ *
+ * Range discipline: offsets come from a `ChunkInfo` and are valid ONLY against
+ * the exact doc it was detected from. Use `applyFresh` (or call `isChunkFresh`
+ * yourself) before every write — stale offsets corrupt unrelated code.
+ *
+ * The pure helpers (`formatNumber`, `normalizeEdits`) are string/number math
+ * with no Monaco dependency, so they unit-test with plain assertions. The
+ * `Writeback` class is the thin Monaco-bound shell, observed in the app.
+ */
+
+/**
+ * Which panel originated an edit. The host content-change listener switches on
+ * this to decide whether to re-parse its model (typed edit) or leave it
+ * (panel-originated edit it already knows about).
+ */
+type WriteSource = 'knob' | 'seq' | 'roll' | 'arrange.weights' | 'arrange.structure' | 'transport' | 'mixer' | 'rename' | 'automation' | 'region.trim';
+/** A single replacement, addressed by absolute pre-edit doc offsets. */
+interface OffsetEdit {
+    /** absolute [start, end) offsets in the document as it was when detected */
+    range: [number, number];
+    /** replacement text ('' to delete) */
+    text: string;
+}
+/**
+ * Format a number for insertion as a source literal. Drag handlers produce
+ * values like `0.30000000000000004` or `2.9999999`; emitting those verbatim
+ * would corrupt the user's code with float noise. We round to `maxDecimals`
+ * and strip trailing zeros, so `0.3`, `2`, `-1.5` come out clean.
+ *
+ * Pure — no Monaco.
+ */
+declare function formatNumber(v: number, maxDecimals?: number): string;
+/**
+ * Validate a batch of edits and return them sorted ascending by start offset.
+ * Throws on any overlap — overlapping ranges in a single `pushEditOperations`
+ * have undefined application order and would corrupt the doc. Zero-width edits
+ * (inserts) are allowed and never count as overlapping a neighbour that starts
+ * at the same offset only if texts don't both target it; we conservatively
+ * reject ranges that share interior space.
+ *
+ * Pure — no Monaco.
+ */
+declare function normalizeEdits(edits: OffsetEdit[]): OffsetEdit[];
+/**
+ * Apply a batch of offset edits to a string and return the result. Pure mirror
+ * of what `Writeback.apply` does to a Monaco model — used by callers that edit
+ * plain text (arrangement round-trip / parity tests) and to preview an edit
+ * before it touches the document. Edits are validated + sorted by
+ * `normalizeEdits`, then spliced from the END so earlier offsets stay valid.
+ *
+ * Pure — no Monaco.
+ */
+declare function applyEdits(doc: string, edits: OffsetEdit[]): string;
+/**
+ * Monaco-bound edit sink. One per editor. Construct with the editor instance
+ * and the `monaco` namespace (for `Range`). All edits go through `apply`, which
+ * keeps the origin flag up across the synchronous content-change event.
+ */
+declare class Writeback {
+    private readonly editor;
+    private readonly monaco;
+    private writingSource;
+    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+    private inGesture;
+    /** whether the in-flight gesture has applied any edit — gates the one re-eval
+     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
+    private gestureDidEdit;
+    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
+    private reevalTimer;
+    constructor(editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco);
+    /**
+     * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+     * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+     * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+     * the undo grouping is affected. Idempotent if already in a gesture.
+     */
+    beginGesture(): void;
+    /** Close the gesture, sealing all its edits as one undo step — and, if the
+     * gesture changed anything, make it audible immediately (one re-eval on
+     * release, not per drag frame). */
+    endGesture(): void;
+    /**
+     * The source of the edit currently being applied, or null. The host's
+     * `onDidChangeModelContent` listener reads this synchronously to attribute
+     * the change. It is non-null ONLY for the duration of `apply`.
+     */
+    get currentSource(): WriteSource | null;
+    /** Replace a single offset range. One undo step. */
+    replaceRange(range: [number, number], text: string, source: WriteSource): void;
+    /**
+     * Replace several non-overlapping ranges as ONE edit — one undo step. Used
+     * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
+     * the whole gesture).
+     */
+    replaceRanges(edits: OffsetEdit[], source: WriteSource): void;
+    /** Insert text at an offset (zero-width edit). */
+    insertAt(offset: number, text: string, source: WriteSource): void;
+    /** Delete an offset range. */
+    deleteRange(range: [number, number], source: WriteSource): void;
+    /**
+     * Freshness-guarded write. Re-reads the live model text and refuses the edit
+     * if the chunk's statement no longer matches what it was detected from
+     * (the doc changed under the panel). Returns true if applied, false if stale.
+     * Prefer this over the raw methods on any path that can race a typed edit.
+     */
+    applyFresh(chunk: ChunkInfo, edits: OffsetEdit[], source: WriteSource): boolean;
+    private apply;
+    /**
+     * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
+     * the moment it commits. Centralised here so every visual surface — sequencer,
+     * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
+     * re-evals only a PLAYING file, and only when live mode isn't already doing
+     * it, so this never auto-starts audio nor double-evaluates.
+     *
+     * Trailing-debounced: rapid successive commits (e.g. clearing several
+     * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
+     * which also lets the Monaco→file-store sync settle so the re-eval reads the
+     * final content rather than racing a not-yet-synced edit.
+     */
+    private requestLiveReeval;
+}
+
+/**
+ * arrange/serialize — structural ops on a detected combinator call.
+ *
+ * Each op is PURE: it takes an `ArrangeCall` (from `arrange/parse`) + the live
+ * doc text and returns `OffsetEdit[]` addressed by pre-edit absolute offsets —
+ * the exact shape `writeback.replaceRanges` consumes. We edit TEXT, not the IR:
+ * `toStrudel` is a whole-statement canonical regenerator that would reformat
+ * the leaf layer, so (like `notation/serialize`) we never call it. That is also
+ * why #434 (toStrudel mislabels fastcat/Seq as `cat()`) does NOT block this —
+ * no op here re-emits through `toStrudel`.
+ *
+ * Byte-fidelity: `setWeight` on an `arrange` arm changes ONLY the weight digits;
+ * the structural ops (reorder/insert/remove/wrap) keep each arm's pattern text
+ * verbatim and touch only the combinator scaffolding (callee name, brackets,
+ * separators). Inter-arm separators normalise to `, ` on a reorder — that IS
+ * the targeted region.
+ *
+ * No Monaco, no runtime IR import (P172).
+ */
+
+/**
+ * Set arm `i`'s cycle weight to `weight`.
+ *
+ *  - On an `arrange` node: replace ONLY the weight literal — byte-minimal.
+ *  - On a `cat`/`slowcat` node: weight 1 is a no-op (their implicit weight).
+ *    A weight ≠ 1 PROMOTES the node to `arrange` (PV122 #3 — `cat` can't
+ *    express weights): rename the callee and wrap every arm `pat` → `[w, pat]`
+ *    (the target arm gets `weight`, the rest get `1`), keeping each pattern's
+ *    bytes verbatim.
+ */
+declare function setWeight$1(doc: string, call: ArrangeCall, i: number, weight: number): OffsetEdit[];
+/**
+ * Move arm `from` to index `to`. Rebuilds the argument list in the new order,
+ * each arm's text verbatim, joined by `, `. (Clip order = arm order, PV122 #1.)
+ */
+declare function reorderArm$1(doc: string, call: ArrangeCall, from: number, to: number): OffsetEdit[];
+/**
+ * Insert `armSource` as a new arm at index `at` (clamped to `[0, arms.length]`).
+ * The caller supplies a well-formed arm: a `[n, pat]` tuple for an `arrange`
+ * node, a bare pattern for `cat`/`slowcat`.
+ */
+declare function insertArm$1(doc: string, call: ArrangeCall, at: number, armSource: string): OffsetEdit[];
+/**
+ * #1461 — INSERT SILENCE: a new, empty section after arm `i`, as wide as it is.
+ *
+ * ## Why an EMPTY section is the right thing to add
+ *
+ * The obvious objection, and it was raised on #1347: a section you must then go
+ * and type into is worse than duplicate, which at least hands you something that
+ * plays. That objection answers a question this gesture is not asking. Duplicate
+ * writes CONTENT; this writes TIME. The DAW command it mirrors is called Insert
+ * Silence for that reason — you reach for it when the song needs room, not when
+ * you know what goes in the room. They are complements, and the arrangement is
+ * the one place in Stave where making space is a move in its own right.
+ *
+ * `silence` rather than a copy of anything, because it is the same vocabulary
+ * `silenceArm` already writes for a gap, and a document that spells its holes
+ * one way everywhere is one a reader can trust.
+ *
+ * ## The weight is copied as TEXT, never as a number
+ *
+ * A real document writes `[M*8, stack(…)]`, and the weight is an expression the
+ * parser reports a range for and no numeric value. Reading it as a number would
+ * turn `M*8` into `8` — silently pinning a section that was meant to follow a
+ * tempo variable. So the new arm carries the same BYTES the old one did, and a
+ * `cat`/`slowcat` arm (whose weight is an implicit 1 with no literal at all)
+ * gets a bare pattern, matching what its siblings look like.
+ *
+ * Returns no edits when `i` names no arm — there is nothing to take a width from.
+ */
+declare function insertSilenceArm$1(doc: string, call: ArrangeCall, i: number): OffsetEdit[];
+/**
+ * Remove arm `i`, taking one adjacent `, ` separator with it. Refuses to empty
+ * the combinator — a lane must keep ≥ 1 clip (PV122 #5); removing a sole arm is
+ * a delete-the-whole-track op handled elsewhere, so this returns no edits.
+ */
+declare function removeArm$1(doc: string, call: ArrangeCall, i: number): OffsetEdit[];
+/**
+ * #491 — GAP delete: silence arm `i` IN PLACE, keeping its cycle width. The
+ * DAW-standard plain Delete leaves a gap (the arrangement timeline is absolute —
+ * later clips do NOT slide left), unlike `removeArm` which ripples the arm out and
+ * shortens the loop. We replace ONLY the arm's pattern with `silence`, preserving
+ * the `[n, …]` weight wrapper (and every other arm verbatim):
+ *   `[n, pat]`        →  `[n, silence]`   (arrange arm — width n kept)
+ *   `pat` (cat arm)   →  `silence`        (implicit width 1 kept)
+ * Already-silent arm → no edits. Silencing every arm is allowed (a muted track,
+ * `arrange([n, silence])` is valid) — unlike `removeArm`, this never empties the
+ * combinator, so there's no sole-arm guard. Pure text surgery (PV123).
+ */
+declare function silenceArm$1(doc: string, call: ArrangeCall, i: number): OffsetEdit[];
+/**
+ * #1560 — point section `i` at a different PART: replace the arm's pattern
+ * expression, keeping its `[n, …]` weight wrapper and every other arm verbatim.
+ *
+ *   `[8, bass]`  →  `[8, bassWithMelody]`     (width 8 kept)
+ *   `pat` (cat arm)  →  `other`               (implicit width 1 kept)
+ *
+ * ⚠ THIS IS `silenceArm` WITH THE PATTERN CHOSEN BY THE CALLER, and that is the
+ * whole implementation — `silenceArm` is this op with `'silence'` hard-coded. A
+ * gap and a reassignment are the same edit to the document and differ only in
+ * what the user meant, so they share the shape rather than each inventing one.
+ *
+ * ⚠ THE SOURCE IS WRITTEN VERBATIM AND IS NOT VALIDATED HERE, deliberately. An
+ * arrange arm is an EXPRESSION slot — `bass`, `stack(a, b)` and `"<c e g>"` are
+ * all legal there — so there is no vocabulary to check against, and a primitive
+ * that guessed at one would refuse documents the language allows. What a gesture
+ * may OFFER is a narrower question with a different answer, and it is asked in
+ * `listSectionParts` (`arrange/parts.ts`), which knows the call's own position in
+ * the document and can therefore exclude the names that would recurse. The pick
+ * spelling's counterpart does check, because there a head is a NAME that must
+ * resolve inside the call rather than an expression.
+ *
+ * Declines, each returning no edits rather than a rewrite that means something
+ * else: no such arm; an empty or blank source (which would delete the section's
+ * content and leave a syntax error); the part it already plays (a no-op write
+ * that would still cost an undo step and a re-eval).
+ */
+declare function setArmPattern(doc: string, call: ArrangeCall, i: number, source: string): OffsetEdit[];
+/**
+ * §2.1 "introduce the combinator". A bare steady pattern has no `arrange` to
+ * edit; the first time it is placed in time it must be WRAPPED:
+ *   `pattern`  →  `arrange([leadingWeight, silence], [patternWeight, pattern])`
+ * `patternRange` is the bare pattern's absolute `[start, end)` (e.g. a chunk's
+ * `exprRange`). The pattern's bytes are preserved verbatim between the inserts.
+ */
+declare function wrapBare(patternRange: [number, number], leadingWeight: number, patternWeight: number): OffsetEdit[];
+/**
+ * #489 — MATERIALIZE a bare loop into an `arrange` by carving a one-cycle gap at
+ * `barIndex` over an arrangement of `span` whole cycles. The bare pattern (one
+ * implicit loop) becomes:
+ *   `pat`  →  `arrange([barIndex, pat], [1, silence], [span−barIndex−1, pat])`
+ * with zero-width arms dropped (gap at bar 0 → no leading `pat`; gap at the last
+ * bar → no trailing `pat`). `pat`'s bytes are preserved verbatim in each surviving
+ * arm. This is the EXPLICIT "introduce the combinator" entry-point for a uniform
+ * loop — the deliberate counterpart of the removed drag-to-wrap (#488).
+ *
+ * Refuses to empty the track: deleting the SOLE bar (span 1, or every non-gap arm
+ * gone) would leave `arrange([1, silence])` = all silence, so it returns no edits
+ * (a lane keeps ≥1 sounding clip — PV122 #5). `span ≥ 1`, `barIndex` clamped to
+ * `[0, span)`. Pure text surgery; never re-emits through `toStrudel` (PV123).
+ */
+declare function materializeBareDelete(doc: string, patternRange: [number, number], barIndex: number, span: number): OffsetEdit[];
+/**
+ * #489 — MATERIALIZE a bare loop into an `arrange` by SPLITTING it at a whole-cycle
+ * boundary `barIndex` over an arrangement of `span` whole cycles. The bare pattern
+ * (one implicit loop spanning the song) becomes two ADDRESSABLE arms with IDENTICAL
+ * sound — a uniform loop tiled across `span` cycles plays the same whether expressed
+ * as one bare loop or as `arrange([k, pat], [span−k, pat])` (grounded in haps):
+ *   `pat`  →  `arrange([barIndex, pat], [span−barIndex, pat])`
+ * with `pat`'s bytes preserved verbatim in BOTH arms. This is the split-first
+ * materialization entry-point (D1, reframe): selecting the whole bare clip and
+ * splitting it introduces the combinator with no audible change, after which the
+ * resulting arms are individually selectable and the existing arrange ops
+ * (`removeArm` → carve a gap, `reorderArm`, `splitArm`, `setWeight`) apply.
+ *
+ * Both halves must be ≥ 1 whole cycle, so `span ≥ 2` is required (a 1-cycle loop
+ * has no interior boundary — extend it first, #487); `barIndex` is clamped to
+ * `[1, span−1]`. `span < 2` returns no edits. Pure text surgery; never re-emits
+ * through `toStrudel` (PV123).
+ */
+declare function materializeBareSplit(doc: string, patternRange: [number, number], barIndex: number, span: number): OffsetEdit[];
+/**
+ * Split arm `i` at a whole-cycle boundary: `[n, pat]` → `[n₁, pat], [n₂, pat]`
+ * (same pattern verbatim in both halves), where `n₁ = firstWeight` and
+ * `n₂ = n − firstWeight`. Both halves must be ≥ 1 whole cycle, so this only
+ * applies to an `arrange` arm whose weight is ≥ 2; `firstWeight` is clamped to
+ * `[1, n−1]`. Returns no edits for a `cat`/`slowcat` arm (implicit weight 1 —
+ * a single cycle can't be sliced into two whole cycles) or a weight-1 arm.
+ */
+declare function splitArm$1(doc: string, call: ArrangeCall, i: number, firstWeight: number): OffsetEdit[];
+
+/**
+ * How many arms of this call carry section `i`'s name — 1 normally, more when
+ * the section RETURNS. Mirrors the pick spelling's function of the same name.
+ *
+ * Returns 0 whenever `renameSection` would decline, so a caller that shows the
+ * count and then writes cannot be told "2 sections" and handed no edits.
+ */
+declare function countSectionArms$1(doc: string, call: ArrangeCall, i: number): number;
+/**
+ * Rename section `i` — the binding's declaration and every reference to it.
+ *
+ * Returns the edits as one batch so the caller applies them as a single undo
+ * step, or an empty array for any of the declines documented in the header.
+ */
+declare function renameSection$1(doc: string, call: ArrangeCall, i: number, newName: string): OffsetEdit[];
+
+/**
+ * The document's top-level parts, in source order, that section arms of `call`
+ * may be pointed at. Empty when the document does not parse — the caller then
+ * offers nothing, which is the honest answer rather than a stale list.
+ */
+declare function listSectionParts$1(doc: string, call: ArrangeCall): string[];
+
+type PickMethod = 'pick' | 'pickRestart' | 'pickReset';
+/** One arm of the `<…@w …>` control = one section clip. */
+interface PickControlArm {
+    /** Absolute `[start, end)` of the WHOLE arm token (`verse@8`, `~@4`, `[bd,sd]@2`). */
+    armRange: [number, number];
+    /** Absolute `[start, end)` of the arm's head (the section name / pattern,
+     *  without the `@weight`): `verse`, `~`, `[bd,sd]`. */
+    headRange: [number, number];
+    /** Absolute `[start, end)` of the weight DIGITS after `@` — null when the arm
+     *  has no `@` (implicit weight 1, no literal to edit; setWeight inserts one). */
+    weightRange: [number, number] | null;
+    /** Whole-cycle weight (the `n` in `@n`); default 1. */
+    weight: number;
+}
+/**
+ * One `{key: pattern}` entry of the pick call's section object (#1417 Stage 1).
+ *
+ * The section's NAME lives here, not in a binding: `{verse: bassLine}` names the
+ * section `verse` while the pattern keeps its own name. That is what makes the
+ * pick rename the smaller of the two — it never rewrites a symbol the user
+ * didn't point at.
+ */
+interface PickSectionEntry {
+    /** The key as the selector spells it — quotes stripped (`"verse"` → `verse`). */
+    key: string;
+    /** Absolute `[start, end)` of the key TOKEN, INCLUDING quotes when the key is
+     *  written as a string literal (so a rewrite preserves the quoting style). */
+    keyRange: [number, number];
+    /** ES shorthand `{verse}` — the key token IS the value token, so a rename must
+     *  EXPAND it (`{intro: verse}`) rather than rewrite it in place. */
+    shorthand: boolean;
+}
+/** A detected `pick*` call and the arms of its `<…@w …>` control string. */
+interface PickControl {
+    method: PickMethod;
+    /** Absolute `[start, end)` of the whole `recv.method(...)` call. */
+    callRange: [number, number];
+    /** Absolute `[start, end)` of the control string literal, INCLUDING quotes. */
+    stringRange: [number, number];
+    /** Absolute `[start, end)` of the content BETWEEN `<` and `>` — the region a
+     *  duplicate/insert writes into (so a new arm lands inside the brackets). */
+    innerRange: [number, number];
+    /** Arms in source order; clip order = arm order. */
+    arms: PickControlArm[];
+    /** Object-literal section entries in source order — EMPTY when the call's
+     *  first argument isn't an object literal (the array form `pick([a, b])`
+     *  names nothing). Selector order and object order are independent, so an
+     *  arm is joined to an entry by KEY STRING, never by slot (#1467). */
+    entries: PickSectionEntry[];
+}
+/**
+ * The innermost `pick*` call whose range contains `pos`, or null. `pos` is
+ * typically the per-lane control offset the timeline carries (the `<…>` start).
+ */
+declare function detectPickControlAt(doc: string, pos: number): PickControl | null;
+/** Every pick* control in the doc, source order. For tests / sweeps. */
+declare function detectAllPickControls(doc: string): PickControl[];
+
+/**
+ * pickControl/serialize — structural ops on a detected `pick*` control string.
+ *
+ * #463 Stage 2. Each op is PURE: `PickControl` (from `pickControl/parse`) + the
+ * live doc → `OffsetEdit[]` addressed by pre-edit absolute offsets (the shape
+ * `writeback.replaceRanges` consumes). We edit the `<…@w …>` mini-notation TEXT
+ * directly — never `toStrudel`/`serialize` (PV123) — so the section patterns and
+ * the `.pickRestart({…})` object stay byte-verbatim; only the control arms move.
+ *
+ * Arms are space-separated; the weight is `@n` digits. `setWeight` touches only
+ * the digits (or inserts `@n` on an implicit-1 arm); the structural ops keep each
+ * arm's head text verbatim and re-join with single spaces.
+ *
+ * No Monaco, no runtime IR import (P172).
+ */
+
+/**
+ * Set arm `i`'s weight (the dwell length, in whole cycles).
+ *  - Arm already has `@n` → replace ONLY the digits (byte-minimal).
+ *  - Implicit-weight arm + w === 1 → no-op (already 1).
+ *  - Implicit-weight arm + w ≠ 1 → insert `@w` right after the head.
+ */
+declare function setWeight(doc: string, control: PickControl, i: number, weight: number): OffsetEdit[];
+/**
+ * Split arm `i` into two equal-headed arms: `verse@8` → `verse@4 verse@4`
+ * (`n₁ = firstWeight`, `n₂ = n − firstWeight`, both ≥ 1). Only an arm with
+ * weight ≥ 2 is divisible; a weight-1 (one-cycle) arm returns no edits.
+ */
+declare function splitArm(doc: string, control: PickControl, i: number, firstWeight: number): OffsetEdit[];
+/**
+ * #1462 — GAP delete, the pick spelling of `arrange/silenceArm` (#491).
+ *
+ * Replace ONLY the arm's HEAD with `~` (a mini rest), keeping its `@weight`:
+ *   `verse@8`  →  `~@8`      (width 8 kept)
+ *   `verse`    →  `~`        (implicit width 1 kept)
+ *
+ * ⚠ WHY THIS EXISTS AT ALL: the same Delete key on the same canvas used to mean
+ * two different things depending on how the arrangement was SPELLED. `arrange()`
+ * left a gap (#491, the DAW convention — the timeline is absolute, so later clips
+ * do not slide left); the pick spelling called `removeArm` and rippled the section
+ * out, shortening the song. The arrange side carried an explicit justification and
+ * the pick side carried none, which is what marked it as an unconsidered
+ * divergence rather than a design choice. Gap is the default on both now.
+ *
+ * GROUNDED against the real evaluator, not assumed: `<intro@4 ~@8 outro@4>` over
+ * the same three sections queries 1,1,1,1 · 0×8 · 1,1,1,1 haps per cycle, against
+ * 1,1,1,1 · 4×8 · 1,1,1,1 for the un-gapped control — the gap is silent, is
+ * exactly 8 cycles wide, and the outro does NOT move.
+ *
+ * Already-silent arm → no edits (mirrors arrange). Silencing EVERY arm is allowed
+ * — `<~@4 ~@8>` is a valid muted track — so unlike `removeArm` there is no
+ * sole-arm guard here: this op can never empty the control.
+ */
+declare function silenceArm(doc: string, control: PickControl, i: number): OffsetEdit[];
+/**
+ * #1560 — point section `i` at a different PART: rewrite the arm's head to name
+ * another section of this call's own object, keeping its `@weight` and every
+ * other arm verbatim.
+ *
+ *   `"<verse@8 chorus@4>"`  →  `"<verse@8 verse@4>"`
+ *
+ * ⚠ ONLY THE CLICKED ARM MOVES, which is what makes this the counterpart of the
+ * arrange op and not of the rename. A section that returns later in the selector
+ * keeps naming what it named — the rename pair is the one where touching a name
+ * necessarily moves every arm that uses it.
+ *
+ * ⚠ MEMBERSHIP IS VERIFIED HERE, and the arrange side deliberately does not do
+ * the same. A pick head is a NAME that has to resolve against the call's section
+ * object; a head naming no key is not an error the user can see — it is a
+ * section that silently plays nothing. An arrange arm is an expression slot with
+ * no vocabulary to check against, so there the check would be a guess.
+ *
+ * Declines, each returning no edits: no such arm; the call passes no object
+ * literal (the array form `pick([a, b])` names nothing); the key is not one of
+ * this call's sections; the key cannot be spelled in the selector; the section
+ * already plays it.
+ */
+declare function setArmHead(doc: string, control: PickControl, i: number, key: string): OffsetEdit[];
+/**
+ * The sections of this call that an arm may be pointed at (#1560) — the pick
+ * spelling's answer to `arrange/parts.listSectionParts`.
+ *
+ * ⚠ IT LIVES BESIDE `setArmHead` ON PURPOSE. The list and the op share one
+ * predicate, so what a chooser offers and what the write accepts cannot drift
+ * apart — the failure that would put a name in front of a user and then decline
+ * it silently when they picked it.
+ *
+ * Object order, not selector order: the object is where a section is defined,
+ * and the selector is only where it is used (#1467). A key the selector cannot
+ * spell is dropped rather than shown, for the reason `SELECTOR_NAME` gives.
+ */
+declare function listSectionParts(control: PickControl): string[];
+/**
+ * #1461 — INSERT SILENCE: a new, empty section after arm `i`, as wide as it is.
+ *
+ * The pick spelling of `arrange/insertSilenceArm`, and the two must stay
+ * equivalent — a keypress means one thing whichever way the song is written
+ * (#1462). Here an empty section is `~`, the rest this control family already
+ * uses, exactly as `silenceArm` writes `~@8` for a gap.
+ *
+ * The weight is copied as TEXT for the same reason as the arrange side: an arm
+ * with no `@` has an implicit width of 1 and no literal to copy, so the new arm
+ * is a bare `~` rather than an invented `~@1`, which keeps it looking like its
+ * siblings and round-trips to the same music.
+ *
+ * ⚠ NO OBJECT ENTRY IS ADDED, and that is not an omission. `~` is a rest in the
+ * selector's own grammar rather than a name that has to resolve, so the section
+ * object stays exactly as the user wrote it. Adding a key would invent a pattern
+ * nobody asked for and change what the document means.
+ */
+declare function insertSilenceArm(doc: string, control: PickControl, i: number): OffsetEdit[];
+/**
+ * Remove arm `i`, taking one adjacent space with it. Refuses to empty the
+ * control — a lane keeps ≥ 1 section (mirrors arrange/removeArm).
+ */
+declare function removeArm(doc: string, control: PickControl, i: number): OffsetEdit[];
+/**
+ * Move arm `from` to index `to`. Rebuilds the `<…>` content in the new order,
+ * each arm's text verbatim, single-space-joined (clip order = arm order).
+ */
+declare function reorderArm(doc: string, control: PickControl, from: number, to: number): OffsetEdit[];
+/**
+ * Insert `armSource` (a bare control arm like `verse@4`) at index `at`
+ * (clamped to `[0, arms.length]`), single-space-separated.
+ */
+declare function insertArm(doc: string, control: PickControl, at: number, armSource: string): OffsetEdit[];
+/**
+ * Duplicate arm `i`: insert a verbatim copy right after it. (The clone keeps the
+ * same head + weight; clip order = arm order, so the copy plays next.)
+ */
+declare function duplicateArm(doc: string, control: PickControl, i: number): OffsetEdit[];
+/**
+ * How many selector arms carry section `i`'s name — 1 normally, more when the
+ * section RETURNS (`<verse@8 chorus@4 verse@8>`). A rename moves all of them,
+ * so the caller can say "this renames 2 sections" BEFORE writing (#1417).
+ *
+ * Returns 0 whenever `renameSection` would decline on the OLD name's side, so a
+ * caller that shows the count and then writes can't be told "2 sections" and
+ * handed no edits.
+ */
+declare function countSectionArms(doc: string, control: PickControl, i: number): number;
+/**
+ * Rename section `i` — the object KEY plus every selector arm that names it.
+ *
+ * `{verse: bassLine}` + `<verse@8>` → `{intro: bassLine}` + `<intro@8>`: the
+ * section is renamed and the pattern keeps its own name, because in this
+ * spelling the section name is the key, not a binding reference. ES shorthand
+ * `{verse}` is the majority spelling and the one case where the two coincide,
+ * so it EXPANDS — `{intro: verse}` — which renames the section and leaves the
+ * binding `verse` exactly where the user put it.
+ *
+ * A returning section is renamed in every arm it occupies: they aren't two
+ * sections sharing a name, they're one pattern arranged twice.
+ *
+ * Declines (no edits) when the name is not UNIQUELY AND COMPLETELY ADDRESSABLE,
+ * because every one of those cases writes a document that means something other
+ * than what the user asked for:
+ *  - the new name isn't a bare identifier, is `__proto__`, or is already the
+ *    current name;
+ *  - the arm isn't a named section — `~`, an inline `[bd,sd]`, or a key this
+ *    parser couldn't name (computed, spread);
+ *  - the new name collides with another key in the same object;
+ *  - the OLD name is written twice in the object (`{glitch: a, glitch: b}` —
+ *    real, and in the corpus). JS keeps the last; renaming the first would move
+ *    the selector onto the pattern that was being shadowed, silently changing
+ *    the music;
+ *  - the old name also occurs nested inside another arm's head, where this op
+ *    would not rewrite it and the reference would break.
+ */
+declare function renameSection(doc: string, control: PickControl, i: number, newName: string): OffsetEdit[];
 
 /**
  * BreakpointStore — engine-attached registry of irNodeIds that should
@@ -4243,252 +5899,6 @@ declare function resolveAliasesForEngine(custom: StoredSignalAliases, engine: Vi
  * pre-engine-keyed constant (`uKick → 'bd'`, `uTom → ['lt','mt','ht']`).
  */
 declare const ALIAS_MAP: Record<string, EngineAliasValue>;
-
-/** Top-level statement nodes, or null when the doc doesn't parse
- * (mid-keystroke syntax error — the caller keeps the last good chunk). */
-declare function parseTopLevel(doc: string): any[] | null;
-/** Does the doc parse at all? Distinguishes "no statement here" from "broken doc". */
-declare function docParses(doc: string): boolean;
-
-/** Coarse hint for which editor a chunk can open. Panels still read the
- * structured fields below to decide what they can actually edit. */
-type ChunkType = 'step' | 'roll' | 'knobs' | 'unknown';
-interface ChainArg {
-    /** source text of the argument expression, verbatim */
-    raw: string;
-    /** numeric value when the arg is a (possibly negated) number literal, else null */
-    numeric: number | null;
-    /** absolute doc offsets of the argument expression */
-    range: [number, number];
-}
-interface ChainCall {
-    name: string;
-    args: ChainArg[];
-    /**
-     * For member calls: [dotOffset, callEnd] — replacing/deleting this range
-     * removes the call. For the head call: the full call expression range.
-     */
-    range: [number, number];
-}
-interface ChunkInfo {
-    /** the whole top-level statement (incl. any `$:` label) */
-    statementRange: [number, number];
-    /** the statement's exact source when detected — used to verify freshness */
-    statementText: string;
-    /** the pattern expression, excluding the `$:` label — append `.fx()` here */
-    exprRange: [number, number];
-    /** `$:` label name, or null */
-    label: string | null;
-    /** head function name, e.g. `s`, `note`, `stack` */
-    headFn: string | null;
-    /** contents of the mini string, quotes excluded — see `miniVia` for who found it */
-    miniRange: [number, number] | null;
-    miniString: string | null;
-    /**
-     * WHO FOUND `miniRange` (#1240). `literal` — the head call's first string
-     * argument, the rule this module has always used. `resolver` — `miniSource`
-     * named the span after the literal walk found nothing: a bound reference, a
-     * chained argument, a root literal, a head that is not a content head.
-     *
-     * Carried rather than inferred because the two are DIFFERENT CONFIDENCE
-     * LEVELS and a coverage table that blurs them cannot be read. `null` when
-     * there is no mini span at all.
-     */
-    miniVia: 'literal' | 'resolver' | null;
-    /**
-     * The freshness guard for a mini span that lies OUTSIDE `statementRange` —
-     * `s(drums)` whose content is declared in `const drums = "bd sd"` two
-     * statements up. Null whenever the span is inside the unit's own statement,
-     * which is every `literal` chunk and most resolver ones.
-     *
-     * WHY IT EXISTS. This module's contract is that `isChunkFresh` gates every
-     * write, and it did that by watching `statementRange` — sound while the only
-     * writable span was inside it. A resolver span breaks that premise: the guard
-     * would watch the unit's statement while the write lands in a different one,
-     * so an edit to the declaration between detect and write corrupts unrelated
-     * code and every existing check still passes. The invariant is "every byte we
-     * may write is freshness-guarded", and its span is now two statements — so
-     * the guard widens rather than the feature narrowing (refusing these instead
-     * costs 43 of 125 resolver units, including every `s`/`sound` one).
-     */
-    miniAnchor: {
-        range: [number, number];
-        text: string;
-    } | null;
-    /** calls in source order, head first */
-    chain: ChainCall[];
-    type: ChunkType;
-    /** true when `detectChunk` descended into a combinator argument — i.e. this is
-     *  a NESTED voice inside `stack(...)`/`cat(...)` (#395), not a top-level track.
-     *  The Pattern inspector uses it to offer a per-voice gain knob (#620): a
-     *  top-level track's gain is owned by the channel-strip fader, but a nested
-     *  voice's isn't, so only there does the inspector surface gain. Always false
-     *  for `detectAllChunks` (every chunk there is top-level). */
-    nested: boolean;
-}
-
-/**
- * A chunk's ranges are only valid against the exact doc it was detected from.
- * Every write MUST check this first.
- */
-declare function isChunkFresh(doc: string, chunk: ChunkInfo): boolean;
-/**
- * The innermost editable chunk under `pos`, or null. Descends into combinator
- * arguments — a cursor on a track inside `stack(...)` binds THAT track, not the
- * whole `$: stack(...)` statement (#395). A top-level cursor is unchanged.
- */
-declare function detectChunk(doc: string, pos: number): ChunkInfo | null;
-/** Every editable chunk in the doc, in source order. */
-declare function detectAllChunks(doc: string): ChunkInfo[];
-/**
- * Best-guess primary editor for a chunk. Coarse — panels read `chain`/`mini`
- * directly to decide what they can edit. A pattern with a `note`/`n` head and
- * a mini string is roll-shaped; an `s`/`sound` head with a mini string is
- * grid-shaped; anything with a numeric chain literal can at least show knobs.
- */
-declare function classifyChunk(info: ChunkInfo): ChunkType;
-
-/**
- * writeback — chunk → document.
- *
- * The mutation half of the visual-editing spine. Visual panels read a
- * `ChunkInfo` (see `chunkDetect.ts`) to learn the doc offsets they may edit,
- * then route every edit through here so it is:
- *
- *  1. **Surgical** — only the named offset range changes; the rest of the
- *     statement (mini-notation quotes, spacing, indent) stays byte-identical.
- *     This is the whole reason write-back panels edit TEXT and not the IR:
- *     `toStrudel` is a whole-statement canonical regenerator that would
- *     reformat the leaf layer (design doc Appendix A).
- *  2. **Origin-tagged** — while a panel edit is applied, `currentSource` names
- *     it, so the host's `onDidChangeModelContent` listener can tell a panel
- *     edit (re-eval audio, keep panel model) from a typed edit (re-parse the
- *     panel model). Monaco's content-change event carries no source of its
- *     own, so the flag is set synchronously around the edit — the listener
- *     fires inside `pushEditOperations`, while the flag is up.
- *  3. **One undo step** — every call is a single `pushEditOperations`, so even
- *     a multi-cell drag (`replaceRanges`) is one Ctrl-Z.
- *
- * Range discipline: offsets come from a `ChunkInfo` and are valid ONLY against
- * the exact doc it was detected from. Use `applyFresh` (or call `isChunkFresh`
- * yourself) before every write — stale offsets corrupt unrelated code.
- *
- * The pure helpers (`formatNumber`, `normalizeEdits`) are string/number math
- * with no Monaco dependency, so they unit-test with plain assertions. The
- * `Writeback` class is the thin Monaco-bound shell, observed in the app.
- */
-
-/**
- * Which panel originated an edit. The host content-change listener switches on
- * this to decide whether to re-parse its model (typed edit) or leave it
- * (panel-originated edit it already knows about).
- */
-type WriteSource = 'knob' | 'seq' | 'roll' | 'arrange.weights' | 'arrange.structure' | 'transport' | 'mixer' | 'rename' | 'automation' | 'region.trim';
-/** A single replacement, addressed by absolute pre-edit doc offsets. */
-interface OffsetEdit {
-    /** absolute [start, end) offsets in the document as it was when detected */
-    range: [number, number];
-    /** replacement text ('' to delete) */
-    text: string;
-}
-/**
- * Format a number for insertion as a source literal. Drag handlers produce
- * values like `0.30000000000000004` or `2.9999999`; emitting those verbatim
- * would corrupt the user's code with float noise. We round to `maxDecimals`
- * and strip trailing zeros, so `0.3`, `2`, `-1.5` come out clean.
- *
- * Pure — no Monaco.
- */
-declare function formatNumber(v: number, maxDecimals?: number): string;
-/**
- * Validate a batch of edits and return them sorted ascending by start offset.
- * Throws on any overlap — overlapping ranges in a single `pushEditOperations`
- * have undefined application order and would corrupt the doc. Zero-width edits
- * (inserts) are allowed and never count as overlapping a neighbour that starts
- * at the same offset only if texts don't both target it; we conservatively
- * reject ranges that share interior space.
- *
- * Pure — no Monaco.
- */
-declare function normalizeEdits(edits: OffsetEdit[]): OffsetEdit[];
-/**
- * Apply a batch of offset edits to a string and return the result. Pure mirror
- * of what `Writeback.apply` does to a Monaco model — used by callers that edit
- * plain text (arrangement round-trip / parity tests) and to preview an edit
- * before it touches the document. Edits are validated + sorted by
- * `normalizeEdits`, then spliced from the END so earlier offsets stay valid.
- *
- * Pure — no Monaco.
- */
-declare function applyEdits(doc: string, edits: OffsetEdit[]): string;
-/**
- * Monaco-bound edit sink. One per editor. Construct with the editor instance
- * and the `monaco` namespace (for `Range`). All edits go through `apply`, which
- * keeps the origin flag up across the synchronous content-change event.
- */
-declare class Writeback {
-    private readonly editor;
-    private readonly monaco;
-    private writingSource;
-    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
-    private inGesture;
-    /** whether the in-flight gesture has applied any edit — gates the one re-eval
-     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
-    private gestureDidEdit;
-    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
-    private reevalTimer;
-    constructor(editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco);
-    /**
-     * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
-     * step. Used for a continuous knob drag or a multi-cell sweep so the whole
-     * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
-     * the undo grouping is affected. Idempotent if already in a gesture.
-     */
-    beginGesture(): void;
-    /** Close the gesture, sealing all its edits as one undo step — and, if the
-     * gesture changed anything, make it audible immediately (one re-eval on
-     * release, not per drag frame). */
-    endGesture(): void;
-    /**
-     * The source of the edit currently being applied, or null. The host's
-     * `onDidChangeModelContent` listener reads this synchronously to attribute
-     * the change. It is non-null ONLY for the duration of `apply`.
-     */
-    get currentSource(): WriteSource | null;
-    /** Replace a single offset range. One undo step. */
-    replaceRange(range: [number, number], text: string, source: WriteSource): void;
-    /**
-     * Replace several non-overlapping ranges as ONE edit — one undo step. Used
-     * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
-     * the whole gesture).
-     */
-    replaceRanges(edits: OffsetEdit[], source: WriteSource): void;
-    /** Insert text at an offset (zero-width edit). */
-    insertAt(offset: number, text: string, source: WriteSource): void;
-    /** Delete an offset range. */
-    deleteRange(range: [number, number], source: WriteSource): void;
-    /**
-     * Freshness-guarded write. Re-reads the live model text and refuses the edit
-     * if the chunk's statement no longer matches what it was detected from
-     * (the doc changed under the panel). Returns true if applied, false if stale.
-     * Prefer this over the raw methods on any path that can race a typed edit.
-     */
-    applyFresh(chunk: ChunkInfo, edits: OffsetEdit[], source: WriteSource): boolean;
-    private apply;
-    /**
-     * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
-     * the moment it commits. Centralised here so every visual surface — sequencer,
-     * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
-     * re-evals only a PLAYING file, and only when live mode isn't already doing
-     * it, so this never auto-starts audio nor double-evaluates.
-     *
-     * Trailing-debounced: rapid successive commits (e.g. clearing several
-     * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
-     * which also lets the Monaco→file-store sync settle so the re-eval reads the
-     * final content rather than racing a not-yet-synced edit.
-     */
-    private requestLiveReeval;
-}
 
 /**
  * editorRegistry — tiny module-level map so callers outside the
@@ -10752,1380 +12162,6 @@ declare function gmFamily(name: string): GmFamily | null;
  */
 declare function soundfontGroupLabel(name: string): string;
 
-/** The literal combinator name — round-trip identity (PV122 #3). */
-type ArrangeMode = 'arrange' | 'cat' | 'slowcat';
-/** Per-arm source ranges within a detected combinator call. One arm = one clip. */
-interface ArrangeArmRange {
-    /**
-     * Absolute `[start, end)` of the weight number literal — present for
-     * `arrange` arms (the `n` in `[n, pat]`), `null` for `cat`/`slowcat` arms
-     * (whose weight is an implicit `1`, with no literal to edit).
-     */
-    weightRange: [number, number] | null;
-    /** Absolute `[start, end)` of the arm's pattern expression. */
-    patternRange: [number, number];
-    /**
-     * Absolute `[start, end)` of the WHOLE arm: the `[n, pat]` array for
-     * `arrange`, else identical to `patternRange`. This is the unit a
-     * reorder/remove/insert op moves.
-     */
-    armRange: [number, number];
-}
-/** A detected `arrange(...)`/`cat(...)`/`slowcat(...)` call and its arms. */
-interface ArrangeCall {
-    mode: ArrangeMode;
-    /** Absolute `[start, end)` of the whole `mode(...)` call expression. */
-    callRange: [number, number];
-    /** Absolute `[start, end)` of the callee identifier (`arrange`/`cat`/…). */
-    calleeRange: [number, number];
-    /** Absolute `[start, end)` of the argument region between `(` and `)`. */
-    argsRange: [number, number];
-    /** Arms in source order; clip order is arm order (PV122 #1). */
-    arms: ArrangeArmRange[];
-}
-/**
- * The innermost `arrange|cat|slowcat(...)` call whose range contains `pos`, or
- * null. "Innermost" so a cursor on a clip inside a nested combinator binds THAT
- * combinator (mirrors `chunkDetect.innermostChainUnder`, #395). `pos` is
- * typically `Arrange.arms[i].loc[0].start` — the anchor the IR already carries.
- */
-declare function detectArrangeAt(doc: string, pos: number): ArrangeCall | null;
-/** Every combinator call in the doc, in source order. For tests / sweeps. */
-declare function detectAllArrangeCalls(doc: string): ArrangeCall[];
-/**
- * The bare PATTERN expression of the top-level track statement containing `pos`,
- * when that track is NOT already a combinator (so there is no `arrange`/`cat` to
- * reorder). Returns the expression's absolute `[start, end)` — the range §2.1
- * `wrapBare` wraps to INTRODUCE a combinator when a steady pattern is first
- * placed in time (the "move-on-a-bare-track" case).
- *
- * Returns null when: the doc doesn't parse; `pos` isn't inside a top-level
- * expression statement; or that statement already contains a combinator (then
- * `detectArrangeAt` owns the edit). A `$:`/label prefix and any trailing
- * statements are excluded — we return the EXPRESSION range only, so a wrap edits
- * just the pattern and leaves the rest of the line byte-identical.
- */
-declare function detectBarePattern(doc: string, pos: number): {
-    patternRange: [number, number];
-} | null;
-
-/**
- * arrange/serialize — structural ops on a detected combinator call.
- *
- * Each op is PURE: it takes an `ArrangeCall` (from `arrange/parse`) + the live
- * doc text and returns `OffsetEdit[]` addressed by pre-edit absolute offsets —
- * the exact shape `writeback.replaceRanges` consumes. We edit TEXT, not the IR:
- * `toStrudel` is a whole-statement canonical regenerator that would reformat
- * the leaf layer, so (like `notation/serialize`) we never call it. That is also
- * why #434 (toStrudel mislabels fastcat/Seq as `cat()`) does NOT block this —
- * no op here re-emits through `toStrudel`.
- *
- * Byte-fidelity: `setWeight` on an `arrange` arm changes ONLY the weight digits;
- * the structural ops (reorder/insert/remove/wrap) keep each arm's pattern text
- * verbatim and touch only the combinator scaffolding (callee name, brackets,
- * separators). Inter-arm separators normalise to `, ` on a reorder — that IS
- * the targeted region.
- *
- * No Monaco, no runtime IR import (P172).
- */
-
-/**
- * Set arm `i`'s cycle weight to `weight`.
- *
- *  - On an `arrange` node: replace ONLY the weight literal — byte-minimal.
- *  - On a `cat`/`slowcat` node: weight 1 is a no-op (their implicit weight).
- *    A weight ≠ 1 PROMOTES the node to `arrange` (PV122 #3 — `cat` can't
- *    express weights): rename the callee and wrap every arm `pat` → `[w, pat]`
- *    (the target arm gets `weight`, the rest get `1`), keeping each pattern's
- *    bytes verbatim.
- */
-declare function setWeight$1(doc: string, call: ArrangeCall, i: number, weight: number): OffsetEdit[];
-/**
- * Move arm `from` to index `to`. Rebuilds the argument list in the new order,
- * each arm's text verbatim, joined by `, `. (Clip order = arm order, PV122 #1.)
- */
-declare function reorderArm$1(doc: string, call: ArrangeCall, from: number, to: number): OffsetEdit[];
-/**
- * Insert `armSource` as a new arm at index `at` (clamped to `[0, arms.length]`).
- * The caller supplies a well-formed arm: a `[n, pat]` tuple for an `arrange`
- * node, a bare pattern for `cat`/`slowcat`.
- */
-declare function insertArm$1(doc: string, call: ArrangeCall, at: number, armSource: string): OffsetEdit[];
-/**
- * #1461 — INSERT SILENCE: a new, empty section after arm `i`, as wide as it is.
- *
- * ## Why an EMPTY section is the right thing to add
- *
- * The obvious objection, and it was raised on #1347: a section you must then go
- * and type into is worse than duplicate, which at least hands you something that
- * plays. That objection answers a question this gesture is not asking. Duplicate
- * writes CONTENT; this writes TIME. The DAW command it mirrors is called Insert
- * Silence for that reason — you reach for it when the song needs room, not when
- * you know what goes in the room. They are complements, and the arrangement is
- * the one place in Stave where making space is a move in its own right.
- *
- * `silence` rather than a copy of anything, because it is the same vocabulary
- * `silenceArm` already writes for a gap, and a document that spells its holes
- * one way everywhere is one a reader can trust.
- *
- * ## The weight is copied as TEXT, never as a number
- *
- * A real document writes `[M*8, stack(…)]`, and the weight is an expression the
- * parser reports a range for and no numeric value. Reading it as a number would
- * turn `M*8` into `8` — silently pinning a section that was meant to follow a
- * tempo variable. So the new arm carries the same BYTES the old one did, and a
- * `cat`/`slowcat` arm (whose weight is an implicit 1 with no literal at all)
- * gets a bare pattern, matching what its siblings look like.
- *
- * Returns no edits when `i` names no arm — there is nothing to take a width from.
- */
-declare function insertSilenceArm$1(doc: string, call: ArrangeCall, i: number): OffsetEdit[];
-/**
- * Remove arm `i`, taking one adjacent `, ` separator with it. Refuses to empty
- * the combinator — a lane must keep ≥ 1 clip (PV122 #5); removing a sole arm is
- * a delete-the-whole-track op handled elsewhere, so this returns no edits.
- */
-declare function removeArm$1(doc: string, call: ArrangeCall, i: number): OffsetEdit[];
-/**
- * #491 — GAP delete: silence arm `i` IN PLACE, keeping its cycle width. The
- * DAW-standard plain Delete leaves a gap (the arrangement timeline is absolute —
- * later clips do NOT slide left), unlike `removeArm` which ripples the arm out and
- * shortens the loop. We replace ONLY the arm's pattern with `silence`, preserving
- * the `[n, …]` weight wrapper (and every other arm verbatim):
- *   `[n, pat]`        →  `[n, silence]`   (arrange arm — width n kept)
- *   `pat` (cat arm)   →  `silence`        (implicit width 1 kept)
- * Already-silent arm → no edits. Silencing every arm is allowed (a muted track,
- * `arrange([n, silence])` is valid) — unlike `removeArm`, this never empties the
- * combinator, so there's no sole-arm guard. Pure text surgery (PV123).
- */
-declare function silenceArm$1(doc: string, call: ArrangeCall, i: number): OffsetEdit[];
-/**
- * #1560 — point section `i` at a different PART: replace the arm's pattern
- * expression, keeping its `[n, …]` weight wrapper and every other arm verbatim.
- *
- *   `[8, bass]`  →  `[8, bassWithMelody]`     (width 8 kept)
- *   `pat` (cat arm)  →  `other`               (implicit width 1 kept)
- *
- * ⚠ THIS IS `silenceArm` WITH THE PATTERN CHOSEN BY THE CALLER, and that is the
- * whole implementation — `silenceArm` is this op with `'silence'` hard-coded. A
- * gap and a reassignment are the same edit to the document and differ only in
- * what the user meant, so they share the shape rather than each inventing one.
- *
- * ⚠ THE SOURCE IS WRITTEN VERBATIM AND IS NOT VALIDATED HERE, deliberately. An
- * arrange arm is an EXPRESSION slot — `bass`, `stack(a, b)` and `"<c e g>"` are
- * all legal there — so there is no vocabulary to check against, and a primitive
- * that guessed at one would refuse documents the language allows. What a gesture
- * may OFFER is a narrower question with a different answer, and it is asked in
- * `listSectionParts` (`arrange/parts.ts`), which knows the call's own position in
- * the document and can therefore exclude the names that would recurse. The pick
- * spelling's counterpart does check, because there a head is a NAME that must
- * resolve inside the call rather than an expression.
- *
- * Declines, each returning no edits rather than a rewrite that means something
- * else: no such arm; an empty or blank source (which would delete the section's
- * content and leave a syntax error); the part it already plays (a no-op write
- * that would still cost an undo step and a re-eval).
- */
-declare function setArmPattern(doc: string, call: ArrangeCall, i: number, source: string): OffsetEdit[];
-/**
- * §2.1 "introduce the combinator". A bare steady pattern has no `arrange` to
- * edit; the first time it is placed in time it must be WRAPPED:
- *   `pattern`  →  `arrange([leadingWeight, silence], [patternWeight, pattern])`
- * `patternRange` is the bare pattern's absolute `[start, end)` (e.g. a chunk's
- * `exprRange`). The pattern's bytes are preserved verbatim between the inserts.
- */
-declare function wrapBare(patternRange: [number, number], leadingWeight: number, patternWeight: number): OffsetEdit[];
-/**
- * #489 — MATERIALIZE a bare loop into an `arrange` by carving a one-cycle gap at
- * `barIndex` over an arrangement of `span` whole cycles. The bare pattern (one
- * implicit loop) becomes:
- *   `pat`  →  `arrange([barIndex, pat], [1, silence], [span−barIndex−1, pat])`
- * with zero-width arms dropped (gap at bar 0 → no leading `pat`; gap at the last
- * bar → no trailing `pat`). `pat`'s bytes are preserved verbatim in each surviving
- * arm. This is the EXPLICIT "introduce the combinator" entry-point for a uniform
- * loop — the deliberate counterpart of the removed drag-to-wrap (#488).
- *
- * Refuses to empty the track: deleting the SOLE bar (span 1, or every non-gap arm
- * gone) would leave `arrange([1, silence])` = all silence, so it returns no edits
- * (a lane keeps ≥1 sounding clip — PV122 #5). `span ≥ 1`, `barIndex` clamped to
- * `[0, span)`. Pure text surgery; never re-emits through `toStrudel` (PV123).
- */
-declare function materializeBareDelete(doc: string, patternRange: [number, number], barIndex: number, span: number): OffsetEdit[];
-/**
- * #489 — MATERIALIZE a bare loop into an `arrange` by SPLITTING it at a whole-cycle
- * boundary `barIndex` over an arrangement of `span` whole cycles. The bare pattern
- * (one implicit loop spanning the song) becomes two ADDRESSABLE arms with IDENTICAL
- * sound — a uniform loop tiled across `span` cycles plays the same whether expressed
- * as one bare loop or as `arrange([k, pat], [span−k, pat])` (grounded in haps):
- *   `pat`  →  `arrange([barIndex, pat], [span−barIndex, pat])`
- * with `pat`'s bytes preserved verbatim in BOTH arms. This is the split-first
- * materialization entry-point (D1, reframe): selecting the whole bare clip and
- * splitting it introduces the combinator with no audible change, after which the
- * resulting arms are individually selectable and the existing arrange ops
- * (`removeArm` → carve a gap, `reorderArm`, `splitArm`, `setWeight`) apply.
- *
- * Both halves must be ≥ 1 whole cycle, so `span ≥ 2` is required (a 1-cycle loop
- * has no interior boundary — extend it first, #487); `barIndex` is clamped to
- * `[1, span−1]`. `span < 2` returns no edits. Pure text surgery; never re-emits
- * through `toStrudel` (PV123).
- */
-declare function materializeBareSplit(doc: string, patternRange: [number, number], barIndex: number, span: number): OffsetEdit[];
-/**
- * Split arm `i` at a whole-cycle boundary: `[n, pat]` → `[n₁, pat], [n₂, pat]`
- * (same pattern verbatim in both halves), where `n₁ = firstWeight` and
- * `n₂ = n − firstWeight`. Both halves must be ≥ 1 whole cycle, so this only
- * applies to an `arrange` arm whose weight is ≥ 2; `firstWeight` is clamped to
- * `[1, n−1]`. Returns no edits for a `cat`/`slowcat` arm (implicit weight 1 —
- * a single cycle can't be sliced into two whole cycles) or a weight-1 arm.
- */
-declare function splitArm$1(doc: string, call: ArrangeCall, i: number, firstWeight: number): OffsetEdit[];
-
-/**
- * How many arms of this call carry section `i`'s name — 1 normally, more when
- * the section RETURNS. Mirrors the pick spelling's function of the same name.
- *
- * Returns 0 whenever `renameSection` would decline, so a caller that shows the
- * count and then writes cannot be told "2 sections" and handed no edits.
- */
-declare function countSectionArms$1(doc: string, call: ArrangeCall, i: number): number;
-/**
- * Rename section `i` — the binding's declaration and every reference to it.
- *
- * Returns the edits as one batch so the caller applies them as a single undo
- * step, or an empty array for any of the declines documented in the header.
- */
-declare function renameSection$1(doc: string, call: ArrangeCall, i: number, newName: string): OffsetEdit[];
-
-/**
- * The document's top-level parts, in source order, that section arms of `call`
- * may be pointed at. Empty when the document does not parse — the caller then
- * offers nothing, which is the honest answer rather than a stale list.
- */
-declare function listSectionParts$1(doc: string, call: ArrangeCall): string[];
-
-type PickMethod = 'pick' | 'pickRestart' | 'pickReset';
-/** One arm of the `<…@w …>` control = one section clip. */
-interface PickControlArm {
-    /** Absolute `[start, end)` of the WHOLE arm token (`verse@8`, `~@4`, `[bd,sd]@2`). */
-    armRange: [number, number];
-    /** Absolute `[start, end)` of the arm's head (the section name / pattern,
-     *  without the `@weight`): `verse`, `~`, `[bd,sd]`. */
-    headRange: [number, number];
-    /** Absolute `[start, end)` of the weight DIGITS after `@` — null when the arm
-     *  has no `@` (implicit weight 1, no literal to edit; setWeight inserts one). */
-    weightRange: [number, number] | null;
-    /** Whole-cycle weight (the `n` in `@n`); default 1. */
-    weight: number;
-}
-/**
- * One `{key: pattern}` entry of the pick call's section object (#1417 Stage 1).
- *
- * The section's NAME lives here, not in a binding: `{verse: bassLine}` names the
- * section `verse` while the pattern keeps its own name. That is what makes the
- * pick rename the smaller of the two — it never rewrites a symbol the user
- * didn't point at.
- */
-interface PickSectionEntry {
-    /** The key as the selector spells it — quotes stripped (`"verse"` → `verse`). */
-    key: string;
-    /** Absolute `[start, end)` of the key TOKEN, INCLUDING quotes when the key is
-     *  written as a string literal (so a rewrite preserves the quoting style). */
-    keyRange: [number, number];
-    /** ES shorthand `{verse}` — the key token IS the value token, so a rename must
-     *  EXPAND it (`{intro: verse}`) rather than rewrite it in place. */
-    shorthand: boolean;
-}
-/** A detected `pick*` call and the arms of its `<…@w …>` control string. */
-interface PickControl {
-    method: PickMethod;
-    /** Absolute `[start, end)` of the whole `recv.method(...)` call. */
-    callRange: [number, number];
-    /** Absolute `[start, end)` of the control string literal, INCLUDING quotes. */
-    stringRange: [number, number];
-    /** Absolute `[start, end)` of the content BETWEEN `<` and `>` — the region a
-     *  duplicate/insert writes into (so a new arm lands inside the brackets). */
-    innerRange: [number, number];
-    /** Arms in source order; clip order = arm order. */
-    arms: PickControlArm[];
-    /** Object-literal section entries in source order — EMPTY when the call's
-     *  first argument isn't an object literal (the array form `pick([a, b])`
-     *  names nothing). Selector order and object order are independent, so an
-     *  arm is joined to an entry by KEY STRING, never by slot (#1467). */
-    entries: PickSectionEntry[];
-}
-/**
- * The innermost `pick*` call whose range contains `pos`, or null. `pos` is
- * typically the per-lane control offset the timeline carries (the `<…>` start).
- */
-declare function detectPickControlAt(doc: string, pos: number): PickControl | null;
-/** Every pick* control in the doc, source order. For tests / sweeps. */
-declare function detectAllPickControls(doc: string): PickControl[];
-
-/**
- * pickControl/serialize — structural ops on a detected `pick*` control string.
- *
- * #463 Stage 2. Each op is PURE: `PickControl` (from `pickControl/parse`) + the
- * live doc → `OffsetEdit[]` addressed by pre-edit absolute offsets (the shape
- * `writeback.replaceRanges` consumes). We edit the `<…@w …>` mini-notation TEXT
- * directly — never `toStrudel`/`serialize` (PV123) — so the section patterns and
- * the `.pickRestart({…})` object stay byte-verbatim; only the control arms move.
- *
- * Arms are space-separated; the weight is `@n` digits. `setWeight` touches only
- * the digits (or inserts `@n` on an implicit-1 arm); the structural ops keep each
- * arm's head text verbatim and re-join with single spaces.
- *
- * No Monaco, no runtime IR import (P172).
- */
-
-/**
- * Set arm `i`'s weight (the dwell length, in whole cycles).
- *  - Arm already has `@n` → replace ONLY the digits (byte-minimal).
- *  - Implicit-weight arm + w === 1 → no-op (already 1).
- *  - Implicit-weight arm + w ≠ 1 → insert `@w` right after the head.
- */
-declare function setWeight(doc: string, control: PickControl, i: number, weight: number): OffsetEdit[];
-/**
- * Split arm `i` into two equal-headed arms: `verse@8` → `verse@4 verse@4`
- * (`n₁ = firstWeight`, `n₂ = n − firstWeight`, both ≥ 1). Only an arm with
- * weight ≥ 2 is divisible; a weight-1 (one-cycle) arm returns no edits.
- */
-declare function splitArm(doc: string, control: PickControl, i: number, firstWeight: number): OffsetEdit[];
-/**
- * #1462 — GAP delete, the pick spelling of `arrange/silenceArm` (#491).
- *
- * Replace ONLY the arm's HEAD with `~` (a mini rest), keeping its `@weight`:
- *   `verse@8`  →  `~@8`      (width 8 kept)
- *   `verse`    →  `~`        (implicit width 1 kept)
- *
- * ⚠ WHY THIS EXISTS AT ALL: the same Delete key on the same canvas used to mean
- * two different things depending on how the arrangement was SPELLED. `arrange()`
- * left a gap (#491, the DAW convention — the timeline is absolute, so later clips
- * do not slide left); the pick spelling called `removeArm` and rippled the section
- * out, shortening the song. The arrange side carried an explicit justification and
- * the pick side carried none, which is what marked it as an unconsidered
- * divergence rather than a design choice. Gap is the default on both now.
- *
- * GROUNDED against the real evaluator, not assumed: `<intro@4 ~@8 outro@4>` over
- * the same three sections queries 1,1,1,1 · 0×8 · 1,1,1,1 haps per cycle, against
- * 1,1,1,1 · 4×8 · 1,1,1,1 for the un-gapped control — the gap is silent, is
- * exactly 8 cycles wide, and the outro does NOT move.
- *
- * Already-silent arm → no edits (mirrors arrange). Silencing EVERY arm is allowed
- * — `<~@4 ~@8>` is a valid muted track — so unlike `removeArm` there is no
- * sole-arm guard here: this op can never empty the control.
- */
-declare function silenceArm(doc: string, control: PickControl, i: number): OffsetEdit[];
-/**
- * #1560 — point section `i` at a different PART: rewrite the arm's head to name
- * another section of this call's own object, keeping its `@weight` and every
- * other arm verbatim.
- *
- *   `"<verse@8 chorus@4>"`  →  `"<verse@8 verse@4>"`
- *
- * ⚠ ONLY THE CLICKED ARM MOVES, which is what makes this the counterpart of the
- * arrange op and not of the rename. A section that returns later in the selector
- * keeps naming what it named — the rename pair is the one where touching a name
- * necessarily moves every arm that uses it.
- *
- * ⚠ MEMBERSHIP IS VERIFIED HERE, and the arrange side deliberately does not do
- * the same. A pick head is a NAME that has to resolve against the call's section
- * object; a head naming no key is not an error the user can see — it is a
- * section that silently plays nothing. An arrange arm is an expression slot with
- * no vocabulary to check against, so there the check would be a guess.
- *
- * Declines, each returning no edits: no such arm; the call passes no object
- * literal (the array form `pick([a, b])` names nothing); the key is not one of
- * this call's sections; the key cannot be spelled in the selector; the section
- * already plays it.
- */
-declare function setArmHead(doc: string, control: PickControl, i: number, key: string): OffsetEdit[];
-/**
- * The sections of this call that an arm may be pointed at (#1560) — the pick
- * spelling's answer to `arrange/parts.listSectionParts`.
- *
- * ⚠ IT LIVES BESIDE `setArmHead` ON PURPOSE. The list and the op share one
- * predicate, so what a chooser offers and what the write accepts cannot drift
- * apart — the failure that would put a name in front of a user and then decline
- * it silently when they picked it.
- *
- * Object order, not selector order: the object is where a section is defined,
- * and the selector is only where it is used (#1467). A key the selector cannot
- * spell is dropped rather than shown, for the reason `SELECTOR_NAME` gives.
- */
-declare function listSectionParts(control: PickControl): string[];
-/**
- * #1461 — INSERT SILENCE: a new, empty section after arm `i`, as wide as it is.
- *
- * The pick spelling of `arrange/insertSilenceArm`, and the two must stay
- * equivalent — a keypress means one thing whichever way the song is written
- * (#1462). Here an empty section is `~`, the rest this control family already
- * uses, exactly as `silenceArm` writes `~@8` for a gap.
- *
- * The weight is copied as TEXT for the same reason as the arrange side: an arm
- * with no `@` has an implicit width of 1 and no literal to copy, so the new arm
- * is a bare `~` rather than an invented `~@1`, which keeps it looking like its
- * siblings and round-trips to the same music.
- *
- * ⚠ NO OBJECT ENTRY IS ADDED, and that is not an omission. `~` is a rest in the
- * selector's own grammar rather than a name that has to resolve, so the section
- * object stays exactly as the user wrote it. Adding a key would invent a pattern
- * nobody asked for and change what the document means.
- */
-declare function insertSilenceArm(doc: string, control: PickControl, i: number): OffsetEdit[];
-/**
- * Remove arm `i`, taking one adjacent space with it. Refuses to empty the
- * control — a lane keeps ≥ 1 section (mirrors arrange/removeArm).
- */
-declare function removeArm(doc: string, control: PickControl, i: number): OffsetEdit[];
-/**
- * Move arm `from` to index `to`. Rebuilds the `<…>` content in the new order,
- * each arm's text verbatim, single-space-joined (clip order = arm order).
- */
-declare function reorderArm(doc: string, control: PickControl, from: number, to: number): OffsetEdit[];
-/**
- * Insert `armSource` (a bare control arm like `verse@4`) at index `at`
- * (clamped to `[0, arms.length]`), single-space-separated.
- */
-declare function insertArm(doc: string, control: PickControl, at: number, armSource: string): OffsetEdit[];
-/**
- * Duplicate arm `i`: insert a verbatim copy right after it. (The clone keeps the
- * same head + weight; clip order = arm order, so the copy plays next.)
- */
-declare function duplicateArm(doc: string, control: PickControl, i: number): OffsetEdit[];
-/**
- * How many selector arms carry section `i`'s name — 1 normally, more when the
- * section RETURNS (`<verse@8 chorus@4 verse@8>`). A rename moves all of them,
- * so the caller can say "this renames 2 sections" BEFORE writing (#1417).
- *
- * Returns 0 whenever `renameSection` would decline on the OLD name's side, so a
- * caller that shows the count and then writes can't be told "2 sections" and
- * handed no edits.
- */
-declare function countSectionArms(doc: string, control: PickControl, i: number): number;
-/**
- * Rename section `i` — the object KEY plus every selector arm that names it.
- *
- * `{verse: bassLine}` + `<verse@8>` → `{intro: bassLine}` + `<intro@8>`: the
- * section is renamed and the pattern keeps its own name, because in this
- * spelling the section name is the key, not a binding reference. ES shorthand
- * `{verse}` is the majority spelling and the one case where the two coincide,
- * so it EXPANDS — `{intro: verse}` — which renames the section and leaves the
- * binding `verse` exactly where the user put it.
- *
- * A returning section is renamed in every arm it occupies: they aren't two
- * sections sharing a name, they're one pattern arranged twice.
- *
- * Declines (no edits) when the name is not UNIQUELY AND COMPLETELY ADDRESSABLE,
- * because every one of those cases writes a document that means something other
- * than what the user asked for:
- *  - the new name isn't a bare identifier, is `__proto__`, or is already the
- *    current name;
- *  - the arm isn't a named section — `~`, an inline `[bd,sd]`, or a key this
- *    parser couldn't name (computed, spread);
- *  - the new name collides with another key in the same object;
- *  - the OLD name is written twice in the object (`{glitch: a, glitch: b}` —
- *    real, and in the corpus). JS keeps the last; renaming the first would move
- *    the selector onto the pattern that was being shadowed, silently changing
- *    the music;
- *  - the old name also occurs nested inside another arm's head, where this op
- *    would not rewrite it and the reference would break.
- */
-declare function renameSection(doc: string, control: PickControl, i: number, newName: string): OffsetEdit[];
-
-/**
- * One top-level element of the source, and the columns it produced.
- *
- * krill's element spans TILE the mini: concatenating them reconstructs the
- * input byte-for-byte, whitespace and all. Verified over the 1352 flat minis in
- * the real corpus (and all 380 the roll opens), and re-checked per parse — that
- * tiling is the whole basis for putting back exactly what we read.
- *
- * Where the whitespace LANDS inside a span is not something to have beliefs
- * about: `bd sd` spans as `"bd "` + `"sd"` (trailing) while `bd!3 sd` spans as
- * `"bd!3"` + `" sd"` (leading). So an untouched region is written back as its
- * whole `raw` span and no rule is needed; only a region we re-emit has to know
- * which side its padding sits on.
- *
- * `C` is what the element produced IN THE VIEW'S OWN TERMS — cells for the grid,
- * notes for the roll. The spans are the same fact about the source either way;
- * only the answer to "did the user change this?" is the view's.
- */
-interface SourceRegion<C> {
-    /** the element's bytes exactly as written, whitespace included */
-    raw: string;
-    /** `raw`'s padding, split out so a re-emit keeps the spacing around it */
-    leading: string;
-    trailing: string;
-    /** `[from, to)` — the columns this element expanded to */
-    from: number;
-    to: number;
-    /**
-     * The element's weight as the parser read it (`ElementSpan.weight`: `bd` 1, `bd@3` 3,
-     * `bd!3` 3, `[a b]` 1, `hh*8` 1) — the number that sized `[from, to)`. Strudel counts
-     * the element as this many steps, so the Pattern tab's ruler does too (#1845). Absent
-     * on a region built without one: it then counts as a single step.
-     */
-    weight?: number;
-    /**
-     * What the VIEW showed for these columns at parse time — the basis for "did
-     * the user change this region?". Deliberately the model's own view rather
-     * than the raw atoms: `[sd,sd]` is one lane to a grid that has one lane per
-     * distinct sound, so comparing against the raw pair would report a change
-     * nobody made and rewrite the region for nothing.
-     */
-    content: C;
-}
-/**
- * Source for a `<...>` alternation used as a sequence ELEMENT (`bd <sd hh>`),
- * not around the whole cycle (#920). The model bar-expands — one alternative per
- * bar, so `bd <sd hh>` is a 2-bar grid — but the SOURCE stays a single cycle:
- * the elements the user actually wrote (`bd`, `<sd hh>`). Each region owns a
- * within-bar column span and remembers what it showed IN EACH BAR, so the writer
- * copies an unchanged element's bytes through verbatim and re-emits only the one
- * edited — as `<...>` when its bars now differ, plain when they agree, promoting
- * a static cell to an alternation when an edit makes it vary.
- *
- * Distinct from `source`: there a region's `[from,to)` are the model's own
- * columns; here they are SINGLE-CYCLE columns, gathered strided across `bars`.
- * A model carries `altSource` XOR `source`, never both.
- */
-interface AltRegion<C> {
-    raw: string;
-    leading: string;
-    trailing: string;
-    /** `[from, to)` columns WITHIN one bar (single-cycle space) */
-    from: number;
-    to: number;
-    /** what the view showed for this element in each of `bars` cycles, at parse */
-    perBar: C[];
-}
-interface AltSource<C> {
-    /** columns per bar (one cycle) */
-    perBar: number;
-    bars: number;
-    /** finest subdivision, so a re-emitted region splits on whole columns */
-    div: number;
-    /** the single-cycle top-level elements, tiling the source in order */
-    regions: AltRegion<C>[];
-}
-/**
- * What a step grid shows for one column: each sound STARTING there, with how long
- * it sounds, in columns.
- *
- * Carried the length as of #1010 P4c (#1045). Sounds alone were enough while the
- * printer re-derived every length, because a length could not differ from what the
- * bytes already said. Once the printer PRESERVES lengths, "did the user change this
- * region?" has to include them, or the honouring is undetectable for exactly the
- * edits it exists for — a region whose only change is a length compares equal and is
- * copied back verbatim.
- */
-interface GridCell {
-    token: string;
-    /** length in COLUMNS (see `StepNote.duration`) */
-    duration: number;
-}
-/** what a step grid shows for a span of columns: the sounds in each, with their lengths */
-type GridCells = GridCell[][];
-/**
- * A leaf atom's OWN source span — `[start, end)` into the inner mini string.
- *
- * Read from a hap's `context.locations` (Strudel's `mini()` calls `.withLoc` per
- * atom), never computed here: a nested atom carries its own token span, not its
- * container's, so `s("a [b c]")` gives the `c` hap the span of `c` and never of
- * `[b c]` (#987).
- */
-interface LeafSpan {
-    start: number;
-    end: number;
-}
-/**
- * one atom sounding in a column, paired with the source leaf it was read from
- *
- * ⚠ `duration` IS HERE SO THE WRITER CAN REFUSE, NOT SO IT CAN WRITE (#1235). This
- * anchor's whole point is a byte replacement at `span`, and a note's LENGTH has no
- * bytes of its own to replace — it is spelled by what surrounds the token (`_`, `@n`,
- * a bracket group), which is notation this writer must never author. Carrying the
- * length anyway is what lets `spliceByLeaf` NOTICE that a length changed and decline,
- * instead of comparing tokens, finding no difference, and returning the source bytes
- * as a successful write. A writer's contract has to state what it can notice, not only
- * what it can spell.
- *
- * Read from the same expression that fills the lane cells (`projectStepGridByLeaf`),
- * never derived a second time: the comparison is only meaningful if both sides come
- * from one rule. `RollLeafAnchor` has carried its own for the same reason since #989,
- * which is why the roll never had this defect.
- */
-interface LeafAnchor {
-    atom: string;
-    span: LeafSpan;
-    /** length in COLUMNS, the units of `StepNote.duration` */
-    duration: number;
-}
-/**
- * The source of a LEAF-ANCHORED projection (#986) — the third write-back shape,
- * and the only one that never re-emits notation.
- *
- * `source`/`altSource` pair the view with the source's TOP-LEVEL elements, so an
- * edited element is re-spelled from the cell model (`reemitRegion`). That re-emit
- * is a mini-notation printer of our own, and it can only spell flat or one-level
- * output — which is why anything with internal structure (`[a [b c]]`, `<a b>*4`)
- * round-trips wrong and is refused.
- *
- * A leaf anchor pairs the view with the ATOM instead: an edit replaces that one
- * note's bytes and every other byte — brackets, spaces, operators, unedited notes
- * — is copied verbatim. Nothing about the grammar is authored, so the writer
- * cannot invent syntax; what it cannot express (a note where no leaf exists) it
- * REFUSES. See `spliceByLeaf`.
- */
-interface LeafSource {
-    /** the inner mini string the spans index into, byte-for-byte */
-    src: string;
-    /**
-     * Per model column, the atoms sounding there and each one's own leaf span.
-     *
-     * Its LENGTH is also the layout these anchors were read against — the width
-     * `anchorsDescribe` (`serialize.ts`) requires the model to still have before
-     * either leaf writer may write. See `RollLeafSource.steps` for why.
-     */
-    cols: LeafAnchor[][];
-    /**
-     * Per column, the span of the REST (`~` / `-`) occupying it, where there is one.
-     *
-     * Deliberately not an entry in `cols`: an anchor is an atom the grid SHOWS and the
-     * lanes are built from that set, so a rest joining it would draw a `~` lane. This
-     * is the same information for a different purpose — the one span a column can offer
-     * when it has no sounding leaf.
-     *
-     * WHAT IT IS FOR (#1154). Deleting a note on a leaf grid writes `~` over that note's
-     * own bytes, which is right. But a rest produces no hap, so nothing indexed it, and
-     * putting the note back was refused for want of a span — the user could not undo
-     * their own delete anywhere on this path (0 of 402 asks over the corpus).
-     *
-     * ⚠ IT DOES NOT — AND CANNOT — MARK WHICH RESTS ARE OURS. The model is re-read from
-     * the document after every write, so a `~` this writer produced and one the user
-     * typed are the same bytes with the same span and no way to tell them apart. So this
-     * field enables the undo AND placement on any rest a leaf grid shows: 248 of 3,584
-     * empty cells across 17 of 82 leaf units. What is still refused is a column that
-     * holds no leaf at all, where a note would have to AUTHOR a slot.
-     *
-     * Absent, or null at a column, simply means the older refusal still stands there.
-     */
-    rests?: (LeafSpan | null)[];
-    /**
-     * The width of the model these spans were ATTACHED to — `RollLeafSource.attachedSteps`
-     * is the same field on the roll, and both exist for one reason (#1235, [[PV319]]).
-     *
-     * ⚠ IT IS NOT `cols.length`, AND THAT DIFFERENCE IS THE WHOLE POINT. `anchorsDescribe`
-     * compares `cols.length` against the model's `steps`, and where these spans are
-     * OVERLAID (`StepGridModel.surgical`) those two numbers are computed by different code
-     * from different premises: the leaf path anchors per ATOM, the element path counts
-     * EXPANDED columns. So their equality is evidence of nothing, and coincidence is
-     * reachable by an ordinary gesture — a `÷2` moves the element model's width onto the
-     * overlay's, the guard passes against spans describing a different layout, surgery
-     * writes the pre-halved bytes back, and the user's divide-by-two silently does nothing.
-     * Measured before #1233: unreachable on the overlay as it ships (0 of 52 grid and 0 of 43
-     * roll restructures), and 13 grid + 2 roll under its core attachment.
-     *
-     * ⚠ THAT 13 + 2 WAS CONFIRMED WHEN #1233 SHIPPED, BY BREAKING THE REAL THING — and the
-     * confirmation is worth recording because a cheaper reading disagreed with it. Dropping
-     * the re-stamp in `lazyGridLeaf`/`lazyRollLeaf` on the built change swallows exactly 13
-     * grid and 2 roll restructures; re-stamping makes it 0 and 0.
-     *
-     * ⚠⚠ THE CHEAPER READING SAID 2 + 2, AND IT WAS THE INSTRUMENT THAT WAS WRONG. Before
-     * the attachment existed, `_1235-width-coincidence.spec.ts` SIMULATED it by spreading
-     * spans fetched from `projectStepGridDerived` — which carry the DERIVED path's own
-     * `attachedSteps`. That stamp usually disagrees with the core model they were being
-     * pasted onto, so the simulated overlay was refused for a reason the real change never
-     * has, and the figure came out five times too low. A simulation that does not reproduce
-     * the field the guard reads is not measuring the guard. Break the built thing.
-     *
-     * Recording the width at ATTACH time makes "valid" mean "this is the model those spans
-     * were read from", which is the property actually needed. `anchorsDescribe` stays: it
-     * is still NECESSARY, it was only never sufficient.
-     */
-    attachedSteps: number;
-}
-/**
- * A leaf-span OVERLAY: the width the spans were attached to, plus the spans themselves
- * behind a thunk that projects them on first use (#1233).
- *
- * WHY THE SPANS ARE DEFERRED, and it is a cost fact rather than a style one. Building
- * them is a second full projection of the mini. They are read only when the writer
- * answers an EDIT — one write per many parses, and most parses never write at all — so
- * built eagerly the cost lands on every parse instead of on the writes that use it.
- * Measured on the path this field exists to reach: attaching eagerly where the syntactic
- * core answers takes a parse from 57.2us to 1459.8us, x25.5, on the parse that serves 791
- * of 958 corpus units and re-runs on every keystroke. Deferred, a parse pays one closure
- * and the projection is paid once by the write that needs it.
- *
- * ⚠ THE MEMO IS PART OF THE CONTRACT, NOT AN OPTIMISATION. A writer may ask more than
- * once, and a fresh projection per ask would put back the cost this shape exists to move.
- * A FAILED projection memoises too — `undefined` is an answer ("this mini has no leaf
- * spans"), not an absence — so the flag is separate from the value rather than a null
- * check, which would re-run the whole projection on every write to rediscover it.
- *
- * ⚠ AND IT IS GATED, by counting projections rather than by timing them (#1237). Losing
- * either the laziness or the memo changes no output, no count and no verdict — only
- * work — so no gate that reads models can see it, and a wall-clock assertion would be
- * flaky. `parse.ts` keeps a projection counter for exactly this and nothing else;
- * `surgicalMemo.test.ts` reads it as a delta around a parse and around repeated asks,
- * including the failing-projection case that the separate flag exists to serve.
- *
- * ⚠ IT IS MEMOISED PER MODEL, NOT PER MINI. A cache keyed on the mini string would help
- * only repeated parses of unchanged text, and the hot case is TYPING, where the mini
- * differs every keystroke and every lookup would miss.
- *
- * ⚠ `spans()` RETURNS A SOURCE ALREADY STAMPED WITH `attachedSteps` BELOW, so the width
- * rule stays in the one place that enforces it (`anchorsAreFor`, `serialize.ts`) and no
- * caller has to remember to re-check it. A source arrives from the leaf projection
- * describing the LEAF model's layout; overlaid it must describe the model it is landing
- * on, or the writer compares two independently-derived numbers and their agreement means
- * nothing ([[PV319]]).
- *
- * ⚠⚠ `spans` IS A FUNCTION, AND `JSON.stringify` DROPS FUNCTION-VALUED PROPERTIES. Any
- * gate that compares models structurally sees this field shrink to `attachedSteps` alone
- * rather than seeing it disappear — which is why that number stays a plain field. A gate
- * comparing an overlaid model against a bare one still sees a difference; one comparing
- * two overlaid models no longer sees their spans differ. `writer-census.test.ts` is the
- * gate that does this, and it strips the overlay from both sides explicitly rather than
- * letting `JSON.stringify` decide what it can see — a gate that passes because it went
- * blind reads exactly like one that passes because nothing changed.
- */
-interface SurgicalOverlay<S> {
-    /**
-     * The width of the model this overlay was attached to. The writer refuses unless the
-     * model still has it — see `LeafSource.attachedSteps` for the restructure that makes a
-     * bare width comparison unsound.
-     */
-    attachedSteps: number;
-    /** the spans, projected on first call and remembered — including a failure */
-    spans: () => S | undefined;
-}
-/** The grid's overlay — see `SurgicalOverlay` for the contract and both hazards. */
-type LazyLeafSource = SurgicalOverlay<LeafSource>;
-/** The roll's overlay, with the same contract and the same hazards. */
-type LazyRollLeafSource = SurgicalOverlay<RollLeafSource>;
-/**
- * One played note, paired with the source leaf its PITCH was read from.
- *
- * The roll's analogue of `LeafAnchor`, and deliberately not the same shape: a grid
- * column holds a set of atoms, while a roll note is positioned AND held, so an
- * anchor has to carry where it starts and how long it lasts as well as what it
- * plays. Both are still the same fact — "these bytes are this note's own".
- */
-interface RollLeafAnchor {
-    /** the note as the model carries it — names case-folded, numerics stringified */
-    pitch: string;
-    /** the model column the note starts at, absolute across bars */
-    start: number;
-    /** length in columns */
-    duration: number;
-    /** the PITCH token's own `[start, end)` in `src` — never the `@n` hold (see below) */
-    span: LeafSpan;
-}
-/**
- * The source of a leaf-anchored ROLL projection (#986 P1b) — `LeafSource` for the
- * pitched surface.
- *
- * Anchored per NOTE rather than per column, because a note is what the roll edits.
- * A chord contributes one anchor per member, each with its own disjoint leaf, so a
- * member can be cleared without touching the others.
- *
- * DURATION IS NOT WRITABLE HERE, and that is a fact about Strudel, not a shortcut:
- * a held note's hap carries ONLY its pitch leaf in `context.locations` — the `@n`
- * never appears as a location of its own (observed by driving `reifyMini` on
- * `c3@2`, `[c3 e3]@2`, `c3 e3@2 g3`, `0@2 2`: every one reports a single location,
- * the pitch). So there is no span through which a duration could be spliced, and
- * writing one would mean AUTHORING `@n` syntax — exactly the modelling this whole
- * mechanism exists to delete. A resized or moved note is therefore REFUSED by the
- * writer, never approximated. See `spliceRollByLeaf`.
- */
-interface RollLeafSource {
-    /** the inner mini string the spans index into, byte-for-byte */
-    src: string;
-    /** one per played note, in play order */
-    anchors: RollLeafAnchor[];
-    /**
-     * The column count these anchors were read against — the roll's equivalent of
-     * the grid's `cols.length`, and a REQUIRED guard rather than bookkeeping.
-     *
-     * Anchors are PROVENANCE: they describe where each note's bytes live in a
-     * source laid out one particular way. A restructure (`resizeRoll`) re-lays the
-     * grid while carrying the model's other fields through, so the anchors survive
-     * describing a layout that no longer exists. Widening leaves every note's start
-     * and length intact, which passes the writer's per-note check and would write
-     * the ORIGINAL source back, silently discarding the resize. Narrowing is worse:
-     * the notes that fell outside the new width look to the writer exactly like
-     * notes the user DELETED, and it would splice `~` over them — data loss from a
-     * gesture that edited nothing.
-     *
-     * So the check belongs at the WIDTH, the thing a restructure changes, not at
-     * the item — and in ONE place: `anchorsDescribe` (`serialize.ts`), which both
-     * leaf writers call ([[P329]], #990).
-     */
-    steps: number;
-    /** the width of the model these anchors were ATTACHED to — see `LeafSource` (#1235) */
-    attachedSteps: number;
-}
-/**
- * One `,`-separated part of the source, and the columns it produced.
- *
- * A flat sequence and a `<…>` alternation are the one-part case; a `,`-stack
- * has several, each with its OWN resolution. `bd sd, hh*4` lays two columns
- * against four, and the grid shows both on the finer of the two — so a part's
- * regions are indexed in its own column space and `factor` maps them onto the
- * shared grid.
- */
-interface SourcePart<C> {
-    /** the lane `part` index these regions describe */
-    part: number;
-    /** columns per top-level step INSIDE this part */
-    div: number;
-    /**
-     * Shared-grid columns spanned by each of this part's own columns.
-     *
-     * Always 1 for the roll: `parseRollLanes` requires every part to report the
-     * same step count and refuses the pattern otherwise, so a roll's parts share
-     * one column space by construction. The grid is the view that stretches
-     * (`bd sd, hh*4` lays two columns against four).
-     *
-     * With `bars` present, the stretch is per BAR: one of this part's bars spans one bar
-     * of the shared grid.
-     */
-    factor: number;
-    /**
-     * The bars this part is WRITTEN over, when the stack is longer than some part (#1849).
-     *
-     * `<[bd ~ bd ~] [bd ~ ~ bd]>, ~ sd ~ sd` plays for two bars, but the snare is written
-     * once: Strudel's `stack` asks every part for the same cycle and the snare answers the
-     * same bar again (`mini.mjs` `case 'stack'`). So the model draws this part's `bars`
-     * written bars, then REPEATS them until the stack's own `bars` — never stretches them.
-     * Its regions tile the written bars only (columns `[0, bars × columns-per-bar)` of its
-     * own space). An edit in any bar changes that bar only: the writer spells the part bar
-     * by bar as `<t0 … t(Q-1)>` (`spliceBars`, #1854), and back to the plain part when the
-     * bars agree again.
-     *
-     * Absent on every stack that plays for one bar, which is every stack read before
-     * #1849's `<…>` half — so those models are unchanged. Present → `factor` maps one bar
-     * of this part onto one bar of the shared grid.
-     */
-    bars?: number;
-    /** the bytes before this part's content — its `,` and padding — verbatim */
-    before: string;
-    /** the bytes after it */
-    after: string;
-    /** one entry per top-level element, in source order, tiling the part */
-    regions: SourceRegion<C>[];
-}
-/**
- * The bytes a model was read from, in the pieces the writer puts back.
- *
- * Present only on a model parsed from source and not restructured since —
- * `resize` drops it, because a re-laid grid makes every region a lie. Absent on
- * models built from scratch, and then the writer rebuilds from the grid, which
- * is lossy and always was.
- */
-interface NotationSource<C> {
-    /**
-     * The wrapper the parts sit inside, written back around them verbatim: `<`
-     * and `>` (with the user's padding) for a multi-bar alternation, empty for a
-     * flat sequence. Kept as bytes rather than a flag so `< a b >` keeps its
-     * spaces.
-     */
-    prefix: string;
-    suffix: string;
-    parts: SourcePart<C>[];
-}
-/** Drum/step grid: lanes (sounds) × steps (columns). */
-interface StepGridModel {
-    /** total columns across all bars */
-    steps: number;
-    /**
-     * The source this model was read from, for span surgery on write (#913).
-     * The writer re-emits ONLY the regions whose content the user actually
-     * changed and copies every other region's bytes through untouched, so an
-     * edit cannot destroy notation it never touched (`bd hh*2 sd cp`, nudge a
-     * cell in the `bd`, and the `*2` survives). Absent → the writer rebuilds the
-     * whole string from the grid, which is lossy and always was.
-     */
-    source?: NotationSource<GridCells>;
-    /**
-     * Set when the alternation sits INSIDE the sequence (`bd <sd hh>`, #920) rather
-     * than around the whole cycle. The writer uses this instead of `source`; the
-     * two are mutually exclusive.
-     */
-    altSource?: AltSource<GridCells>;
-    /**
-     * Set by the LEAF-anchored projection (#986) for patterns whose notation no
-     * element re-emit can reproduce. Takes precedence over both of the above and
-     * is TERMINAL: a leaf grid is never rebuilt from its cells, because rebuilding
-     * is exactly what would destroy the notation it was opened to preserve — an
-     * edit it cannot express as a byte replacement is refused instead.
-     */
-    leafSource?: LeafSource;
-    /**
-     * The same leaf spans, overlaid on a view the ELEMENT writer owns (#1010 P4d) —
-     * a write channel, never a projection.
-     *
-     * `leafSource` above answers two questions at once: which writer owns the view,
-     * and where that writer's spans are. Those are different questions, and binding
-     * them is what made P4d a routing problem. Routing is decided once per model;
-     * both writers answer per EDIT. So a per-model choice between them is silently
-     * wrong for half the gestures either way — measured, the leaf-first form buys 17
-     * more faithful documents and costs 1,763 placements and the finer view on the
-     * same views, because a leaf-anchored view takes a new note only where a rest was
-     * indexed (#1154) and has no span to subdivide for a refine (#1058).
-     *
-     * This field asks only the second question. The view stays the element
-     * projection — its columns, its placements, its view scale are untouched — and
-     * the writer tries byte surgery at the note's own span FIRST, falling back to the
-     * element re-emit for any edit surgery cannot express. Nothing restates the leaf
-     * writer's refusal rule anywhere; it is simply asked.
-     *
-     * ⚠ NOT INTERCHANGEABLE WITH `leafSource`, and the asymmetry is the safety
-     * property. A leaf-PROJECTED view is terminal: an edit it cannot express is
-     * REFUSED, because the re-emit is exactly what would destroy the notation that
-     * view was opened to preserve (`amen/4` clearing its only cell comes back as
-     * `<~ ~ ~ ~>`, and the 275 shared-leaf deletes #1160 declines would start being
-     * written by the other writer). Falling back is permitted only here, where the
-     * element writer was already the incumbent and the fallback restores exactly
-     * today's behaviour.
-     *
-     * ⚠ ASKED THROUGH `spans()`, WHICH PROJECTS ON FIRST USE — see `SurgicalOverlay`. The
-     * field became a thunk when #1233 attached it on the CORE path too, where a second
-     * eager projection is x25.5 rather than the derived path's +59%, because the core parse
-     * is cheap enough that the extra projection IS the cost.
-     */
-    surgical?: LazyLeafSource;
-    /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
-    bars?: number;
-    /**
-     * Each bar's OWN column count, when the bars' counts do not nest (#1827): `[3, 4]`
-     * for `<[a b c] [a b c d]>`. Present → `steps` is their sum and every column this
-     * model holds is a DRAWN column, bar b's cells each one `1/barSteps[b]` of a cycle.
-     * Absent → the uniform layout, `steps / bars` columns per bar. Writers see the
-     * shared grid only, through `toUniform*` in `perBar.ts`.
-     */
-    barSteps?: number[];
-    /**
-     * How much finer than the DOCUMENT this model is drawn (#1055, #1116). Absent =
-     * `UNREFINED` — the document's own resolution, which is what every path that does
-     * not apply a scale reports. That default is what makes `documentSteps(model)`
-     * total: a projection which ignores the scale carries 1, so its document width and
-     * its drawn width are the same number, which is the truth for it.
-     */
-    viewScale?: number;
-    /**
-     * Lanes in presentation order. `sound` is the whole token incl. any
-     * `:variant` (e.g. `bd:3`). `part` is the top-level `,`-stack the lane was
-     * written in (absent = 0) — purely syntactic, kept so a hand-written stack
-     * round-trips as the user wrote it instead of being flattened.
-     */
-    lanes: StepLane[];
-    /**
-     * Per-COLUMN velocity, length `steps`, indexed by serialized column (NOT by
-     * lane — a stacked `[bd,sn]` column shares one gain). `1` is neutral; a model
-     * with every gain at `1` (or `gains` absent) emits no `.gain`. Read from /
-     * written to a parallel `.gain("v1 v2 …")` mini aligned to the columns the
-     * grid serializes (rest columns serialize as `~`). Only single-part,
-     * single-bar grids carry gain in the first cut; richer shapes leave any
-     * existing `.gain` untouched (see `serializeStepGain`).
-     */
-    gains?: number[];
-    /**
-     * Set when a `.gain("…")` string was present on read-back but did NOT align
-     * to the grid columns (wrong length, a broadcast `.gain("0.8")`, an `@`/`*`
-     * we didn't write). The grid then leaves that `.gain` byte-identical and the
-     * velocity drag is disabled — we never delete a gain we didn't author.
-     */
-    gainForeign?: boolean;
-}
-/**
- * One column of one lane: `false` for no trigger, or the note that starts there.
- *
- * WHY THIS IS NOT A BOOLEAN (#1010 P4b). A cell used to be one bit, so how long
- * its note sounds was not part of the model — and a writer cannot preserve an axis
- * its model never carried ([[PV239]]). Every duration loss on this surface starts
- * there: the element re-emit has nothing to write with except the view's own
- * resolution, so `[hh ~]!16` — sixteen notes each sounding for HALF a column —
- * comes back as sixteen notes of a full column, twice their length, and the pattern
- * is quietly a different pattern. The piano roll's note has carried `duration`
- * since the beginning and has never produced one of these.
- *
- * `false` rather than `null`/`undefined` for the off cell, so that the many places
- * which only ask "is anything here?" keep reading exactly as they did —
- * truthiness, `.some(Boolean)`, `filter(Boolean)`.
- */
-type StepCell = false | StepNote;
-/** A note occupying one grid cell. */
-interface StepNote {
-    /**
-     * How long the note SOUNDS, in COLUMNS: `1` is exactly this column, `2` spans
-     * the next one too, `0.5` sounds for the first half of it and is silent after.
-     *
-     * COLUMNS, not cycles, and both units are deliberately in play at this boundary.
-     * `Onset.durs` is cycle-relative so that no reader needs to know the grid's
-     * resolution; a CELL is already positioned in the grid, and every consumer of
-     * this field reasons in columns — the ×2/÷2 resolution ops, resize, and (P4c) the
-     * printer deciding whether a note even needs a `[x ~]` to be spelled.
-     * `RollNote.duration` is the same unit, which is what makes the two surfaces
-     * comparable and is the direction #1032 goes.
-     *
-     * FRACTIONAL IS NORMAL — this is where it differs from the roll's integral `@n`.
-     * Measured over the 1535-unit corpus: ~206 units carry a length that is not 1,
-     * and 5 are sub-column (`[hh ~]!16` → 0.5, `[bd@0.5 - - -]` → 0.1429). A
-     * consumer that assumes integers is wrong about real corpus material.
-     */
-    duration: number;
-}
-interface StepLane {
-    sound: string;
-    part?: number;
-    cells: StepCell[];
-}
-/** A single note in the piano roll. */
-interface RollNote {
-    /** note token, e.g. `c3`, `eb4` */
-    pitch: string;
-    /** column index where the note begins */
-    start: number;
-    /**
-     * Length in COLUMNS — frequently fractional, and not a count of `@n`s. `@n` is a
-     * relative weight (`n / Σweights` of the enclosing sequence), so a whole `@n` lands on
-     * whatever share of a column that works out to. The writer spells this back as `@n`
-     * where it can, including fractionally, and declines below one column.
-     */
-    duration: number;
-    /**
-     * Per-note velocity. `1` (or absent) is neutral and emits no `.gain`. Chord
-     * members sharing a `start` share one gain (like duration); on read-back the
-     * group's gain is applied to all its members. Written to a parallel
-     * `.gain("…")` mini that mirrors the note sequence's group/`@n`/rest
-     * structure. Only single-bar rolls carry gain in the first cut.
-     */
-    gain?: number;
-}
-/** Pitched (melodic) grid: notes placed on a pitch × time grid. */
-interface PianoRollModel {
-    /** total columns across all bars */
-    steps: number;
-    /**
-     * The source this model was read from, for span surgery on write (#916) —
-     * the roll's half of what `StepGridModel.source` does for the grid. A region
-     * owns columns `[from, to)` and the notes STARTING in that range are its own;
-     * unchanged ones write their bytes back, so `C D` stays `C D` rather than
-     * coming back lowercased for the crime of being looked at. Absent → the
-     * writer rebuilds from the model, which is lossy and always was.
-     */
-    source?: NotationSource<RollNote[]>;
-    /**
-     * Set when the alternation sits INSIDE the sequence (`0 <2 3> 5`, #920) rather
-     * than around the whole cycle. The writer uses this instead of `source`; the
-     * two are mutually exclusive.
-     */
-    altSource?: AltSource<RollNote[]>;
-    /**
-     * Set by the LEAF-anchored projection (#986 P1b) for patterns whose notation no
-     * element re-emit can reproduce — the roll's half of `StepGridModel.leafSource`,
-     * and TERMINAL for the same reason: a leaf roll is never rebuilt from its notes,
-     * because rebuilding is what would destroy the notation it was opened to
-     * preserve. An edit it cannot express as a byte replacement is refused instead.
-     */
-    leafSource?: RollLeafSource;
-    /**
-     * The same leaf spans overlaid on a view the ELEMENT writer owns (#1010 P4e) — the
-     * roll's half of `StepGridModel.surgical`, with the same meaning and the same
-     * asymmetry against `leafSource` above.
-     *
-     * `leafSource` answers two questions at once: which writer owns the view, and where
-     * that writer's spans are. This field asks only the second. The view stays the
-     * element projection — its columns, its notes, its view scale untouched — and
-     * `serializePianoRollWithExtent` tries byte surgery at each note's own span FIRST,
-     * falling back to the element paths for anything surgery cannot express.
-     *
-     * ⚠ NOT INTERCHANGEABLE WITH `leafSource`, and the asymmetry is the safety property.
-     * A leaf-PROJECTED roll is terminal: an edit it cannot express is REFUSED, because
-     * the rebuild is what would destroy the notation the view was opened to preserve, and
-     * falling back would hand the re-emit the shared-leaf deletes #1160 declines. Falling
-     * back is permitted only here, where the element writer was already the incumbent, so
-     * it can only restore today's behaviour and never introduce a write.
-     *
-     * ⚠ DECIDED ON THE ROLL, NEVER BY ANALOGY WITH THE GRID. `projectPianoRollDerived`
-     * records the two surfaces answering the same routing flip with opposite signs — the
-     * roll loses ten units of reach where the grid gains five — which is exactly why P4d's
-     * result could not simply be assumed here and why every figure behind this field was
-     * taken on the roll.
-     *
-     * ⚠ ASKED THROUGH `spans()`, exactly as the grid's is — see `SurgicalOverlay` for why
-     * the projection is deferred and what the memo guarantees.
-     */
-    surgical?: LazyRollLeafSource;
-    /** cycles the pattern spans via `<...>` alternation; absent = a single cycle */
-    bars?: number;
-    /**
-     * Each bar's OWN column count, when the bars' counts do not nest (#1827): `[3, 4]`
-     * for `<[a b c] [a b c d]>`. Present → `steps` is their sum and every column this
-     * model holds is a DRAWN column, bar b's cells each one `1/barSteps[b]` of a cycle.
-     * Absent → the uniform layout, `steps / bars` columns per bar. Writers see the
-     * shared grid only, through `toUniform*` in `perBar.ts`.
-     */
-    barSteps?: number[];
-    /**
-     * How much finer than the DOCUMENT this model is drawn — the roll's half of
-     * `StepGridModel.viewScale`, with the same meaning and the same default (#1055,
-     * #1116). Absent = `UNREFINED`, which is the truth for every projection that does
-     * not apply a scale and is what keeps `documentSteps(model)` total.
-     *
-     * ⚠ A ROLL COLUMN IS NOT A GRID COLUMN: `steps` here is a column COUNT that
-     * `start`/`duration` are measured in, so a refine multiplies all three together.
-     */
-    viewScale?: number;
-    notes: RollNote[];
-    /** see `StepGridModel.gainForeign` — a `.gain` we read but don't manage. */
-    gainForeign?: boolean;
-    /**
-     * The pitch tokens are bare integers (`note("60 62")` MIDI, `n("0 1 2")`
-     * degrees) rather than note names (#469). Row math is the same (the number
-     * IS the row), but new/dragged notes must emit numbers, not `c4`, so the
-     * pattern round-trips. A pattern mixes one convention or the other, never
-     * both (mixed is rejected at parse).
-     */
-    numeric?: boolean;
-}
-/**
- * WHY a view declined a pattern — the gate that actually stopped it (#990).
- *
- * Three writers stack behind one parse call (syntactic core → element projection
- * → leaf projection), and before this the `reason` string was whichever one
- * declined FIRST — almost always the core, describing a subsystem that often had
- * nothing to do with why the unit was unavailable. Measured over 1500 real units,
- * every pattern reporting "nested groups are beyond the editable subset" was in
- * fact stopped by a wrong-surface value or an unstable period; not one was stopped
- * by anything to do with nesting. A gate names the real cause.
- *
- * These are not a new list of features. Each is one face of the single editability
- * invariant — a played onset is editable iff it maps to a unique disjoint source
- * span, in a view that stays true:
- *   - `wrong-surface`      the values belong to the OTHER view (a drum pattern
- *                          asked of the piano roll, a number asked of the grid).
- *                          Not an editability failure — a routing fact.
- *   - `no-note-content`    nothing placeable sounds at all: a params/signal value,
- *                          a zero-length hap, silence, or a query that threw.
- *   - `unstable-period`    what it plays does not repeat inside the projection's
- *                          bar window, so any view of it stops being true.
- *   - `mixed-pitch-domain` numeric and named pitches in one pattern (roll only).
- *   - `irrational-onset`   an onset/duration/boundary that lands on no column.
- *   - `resolution`         the columns needed exceed the step ceiling.
- *   - `element-tiling`     the source's top-level elements do not tile the played
- *                          columns — the element writer's half of the bijection.
- *   - `no-leaf-anchor`     a played note has no source token of its own, or two
- *                          notes claim overlapping bytes — the leaf writer's half.
- *   - `note-crosses-bar`   a played note does not fit inside the bar it starts
- *                          in, so no column layout can hold it. Deliberately NOT
- *                          folded into `no-leaf-anchor`: such a note has a
- *                          perfectly good source token, and folding it in would
- *                          overstate the write-back guard — the exact kind of
- *                          misattribution this vocabulary exists to end.
- *   - `edit-unsafe`        the write-back probe and the engine disagreed.
- *   - `view-unusable`      the view opens but no single edit is expressible.
- *   - `no-finer-view`      a REFINED request came back unrefined: the path that
- *                          owns the pattern answered, and its answer does not
- *                          carry the requested scale. Distinct from
- *                          `view-resolution`, which is the ceiling saying no —
- *                          here nothing was too large, the owner simply has no
- *                          finer view to give. Reachable only through a refined
- *                          ask, which is why it went unnamed until #1132.
- *   - `not-a-pattern`      it does not reify at all; the core's own syntax
- *                          message is the better answer and is kept.
- */
-type Gate = 'wrong-surface' | 'no-note-content' | 'unstable-period' | 'mixed-pitch-domain' | 'irrational-onset' | 'resolution'
-/**
- * The VIEW asked for more columns than it may draw (#1055). Distinct from
- * `resolution`, which is the DOCUMENT's own blow-up guard: this one says the
- * document is fine and the requested magnification is not. Cannot fire while the
- * view scale is `UNREFINED`, since the document ceiling (64) is below the view
- * ceiling (256) — see `viewResolution.ts`.
- */
- | 'view-resolution' | 'element-tiling' | 'no-leaf-anchor' | 'note-crosses-bar' | 'edit-unsafe' | 'view-unusable' | 'no-finer-view'
-/**
- * The source spells this content with a backslash escape (#1254). Narrower than
- * `not-a-pattern`, and separated from it deliberately: that gate means "nothing
- * reified, and the core's own message names the syntax", which is the better
- * answer and is why an unreified refusal is allowed to stay unnamed. This one is
- * the case where the core's message CANNOT be the better answer, because the
- * backslash is not something the author wrote into the pattern.
- *
- * A double-quoted literal is reified by the transpiler from `node.value`, the
- * JS-COOKED string, while the editor models the DOCUMENT SLICE between the quotes
- * — so every JS escape leaves a backslash on our side that the engine never sees.
- * A backtick literal cannot diverge (the raw text is what runs), and there the
- * backslash really is in the pattern and krill really does refuse it. The sentence
- * below is therefore written to be true of both, naming what is observable in the
- * string rather than a cause only the reader could know.
- */
- | 'escaped-source' | 'not-a-pattern';
-/**
- * Parse outcome. `ok: false` is a first-class result, not an exception — every
- * panel checks it on open and disables itself (code-only) when the pattern is
- * outside the editable subset.
- *
- * `gate` is present whenever a projection ran and declined — the machine-readable
- * half of `reason`, so a measurement buckets by cause instead of by string match.
- * Absent when the refusal is the syntactic core's own (nothing reified).
- */
-type ParseResult<M> = {
-    ok: true;
-    model: M;
-} | {
-    ok: false;
-    reason: string;
-    gate?: Gate;
-};
-
-/**
- * How much finer than the document the view draws. A whole-number multiplier ≥ 1;
- * `1` is the document's own resolution. Never an absolute column count — see the
- * header for why that distinction is the whole reset rule.
- */
-type ViewScale = number;
-
-/**
- * THE PUBLIC ENTRY, and the only place a caller can express a view resolution.
- *
- * #1055 threaded `ViewScale` into the DERIVED projections. But the core answers first
- * and answers for most patterns — 783 of the 958 corpus units that open the grid,
- * including `bd ~ sn ~`, the case #1052 is named after — so a scale that stopped at
- * the derived path could not reach 94% of the free-zone offers it exists to serve
- * (#1116). The core now carries it too, and the scale enters HERE so both halves get
- * the same number from the same caller.
- *
- * The order is unchanged and deliberately so ([[PK58]]): core, then derived. A view
- * scale must NOT re-route a pattern to a different projection, because the core and
- * the derived path build different `source` structures and therefore hand the document
- * to different writers — zooming would silently swap the writer that owns the user's
- * bytes. The finer view has to come from whichever writer already owns the pattern.
- *
- * ⚠ THAT GUARANTEE IS WHY OWNERSHIP IS ASKED AT `UNREFINED`, ALWAYS, and the first
- * version of this entry did not have it. Asking the core AT THE SCALE conflates two
- * different noes: "I do not own this pattern" (fall through to the derived path) and
- * "I own it but cannot draw it finer yet" (the alt-element path's refusal). Both
- * arrive as `ok: false`, so the scale refusal fell through and the derived projection
- * answered instead — measured, **20 grid and 17 roll units changed writer on a zoom**,
- * and 36 of the 37 were faithful magnifications that would have shipped in silence.
- * Routing is a property of the PATTERN, so it is decided at the pattern's own
- * resolution and the scale is applied only by the path that already owns it.
- */
-declare function parseStepGrid(mini: string, viewScale?: ViewScale): ParseResult<StepGridModel>;
-/**
- * THE PUBLIC ENTRY for the roll, and the only place a caller can express a view
- * resolution — the roll's twin of `parseStepGrid`, for the same reason and with the
- * same ordering guarantee (#1116). 412 of the 544 corpus units that open a roll are
- * core-parsed, so a scale that stopped at the derived projection was unreachable for
- * 93% of the free-zone offers it exists to serve.
- *
- * Core, then derived, unchanged: a view scale must not re-route a pattern to a
- * different projection, because the two build different `source` structures and so
- * hand the document to different writers. Ownership is therefore asked at `UNREFINED`
- * — see `parseStepGrid` for the measurement that forced this, and for why a core that
- * refuses the SCALE must not read as a core that refuses the PATTERN.
- */
-declare function parsePianoRoll(mini: string, viewScale?: ViewScale): ParseResult<PianoRollModel>;
-
-/**
- * Notation models → mini-notation. The round-trip law (golden-tested):
- *   serialize(parse(s).model) === s   for canonical strings
- *   parse(serialize(m)).model ≡ m
- *
- * Canonical form: single-space separated, lanes in first-appearance order,
- * multi-bar patterns as a whole-string `<...>` alternation (one slot per bar),
- * `,`-stack parts in ascending part order. Serializing a model the subset
- * can't express (overlapping roll notes, a note straddling a bar line) returns
- * null and the panel keeps the document untouched.
- */
-
-/**
- * The mini a grid model writes back, or null where it has no spelling.
- *
- * Every caller that only needs the bytes uses this; the extent above is for the
- * ones asking how much of the document moved. One implementation, so the two can
- * never disagree about what was written.
- */
-declare function serializeStepGrid(model: StepGridModel): string | null;
-/**
- * The mini a roll model writes back, or null where it has no spelling.
- *
- * A projection of the function above, never a second implementation, so the bytes a
- * caller gets and the path the census reads can never describe different writes.
- */
-declare function serializePianoRoll(model: PianoRollModel): string | null;
-
-/**
- * Note-token ↔ MIDI helpers for the piano roll's vertical axis.
- *
- * Numeric convention matches the engine's `noteToMidi` (`c3 = 48`,
- * `eb4 = 63`). Accidentals accept Strudel's three spellings on read — `#`,
- * `b`, and `s` (`cs3`) — and emit `#` on write. Conversion only feeds row
- * placement and newly-created notes; the round-trip itself stores the token
- * verbatim, so emission style never threatens fidelity for existing notes.
- */
-/**
- * `c3` / `c#3` / `cs3` / `eb4` → MIDI number, or null if not a note token.
- * The octave is OPTIONAL — a bare name (`c`, `eb`, `f#`) defaults to octave 3,
- * matching Strudel (`note("c")` plays C3). A bare integer (`60`, `0`, `-7`)
- * maps to that row directly — `note("60")` is MIDI; `n("0")` is a degree/index.
- * Either way the number IS the row, and the verbatim token is what the
- * serializer writes back (#469).
- */
-declare function pitchToMidi(token: string): number | null;
-/** MIDI number → canonical note token (sharps as `#`). Inverse of pitchToMidi. */
-declare function midiToPitch(midi: number): string;
-/** Is this MIDI pitch a black key (for striping the roll's pitch rows)? */
-declare function isBlackKey(midi: number): boolean;
-
-/**
- * Insert a note into a roll, resolving overlaps so the result stays a flat,
- * tileable sequence (what the serializer requires). DAW-style resolution:
- *  - a group already at `start` → the note joins the chord, adopting its duration.
- *    ⚠ THAT IS A PRODUCT RULING, NOT A WRITER CONSTRAINT, and the distinction is the
- *    one #1310 was about. "Chord members share one duration" was true of what this
- *    file could SPELL, and since the region writer learned parallel lanes it is not:
- *    `[g3@2 ~ ~, [c3,e3]@4]` says a chord whose members differ, and round-trips. So
- *    honouring a different requested length is available and we decline it — adding a
- *    voice to a chord is a gesture that shares the chord's length, and the compact
- *    spelling is the one the user wrote. Chosen, not forced;
- *    ⚠ where the notes at `start` DISAGREE about their length there is no single
- *    duration to adopt, and today the answer is whichever note the array holds first.
- *    That is live and pre-existing — 856 asks over the corpus reach such a start — and
- *    it is #1314, to be fixed with #1315 since both change what the writer is asked to
- *    spell and need one reach measurement between them;
- *  - an earlier note OF THE SAME PITCH sustaining across `start` → it trims to end at
- *    `start`. Other pitches sustaining through the column are left alone (#1310): they
- *    are voices the gesture did not touch, and the region writer can now spell a chord
- *    whose members have different lengths, so nothing forces them shorter;
- *  - the next group (or the grid end) caps the new note's duration.
- */
-declare function placeNote(model: PianoRollModel, pitch: string, start: number, duration: number, opts?: RollWriteOptions): PianoRollModel;
-/** Options a caller may tighten a roll write with. */
-interface RollWriteOptions {
-    /**
-     * Require the result to READ BACK, not merely to spell (#1331). Off by default because
-     * it parses, and the roll's writers run per drag frame; the panel turns it on once at
-     * gesture commit, where one parse is affordable.
-     */
-    readback?: boolean;
-}
-
-type ResizeMode = 'spread' | 'pad';
-/**
- * Both modes clamp lengths (`clampLane`) for the same reason `quantizeStepGridTo` and
- * `resizeRoll` do: rounding hits onto a coarser grid, or truncating one, can leave a
- * note reaching past the next hit or past the end of the grid, and neither is
- * something the writer could spell. The roll has always clamped here; the grid could
- * not, because a cell had no length to clamp (#1010 P4b).
- */
-declare function resizeGrid(model: StepGridModel, nextSteps: number, mode: ResizeMode): StepGridModel;
-declare function resizeRoll(model: PianoRollModel, nextSteps: number, mode: ResizeMode): PianoRollModel;
-
 /**
  * VisualEditStandby — the empty state every write-back panel shows when there
  * is nothing editable to bind to (no pattern under the cursor, or the pattern
@@ -12176,42 +12212,6 @@ declare function VisualEditStandby({ panel, hint, icon, }: VisualEditStandbyProp
  */
 /** the snap grids the picker offers; `'grid'` = native cell (no extra snap) */
 type Division = 'grid' | '1/4' | '1/8' | '1/16' | '1/8T' | '1/16T';
-
-/**
- * WHAT SETTING THE GRID TO `target` DID TO THE NOTES — reported by the op, never
- * reconstructed from its output (#1061).
- *
- * The control has to tell the user what a press costs BEFORE they make it, and a
- * coarsening can cost three different things independently. `SlotState` names the
- * MECHANISM (`lossless` / `quantize`); this names the CONSEQUENCES, which is what the
- * copy is actually about. Splitting them is deliberate: one control with one label
- * covering several effects is what left the last gate certifying a control that no
- * longer existed, and widening a single verdict until the arithmetic comes out buries
- * the very distinction the user needs.
- *
- * Every field is counted inside the loop that causes it, so a caller cannot describe a
- * write the op did not make. A DECLINED op reports `NO_EFFECT` — nothing happened, so
- * nothing is claimed.
- */
-interface GridResolutionEffect {
-    /**
-     * notes held at one column because scaling would have put them BELOW one, and the
-     * grid has no spelling for half a column. These sound LONGER than they did — the
-     * length grows to the coarsest thing the new grid can say (#1061).
-     */
-    lengthened: number;
-    /** notes whose onset moved off its exact proportional position — i.e. timing changed */
-    snapped: number;
-    /** notes that landed on a column their own lane had already filled, and merged */
-    merged: number;
-}
-/**
- * how setting the grid to `target` slots behaves, for the control's label/state.
- *
- * `view` is the free zone (#1057): the click changes only how finely the panel DRAWS
- * the pattern and leaves the document byte-identical. Every other member still writes.
- */
-type SlotState = 'active' | 'view' | 'lossless' | 'quantize' | 'disabled';
 
 /**
  * ResolutionControl — the "Slots" grid-resolution control shared by both grids

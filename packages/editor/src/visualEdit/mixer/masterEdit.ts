@@ -50,8 +50,8 @@
  * rewrites that one call to `.mul(postgain(…))`; a document nobody touches is
  * never rewritten.
  */
-import { parseTopLevel, collectChain, toArg, type ChainArg, type ChainCall, type ChunkInfo } from '../../codeView/chunkDetect'
-import { formatNumber } from '../../codeView/writeback'
+import { parseTopLevel, collectChain, toArg, type ChainArg, type ChainCall, type ChunkInfo } from '../../codeView'
+import { formatNumber } from '../../codeView'
 import type { StripEdit } from './writeStrip'
 
 /** unity gain — an untouched master reads unity from the ABSENCE of a line. */

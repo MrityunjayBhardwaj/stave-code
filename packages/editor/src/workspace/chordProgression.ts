@@ -34,7 +34,7 @@
 import { workspaceAudioBus } from './WorkspaceAudioBus'
 import type { AudioPayload } from './types'
 import type { PatternScheduler } from '../visualizers/types'
-import type { IREvent } from '../codeView/ir/IREvent'
+import type { IREvent } from '../codeView'
 import { HapStream } from '../engine/HapStream'
 import {
   notifyPlaybackStarted,

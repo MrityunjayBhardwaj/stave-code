@@ -11,7 +11,7 @@
  * Guard: an evaluate that yields no strips (a transient/empty source) must never
  * wipe the user's colours — so an empty set is a no-op, never a full prune.
  */
-import { detectAllChunks } from '../../codeView/chunkDetect'
+import { detectAllChunks } from '../../codeView'
 import { buildStripModels } from './stripModel'
 import { pruneTrackMeta } from '../../workspace/WorkspaceFile'
 

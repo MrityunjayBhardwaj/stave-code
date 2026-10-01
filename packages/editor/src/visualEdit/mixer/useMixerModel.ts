@@ -17,8 +17,8 @@
 import * as React from 'react'
 
 import { getActiveEditor, onActiveEditorChange, getMonacoNamespace } from '../../workspace/editorRegistry'
-import { detectAllChunks, type ChunkInfo } from '../../codeView/chunkDetect'
-import { Writeback } from '../../codeView/writeback'
+import { detectAllChunks, type ChunkInfo } from '../../codeView'
+import { Writeback } from '../../codeView'
 import { buildStripModels, type StripModel } from './stripModel'
 import {
   readMasterGain,

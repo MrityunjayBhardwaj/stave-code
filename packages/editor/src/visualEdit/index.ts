@@ -17,11 +17,11 @@ export {
   docParses,
   isChunkFresh,
   classifyChunk,
-} from '../codeView/chunkDetect'
-export type { ChunkInfo, ChainCall, ChainArg, ChunkType } from '../codeView/chunkDetect'
+} from '../codeView'
+export type { ChunkInfo, ChainCall, ChainArg, ChunkType } from '../codeView'
 
-export { Writeback, formatNumber, normalizeEdits, applyEdits } from '../codeView/writeback'
-export type { WriteSource, OffsetEdit } from '../codeView/writeback'
+export { Writeback, formatNumber, normalizeEdits, applyEdits } from '../codeView'
+export type { WriteSource, OffsetEdit } from '../codeView'
 
 export {
   detectArrangeAt,
@@ -31,8 +31,8 @@ export {
   reorderArm,
   insertArm,
   insertSilenceArm,
-  renameSection as renameArrangeSection,
-  countSectionArms as countArrangeSectionArms,
+  renameArrangeSection,
+  countArrangeSectionArms,
   removeArm,
   silenceArm,
   wrapBare,
@@ -40,28 +40,28 @@ export {
   materializeBareSplit,
   splitArm,
   setArmPattern,
-  listSectionParts as listArrangeSectionParts,
-} from '../codeView/arrange'
-export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from '../codeView/arrange'
+  listArrangeSectionParts,
+} from '../codeView'
+export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from '../codeView'
 
 // #463 Stage 2 — pick* section-clip write-back. Same op names as `arrange`
 // (setWeight/splitArm/…), so they're re-exported aliased as `pick*`.
-export { detectPickControlAt, detectAllPickControls } from '../codeView/pickControl'
-export type { PickControl, PickControlArm, PickMethod, PickSectionEntry } from '../codeView/pickControl'
+export { detectPickControlAt, detectAllPickControls } from '../codeView'
+export type { PickControl, PickControlArm, PickMethod, PickSectionEntry } from '../codeView'
 export {
-  setWeight as pickSetWeight,
-  splitArm as pickSplitArm,
-  removeArm as pickRemoveArm,
-  silenceArm as pickSilenceArm,
-  reorderArm as pickReorderArm,
-  insertArm as pickInsertArm,
-  insertSilenceArm as pickInsertSilenceArm,
-  duplicateArm as pickDuplicateArm,
-  renameSection as pickRenameSection,
-  countSectionArms as pickCountSectionArms,
-  setArmHead as pickSetArmHead,
-  listSectionParts as pickListSectionParts,
-} from '../codeView/pickControl'
+  pickSetWeight,
+  pickSplitArm,
+  pickRemoveArm,
+  pickSilenceArm,
+  pickReorderArm,
+  pickInsertArm,
+  pickInsertSilenceArm,
+  pickDuplicateArm,
+  pickRenameSection,
+  pickCountSectionArms,
+  pickSetArmHead,
+  pickListSectionParts,
+} from '../codeView'
 
 export {
   parseStepGrid,
@@ -74,7 +74,7 @@ export {
   placeNote,
   resizeGrid,
   resizeRoll,
-} from '../codeView/notation'
+} from '../codeView'
 export type {
   StepGridModel,
   StepLane,
@@ -82,7 +82,7 @@ export type {
   RollNote,
   ParseResult,
   ResizeMode,
-} from '../codeView/notation'
+} from '../codeView'
 
 export { VisualEditStandby } from './panels/VisualEditStandby'
 export type { VisualEditStandbyProps } from './panels/VisualEditStandby'

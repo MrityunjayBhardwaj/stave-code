@@ -15,7 +15,7 @@
  */
 
 import type { BusAnalyser } from '../signals/SignalBus'
-import type { IRPattern } from '../../codeView/ir/IRPattern'
+import type { IRPattern } from '../../codeView'
 import type { HapEvent } from '../../engine/HapStream'
 import type { FrameSampleCache } from './frameSampleCache'
 import { perf } from '../../perf/profiler'

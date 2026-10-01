@@ -29,10 +29,10 @@
  */
 import * as React from 'react'
 
-import type { ChunkInfo } from '../../codeView/chunkDetect'
-import type { ChunkGain, GainWrite, ParseResult } from '../../codeView/notation/model'
-import { UNREFINED, absorbViewScale, type ViewScale } from '../../codeView/notation/viewResolution'
-import type { OffsetEdit, WriteSource } from '../../codeView/writeback'
+import type { ChunkInfo } from '../../codeView'
+import type { ChunkGain, GainWrite, ParseResult } from '../../codeView'
+import { UNREFINED, absorbViewScale, type ViewScale } from '../../codeView'
+import type { OffsetEdit, WriteSource } from '../../codeView'
 import { useActiveChunk } from './useActiveChunk'
 
 export interface GridModelOptions<M> {
