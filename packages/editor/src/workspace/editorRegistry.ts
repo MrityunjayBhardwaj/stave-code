@@ -28,7 +28,8 @@ import {
 // lightweight Writeback (monaco types + acorn chunkDetect), never the React
 // panels — useActiveChunk imports getActiveEditor from HERE, so the barrel would
 // be a cycle.
-import { Writeback, type OffsetEdit, type WriteSource } from '../codeView/writeback'
+import { Writeback } from '../codeView/writeback'
+import type { OffsetEdit, WriteSource } from '../codeView'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type MonacoEditor = any

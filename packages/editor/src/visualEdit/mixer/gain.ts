@@ -14,7 +14,7 @@
  * didn't author) is FOREIGN — every gain affordance hands off and shows the
  * value read-only rather than corrupting an expression it doesn't understand.
  */
-import type { ChunkInfo } from '../../codeView/chunkDetect'
+import type { ChunkInfo } from '../../codeView'
 import { formatNumber } from '../../codeView/writeback'
 
 /**

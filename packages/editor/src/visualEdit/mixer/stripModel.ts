@@ -14,7 +14,8 @@
  * numbering rule); it is verified against the engine in S2 (grounding gate GR1)
  * before any meter trusts it.
  */
-import { detectAllChunks, type ChunkInfo, type ChainCall } from '../../codeView/chunkDetect'
+import { detectAllChunks } from '../../codeView/chunkDetect'
+import type { ChunkInfo, ChainCall } from '../../codeView'
 import { patternKind } from '../panels/patternKind'
 import { readChainMethod } from '../panels/chainMethod'
 import { trackIdentity } from '../trackColor'
