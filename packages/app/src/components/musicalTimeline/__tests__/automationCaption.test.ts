@@ -206,6 +206,17 @@ describe('the rate field — what it says and where it can be clicked (#1464 Sta
     expect(captionHit(rows, xOf(19), AUTOMATION_PAD_Y + 1, measure)).toBeNull()
   })
 
+  it('the rate field comes from the rule handed in: without it the same line is laid out, with no rate field (#1886)', () => {
+    // The draw path passes no rule — it reads text and position only. A hit-test that
+    // forgot to pass one would get exactly this, so the difference is pinned here.
+    const a = auto({ periodCycles: 4, lanePeriodCycles: 4, spans: SLOWED })
+    const drawn = captionRows([a], 0, 60, true)
+    const hit = captionRows([a], 0, 60, true, rateEditable)
+    expect(drawn.map((r) => [r.text, r.y])).toEqual(hit.map((r) => [r.text, r.y]))
+    expect(drawn[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi'])
+    expect(hit[0].fields.map((f) => f.kind)).toEqual(['param', 'lo', 'hi', 'rate'])
+  })
+
   it('shows two composing rates without offering a field over them', () => {
     const ambiguous = auto({ periodCycles: 2, lanePeriodCycles: 2, spans: { shape: null, rate: null, range: null, chainEnd: 40 } })
     expect(captionText(ambiguous)).toBe('cutoff 200→2000 2 bars')
