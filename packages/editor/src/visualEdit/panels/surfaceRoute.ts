@@ -63,7 +63,7 @@
 import type { ChunkInfo } from '../../codeView'
 import { parsePianoRoll, parseStepGrid } from '../../codeView'
 import { chordLanes } from './chordLanes'
-import { patternKind, type PatternKind } from './patternKind'
+import { patternKind, type PatternKind } from '../../codeView'
 
 /** A decided surface. `routeSurface` always reaches one, so it never returns null. */
 export type Surface = Exclude<PatternKind, null>

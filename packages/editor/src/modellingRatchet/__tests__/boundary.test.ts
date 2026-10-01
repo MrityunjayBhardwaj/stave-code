@@ -3,6 +3,7 @@ import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import {
   boundaryProblems,
+  entryImportsInside,
   exceptionsOnMain,
   listProblems,
   loadExceptions,
@@ -50,14 +51,40 @@ describe('the code↔view boundary (#1879)', () => {
     it("the list only shrinks against origin/main's", () => {
       const main = exceptionsOnMain()
       if (main.kind === 'absent') {
-        // Legitimate only in the change that introduces the list, where no entry can carry an
-        // "added" line yet. Once one does, a list missing from main is a stale fetch or a deletion.
+        // Legitimate until the change that introduces the list has merged — and that includes
+        // branches stacked on it, whose entries may already carry "added" lines (#1884 was the
+        // first). So this cannot fail; it says, every run, that the check did not happen.
         const added = [...list.enforced, ...list.declared].filter((e) => e.added !== undefined).map((e) => e.file)
-        expect(added, 'origin/main has no exception list, but these entries say they were added to one — fetch origin').toEqual([])
-        console.warn('code↔view boundary: no exception list on origin/main yet, so shrink-only is not checked in this run')
+        console.warn(
+          `code↔view boundary: no exception list on origin/main, so shrink-only was NOT checked in this run` +
+            (added.length ? ` (${added.length} entries carry "added" lines: ${added.join(', ')})` : ''),
+        )
         return
       }
       none(shrinkOnlyProblems(list, main.list), 'the exception list grew')
+    })
+  })
+
+  describe('inside the area', () => {
+    it('no file imports the entry — a file inside imports the module that has the name', () => {
+      none(entryImportsInside(), 'files inside codeView/ import codeView/index.ts')
+    })
+
+    it('a planted one is caught, however the entry is spelled', () => {
+      const C = `${E}/codeView`
+      const planted = {
+        [`${C}/plantedDot.ts`]: `import { parseStepGrid } from '.'\nexport const x = parseStepGrid`,
+        [`${C}/mixer/plantedUp.ts`]: `import type { ChunkInfo } from '..'\nexport type X = ChunkInfo`,
+        [`${C}/mixer/plantedIndex.ts`]: `export { detectChunk } from '../index'`,
+        [`${C}/mixer/plantedDynamic.ts`]: `export const x = () => import('../index')`,
+        [`${C}/mixer/plantedSibling.ts`]: `import { detectChunk } from '../chunkDetect'\nexport const x = detectChunk`,
+      }
+      expect(entryImportsInside({ overlay: planted })).toEqual([
+        `${C}/mixer/plantedDynamic.ts`,
+        `${C}/mixer/plantedIndex.ts`,
+        `${C}/mixer/plantedUp.ts`,
+        `${C}/plantedDot.ts`,
+      ])
     })
   })
 

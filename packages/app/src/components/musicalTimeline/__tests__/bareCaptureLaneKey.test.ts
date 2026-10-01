@@ -4,7 +4,7 @@
  * A document that never calls `.p()` plays its last expression, and the engine
  * captures that pattern under the id an anonymous `$:` would have taken. The
  * rule is decided by `bareCaptureIdFor` in
- * `packages/editor/src/visualEdit/mixer/stripModel.ts` — the mixer owns it,
+ * `packages/editor/src/codeView/mixer/stripModel.ts` — the mixer owns it,
  * because the mixer is what ASSIGNS these ids while numbering its strips.
  *
  * ⚠ THE RULE IS "THE LAST TRACK", `$<n-1>` — NOT `'$0'`. Since #1096 a bare
@@ -35,7 +35,7 @@ import { laneKeyForHap } from '../timelineMarks'
 /**
  * The id a SINGLE-statement bare document resolves to — `bareCaptureIdFor`'s
  * `$<n-1>` at n = 1. Kept in step with
- * `packages/editor/src/visualEdit/mixer/stripModel.ts`.
+ * `packages/editor/src/codeView/mixer/stripModel.ts`.
  *
  * ⚠ DELIBERATELY A LITERAL, not an import. Importing the real constant means
  * importing `@stave/editor` in an app test, and the barrel drags gifenc (CJS)

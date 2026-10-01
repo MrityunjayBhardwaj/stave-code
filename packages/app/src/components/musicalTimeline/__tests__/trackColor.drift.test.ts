@@ -1,7 +1,7 @@
 /**
  * trackColor.drift.test.ts — the Mixer and the Timeline must colour a track
  * IDENTICALLY (V-track-1, issue #579). The canonical algorithm now lives in the
- * editor (`visualEdit/trackColor.ts`) so the Mixer can import it; the app's
+ * editor (`codeView/trackColor.ts`) so the Mixer can import it; the app's
  * `colors.ts` keeps an identical copy because it CANNOT import the editor barrel
  * (it drags `@strudel/draw → gifenc` into vite-node and crashes app unit tests,
  * P172 — the same reason `resolveLaneKey` mirrors `laneKeyOf`).
@@ -31,7 +31,7 @@ import {
   paletteForTrack as editorPaletteForTrack,
   colorForTrack as editorColorForTrack,
   trackIdentity as editorTrackIdentity,
-} from '../../../../../editor/src/visualEdit/trackColor'
+} from '../../../../../editor/src/codeView/trackColor'
 
 // A spread of keys exercising every branch: `d{N}` sequential + wrap, stem-family
 // hints (drums/bass/pad/melody), the Mixer's positional `#k` ids, anonymous

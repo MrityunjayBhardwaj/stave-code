@@ -100,8 +100,8 @@ export {
 } from './panels/gridGestures'
 export type { GridScope, GridGestureId, GridGestureDef, GridKeyMatcher } from './panels/gridGestures'
 export { PatternPanel } from './panels/PatternPanel'
-export { patternKind, isStepChunk, isRollChunk } from './panels/patternKind'
-export type { PatternKind } from './panels/patternKind'
+export { patternKind, isStepChunk, isRollChunk } from '../codeView'
+export type { PatternKind } from '../codeView'
 // #1240 — the CONTENT-aware router. Kept out of `patternKind` so that module
 // stays free of the notation parser (see both files' headers).
 export { chunkSurface, routeSurface, type Surface } from './panels/surfaceRoute'

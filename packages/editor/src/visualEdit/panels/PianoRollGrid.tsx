@@ -70,7 +70,7 @@ import {
   type GridAction,
   type NoteEdit,
 } from './gridGestures'
-import { readChainMethod } from './chainMethod'
+import { readChainMethod } from '../../codeView'
 import { ExtendHandle } from './ExtendHandle'
 import { linesModel, rulerLabels, useLayoutFollow, useRulerFit, writtenStepStarts } from './writtenSteps'
 import { usePatternLength } from './usePatternLength'

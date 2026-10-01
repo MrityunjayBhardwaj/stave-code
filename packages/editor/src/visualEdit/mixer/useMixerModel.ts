@@ -19,14 +19,14 @@ import * as React from 'react'
 import { getActiveEditor, onActiveEditorChange, getMonacoNamespace } from '../../workspace/editorRegistry'
 import { detectAllChunks, type ChunkInfo } from '../../codeView'
 import { Writeback } from '../../codeView'
-import { buildStripModels, type StripModel } from './stripModel'
+import { buildStripModels, type StripModel } from '../../codeView'
 import {
   readMasterGain,
   readMasterMute,
   detectMasterAudioAll,
   adaptMasterChunk,
   type MasterGainState,
-} from './masterEdit'
+} from '../../codeView'
 
 export interface MixerModel {
   /** one strip per top-level statement, in source order (re-derived on edits) */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readChainMethod } from '../chainMethod'
-import type { ChunkInfo } from '../../../codeView/chunkDetect'
+import type { ChunkInfo } from '../chunkDetect'
 
 /** minimal ChunkInfo carrying just the chain the reader inspects */
 function chunk(calls: Array<{ name: string; args: string[] }>): ChunkInfo {

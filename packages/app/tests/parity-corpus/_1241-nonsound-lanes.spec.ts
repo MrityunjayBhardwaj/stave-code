@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url'
 import { unitsWithStatus } from './editCoverage'
 import { parseStepGrid } from '../../../editor/src/codeView/notation/parse'
 import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
-import { isStepChunk } from '../../../editor/src/visualEdit/panels/patternKind'
+import { isStepChunk } from '../../../editor/src/codeView/patternKind'
 import { sampleVoice } from '../../../editor/src/visualEdit/panels/drumVoices'
 import { loadCorpus } from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
 

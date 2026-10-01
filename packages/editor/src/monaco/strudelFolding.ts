@@ -11,7 +11,7 @@
  */
 import type * as Monaco from 'monaco-editor'
 import { detectAllChunks } from '../codeView'
-import { buildStripModels } from '../visualEdit/mixer/stripModel'
+import { buildStripModels } from '../codeView'
 import { trackBarSegments, type PositionModel } from './useTrackColourBars'
 
 /** A foldable track block as 1-indexed inclusive line numbers. */

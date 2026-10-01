@@ -20,6 +20,7 @@
  */
 
 // ── read ── the finished models a view draws, and the facts read off the code
+export { readChainMethod } from './chainMethod'
 export {
   detectAllChunks,
   detectChunk,
@@ -104,6 +105,25 @@ export type { IREvent, SourceLocation } from './ir/IREvent'
 export type { IRPattern } from './ir/IRPattern'
 export type { PatternIR } from './ir/PatternIR'
 export { splitMuteMarker } from './ir/trackId'
+export {
+  detectMasterAll,
+  detectMasterAudioAll,
+  adaptMasterChunk,
+  readMasterGain,
+  readMasterMute,
+  readMasterViz,
+  MASTER_UNITY_GAIN,
+} from './mixer/masterEdit'
+export type { MasterAll, MasterGainState } from './mixer/masterEdit'
+export {
+  statementOffsetForSource,
+  otherTrackNames,
+  buildStripModels,
+  stripContainingOffset,
+} from './mixer/stripModel'
+export type { StripModel } from './mixer/stripModel'
+export { isValidTrackLabel } from './mixer/writeStrip'
+export type { StripEdit } from './mixer/writeStrip'
 export type { StepLane, ResizeMode } from './notation'
 export {
   columnCount,
@@ -138,6 +158,9 @@ export {
 export type { GridResolutionEffect, SlotState } from './notation/resolution'
 export { UNREFINED, documentSteps, absorbViewScale } from './notation/viewResolution'
 export type { ViewScale } from './notation/viewResolution'
+export { patternKind, isStepChunk, isRollChunk } from './patternKind'
+export type { PatternKind } from './patternKind'
+export { trackIdentity, TRACK_PALETTE_32 } from './trackColor'
 
 // ── ops ── model → model (or code → edits); offered exactly when the writer can write the result
 export {
@@ -160,6 +183,8 @@ export {
   listSectionParts as listArrangeSectionParts,
 } from './arrange'
 export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './arrange'
+export { planSoundAssignment } from './assign/soundAssign'
+export { planVizAssignment } from './assign/vizAssign'
 export {
   merge,
   transpose,
@@ -172,6 +197,8 @@ export {
   previewRepeat,
   previewShapeSwap,
 } from './ir'
+export { masterGainEdit, masterMuteEdit, masterVizEdit } from './mixer/masterEdit'
+export { renameEdit, gainEdit, panEdit, muteEdit } from './mixer/writeStrip'
 export { resizeGrid, resizeRoll } from './notation'
 export { addLane, removeLane } from './notation/lane'
 export { appendEmptyBars, duplicateBar } from './notation/lengthen'

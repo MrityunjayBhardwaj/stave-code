@@ -1679,6 +1679,227 @@ declare function runPasses<IR>(input: IR, passes: readonly Pass<IR>[]): {
 }[];
 
 /**
+ * writeStrip.ts — the strip controls' write decisions, as PURE functions.
+ *
+ * Each takes a freshly-detected chunk and a target value and returns the single
+ * surgical text edit to make (a replace range + text), or null when the control
+ * must hand off (a foreign/patterned value it can't safely rewrite). Keeping the
+ * decision pure — `ChunkInfo` + value → `StripEdit` — means the fader/pan
+ * write-back is unit-testable without Monaco; the caller just applies the edit
+ * through the tagged `Writeback` inside `applyToStrip` (one undo step).
+ *
+ * Surgical & conservative (V-mixer-1, P194): only the targeted literal changes;
+ * a signal/expression value disables the control rather than corrupting it.
+ */
+
+/** a single surgical edit: replace `range` with `text` (insert = zero-width range). */
+interface StripEdit {
+    range: [number, number];
+    text: string;
+}
+/** A valid track label: a JS identifier (incl. `$`/`_`) that is not a reserved
+ *  word. Mirrors what a `name:` LabeledStatement accepts. Exported so the rename
+ *  UIs can gate/validate keystrokes without re-deriving the rule. */
+declare function isValidTrackLabel(name: string): boolean;
+/**
+ * The edit an inline rename makes — write the user's chosen `name:` label into
+ * the code (#580, Phase C). Renaming is the ONLY way a descriptive name reaches
+ * the file: the display never auto-names (the `d{N}` friction prompts THIS edit).
+ *
+ *  - named   (`bass:`)  → replace the label with `newLabel` (`lead: …`);
+ *  - anon    (`$:`, label `'$'`) → replace the `$` → INSERT a name (`drums: …`);
+ *  - the `_` mute marker is PRESERVED (only the bare label is rewritten), so a
+ *    muted track stays muted across a rename and the edit round-trips cleanly.
+ *
+ * Returns null when the statement is unlabelled (a bare expression has no label
+ * slot), when `newLabel` is not a valid track label (invalid → no write, the UI
+ * reverts), when it equals the current bare label (no-op), or when it would
+ * COLLIDE with another track's display name (#585 — see `takenNames`). Surgical:
+ * only the label characters change; the pattern expression is byte-identical.
+ *
+ * `takenNames` = the display names of all OTHER tracks (the caller excludes the
+ * track being renamed). A rename whose new label equals one of them is rejected
+ * rather than written: a duplicate label collides on the engine's capture/meter
+ * join AND on the per-track colour-override key (which is keyed by display name,
+ * #581), so two tracks would share one meter and one colour. Consistent with the
+ * friction principle (#579) — the UI reverts, exactly like an invalid label, and
+ * the user picks a name that's free. Two tracks the user DELIBERATELY labels the
+ * same are valid JS and stay shared identity by design (Phase D); this guard only
+ * prevents a rename from silently CREATING a new duplicate.
+ */
+declare function renameEdit(fresh: ChunkInfo, newLabel: string, takenNames: ReadonlySet<string>): StripEdit | null;
+
+/**
+ * masterEdit — the MASTER strip's write decisions, as PURE functions.
+ *
+ * The master bus in Strudel is `all(x => …)`: it stacks every `$:`/named pattern
+ * and applies the transform to the whole mix (`@strudel/core/repl.mjs:153`). So
+ * the master strip's two round-tripped controls project to `all()` chains,
+ * structurally identical to a channel line but scoped to the whole mix:
+ *
+ *   master fader   → all(x => x.mul(postgain(0.85)))
+ *   master mute    → all(x => silence)      (a dedicated sentinel line)
+ *   global backdrop→ all(x => x.viz("name", { backdrop: true }))
+ *
+ * By the SPLIT decision (design §9.4) gain and viz live on SEPARATE `all()`
+ * lines — each edit function owns its own line, so they never coordinate on one
+ * shared statement (`all()` transforms compose). The functions mirror
+ * `writeStrip.ts`: pure `doc + value → StripEdit`, applied through the same
+ * tagged `Writeback` seam every channel control uses (`MixerStrips.tsx`), so the
+ * write-back is unit-testable without Monaco. The read path (code → live
+ * backdrop / master gain) already ships in the engine — this is the write path.
+ *
+ * ⚠ THERE IS NO MASTER PAN CONTROL (#1719). `all(x => x.pan(v))` SETS pan on
+ * every hap, so the control that wrote it threw away each track's own pan — 127
+ * of 620 real documents set `.pan` on their tracks. The master fader's `mul`
+ * trick does not carry over: pan is a position, not a level, and a key only the
+ * master has is copied in as-is, so a track with no pan would take the master's
+ * value rather than 0.5 plus it. Nor can a document reach the finished mix:
+ * superdough pans each voice on its own (`superdough.mjs`), before the orbit's
+ * reverb and delay, and the orbit's own output panner is fixed at centre. A
+ * document's `all(x => x.pan(…))` line still PLAYS — it is simply no longer
+ * written or read here.
+ *
+ * Robust to a hand-COMBINED chain: `masterGainEdit`/`masterVizEdit` bind to
+ * whichever `all()` line already carries the relevant call, so a user who wrote
+ * `all(x => x.mul(postgain(0.8)).viz("a",{backdrop:true}))` still gets surgical edits;
+ * only a fresh materialization uses the split convention.
+ *
+ * WHY `mul(postgain(N))` AND NOT A PLAIN CONTROL (#1711). A Strudel control
+ * method SETS its value on the hap — `.gain(a).gain(b)` plays at `b` — so a
+ * master written as `all(x => x.gain(N))` replaced every track's own gain with N:
+ * lowering the master made the quiet tracks LOUDER. Moving it to `postgain` (the
+ * last gain stage, superdough `new GainNode(ac, { gain: postgain })`) is not
+ * enough on its own: 55 of 620 real documents set `.postgain` on their tracks,
+ * and a master `.postgain(N)` would overwrite those the same way. `mul` does
+ * arithmetic KEY-WISE on control values (`@strudel/core` `_composeOp` →
+ * `unionWithObj`): a key both sides have is multiplied, a key only the master
+ * has is copied in. So a track's own postgain p plays at p·N, and a track with
+ * none plays at N — which is 1·N, its default — every track scaled by the same
+ * factor. Legacy `all(x => x.gain(N))` / `all(x => x.postgain(N))` lines are
+ * still READ, so the fader shows what the document says, and moving the fader
+ * rewrites that one call to `.mul(postgain(…))`; a document nobody touches is
+ * never rewritten.
+ */
+
+/** unity gain — an untouched master reads unity from the ABSENCE of a line. */
+declare const MASTER_UNITY_GAIN = 1;
+/**
+ * A top-level `all(<arrow>)` statement we can read/edit — an expression-body
+ * arrow (`all(x => x.chain())`). Block-body arrows / non-arrow `all(fast(…))`
+ * are master transforms too but carry no editable gain/viz chain, so the
+ * detector skips them (a fresh gain/viz line is materialized alongside instead).
+ */
+interface MasterAll {
+    /** the whole `all(...)` ExpressionStatement span */
+    statementRange: [number, number];
+    /** the statement's exact source when detected — freshness (mirrors ChunkInfo) */
+    statementText: string;
+    /** the arrow body expression (`x.gain(…)`) — append `.fx()` here */
+    arrowBodyRange: [number, number];
+    /** the chain in the arrow body, in source order (via the shared `collectChain`) */
+    chain: ChainCall[];
+}
+/** Every editable master `all(x => …)` statement, in source order. Pure. */
+declare function detectMasterAll(doc: string): MasterAll[];
+/** the master gain the fader shows: the `all()` gain scalar, or unity when
+ *  absent. `foreign` = a gain call whose arg is a signal/pattern (not a number),
+ *  so the fader can't rewrite it and should disable (mirrors the channel fader). */
+interface MasterGainState {
+    value: number;
+    foreign: boolean;
+}
+declare function readMasterGain(doc: string): MasterGainState;
+/** whether the master is muted — a top-level `all(x => silence)` line is present.
+ *  Orthogonal to gain (V-mixer-2): mute never touches `.gain`, only this sentinel
+ *  line, so unmute is the exact inverse and the fader value survives untouched. */
+declare function readMasterMute(doc: string): boolean;
+/**
+ * The master "audio" `all()` line — the one the EXPAND DRAWER binds its insert
+ * chain to. It is the first expression-body `all(x => …)` that is NOT the mute
+ * sentinel (`x => silence`) and NOT a pure backdrop-viz line (presentation, not
+ * audio). Gain and effect inserts all live here, so the drawer's effects chain
+ * and the fader act on ONE statement.
+ */
+declare function detectMasterAudioAll(doc: string): MasterAll | undefined;
+/**
+ * Adapt a master `all(x => …)` line to a `ChunkInfo` so the shared `MixerBody` /
+ * `ExpandDrawer` can render + edit its insert chain exactly as for a channel.
+ *
+ * A channel's `chain[0]` is its HEAD call (`s("bd")`); the master arrow's base is
+ * the bare param `x` (an identifier, not a call), so `collectChain` yields a chain
+ * with NO head. We prepend a SYNTHETIC head at index 0 so the body's index math
+ * matches a channel: `MixerBody` skips index 0 for effect add/remove (`i > 0`, so
+ * it never deletes the base), and `knobsFromChunk` ignores it (no numeric args).
+ * `exprRange` is the arrow body, so a new `.fx()` appends at the chain's end
+ * (`x.gain(1)` → `x.gain(1).room(0.4)`). Gain carries a knob only where it is
+ * surfaced (it is strip-owned — the fader), so the drawer shows the INSERTS.
+ */
+declare function adaptMasterChunk(doc: string, m: MasterAll): ChunkInfo;
+/** the master backdrop the "set backdrop" UI shows: the `all()` backdrop-viz
+ *  name, or null when no master backdrop is declared in code. */
+declare function readMasterViz(doc: string): {
+    name: string;
+} | null;
+/**
+ * The edit the master fader makes for `value` (a linear factor that SCALES the
+ * mix — #1711; "REPLACE" in #792 meant replacing the old synthetic output gain):
+ *  - present `.mul(postgain(N))` → replace N;
+ *  - legacy `.gain(N)` / `.postgain(N)` → rewrite that one call to the scaling
+ *    form, so the line being edited stops overwriting track values (nothing
+ *    else in the document changes);
+ *  - absent → insert a fresh `all(x => x.mul(postgain(value)))` line (decision 4
+ *    = write the literal, incl. a factor of 1 at unity, matching `gainEdit`);
+ *  - foreign → null (a signal/empty gain — the fader disables).
+ */
+declare function masterGainEdit(doc: string, value: number): StripEdit | null;
+/**
+ * The edit a master mute toggle makes — add/remove the `all(x => silence)` line
+ * (design: the master analog of a channel's `_`-prefix). Mute is ORTHOGONAL to
+ * gain (V-mixer-2, P194): it never touches `.gain`, only this dedicated sentinel
+ * line, so unmute is the exact inverse and the fader value round-trips untouched.
+ *  - mute (true)  → insert `all(x => silence)` (no-op/null if already muted);
+ *  - unmute (false)→ remove the whole `all(x => silence)` line (null if not muted).
+ */
+declare function masterMuteEdit(doc: string, muted: boolean): StripEdit | null;
+/**
+ * The edit the "set backdrop" UI makes (decision 2 = code is the single source):
+ *  - set `name`  → replace the name literal in the existing master backdrop viz,
+ *                  or insert a fresh `all(x => x.viz("name", { backdrop: true }))`
+ *                  line;
+ *  - clear (null)→ remove the master backdrop viz: the whole `all()` statement
+ *                  when it holds nothing else, else just the `.viz(...)` call
+ *                  (so a hand-combined `gain().viz()` keeps its gain).
+ *
+ * Returns null when clearing with no master backdrop present (nothing to do), or
+ * when an existing backdrop viz has no string name to rewrite.
+ */
+declare function masterVizEdit(doc: string, name: string | null): StripEdit | null;
+
+/**
+ * Char offset of the top-level statement whose instrument (`.sound`/`.s`/
+ * `.bank`) is `source`, or null when none matches. Used to LOCATE a per-hap
+ * runtime error (e.g. a soundfont out-of-range note) back to its owning track's
+ * line when the error's own stack is bundle-only and the hap's `loc` is
+ * degenerate (#567). Reuses the strips' own source-extraction so the locate
+ * agrees with what the Mixer shows. First match wins (rare: two tracks, one
+ * instrument).
+ */
+declare function statementOffsetForSource(doc: string, source: string): number | null;
+/**
+ * The display names of every track in `doc` EXCEPT the statement starting at
+ * `selfStatementStart` — the set a rename checks against to reject a duplicate
+ * (#585). Keys off the SAME `buildStripModels` projection the Mixer renders, so
+ * the names match exactly what `renameEdit`'s `takenNames` must compare against
+ * (and what the colour-override store is keyed by). Used by the Song Timeline
+ * rename handler, which has only the code text (the Mixer/Pattern chip pass their
+ * already-derived `strips` instead). Excludes the renamed track by its statement
+ * offset so renaming an anon `d{N}` to its own positional name isn't a self-
+ * collision.
+ */
+declare function otherTrackNames(doc: string, selfStatementStart: number): string[];
+
+/**
  * One top-level element of the source, and the columns it produced.
  *
  * krill's element spans TILE the mini: concatenating them reconstructs the
@@ -2607,6 +2828,47 @@ interface GridResolutionEffect {
  * the pattern and leaves the document byte-identical. Every other member still writes.
  */
 type SlotState = 'active' | 'view' | 'lossless' | 'quantize' | 'disabled';
+
+/**
+ * patternKind — the HEAD discriminator: which grid editor a chunk's chain head
+ * asks for. `s`/`sound` make a drum/step pattern (Sequencer), `note`/`n` make a
+ * melodic one (Piano Roll), and those are mutually exclusive.
+ *
+ * ⚠ KEEP THIS MODULE FREE OF THE NOTATION PARSER. `mixer/stripModel.ts` imports
+ * it and the engine reaches that through `bareCapture.ts`, so a
+ * `notation/parse.ts` edge here puts `@strudel/mini`'s krill parser into
+ * `StrudelEngine`'s module graph — which breaks a `vi.mock` factory there at
+ * LOAD and kills a 37-test suite, with both typechecks still at baseline.
+ * Measured, not hypothetical: it happened while building #1240.
+ *
+ * That constraint is also the domain line. Until #1240 the head was the only
+ * signal, so "what kind of head is this" and "which surface should this content
+ * open" were one question. A resolver-supplied span has a head that says
+ * nothing (`lpf`, `seq`, `pick`, none at all), so the second question now needs
+ * the content parsed and the first still must not. The content-aware router
+ * lives in `surfaceRoute.ts` and composes this one.
+ *
+ * One home per question, so the Sequencer, Piano Roll, the Pattern panel that
+ * switches between them, and the coverage harness that scores them can't drift
+ * on what counts as drum vs melody (PV108 spirit).
+ */
+
+/** the sequencer only edits sound/sample patterns; notes go to the Piano Roll */
+declare function isStepChunk(chunk: ChunkInfo): boolean;
+/** the piano roll only edits melodic patterns */
+declare function isRollChunk(chunk: ChunkInfo): boolean;
+type PatternKind = 'step' | 'roll' | null;
+/**
+ * Which grid editor the chunk's HEAD asks for, or null.
+ *
+ * Head-only and deliberately so — this module must stay free of the notation
+ * parser. `mixer/stripModel.ts` imports it and the engine reaches that through
+ * `bareCapture.ts`, so a `notation/parse.ts` edge here puts the krill parser in
+ * `StrudelEngine`'s graph and breaks a mocked test suite at load. For the
+ * content-aware answer (a span the resolver named, whose head says nothing),
+ * call `chunkSurface` in `surfaceRoute.ts`.
+ */
+declare function patternKind(chunk: ChunkInfo | null): PatternKind;
 
 /** The literal combinator name — round-trip identity (PV122 #3). */
 type ArrangeMode = 'arrange' | 'cat' | 'slowcat';
@@ -12566,47 +12828,6 @@ declare function runGridGesture(scope: GridScope, id: string, dryRun: boolean): 
 declare function PatternPanel(): React.ReactElement;
 
 /**
- * patternKind — the HEAD discriminator: which grid editor a chunk's chain head
- * asks for. `s`/`sound` make a drum/step pattern (Sequencer), `note`/`n` make a
- * melodic one (Piano Roll), and those are mutually exclusive.
- *
- * ⚠ KEEP THIS MODULE FREE OF THE NOTATION PARSER. `mixer/stripModel.ts` imports
- * it and the engine reaches that through `bareCapture.ts`, so a
- * `notation/parse.ts` edge here puts `@strudel/mini`'s krill parser into
- * `StrudelEngine`'s module graph — which breaks a `vi.mock` factory there at
- * LOAD and kills a 37-test suite, with both typechecks still at baseline.
- * Measured, not hypothetical: it happened while building #1240.
- *
- * That constraint is also the domain line. Until #1240 the head was the only
- * signal, so "what kind of head is this" and "which surface should this content
- * open" were one question. A resolver-supplied span has a head that says
- * nothing (`lpf`, `seq`, `pick`, none at all), so the second question now needs
- * the content parsed and the first still must not. The content-aware router
- * lives in `surfaceRoute.ts` and composes this one.
- *
- * One home per question, so the Sequencer, Piano Roll, the Pattern panel that
- * switches between them, and the coverage harness that scores them can't drift
- * on what counts as drum vs melody (PV108 spirit).
- */
-
-/** the sequencer only edits sound/sample patterns; notes go to the Piano Roll */
-declare function isStepChunk(chunk: ChunkInfo): boolean;
-/** the piano roll only edits melodic patterns */
-declare function isRollChunk(chunk: ChunkInfo): boolean;
-type PatternKind = 'step' | 'roll' | null;
-/**
- * Which grid editor the chunk's HEAD asks for, or null.
- *
- * Head-only and deliberately so — this module must stay free of the notation
- * parser. `mixer/stripModel.ts` imports it and the engine reaches that through
- * `bareCapture.ts`, so a `notation/parse.ts` edge here puts the krill parser in
- * `StrudelEngine`'s graph and breaks a mocked test suite at load. For the
- * content-aware answer (a span the resolver named, whose head says nothing),
- * call `chunkSurface` in `surfaceRoute.ts`.
- */
-declare function patternKind(chunk: ChunkInfo | null): PatternKind;
-
-/**
  * surfaceRoute — which grid a chunk's CONTENT belongs to (#1240).
  *
  * ── WHY THIS IS NOT IN `patternKind.ts` ──────────────────────────────────
@@ -12828,80 +13049,6 @@ interface AuditionHandle {
 declare function startAudition(sound: string, note?: string): AuditionHandle;
 
 /**
- * Char offset of the top-level statement whose instrument (`.sound`/`.s`/
- * `.bank`) is `source`, or null when none matches. Used to LOCATE a per-hap
- * runtime error (e.g. a soundfont out-of-range note) back to its owning track's
- * line when the error's own stack is bundle-only and the hap's `loc` is
- * degenerate (#567). Reuses the strips' own source-extraction so the locate
- * agrees with what the Mixer shows. First match wins (rare: two tracks, one
- * instrument).
- */
-declare function statementOffsetForSource(doc: string, source: string): number | null;
-/**
- * The display names of every track in `doc` EXCEPT the statement starting at
- * `selfStatementStart` — the set a rename checks against to reject a duplicate
- * (#585). Keys off the SAME `buildStripModels` projection the Mixer renders, so
- * the names match exactly what `renameEdit`'s `takenNames` must compare against
- * (and what the colour-override store is keyed by). Used by the Song Timeline
- * rename handler, which has only the code text (the Mixer/Pattern chip pass their
- * already-derived `strips` instead). Excludes the renamed track by its statement
- * offset so renaming an anon `d{N}` to its own positional name isn't a self-
- * collision.
- */
-declare function otherTrackNames(doc: string, selfStatementStart: number): string[];
-
-/**
- * writeStrip.ts — the strip controls' write decisions, as PURE functions.
- *
- * Each takes a freshly-detected chunk and a target value and returns the single
- * surgical text edit to make (a replace range + text), or null when the control
- * must hand off (a foreign/patterned value it can't safely rewrite). Keeping the
- * decision pure — `ChunkInfo` + value → `StripEdit` — means the fader/pan
- * write-back is unit-testable without Monaco; the caller just applies the edit
- * through the tagged `Writeback` inside `applyToStrip` (one undo step).
- *
- * Surgical & conservative (V-mixer-1, P194): only the targeted literal changes;
- * a signal/expression value disables the control rather than corrupting it.
- */
-
-/** a single surgical edit: replace `range` with `text` (insert = zero-width range). */
-interface StripEdit {
-    range: [number, number];
-    text: string;
-}
-/** A valid track label: a JS identifier (incl. `$`/`_`) that is not a reserved
- *  word. Mirrors what a `name:` LabeledStatement accepts. Exported so the rename
- *  UIs can gate/validate keystrokes without re-deriving the rule. */
-declare function isValidTrackLabel(name: string): boolean;
-/**
- * The edit an inline rename makes — write the user's chosen `name:` label into
- * the code (#580, Phase C). Renaming is the ONLY way a descriptive name reaches
- * the file: the display never auto-names (the `d{N}` friction prompts THIS edit).
- *
- *  - named   (`bass:`)  → replace the label with `newLabel` (`lead: …`);
- *  - anon    (`$:`, label `'$'`) → replace the `$` → INSERT a name (`drums: …`);
- *  - the `_` mute marker is PRESERVED (only the bare label is rewritten), so a
- *    muted track stays muted across a rename and the edit round-trips cleanly.
- *
- * Returns null when the statement is unlabelled (a bare expression has no label
- * slot), when `newLabel` is not a valid track label (invalid → no write, the UI
- * reverts), when it equals the current bare label (no-op), or when it would
- * COLLIDE with another track's display name (#585 — see `takenNames`). Surgical:
- * only the label characters change; the pattern expression is byte-identical.
- *
- * `takenNames` = the display names of all OTHER tracks (the caller excludes the
- * track being renamed). A rename whose new label equals one of them is rejected
- * rather than written: a duplicate label collides on the engine's capture/meter
- * join AND on the per-track colour-override key (which is keyed by display name,
- * #581), so two tracks would share one meter and one colour. Consistent with the
- * friction principle (#579) — the UI reverts, exactly like an invalid label, and
- * the user picks a name that's free. Two tracks the user DELIBERATELY labels the
- * same are valid JS and stay shared identity by design (Phase D); this guard only
- * prevents a rename from silently CREATING a new duplicate.
- */
-declare function renameEdit(fresh: ChunkInfo, newLabel: string, takenNames: ReadonlySet<string>): StripEdit | null;
-
-/**
  * regionTrim.ts — the WRITE DECISIONS for a sample's played region (#1527).
  *
  * `begin` and `end` say which slice of a sample file a mark plays. The timeline
@@ -13025,153 +13172,6 @@ interface RegionTrimResult {
  * on the cycle the user is looking at.
  */
 declare function regionTrimEdit(chunk: ChunkInfo, control: RegionControl, value: number): RegionTrimResult;
-
-/**
- * masterEdit — the MASTER strip's write decisions, as PURE functions.
- *
- * The master bus in Strudel is `all(x => …)`: it stacks every `$:`/named pattern
- * and applies the transform to the whole mix (`@strudel/core/repl.mjs:153`). So
- * the master strip's two round-tripped controls project to `all()` chains,
- * structurally identical to a channel line but scoped to the whole mix:
- *
- *   master fader   → all(x => x.mul(postgain(0.85)))
- *   master mute    → all(x => silence)      (a dedicated sentinel line)
- *   global backdrop→ all(x => x.viz("name", { backdrop: true }))
- *
- * By the SPLIT decision (design §9.4) gain and viz live on SEPARATE `all()`
- * lines — each edit function owns its own line, so they never coordinate on one
- * shared statement (`all()` transforms compose). The functions mirror
- * `writeStrip.ts`: pure `doc + value → StripEdit`, applied through the same
- * tagged `Writeback` seam every channel control uses (`MixerStrips.tsx`), so the
- * write-back is unit-testable without Monaco. The read path (code → live
- * backdrop / master gain) already ships in the engine — this is the write path.
- *
- * ⚠ THERE IS NO MASTER PAN CONTROL (#1719). `all(x => x.pan(v))` SETS pan on
- * every hap, so the control that wrote it threw away each track's own pan — 127
- * of 620 real documents set `.pan` on their tracks. The master fader's `mul`
- * trick does not carry over: pan is a position, not a level, and a key only the
- * master has is copied in as-is, so a track with no pan would take the master's
- * value rather than 0.5 plus it. Nor can a document reach the finished mix:
- * superdough pans each voice on its own (`superdough.mjs`), before the orbit's
- * reverb and delay, and the orbit's own output panner is fixed at centre. A
- * document's `all(x => x.pan(…))` line still PLAYS — it is simply no longer
- * written or read here.
- *
- * Robust to a hand-COMBINED chain: `masterGainEdit`/`masterVizEdit` bind to
- * whichever `all()` line already carries the relevant call, so a user who wrote
- * `all(x => x.mul(postgain(0.8)).viz("a",{backdrop:true}))` still gets surgical edits;
- * only a fresh materialization uses the split convention.
- *
- * WHY `mul(postgain(N))` AND NOT A PLAIN CONTROL (#1711). A Strudel control
- * method SETS its value on the hap — `.gain(a).gain(b)` plays at `b` — so a
- * master written as `all(x => x.gain(N))` replaced every track's own gain with N:
- * lowering the master made the quiet tracks LOUDER. Moving it to `postgain` (the
- * last gain stage, superdough `new GainNode(ac, { gain: postgain })`) is not
- * enough on its own: 55 of 620 real documents set `.postgain` on their tracks,
- * and a master `.postgain(N)` would overwrite those the same way. `mul` does
- * arithmetic KEY-WISE on control values (`@strudel/core` `_composeOp` →
- * `unionWithObj`): a key both sides have is multiplied, a key only the master
- * has is copied in. So a track's own postgain p plays at p·N, and a track with
- * none plays at N — which is 1·N, its default — every track scaled by the same
- * factor. Legacy `all(x => x.gain(N))` / `all(x => x.postgain(N))` lines are
- * still READ, so the fader shows what the document says, and moving the fader
- * rewrites that one call to `.mul(postgain(…))`; a document nobody touches is
- * never rewritten.
- */
-
-/** unity gain — an untouched master reads unity from the ABSENCE of a line. */
-declare const MASTER_UNITY_GAIN = 1;
-/**
- * A top-level `all(<arrow>)` statement we can read/edit — an expression-body
- * arrow (`all(x => x.chain())`). Block-body arrows / non-arrow `all(fast(…))`
- * are master transforms too but carry no editable gain/viz chain, so the
- * detector skips them (a fresh gain/viz line is materialized alongside instead).
- */
-interface MasterAll {
-    /** the whole `all(...)` ExpressionStatement span */
-    statementRange: [number, number];
-    /** the statement's exact source when detected — freshness (mirrors ChunkInfo) */
-    statementText: string;
-    /** the arrow body expression (`x.gain(…)`) — append `.fx()` here */
-    arrowBodyRange: [number, number];
-    /** the chain in the arrow body, in source order (via the shared `collectChain`) */
-    chain: ChainCall[];
-}
-/** Every editable master `all(x => …)` statement, in source order. Pure. */
-declare function detectMasterAll(doc: string): MasterAll[];
-/** the master gain the fader shows: the `all()` gain scalar, or unity when
- *  absent. `foreign` = a gain call whose arg is a signal/pattern (not a number),
- *  so the fader can't rewrite it and should disable (mirrors the channel fader). */
-interface MasterGainState {
-    value: number;
-    foreign: boolean;
-}
-declare function readMasterGain(doc: string): MasterGainState;
-/** whether the master is muted — a top-level `all(x => silence)` line is present.
- *  Orthogonal to gain (V-mixer-2): mute never touches `.gain`, only this sentinel
- *  line, so unmute is the exact inverse and the fader value survives untouched. */
-declare function readMasterMute(doc: string): boolean;
-/**
- * The master "audio" `all()` line — the one the EXPAND DRAWER binds its insert
- * chain to. It is the first expression-body `all(x => …)` that is NOT the mute
- * sentinel (`x => silence`) and NOT a pure backdrop-viz line (presentation, not
- * audio). Gain and effect inserts all live here, so the drawer's effects chain
- * and the fader act on ONE statement.
- */
-declare function detectMasterAudioAll(doc: string): MasterAll | undefined;
-/**
- * Adapt a master `all(x => …)` line to a `ChunkInfo` so the shared `MixerBody` /
- * `ExpandDrawer` can render + edit its insert chain exactly as for a channel.
- *
- * A channel's `chain[0]` is its HEAD call (`s("bd")`); the master arrow's base is
- * the bare param `x` (an identifier, not a call), so `collectChain` yields a chain
- * with NO head. We prepend a SYNTHETIC head at index 0 so the body's index math
- * matches a channel: `MixerBody` skips index 0 for effect add/remove (`i > 0`, so
- * it never deletes the base), and `knobsFromChunk` ignores it (no numeric args).
- * `exprRange` is the arrow body, so a new `.fx()` appends at the chain's end
- * (`x.gain(1)` → `x.gain(1).room(0.4)`). Gain carries a knob only where it is
- * surfaced (it is strip-owned — the fader), so the drawer shows the INSERTS.
- */
-declare function adaptMasterChunk(doc: string, m: MasterAll): ChunkInfo;
-/** the master backdrop the "set backdrop" UI shows: the `all()` backdrop-viz
- *  name, or null when no master backdrop is declared in code. */
-declare function readMasterViz(doc: string): {
-    name: string;
-} | null;
-/**
- * The edit the master fader makes for `value` (a linear factor that SCALES the
- * mix — #1711; "REPLACE" in #792 meant replacing the old synthetic output gain):
- *  - present `.mul(postgain(N))` → replace N;
- *  - legacy `.gain(N)` / `.postgain(N)` → rewrite that one call to the scaling
- *    form, so the line being edited stops overwriting track values (nothing
- *    else in the document changes);
- *  - absent → insert a fresh `all(x => x.mul(postgain(value)))` line (decision 4
- *    = write the literal, incl. a factor of 1 at unity, matching `gainEdit`);
- *  - foreign → null (a signal/empty gain — the fader disables).
- */
-declare function masterGainEdit(doc: string, value: number): StripEdit | null;
-/**
- * The edit a master mute toggle makes — add/remove the `all(x => silence)` line
- * (design: the master analog of a channel's `_`-prefix). Mute is ORTHOGONAL to
- * gain (V-mixer-2, P194): it never touches `.gain`, only this dedicated sentinel
- * line, so unmute is the exact inverse and the fader value round-trips untouched.
- *  - mute (true)  → insert `all(x => silence)` (no-op/null if already muted);
- *  - unmute (false)→ remove the whole `all(x => silence)` line (null if not muted).
- */
-declare function masterMuteEdit(doc: string, muted: boolean): StripEdit | null;
-/**
- * The edit the "set backdrop" UI makes (decision 2 = code is the single source):
- *  - set `name`  → replace the name literal in the existing master backdrop viz,
- *                  or insert a fresh `all(x => x.viz("name", { backdrop: true }))`
- *                  line;
- *  - clear (null)→ remove the master backdrop viz: the whole `all()` statement
- *                  when it holds nothing else, else just the `.viz(...)` call
- *                  (so a hand-combined `gain().viz()` keeps its gain).
- *
- * Returns null when clearing with no master backdrop present (nothing to do), or
- * when an existing backdrop viz has no string name to rewrite.
- */
-declare function masterVizEdit(doc: string, name: string | null): StripEdit | null;
 
 declare function pruneTrackMetaForCode(fileId: string, code: string): void;
 

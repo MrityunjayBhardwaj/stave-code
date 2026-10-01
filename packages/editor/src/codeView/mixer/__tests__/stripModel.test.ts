@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
-import { detectAllChunks, detectChunk } from '../../../codeView/chunkDetect'
-import { parseStrudel } from '../../../codeView/ir/parseStrudel'
+import { detectAllChunks, detectChunk } from '../../chunkDetect'
+import { parseStrudel } from '../../ir/parseStrudel'
 import {
   buildStripModels,
   statementOffsetForSource,
