@@ -54,7 +54,7 @@ import {
   parseStepGrid,
   parseStepGridCore,
   projectStepGridDerived,
-} from '../../../editor/src/visualEdit/notation/parse'
+} from '../../../editor/src/codeView/notation/parse'
 import { GRID_SURFACE } from './engineEditOracle'
 import {
   readObservation,

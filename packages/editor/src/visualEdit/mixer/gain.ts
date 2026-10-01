@@ -14,8 +14,8 @@
  * didn't author) is FOREIGN — every gain affordance hands off and shows the
  * value read-only rather than corrupting an expression it doesn't understand.
  */
-import type { ChunkInfo } from '../chunkDetect'
-import { formatNumber } from '../writeback'
+import type { ChunkInfo } from '../../codeView/chunkDetect'
+import { formatNumber } from '../../codeView/writeback'
 
 /**
  * A per-column `.gain("…")` velocity string the grid authored — flat numeric

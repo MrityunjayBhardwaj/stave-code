@@ -1,7 +1,7 @@
 import type { HapEvent } from './HapStream'
 import type { HapStream } from './HapStream'
-import type { IREvent } from '../ir/IREvent'
-import type { IRPattern } from '../ir/IRPattern'
+import type { IREvent } from '../codeView/ir/IREvent'
+import type { IRPattern } from '../codeView/ir/IRPattern'
 
 /**
  * Engine-agnostic IRPattern built from a live HapStream.

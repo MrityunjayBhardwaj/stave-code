@@ -14,8 +14,8 @@ import {
   armSourceSpan,
   type LaneItem,
   type WalkWindow,
-} from '../../../../../editor/src/ir/structuralWalk'
-import type { IREvent } from '../../../../../editor/src/ir/IREvent'
+} from '../../../../../editor/src/codeView/ir/structuralWalk'
+import type { IREvent } from '../../../../../editor/src/codeView/ir/IREvent'
 
 // `wholeWalkWindow` is re-exported because production calls it (the bare-song
 // probe), and a barrel mock that omits it hands the component `undefined` —

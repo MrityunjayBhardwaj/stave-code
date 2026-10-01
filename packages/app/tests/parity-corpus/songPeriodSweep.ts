@@ -56,16 +56,16 @@ import {
   laneKeyOf,
   signalDimensionsOf,
   type SignalDimensions,
-} from '../../../editor/src/ir/songAnalysis'
-import type { IREvent } from '../../../editor/src/ir/IREvent'
+} from '../../../editor/src/codeView/ir/songAnalysis'
+import type { IREvent } from '../../../editor/src/codeView/ir/IREvent'
 import { normalizeStrudelHap } from '../../../editor/src/engine/NormalizedHap'
 import {
   evalSongTracks,
   hasCorpusArchive,
   loadCorpus,
   type SongTrack,
-} from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
-import { parseStrudel } from '../../../editor/src/ir/parseStrudel'
+} from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
+import { parseStrudel } from '../../../editor/src/codeView/ir/parseStrudel'
 
 // Re-exported so the two sweep tests can guard themselves without reaching
 // across packages for a rule this file already depends on (#1307). One copy,

@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { trackBarSegments, type PositionModel } from './useTrackColourBars'
-import { detectAllChunks } from '../visualEdit/chunkDetect'
+import { detectAllChunks } from '../codeView/chunkDetect'
 import { buildStripModels } from '../visualEdit/mixer/stripModel'
 import { colorForTrack } from '../visualEdit/trackColor'
 import type { TrackMeta } from '../workspace/WorkspaceFile'

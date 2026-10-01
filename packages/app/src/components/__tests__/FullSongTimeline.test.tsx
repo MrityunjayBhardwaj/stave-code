@@ -71,19 +71,19 @@ vi.mock('@stave/editor', async () => {
   // function, from source: it is a pure IR walk, so there is nothing to stub.
   // #1464 — the caption's shape menu reads its options from `shapeAlternatives`.
   // #1611 — and its cross-class options from `crossClassShapes`.
-  const { signalAutomations, signalTimeAt, shapeAlternatives, crossClassShapes } = await import('../../../../editor/src/ir/signalAutomation')
+  const { signalAutomations, signalTimeAt, shapeAlternatives, crossClassShapes } = await import('../../../../editor/src/codeView/ir/signalAutomation')
   // #1463 Stage 2 — the same trap, twice more: the component now reads stepped
   // automation and resolves each one's axis. Both real, from source (the knob
   // table imports nothing but its own control list).
   // Stage 3 adds the write: a press on a step commits through `stepValueEdit`.
   // #1585 adds the read: each lane entry carries `stepIndexAtCycle`.
-  const { steppedAutomations, stepValueEdit, stepIndexAtCycle } = await import('../../../../editor/src/ir/steppedAutomation')
+  const { steppedAutomations, stepValueEdit, stepIndexAtCycle } = await import('../../../../editor/src/codeView/ir/steppedAutomation')
   const { knobRangeFor, hasKnownKnobRange } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
   // #1601 — the lane's automate menu reads fixed values and writes them as steps.
-  const { fixedParameters, fixedToStepsEdit } = await import('../../../../editor/src/ir/fixedParameters')
+  const { fixedParameters, fixedToStepsEdit } = await import('../../../../editor/src/codeView/ir/fixedParameters')
   // #1602 — the lane's step-count chip builds its options and its edit from these.
-  const { stepCountEdit } = await import('../../../../editor/src/ir/stepCount')
-  const { previewRepeat, songPeriodOf } = await import('../../../../editor/src/ir/songAnalysis')
+  const { stepCountEdit } = await import('../../../../editor/src/codeView/ir/stepCount')
+  const { previewRepeat, songPeriodOf } = await import('../../../../editor/src/codeView/ir/songAnalysis')
   const eventsForIr = (ir: { bare?: boolean; nested?: boolean } | null) =>
     ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : []
   return {

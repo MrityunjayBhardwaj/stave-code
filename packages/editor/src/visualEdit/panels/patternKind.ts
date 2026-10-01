@@ -21,7 +21,7 @@
  * switches between them, and the coverage harness that scores them can't drift
  * on what counts as drum vs melody (PV108 spirit).
  */
-import type { ChunkInfo } from '../chunkDetect'
+import type { ChunkInfo } from '../../codeView/chunkDetect'
 
 /** the sequencer only edits sound/sample patterns; notes go to the Piano Roll */
 export function isStepChunk(chunk: ChunkInfo): boolean {

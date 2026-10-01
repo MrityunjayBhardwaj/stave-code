@@ -8,7 +8,7 @@
  * expression, and a bound identifier.
  */
 import { describe, it, expect } from 'vitest'
-import { detectChunk, type ChunkInfo } from '../chunkDetect'
+import { detectChunk, type ChunkInfo } from '../../codeView/chunkDetect'
 import {
   MIN_REGION_SPAN,
   readRegion,

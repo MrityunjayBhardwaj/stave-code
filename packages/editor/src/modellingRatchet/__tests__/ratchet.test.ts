@@ -101,8 +101,10 @@ describe('the modelling ratchet (#1866)', () => {
     })
 
     it('ledgerOnMain finds a file that IS on origin/main (control: absent must not be the default answer)', () => {
-      const onMain = path.join(path.dirname(LEDGER_PATH), '..', 'ir', 'PREDICATE-AUDIT.md')
-      // PREDICATE-AUDIT.md is not JSON, so reading it must THROW at the parse — which proves
+      // A file main holds whatever else moves: packages/editor/tsup.config.ts (the ir/ audit it
+      // used to read moved to codeView/ir/ in #1875, which would make this answer 'absent').
+      const onMain = path.join(path.dirname(LEDGER_PATH), '..', '..', 'tsup.config.ts')
+      // tsup.config.ts is not JSON, so reading it must THROW at the parse — which proves
       // the lookup found it rather than answering 'absent'
       expect(() => ledgerOnMain(onMain)).toThrow(SyntaxError)
     })

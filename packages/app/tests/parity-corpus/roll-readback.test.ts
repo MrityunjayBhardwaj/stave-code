@@ -21,18 +21,18 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   resizeNote,
   placeNote,
   pasteNote,
   moveNote,
   removeNote,
-} from '../../../editor/src/visualEdit/notation/place'
-import { serializePianoRoll } from '../../../editor/src/visualEdit/notation/serialize'
-import { columnOverlap } from '../../../editor/src/visualEdit/notation/model'
-import { pitchToMidi, midiToPitch } from '../../../editor/src/visualEdit/notation/pitch'
-import type { PianoRollModel, RollNote } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/place'
+import { serializePianoRoll } from '../../../editor/src/codeView/notation/serialize'
+import { columnOverlap } from '../../../editor/src/codeView/notation/model'
+import { pitchToMidi, midiToPitch } from '../../../editor/src/codeView/notation/pitch'
+import type { PianoRollModel, RollNote } from '../../../editor/src/codeView/notation/model'
 
 const dir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

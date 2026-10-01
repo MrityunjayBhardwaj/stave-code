@@ -24,9 +24,9 @@
       "require": "./dist/visualEdit/panels/knobScale.cjs"
     },
     "./trackId": {
-      "types": "./dist/ir/trackId.d.ts",
-      "import": "./dist/ir/trackId.js",
-      "require": "./dist/ir/trackId.cjs"
+      "types": "./dist/codeView/ir/trackId.d.ts",
+      "import": "./dist/codeView/ir/trackId.js",
+      "require": "./dist/codeView/ir/trackId.cjs"
     },
     "./chord": {
       "types": "./dist/keys/chord.d.ts",

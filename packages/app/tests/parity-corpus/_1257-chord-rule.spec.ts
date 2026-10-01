@@ -43,10 +43,10 @@ import {
   chordLanes,
   forcesChordReading,
 } from '../../../editor/src/visualEdit/panels/chordLanes'
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import { chunkSurface, routeSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
 import { unitsWithStatus } from './editCoverage'
-import { loadCorpus } from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+import { loadCorpus } from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
 import { DRUM_SOUNDS } from '../../../editor/src/visualEdit/panels/soundCatalog'
 
 /**

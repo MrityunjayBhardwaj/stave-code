@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
-import { detectAllChunks } from '../../chunkDetect'
-import { applyEdits } from '../../writeback'
+import { detectAllChunks } from '../../../codeView/chunkDetect'
+import { applyEdits } from '../../../codeView/writeback'
 import { gainEdit, panEdit, muteEdit, renameEdit, isValidTrackLabel, type StripEdit } from '../writeStrip'
 
 /** the nth detected chunk of a doc */

@@ -48,11 +48,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   serializeStepGrid,
   serializePianoRoll,
-} from '../../../editor/src/visualEdit/notation/serialize'
+} from '../../../editor/src/codeView/notation/serialize'
 import {
   RESOLUTION_PRESETS,
   freeZoneScale,
@@ -60,13 +60,13 @@ import {
   scalePianoRollTo,
   stepSlotState,
   rollSlotState,
-} from '../../../editor/src/visualEdit/notation/resolution'
-import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
+} from '../../../editor/src/codeView/notation/resolution'
+import { documentSteps } from '../../../editor/src/codeView/notation/viewResolution'
 import type {
   PianoRollModel,
   StepGridModel,
-} from '../../../editor/src/visualEdit/notation/model'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

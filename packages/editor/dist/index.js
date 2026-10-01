@@ -38,7 +38,7 @@ var init_piano = __esm({
   }
 });
 
-// src/ir/transforms.ts
+// src/codeView/ir/transforms.ts
 function merge(patterns) {
   return {
     now: /* @__PURE__ */ __name(() => patterns[0]?.now() ?? 0, "now"),
@@ -81,7 +81,7 @@ function scaleGain(events, factor) {
 }
 __name(scaleGain, "scaleGain");
 
-// src/ir/PatternIR.ts
+// src/codeView/ir/PatternIR.ts
 function attachMeta(node, meta) {
   if (meta?.loc && meta.loc.length > 0) node.loc = meta.loc;
   if (meta?.userMethod) node.userMethod = meta.userMethod;
@@ -162,7 +162,7 @@ var IR = {
   }, "builder")
 };
 
-// src/ir/toStrudel.ts
+// src/codeView/ir/toStrudel.ts
 function toStrudel(ir) {
   return gen(ir);
 }
@@ -433,7 +433,7 @@ function collapseToMini(children) {
 }
 __name(collapseToMini, "collapseToMini");
 
-// src/ir/structuralWalk.ts
+// src/codeView/ir/structuralWalk.ts
 function wholeWalkWindow(nCycles) {
   return { originCycle: 0, spanCycles: nCycles };
 }
@@ -907,7 +907,7 @@ function structuralWalk(ir, window2) {
 }
 __name(structuralWalk, "structuralWalk");
 
-// src/ir/nodeIdentity.ts
+// src/codeView/ir/nodeIdentity.ts
 function fnv1a(input) {
   let h = 2166136261;
   for (let i = 0; i < input.length; i++) {
@@ -950,7 +950,7 @@ function buildNodeLocIndex(ir) {
 }
 __name(buildNodeLocIndex, "buildNodeLocIndex");
 
-// src/ir/eventValueKey.ts
+// src/codeView/ir/eventValueKey.ts
 var VALUE_SLOTS = [
   "note",
   "freq",
@@ -1000,7 +1000,7 @@ var STRUDEL_VIZ_METHODS = {
   pitchwheel: "pitchwheel"
 };
 
-// src/ir/parameterRoutes.ts
+// src/codeView/ir/parameterRoutes.ts
 function isSectionWindow(step) {
   return "total" in step;
 }
@@ -1179,7 +1179,7 @@ function placementsTimeAt(placements, time) {
 }
 __name(placementsTimeAt, "placementsTimeAt");
 
-// src/ir/signalAutomation.ts
+// src/codeView/ir/signalAutomation.ts
 var POLARITY = {
   sine: "unipolar",
   cosine: "unipolar",
@@ -1449,7 +1449,7 @@ var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
   return pattern.slice(k).concat(pattern.slice(0, k));
 }, "rotateEuclid");
 
-// src/ir/parseMini.ts
+// src/codeView/ir/parseMini.ts
 var isAtom = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
 var isRestAtom = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
 var atomSpan = /* @__PURE__ */ __name((a, input) => {
@@ -1631,7 +1631,7 @@ function matchBracket(input, openPos) {
 }
 __name(matchBracket, "matchBracket");
 
-// src/ir/steppedAutomation.ts
+// src/codeView/ir/steppedAutomation.ts
 function keepsBarsWhole(placement) {
   return placement.every((step) => isSectionWindow(step) || Number.isInteger(step.per / step.times) && Number.isInteger(step.shift));
 }
@@ -1741,7 +1741,7 @@ function stepValueEdit(a, index, value) {
 }
 __name(stepValueEdit, "stepValueEdit");
 
-// src/ir/songExtent.ts
+// src/codeView/ir/songExtent.ts
 function scaled(cycles, factor) {
   return factor > 0 && Number.isFinite(factor) ? cycles * factor : cycles;
 }
@@ -1818,7 +1818,7 @@ function songExtent(ir) {
 }
 __name(songExtent, "songExtent");
 
-// src/ir/songAnalysis.ts
+// src/codeView/ir/songAnalysis.ts
 function laneKeyOf(ev) {
   return ev.trackId ?? ev.s ?? "$default";
 }
@@ -2345,7 +2345,7 @@ async function analyzeWindow(originCycle, spanCycles, opts = {}) {
 }
 __name(analyzeWindow, "analyzeWindow");
 
-// src/ir/fixedParameters.ts
+// src/codeView/ir/fixedParameters.ts
 var NUMBER2 = /^-?(?:\d+\.?\d*|\.\d+)$/;
 function numberOf(raw) {
   const t = raw.trim();
@@ -2406,7 +2406,7 @@ function fixedToStepsEdit(f, steps, source) {
 }
 __name(fixedToStepsEdit, "fixedToStepsEdit");
 
-// src/ir/stepCount.ts
+// src/codeView/ir/stepCount.ts
 var sameStep = /* @__PURE__ */ __name((a, b) => a.value === b.value && a.weight === b.weight, "sameStep");
 function stepCountEdit(a, n, source) {
   const steps = a.steps;
@@ -2435,7 +2435,7 @@ function stepCountEdit(a, n, source) {
 }
 __name(stepCountEdit, "stepCountEdit");
 
-// src/ir/serialize.ts
+// src/codeView/ir/serialize.ts
 var PATTERN_IR_SCHEMA_VERSION = "1.0";
 function patternToJSON(ir, pretty) {
   const envelope = {
@@ -2799,7 +2799,7 @@ function requireObject(node, key2, path) {
 }
 __name(requireObject, "requireObject");
 
-// src/ir/trackId.ts
+// src/codeView/ir/trackId.ts
 function trackIdFromLabel(label, index) {
   return namedIdOf(label) ?? `d${index + 1}`;
 }
@@ -2845,7 +2845,7 @@ function isMutedLabel(label) {
 }
 __name(isMutedLabel, "isMutedLabel");
 
-// src/ir/statementHeads.ts
+// src/codeView/ir/statementHeads.ts
 var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
   "all",
   "samples",
@@ -4640,7 +4640,7 @@ function splitFirstArg(argsStr) {
 }
 __name(splitFirstArg, "splitFirstArg");
 
-// src/ir/parseStrudelStages.ts
+// src/codeView/ir/parseStrudelStages.ts
 function parseStrudelStages(code) {
   const { ir, bodies } = parseStrudelRecorded(code);
   return [
@@ -4664,7 +4664,7 @@ function withBodies(ir, bodies, pick) {
 }
 __name(withBodies, "withBodies");
 
-// src/ir/passes.ts
+// src/codeView/ir/passes.ts
 function runPasses(input, passes) {
   const out = [];
   let cur = input;
@@ -6819,7 +6819,7 @@ function docParses(doc) {
 }
 __name(docParses, "docParses");
 
-// src/visualEdit/miniSource/spanRole.ts
+// src/codeView/miniSource/spanRole.ts
 var NOTE_OVERRIDE = /* @__PURE__ */ new Set(["note", "n"]);
 function walk(node, parent, ctx) {
   if (!node || typeof node.type !== "string") return;
@@ -7186,7 +7186,7 @@ var _SpanIndex = class _SpanIndex {
 __name(_SpanIndex, "SpanIndex");
 var SpanIndex = _SpanIndex;
 
-// src/visualEdit/miniSource/resolveMiniSource.ts
+// src/codeView/miniSource/resolveMiniSource.ts
 var within = /* @__PURE__ */ __name((inner, outer) => inner[0] >= outer[0] && inner[1] <= outer[1], "within");
 function resolveMiniSource(doc, unit, opts = {}) {
   const index = opts.index !== void 0 ? opts.index : SpanIndex.build(doc);
@@ -7235,7 +7235,7 @@ function attempt(doc, index, reachable, unit, proposals) {
 }
 __name(attempt, "attempt");
 
-// src/visualEdit/chunkDetect.ts
+// src/codeView/chunkDetect.ts
 var PICK_METHODS = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
 function isChunkFresh(doc, chunk) {
   if (doc.slice(chunk.statementRange[0], chunk.statementRange[1]) !== chunk.statementText) {
@@ -8898,7 +8898,7 @@ function applyPersistedAdaptivePerf() {
 }
 __name(applyPersistedAdaptivePerf, "applyPersistedAdaptivePerf");
 
-// src/visualEdit/writeback.ts
+// src/codeView/writeback.ts
 var REEVAL_DEBOUNCE_MS = 120;
 function formatNumber(v, maxDecimals = 4) {
   if (!Number.isFinite(v)) return "0";
@@ -29688,7 +29688,7 @@ function useActiveChunk() {
 }
 __name(useActiveChunk, "useActiveChunk");
 
-// src/visualEdit/notation/pitch.ts
+// src/codeView/notation/pitch.ts
 var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
 var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
 var DEFAULT_OCTAVE = 3;
@@ -29724,7 +29724,7 @@ function cLabel(midi) {
 }
 __name(cLabel, "cLabel");
 
-// src/visualEdit/notation/model.ts
+// src/codeView/notation/model.ts
 var gridCellKey = /* @__PURE__ */ __name((c) => `${c.token} ${cellLengthKey(c.duration)}`, "gridCellKey");
 var cellLengthKey = /* @__PURE__ */ __name((duration) => duration.toFixed(6), "cellLengthKey");
 var cellOn = /* @__PURE__ */ __name((duration = 1) => ({ duration }), "cellOn");
@@ -29843,7 +29843,7 @@ function clampPartAtOnset(lanes, part, column) {
 }
 __name(clampPartAtOnset, "clampPartAtOnset");
 
-// src/visualEdit/notation/perBar.ts
+// src/codeView/notation/perBar.ts
 var MAX_SHARED_STEPS = 4096;
 var EPS = 1e-9;
 function gcd(a, b) {
@@ -29981,7 +29981,7 @@ function drawnLayout(model, cols) {
 }
 __name(drawnLayout, "drawnLayout");
 
-// src/visualEdit/notation/serialize.ts
+// src/codeView/notation/serialize.ts
 function altSourceFits(a, steps) {
   return !!a && a.perBar * a.bars === steps;
 }
@@ -31062,7 +31062,7 @@ function serializeRollGain(model) {
 }
 __name(serializeRollGain, "serializeRollGain");
 
-// src/visualEdit/notation/viewResolution.ts
+// src/codeView/notation/viewResolution.ts
 var UNREFINED = 1;
 var MAX_VIEW_STEPS = 256;
 function isViewScale(k) {
@@ -31089,7 +31089,7 @@ function viewScaleFits(perBar2, bars, scale) {
 }
 __name(viewScaleFits, "viewScaleFits");
 
-// src/visualEdit/notation/parse.ts
+// src/codeView/notation/parse.ts
 var NUMERIC = /^-?\d+$/;
 var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => allowNumeric || !NUMERIC.test(t), "isAtomToken");
 var MAX_STEPS = 64;
@@ -33469,7 +33469,7 @@ function usePlayingStep(steps, bars, cols, barSteps) {
 }
 __name(usePlayingStep, "usePlayingStep");
 
-// src/visualEdit/notation/lane.ts
+// src/codeView/notation/lane.ts
 function addLane(model, sound) {
   const token = sound.trim();
   if (token === "" || model.lanes.some((l) => l.sound === token)) return model;
@@ -33487,7 +33487,7 @@ function removeLane(model, sound) {
 }
 __name(removeLane, "removeLane");
 
-// src/visualEdit/notation/place.ts
+// src/codeView/notation/place.ts
 function viewPlacesNotes(model) {
   let asked = 0;
   if ("lanes" in model) {
@@ -33939,7 +33939,7 @@ function subscribeNoteColorMode(listener) {
 }
 __name(subscribeNoteColorMode, "subscribeNoteColorMode");
 
-// src/visualEdit/notation/resolution.ts
+// src/codeView/notation/resolution.ts
 var MAX_RESOLUTION_STEPS = 256;
 function perBar(steps, bars) {
   return bars && bars > 0 ? steps / bars : steps;
@@ -50463,7 +50463,7 @@ function detectBarePattern(doc, pos) {
 }
 __name(detectBarePattern, "detectBarePattern");
 
-// src/visualEdit/arrange/serialize.ts
+// src/codeView/arrange/serialize.ts
 function asWeight(n) {
   return Math.max(1, Math.round(n));
 }
@@ -50886,7 +50886,7 @@ function detectAllPickControls(doc) {
 }
 __name(detectAllPickControls, "detectAllPickControls");
 
-// src/visualEdit/pickControl/serialize.ts
+// src/codeView/pickControl/serialize.ts
 function asWeight2(n) {
   return Math.max(1, Math.round(n));
 }
@@ -51047,7 +51047,7 @@ function quoteLike(oldToken, name) {
 }
 __name(quoteLike, "quoteLike");
 
-// src/visualEdit/notation/resize.ts
+// src/codeView/notation/resize.ts
 var restructured = /* @__PURE__ */ __name(({ source: _drop, ...rest }) => rest, "restructured");
 function resizeGrid(model, nextSteps, mode) {
   if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;

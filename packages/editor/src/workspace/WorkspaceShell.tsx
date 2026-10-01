@@ -146,7 +146,7 @@ import {
 // Cursor-targeted sound assignment (#820) — the Asset Library sidebar writes a
 // `.sound()` / `s()` into the code at the cursor via `assignSoundToCursor`,
 // reusing the same chunk-detection + writeback spine the Mixer picker uses.
-import { Writeback } from '../visualEdit/writeback'
+import { Writeback } from '../codeView/writeback'
 import { planSoundAssignment } from '../visualEdit/soundAssign'
 import { planVizAssignment } from '../visualEdit/vizAssign'
 import type { WorkspaceShellActions } from './commands/CommandRegistry'

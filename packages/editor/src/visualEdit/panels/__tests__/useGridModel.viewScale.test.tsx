@@ -61,15 +61,15 @@ vi.mock('../../../workspace/editorRegistry', () => ({
   getFileIdForEditor: () => 'test-file',
 }))
 
-import { parseStepGrid, applyStepGain } from '../../notation/parse'
-import { serializeStepGrid, serializeStepGain } from '../../notation/serialize'
-import { collapseStepGridToDocument } from '../../notation/resolution'
+import { parseStepGrid, applyStepGain } from '../../../codeView/notation/parse'
+import { serializeStepGrid, serializeStepGain } from '../../../codeView/notation/serialize'
+import { collapseStepGridToDocument } from '../../../codeView/notation/resolution'
 import { isStepChunk } from '../patternKind'
 import { useGridModel } from '../useGridModel'
 import { setColumnGain } from '../inspector'
-import { toggleCell } from '../../notation/place'
-import { UNREFINED, documentSteps, type ViewScale } from '../../notation/viewResolution'
-import type { StepGridModel } from '../../notation/model'
+import { toggleCell } from '../../../codeView/notation/place'
+import { UNREFINED, documentSteps, type ViewScale } from '../../../codeView/notation/viewResolution'
+import type { StepGridModel } from '../../../codeView/notation/model'
 
 // ── a harness wired exactly as `SequencerGrid` wires it ──────────────────────
 interface Handle {

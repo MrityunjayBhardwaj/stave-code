@@ -6,7 +6,7 @@
  * env, no fs) for one reason: a `.spec.ts` is maintainer-only and never runs in
  * CI, so while the oracle lived inside it NOTHING guarded editability against
  * regression. `parity.test.ts` gates the timeline parser (`ir/parseStrudel`);
- * nothing gated `visualEdit/notation/parse.ts`, and the 55-fixture corpus was
+ * nothing gated `codeView/notation/parse.ts`, and the 55-fixture corpus was
  * the only thing that ever caught a real editability regression.
  *
  * Importing this module — rather than re-deriving the verdict — is the point:
@@ -23,12 +23,12 @@ import {
   docParses,
   parseTopLevel,
   type ChunkInfo,
-} from '../../../editor/src/visualEdit/chunkDetect'
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/chunkDetect'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
+import { hasStructure } from '../../../editor/src/codeView/notation/model'
 import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
-import { detectAllArrangeCalls } from '../../../editor/src/visualEdit/arrange/parse'
-import { detectAllPickControls } from '../../../editor/src/visualEdit/pickControl/parse'
+import { detectAllArrangeCalls } from '../../../editor/src/codeView/arrange/parse'
+import { detectAllPickControls } from '../../../editor/src/codeView/pickControl/parse'
 import { detectMasterAll } from '../../../editor/src/visualEdit/mixer/masterEdit'
 
 // Bare-identifier combinators whose direct arguments are themselves patterns —

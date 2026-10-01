@@ -9,7 +9,7 @@
  * Code-with-via in the developer audience (PV35).
  */
 
-import type { PatternIR } from '../../../editor/src/ir/PatternIR'
+import type { PatternIR } from '../../../editor/src/codeView/ir/PatternIR'
 
 function round(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(3)

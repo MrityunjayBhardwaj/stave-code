@@ -50,23 +50,23 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseStepGrid, parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
+import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import {
   collapseStepGridToDocument,
   collapsePianoRollToDocument,
-} from '../../../editor/src/visualEdit/notation/resolution'
+} from '../../../editor/src/codeView/notation/resolution'
 import {
   serializeStepGrid,
   serializePianoRoll,
-} from '../../../editor/src/visualEdit/notation/serialize'
-import { documentSteps } from '../../../editor/src/visualEdit/notation/viewResolution'
-import { toUniformGrid, toUniformRoll } from '../../../editor/src/visualEdit/notation/perBar'
-import { toggleCell, placeNote } from '../../../editor/src/visualEdit/notation/place'
-import { isCellOn } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/serialize'
+import { documentSteps } from '../../../editor/src/codeView/notation/viewResolution'
+import { toUniformGrid, toUniformRoll } from '../../../editor/src/codeView/notation/perBar'
+import { toggleCell, placeNote } from '../../../editor/src/codeView/notation/place'
+import { isCellOn } from '../../../editor/src/codeView/notation/model'
 import type {
   StepGridModel,
   PianoRollModel,
-} from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

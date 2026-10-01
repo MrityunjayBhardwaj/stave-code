@@ -17,8 +17,8 @@ import { drawTimeline, type DrawTheme, type DrawTransform } from '../drawTimelin
 import { DEFAULT_METER } from '../../../lib/meter'
 import type { TimelineScene, SceneLane } from '../timelineScene'
 import type { SignalAutomation } from '@stave/editor'
-import { signalTimeAt } from '../../../../../editor/src/ir/signalAutomation'
-import { CHAIN_ROOT_RECOGNISER } from '../../../../../editor/src/ir/parseStrudel'
+import { signalTimeAt } from '../../../../../editor/src/codeView/ir/signalAutomation'
+import { CHAIN_ROOT_RECOGNISER } from '../../../../../editor/src/codeView/ir/parseStrudel'
 import { computeLaneLayout } from '../laneLayout'
 
 const THEME: DrawTheme = {

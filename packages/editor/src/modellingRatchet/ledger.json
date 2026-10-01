@@ -36,7 +36,7 @@
     },
     "predicate-audit.anchored": {
       "what": "Anchored regular expressions in ir/parseStrudel.ts that decide what Strudel syntax means (M1, P5 #1011).",
-      "measuredBy": "packages/editor/src/ir/__tests__/predicateAudit.test.ts",
+      "measuredBy": "packages/editor/src/codeView/ir/__tests__/predicateAudit.test.ts",
       "history": [
         {
           "value": 37,

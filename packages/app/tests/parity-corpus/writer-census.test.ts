@@ -60,14 +60,14 @@ import {
   projectPianoRollDerived,
   tailToken,
   PROJECTION_PERIOD_BOUNDS,
-} from '../../../editor/src/visualEdit/notation/parse'
-import { hasStructure } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/parse'
+import { hasStructure } from '../../../editor/src/codeView/notation/model'
 import { assertRatchet } from '../../../editor/src/modellingRatchet/ratchet'
 import type {
   ParseResult,
   PianoRollModel,
   StepGridModel,
-} from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/model'
 import {
   GRID_SURFACE,
   ROLL_SURFACE,

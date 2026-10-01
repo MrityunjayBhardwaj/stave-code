@@ -35,9 +35,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { parsePianoRoll } from '../../../editor/src/visualEdit/notation/parse'
-import { serializePianoRoll } from '../../../editor/src/visualEdit/notation/serialize'
-import type { PianoRollModel } from '../../../editor/src/visualEdit/notation/model'
+import { parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
+import { serializePianoRoll } from '../../../editor/src/codeView/notation/serialize'
+import type { PianoRollModel } from '../../../editor/src/codeView/notation/model'
 
 const corpusDir = path.dirname(fileURLToPath(import.meta.url))
 const corpus: { minis: { mini: string }[] } = JSON.parse(

@@ -11,7 +11,7 @@
 // are DOUBLE-quoted, matching the shipped convention (`masterEdit` /
 // inline-viz `.viz("pianoroll")`), not the single-quoted sound-id rule.
 
-import { detectChunk } from './chunkDetect'
+import { detectChunk } from '../codeView/chunkDetect'
 import { readChainMethod } from './panels/chainMethod'
 
 /** An offset-space edit describing how to write a viz name at the cursor. */

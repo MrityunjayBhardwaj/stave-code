@@ -26,7 +26,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
-import { rollOnsets } from '../../../editor/src/visualEdit/notation/parse'
+import { rollOnsets } from '../../../editor/src/codeView/notation/parse'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const CYCLES = Array.from({ length: 16 }, (_, i) => i)

@@ -1464,7 +1464,7 @@ declare function patternFromJSON(json: string): PatternIR;
  * scanner it replaced (#943) was a second oracle of a grammar Strudel ships
  * complete and located — every "gap" in it was drift, never a missing feature,
  * and it shipped real bugs (a wrong bjorklund distribution, #907; `!`/`/`/`_`
- * silently mis-parsed). The notation layer (`visualEdit/notation/parse.ts`)
+ * silently mis-parsed). The notation layer (`codeView/notation/parse.ts`)
  * already parses the same mini via krill; this brings the IR world up to it.
  *
  * WHAT STAYS OURS is the LOWERING — krill's uniform ops model (`weight`/`reps`/
@@ -4565,7 +4565,7 @@ type WriteOutcome = 'applied' | WriteRefusal;
 /**
  * Apply a batch of surgical offset edits to the model of `fileId`'s editor as
  * ONE undo step, tagged with `source`. This is the arrangement timeline's
- * write-back seam: the canvas hands up the edits (built by `visualEdit/arrange`),
+ * write-back seam: the canvas hands up the edits (built by `codeView/arrange`),
  * the registry routes them through the same surgical `Writeback` the panels use,
  * and the runtime's debounced re-eval picks the change up (no explicit eval call
  * needed). PV122 #2.

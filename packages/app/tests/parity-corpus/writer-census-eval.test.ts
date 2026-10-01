@@ -85,20 +85,20 @@ import {
   evalLocations,
   hasCorpusArchive,
   loadCorpus,
-} from '../../../editor/src/visualEdit/miniSource/__tests__/evalHarness'
+} from '../../../editor/src/codeView/miniSource/__tests__/evalHarness'
 import {
   admitProposals,
   QUERY_CYCLES,
-} from '../../../editor/src/visualEdit/miniSource/evalProposals'
-import { resolveMiniSource } from '../../../editor/src/visualEdit/miniSource/resolveMiniSource'
-import { SpanIndex } from '../../../editor/src/visualEdit/miniSource/spanRole'
+} from '../../../editor/src/codeView/miniSource/evalProposals'
+import { resolveMiniSource } from '../../../editor/src/codeView/miniSource/resolveMiniSource'
+import { SpanIndex } from '../../../editor/src/codeView/miniSource/spanRole'
 import {
   parseStepGridCore,
   parsePianoRollCore,
   projectStepGridDerived,
   projectPianoRollDerived,
-} from '../../../editor/src/visualEdit/notation/parse'
-import type { PianoRollModel, StepGridModel } from '../../../editor/src/visualEdit/notation/model'
+} from '../../../editor/src/codeView/notation/parse'
+import type { PianoRollModel, StepGridModel } from '../../../editor/src/codeView/notation/model'
 import { GRID_SURFACE, ROLL_SURFACE, probeEdit } from './engineEditOracle'
 
 const NO_CORE_REFUSAL = { ok: false as const, reason: '(core served this — no refusal)' }

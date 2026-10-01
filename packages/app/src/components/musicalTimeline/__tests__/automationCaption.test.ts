@@ -29,8 +29,8 @@ import {
   AUTOMATION_PAD_Y,
   AUTOMATION_LABEL_LINE_H,
 } from '../automationCaption'
-import { parseStrudel } from '../../../../../editor/src/ir/parseStrudel'
-import { signalAutomations, shapeAlternatives, crossClassShapes } from '../../../../../editor/src/ir/signalAutomation'
+import { parseStrudel } from '../../../../../editor/src/codeView/ir/parseStrudel'
+import { signalAutomations, shapeAlternatives, crossClassShapes } from '../../../../../editor/src/codeView/ir/signalAutomation'
 
 const SHAPE_DEPS = { alternatives: shapeAlternatives, crossClass: crossClassShapes }
 

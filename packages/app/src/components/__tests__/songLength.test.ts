@@ -15,11 +15,11 @@
  * that, and what these arms need is control over the ONSETS analysis sees.
  */
 import { describe, it, expect } from 'vitest'
-import { IR, type PatternIR } from '../../../../editor/src/ir/PatternIR'
-import { songExtent } from '../../../../editor/src/ir/songExtent'
-import { analyzeSong, arrangedRepeatCycles, signalDimensionsOf } from '../../../../editor/src/ir/songAnalysis'
-import { parseStrudel } from '../../../../editor/src/ir/parseStrudel'
-import type { IREvent } from '../../../../editor/src/ir/IREvent'
+import { IR, type PatternIR } from '../../../../editor/src/codeView/ir/PatternIR'
+import { songExtent } from '../../../../editor/src/codeView/ir/songExtent'
+import { analyzeSong, arrangedRepeatCycles, signalDimensionsOf } from '../../../../editor/src/codeView/ir/songAnalysis'
+import { parseStrudel } from '../../../../editor/src/codeView/ir/parseStrudel'
+import type { IREvent } from '../../../../editor/src/codeView/ir/IREvent'
 import {
   measureSongLength,
   songEnd,

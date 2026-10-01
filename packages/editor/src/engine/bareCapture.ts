@@ -58,7 +58,7 @@
  * a key the engine never wrote, nothing throws, and a meter shows the neighbour's
  * level.
  */
-import { detectAllChunks } from '../visualEdit/chunkDetect'
+import { detectAllChunks } from '../codeView/chunkDetect'
 import { bareCaptureIdFor, isTrackChunk } from '../visualEdit/mixer/stripModel'
 
 /**

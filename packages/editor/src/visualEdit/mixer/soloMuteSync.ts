@@ -20,8 +20,8 @@ import {
   getActiveFileId,
   getMonacoNamespace,
 } from '../../workspace/editorRegistry'
-import { detectAllChunks } from '../chunkDetect'
-import { Writeback, type OffsetEdit } from '../writeback'
+import { detectAllChunks } from '../../codeView/chunkDetect'
+import { Writeback, type OffsetEdit } from '../../codeView/writeback'
 import { buildStripModels } from './stripModel'
 import { muteEdit } from './writeStrip'
 import {

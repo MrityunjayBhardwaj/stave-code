@@ -27,7 +27,7 @@
  */
 import { describe, it, expect } from 'vitest'
 
-import { detectChunk, isChunkFresh } from '../chunkDetect'
+import { detectChunk, isChunkFresh } from '../../codeView/chunkDetect'
 import { chunkSurface, routeSurface } from '../panels/surfaceRoute'
 
 describe('the freshness guard follows a cross-statement mini span', () => {

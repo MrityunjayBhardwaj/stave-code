@@ -26,7 +26,7 @@
 import * as React from 'react'
 
 import { getActiveEditor, onActiveEditorChange } from '../../workspace/editorRegistry'
-import { detectAllChunks } from '../chunkDetect'
+import { detectAllChunks } from '../../codeView/chunkDetect'
 import { buildStripModels } from './stripModel'
 import { useSoloedIds } from './soloStore'
 
