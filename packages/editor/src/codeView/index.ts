@@ -8,6 +8,15 @@
  * It starts as exactly the names the rest of the editor already used, so adding
  * it changes no behaviour. A name is added here when a view needs it; a view
  * never reaches past this file to get it.
+ *
+ * The three headings below are a reading guide, not a rule the compiler checks.
+ *
+ * FIVE FILES DO NOT COME THROUGH HERE, on purpose. They sit in the engine's
+ * runtime import graph (StrudelEngine → bareCapture → mixer/stripModel →
+ * mixer/gain → writeback → workspace/editorRegistry). This file loads the whole
+ * area, mini-notation parser included, and the engine's graph must not: with any
+ * of them imported from here, `StrudelEngine.test.ts` dies at load. They import
+ * the one file they need, and are named exceptions of the boundary test (#1879).
  */
 
 // ── read ── the finished models a view draws, and the facts read off the code
@@ -23,11 +32,6 @@ export {
 } from './chunkDetect'
 export type { ChunkInfo, ChainCall, ChainArg, ChunkType } from './chunkDetect'
 export {
-  merge,
-  transpose,
-  timestretch,
-  filter,
-  scaleGain,
   IR,
   toStrudel,
   patternToJSON,
@@ -60,14 +64,9 @@ export {
   crossClassShapes,
   steppedAutomations,
   stepIndexAtCycle,
-  stepValueEdit,
   fixedParameters,
-  fixedToStepsEdit,
-  stepCountEdit,
-  previewRepeat,
   songPeriodOf,
   arrangedRepeatCycles,
-  previewShapeSwap,
   parseStrudelStages,
   runPasses,
 } from './ir'
@@ -105,9 +104,7 @@ export type { IREvent, SourceLocation } from './ir/IREvent'
 export type { IRPattern } from './ir/IRPattern'
 export type { PatternIR } from './ir/PatternIR'
 export { splitMuteMarker } from './ir/trackId'
-export { resizeGrid, resizeRoll } from './notation'
 export type { StepLane, ResizeMode } from './notation'
-export { addLane, removeLane } from './notation/lane'
 export {
   columnCount,
   columnOverlap,
@@ -129,18 +126,14 @@ export type {
   AltSource,
   NotationSource,
 } from './notation/model'
-export { parseStepGrid, parsePianoRoll, applyRollGain, applyStepGain } from './notation/parse'
+export { parseStepGrid, parsePianoRoll } from './notation/parse'
 export { pitchToMidi, midiToPitch, isBlackKey, noteDisplayName, cLabel } from './notation/pitch'
 export {
   rollSlotState,
-  quantizePianoRollTo,
   freeZoneScale,
-  collapsePianoRollToDocument,
   RESOLUTION_PRESETS,
   stepSlotState,
   stepResolutionEffect,
-  quantizeStepGridTo,
-  collapseStepGridToDocument,
 } from './notation/resolution'
 export type { GridResolutionEffect, SlotState } from './notation/resolution'
 export { UNREFINED, documentSteps, absorbViewScale } from './notation/viewResolution'
@@ -167,8 +160,23 @@ export {
   listSectionParts as listArrangeSectionParts,
 } from './arrange'
 export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './arrange'
+export {
+  merge,
+  transpose,
+  timestretch,
+  filter,
+  scaleGain,
+  stepValueEdit,
+  fixedToStepsEdit,
+  stepCountEdit,
+  previewRepeat,
+  previewShapeSwap,
+} from './ir'
+export { resizeGrid, resizeRoll } from './notation'
+export { addLane, removeLane } from './notation/lane'
 export { appendEmptyBars, duplicateBar } from './notation/lengthen'
 export type { LengthenResult } from './notation/lengthen'
+export { applyRollGain, applyStepGain } from './notation/parse'
 export { drawnLayout, drawnAt, lcmOf } from './notation/perBar'
 export {
   placeNote,
@@ -183,6 +191,12 @@ export {
   resizeCell,
   toggleCell,
 } from './notation/place'
+export {
+  quantizePianoRollTo,
+  collapsePianoRollToDocument,
+  quantizeStepGridTo,
+  collapseStepGridToDocument,
+} from './notation/resolution'
 export {
   serializeStepGrid,
   serializePianoRoll,

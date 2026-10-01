@@ -8844,352 +8844,6 @@ function rollStackSource(parts, models) {
 }
 __name(rollStackSource, "rollStackSource");
 
-// src/codeView/notation/place.ts
-function viewPlacesNotes(model) {
-  let asked = 0;
-  if ("lanes" in model) {
-    for (let lane = 0; lane < model.lanes.length; lane++)
-      for (let col = 0; col < model.steps; col++) {
-        if (isCellOn(model.lanes[lane].cells[col])) continue;
-        asked++;
-        if (canToggleCell(model, lane, col, true)) return true;
-      }
-    return asked === 0;
-  }
-  const pitches = new Set(model.notes.map((n) => n.pitch));
-  if (model.notes.some((n) => pitchToMidi(n.pitch) !== null)) {
-    const below = rollContentRange(model).lo;
-    pitches.add(model.numeric ? String(below) : midiToPitch(below));
-  }
-  for (const pitch of pitches)
-    for (let step = 0; step < model.steps; step++) {
-      if (model.notes.some((n) => n.pitch === pitch && n.start === step)) continue;
-      asked++;
-      if (canPlaceNote(model, pitch, step, 1)) return true;
-    }
-  return asked === 0;
-}
-__name(viewPlacesNotes, "viewPlacesNotes");
-var paint = /* @__PURE__ */ __name((value, length = 1) => value ? cellOn(length) : false, "paint");
-function toggleCell(model, laneIndex, stepIndex, value, length = 1) {
-  const painted = model.lanes.map(
-    (lane, i) => i === laneIndex ? {
-      ...lane,
-      // CLAMPED, because a promise about lengths is a promise about ROOM
-      // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
-      // still sounding through shortens that note — the room it had is gone.
-      // Without this the model keeps a length that reaches past the new hit,
-      // which is notation nothing can spell, and the writer rightly declines
-      // an edit the user plainly made. The resize and quantize ops already
-      // clamp for exactly this reason; paint is the third op that moves
-      // onsets closer together, and it was the one still missing it.
-      cells: clampLane(
-        lane.cells.map((c, j) => j === stepIndex ? paint(value, length) : c),
-        model.steps
-      )
-    } : lane
-  );
-  const lanes = value ? clampPartAtOnset(painted, model.lanes[laneIndex]?.part ?? 0, stepIndex) : painted;
-  return ifGridSpellable(model, { ...model, lanes });
-}
-__name(toggleCell, "toggleCell");
-function placeNote(model, pitch, start, duration, opts = {}) {
-  const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
-  const at = model.notes.filter((n) => n.start === start);
-  const shared = at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null;
-  if (shared !== null) {
-    return accept({
-      ...model,
-      notes: [...model.notes, { pitch, start, duration: shared }]
-    });
-  }
-  const capAt = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
-    ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
-    model.steps
-  ), "capAt");
-  const nextStart = capAt(false);
-  const notes = model.notes.map(
-    (n) => (
-      // "does this note reach into this column?" is `columnOverlap`'s question, and this file
-      // had been answering it with an inline twin. `model.ts` records what happened the last
-      // time that predicate lived in two places: two thresholds a hundred lines apart. The
-      // `n.start < start` conjunct stays because it asks something DIFFERENT — a note
-      // starting exactly here is the chord-join case handled above, not something to trim.
-      // What the shared rule adds is the sliver threshold, so a length that merely ENDS at
-      // the onset is no longer counted as sounding through it. Measured across every ask in
-      // the corpus: this moves NOTHING, which is the only kind of consolidation worth making
-      // quietly — and it is the same result the grid's own consolidation measured.
-      n.pitch === pitch && n.start < start && columnOverlap(n.start, n.start + n.duration, start) !== null ? { ...n, duration: start - n.start } : n
-    )
-  );
-  const withCap = /* @__PURE__ */ __name((cap) => ({
-    ...model,
-    notes: [...notes, { pitch, start, duration: Math.max(1, Math.min(duration, cap - start)) }]
-  }), "withCap");
-  const wideCap = capAt(true);
-  if (wideCap === nextStart) return accept(withCap(nextStart));
-  const wide = withCap(wideCap);
-  const narrow = withCap(nextStart);
-  const wideOut = serializePianoRollWithExtent(wide);
-  if (wideOut.mini !== null) {
-    const local = !degradesLocality(
-      wideOut.extent,
-      serializePianoRollWithExtent(narrow).extent
-    );
-    if (local && (!opts.readback || rollReadsBack(wide))) return wide;
-  }
-  return accept(narrow);
-}
-__name(placeNote, "placeNote");
-function degradesLocality(next, floor) {
-  const rank = /* @__PURE__ */ __name((p) => p === "leaf" ? 0 : p === "rebuild" ? 2 : 1, "rank");
-  return rank(next.path) > rank(floor.path);
-}
-__name(degradesLocality, "degradesLocality");
-function pasteNote(model, pitch, start, duration, opts = {}) {
-  const cleared = {
-    ...model,
-    notes: model.notes.filter((n) => !(n.start === start && n.pitch === pitch))
-  };
-  const placed = placeNote(cleared, pitch, start, duration, opts);
-  return placed === cleared ? model : placed;
-}
-__name(pasteNote, "pasteNote");
-var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value, length = 1) => toggleCell(model, laneIndex, stepIndex, value, length) !== model, "canToggleCell");
-var canPlaceNote = /* @__PURE__ */ __name((model, pitch, start, duration) => placeNote(model, pitch, start, duration) !== model, "canPlaceNote");
-function partRoom(model, laneIndex, stepIndex) {
-  const part = model.lanes[laneIndex]?.part ?? 0;
-  let next = model.steps;
-  for (const lane of model.lanes) {
-    if ((lane.part ?? 0) !== part) continue;
-    for (let j = stepIndex + 1; j < lane.cells.length && j < next; j++) {
-      if (isCellOn(lane.cells[j])) {
-        next = j;
-        break;
-      }
-    }
-  }
-  return next - stepIndex;
-}
-__name(partRoom, "partRoom");
-function resizeCell(model, laneIndex, stepIndex, duration) {
-  const cell = model.lanes[laneIndex]?.cells[stepIndex];
-  if (!isCellOn(cell)) return model;
-  const capped = Math.max(1, Math.min(duration, partRoom(model, laneIndex, stepIndex)));
-  const lanes = model.lanes.map(
-    (lane, i) => i === laneIndex ? {
-      ...lane,
-      cells: clampLane(
-        lane.cells.map((c, j) => j === stepIndex ? cellOn(capped) : c),
-        model.steps
-      )
-    } : lane
-  );
-  const next = lanes[laneIndex].cells[stepIndex];
-  if (isCellOn(next) && next.duration === cell.duration) return model;
-  const written = serializeStepGrid({ ...model, lanes });
-  if (written === null) return model;
-  if (written === serializeStepGrid(model)) return model;
-  return { ...model, lanes };
-}
-__name(resizeCell, "resizeCell");
-var canResizeCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, duration) => resizeCell(model, laneIndex, stepIndex, duration) !== model, "canResizeCell");
-var resizableNotes = /* @__PURE__ */ __name((model) => {
-  const out = /* @__PURE__ */ new Set();
-  const now2 = serializePianoRoll(model);
-  if (now2 === null) return out;
-  for (const n of model.notes) {
-    const writes2 = /* @__PURE__ */ __name((duration) => {
-      const next = resizeNote(model, n.start, n.pitch, duration);
-      if (next === model) return false;
-      const s = serializePianoRoll(next);
-      return s !== null && s !== now2;
-    }, "writes");
-    if (writes2(n.duration + 1) || writes2(Math.max(1, n.duration - 1))) out.add(n);
-  }
-  return out;
-}, "resizableNotes");
-var rollReadsBack = /* @__PURE__ */ __name((next) => {
-  const out = serializePianoRoll(next);
-  if (out === null) return false;
-  let back = parsePianoRoll(out);
-  if (!back.ok) return false;
-  const k = next.steps / back.model.steps;
-  if (next.viewScale !== void 0 && k > 1 && Number.isInteger(k)) {
-    back = parsePianoRoll(out, k);
-    if (!back.ok) return false;
-  }
-  if (back.model.steps !== next.steps) return false;
-  if (back.model.notes.length !== next.notes.length) return false;
-  const key2 = /* @__PURE__ */ __name((n) => `${n.pitch}@${n.start}+${n.duration}`, "key");
-  const meant = next.notes.map(key2).sort();
-  const got = back.model.notes.map(key2).sort();
-  return meant.every((s, i) => s === got[i]);
-}, "rollReadsBack");
-function resizeNote(model, start, pitch, duration, opts = {}) {
-  const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
-  if ((model.bars ?? 1) > 1) {
-    const capTo = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
-      ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
-      model.steps
-    ), "capTo");
-    const build = /* @__PURE__ */ __name((cap, scoped) => {
-      const capped2 = Math.max(1, Math.min(duration, cap - start));
-      return {
-        ...model,
-        notes: model.notes.map(
-          (n) => n.start === start && (!scoped || n.pitch === pitch) ? { ...n, duration: capped2 } : n
-        )
-      };
-    }, "build");
-    const anyCap = capTo(false);
-    const sameCap = capTo(true);
-    const legacy = build(anyCap, false);
-    if (sameCap === anyCap && model.notes.filter((n) => n.start === start).length < 2)
-      return accept(legacy);
-    const floor = serializePianoRollWithExtent(legacy);
-    for (const rung of [build(sameCap, true), build(anyCap, true)]) {
-      const out = serializePianoRollWithExtent(rung);
-      if (out.mini === null) continue;
-      if (degradesLocality(out.extent, floor.extent)) continue;
-      if (opts.readback && !rollReadsBack(rung)) continue;
-      return rung;
-    }
-    const movesOthers = legacy.notes.some(
-      (n, i) => n.duration !== model.notes[i].duration && !(n.start === start && n.pitch === pitch)
-    );
-    return movesOthers ? model : accept(legacy);
-  }
-  const capped = Math.max(1, Math.min(duration, model.steps - start));
-  return accept({
-    ...model,
-    notes: model.notes.map(
-      (n) => n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n
-    )
-  });
-}
-__name(resizeNote, "resizeNote");
-function removeNote(model, start, pitch, opts = {}) {
-  const notes = model.notes.filter((n) => !(n.pitch === pitch && n.start === start));
-  if (notes.length === model.notes.length) return model;
-  const next = { ...model, notes };
-  return opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next);
-}
-__name(removeNote, "removeNote");
-function moveNote(base, fromPitch, fromStart, toPitch, toStart, opts = {}) {
-  const idx = base.notes.findIndex((n) => n.pitch === fromPitch && n.start === fromStart);
-  if (idx < 0) return base;
-  const grabbed = base.notes[idx];
-  const start = Math.max(0, Math.min(toStart, base.steps - 1));
-  const rest = base.notes.filter((_, i) => i !== idx);
-  const landed = {
-    ...grabbed,
-    pitch: toPitch,
-    start,
-    duration: Math.max(1, Math.min(grabbed.duration, base.steps - start))
-  };
-  const notes = [...rest, landed];
-  const rebuilt = {
-    steps: base.steps,
-    ...base.bars != null ? { bars: base.bars } : {},
-    // Not a source: the RULER the notes are measured in. A roll drawn per bar (#1827)
-    // holds drawn columns, and without its counts the writer reads them as shared ones.
-    ...base.barSteps ? { barSteps: base.barSteps } : {},
-    ...base.numeric ? { numeric: true } : {},
-    notes
-  };
-  return opts.readback ? rollReadsBack(rebuilt) ? rebuilt : base : ifRollSpellable(base, rebuilt);
-}
-__name(moveNote, "moveNote");
-
-// src/codeView/notation/resize.ts
-var restructured = /* @__PURE__ */ __name(({ source: _drop, ...rest }) => rest, "restructured");
-function resizeGrid(model, nextSteps, mode) {
-  if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
-  if (mode === "pad" || model.steps === 0) {
-    return ifGridSpellable(model, {
-      ...restructured(model),
-      steps: nextSteps,
-      lanes: model.lanes.map((l) => ({
-        ...l,
-        cells: clampLane(padCells(l.cells, nextSteps), nextSteps)
-      }))
-    });
-  }
-  const from = model.steps;
-  const factor = nextSteps / from;
-  return ifGridSpellable(model, {
-    ...restructured(model),
-    steps: nextSteps,
-    lanes: model.lanes.map((l) => {
-      const cells = Array.from({ length: nextSteps }, (_, j) => {
-        if (nextSteps >= from) {
-          if (j * from % nextSteps !== 0) return false;
-          return scaleCell(l.cells[j * from / nextSteps] ?? false, factor);
-        }
-        const lo = Math.ceil(j * from / nextSteps);
-        const hi = Math.ceil((j + 1) * from / nextSteps);
-        const hits = l.cells.slice(lo, hi).filter(isCellOn);
-        return hits.length === 0 ? false : cellOn(Math.min(...hits.map((h) => h.duration)) * factor);
-      });
-      return { ...l, cells: clampLane(cells, nextSteps) };
-    })
-  });
-}
-__name(resizeGrid, "resizeGrid");
-function resizeRoll(model, nextSteps, mode) {
-  if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
-  if (mode === "pad" || model.steps === 0) {
-    return ifRollSpellable(model, {
-      ...model,
-      steps: nextSteps,
-      notes: model.notes.filter((n) => n.start < nextSteps).map((n) => ({ ...n, duration: Math.min(n.duration, nextSteps - n.start) }))
-    });
-  }
-  const factor = nextSteps / model.steps;
-  const scaled2 = model.notes.map((n) => {
-    const start = Math.floor(n.start * factor);
-    const end = Math.max(start + 1, Math.round((n.start + n.duration) * factor));
-    return { ...n, start, duration: Math.min(end, nextSteps) - start };
-  }).filter((n) => n.start < nextSteps && n.duration >= 1);
-  const seen = /* @__PURE__ */ new Set();
-  return ifRollSpellable(model, {
-    ...model,
-    steps: nextSteps,
-    notes: scaled2.filter((n) => {
-      const key2 = `${n.pitch}@${n.start}`;
-      if (seen.has(key2)) return false;
-      seen.add(key2);
-      return true;
-    })
-  });
-}
-__name(resizeRoll, "resizeRoll");
-function padCells(cells, steps) {
-  if (cells.length === steps) return [...cells];
-  if (cells.length > steps) return cells.slice(0, steps);
-  return [...cells, ...new Array(steps - cells.length).fill(false)];
-}
-__name(padCells, "padCells");
-
-// src/codeView/notation/lane.ts
-function addLane(model, sound) {
-  const token = sound.trim();
-  if (token === "" || model.lanes.some((l) => l.sound === token)) return model;
-  const lane = {
-    sound: token,
-    part: model.lanes[0]?.part,
-    cells: Array(model.steps).fill(false)
-  };
-  return { ...model, lanes: [...model.lanes, lane] };
-}
-__name(addLane, "addLane");
-function removeLane(model, sound) {
-  if (!model.lanes.some((l) => l.sound === sound)) return model;
-  return { ...model, lanes: model.lanes.filter((l) => l.sound !== sound) };
-}
-__name(removeLane, "removeLane");
-
 // src/codeView/notation/resolution.ts
 var MAX_RESOLUTION_STEPS = 256;
 function perBar(steps, bars) {
@@ -9887,6 +9541,352 @@ function listSectionParts(doc, call) {
   return names;
 }
 __name(listSectionParts, "listSectionParts");
+
+// src/codeView/notation/place.ts
+function viewPlacesNotes(model) {
+  let asked = 0;
+  if ("lanes" in model) {
+    for (let lane = 0; lane < model.lanes.length; lane++)
+      for (let col = 0; col < model.steps; col++) {
+        if (isCellOn(model.lanes[lane].cells[col])) continue;
+        asked++;
+        if (canToggleCell(model, lane, col, true)) return true;
+      }
+    return asked === 0;
+  }
+  const pitches = new Set(model.notes.map((n) => n.pitch));
+  if (model.notes.some((n) => pitchToMidi(n.pitch) !== null)) {
+    const below = rollContentRange(model).lo;
+    pitches.add(model.numeric ? String(below) : midiToPitch(below));
+  }
+  for (const pitch of pitches)
+    for (let step = 0; step < model.steps; step++) {
+      if (model.notes.some((n) => n.pitch === pitch && n.start === step)) continue;
+      asked++;
+      if (canPlaceNote(model, pitch, step, 1)) return true;
+    }
+  return asked === 0;
+}
+__name(viewPlacesNotes, "viewPlacesNotes");
+var paint = /* @__PURE__ */ __name((value, length = 1) => value ? cellOn(length) : false, "paint");
+function toggleCell(model, laneIndex, stepIndex, value, length = 1) {
+  const painted = model.lanes.map(
+    (lane, i) => i === laneIndex ? {
+      ...lane,
+      // CLAMPED, because a promise about lengths is a promise about ROOM
+      // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
+      // still sounding through shortens that note — the room it had is gone.
+      // Without this the model keeps a length that reaches past the new hit,
+      // which is notation nothing can spell, and the writer rightly declines
+      // an edit the user plainly made. The resize and quantize ops already
+      // clamp for exactly this reason; paint is the third op that moves
+      // onsets closer together, and it was the one still missing it.
+      cells: clampLane(
+        lane.cells.map((c, j) => j === stepIndex ? paint(value, length) : c),
+        model.steps
+      )
+    } : lane
+  );
+  const lanes = value ? clampPartAtOnset(painted, model.lanes[laneIndex]?.part ?? 0, stepIndex) : painted;
+  return ifGridSpellable(model, { ...model, lanes });
+}
+__name(toggleCell, "toggleCell");
+function placeNote(model, pitch, start, duration, opts = {}) {
+  const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
+  const at = model.notes.filter((n) => n.start === start);
+  const shared = at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null;
+  if (shared !== null) {
+    return accept({
+      ...model,
+      notes: [...model.notes, { pitch, start, duration: shared }]
+    });
+  }
+  const capAt = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
+    ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
+    model.steps
+  ), "capAt");
+  const nextStart = capAt(false);
+  const notes = model.notes.map(
+    (n) => (
+      // "does this note reach into this column?" is `columnOverlap`'s question, and this file
+      // had been answering it with an inline twin. `model.ts` records what happened the last
+      // time that predicate lived in two places: two thresholds a hundred lines apart. The
+      // `n.start < start` conjunct stays because it asks something DIFFERENT — a note
+      // starting exactly here is the chord-join case handled above, not something to trim.
+      // What the shared rule adds is the sliver threshold, so a length that merely ENDS at
+      // the onset is no longer counted as sounding through it. Measured across every ask in
+      // the corpus: this moves NOTHING, which is the only kind of consolidation worth making
+      // quietly — and it is the same result the grid's own consolidation measured.
+      n.pitch === pitch && n.start < start && columnOverlap(n.start, n.start + n.duration, start) !== null ? { ...n, duration: start - n.start } : n
+    )
+  );
+  const withCap = /* @__PURE__ */ __name((cap) => ({
+    ...model,
+    notes: [...notes, { pitch, start, duration: Math.max(1, Math.min(duration, cap - start)) }]
+  }), "withCap");
+  const wideCap = capAt(true);
+  if (wideCap === nextStart) return accept(withCap(nextStart));
+  const wide = withCap(wideCap);
+  const narrow = withCap(nextStart);
+  const wideOut = serializePianoRollWithExtent(wide);
+  if (wideOut.mini !== null) {
+    const local = !degradesLocality(
+      wideOut.extent,
+      serializePianoRollWithExtent(narrow).extent
+    );
+    if (local && (!opts.readback || rollReadsBack(wide))) return wide;
+  }
+  return accept(narrow);
+}
+__name(placeNote, "placeNote");
+function degradesLocality(next, floor) {
+  const rank = /* @__PURE__ */ __name((p) => p === "leaf" ? 0 : p === "rebuild" ? 2 : 1, "rank");
+  return rank(next.path) > rank(floor.path);
+}
+__name(degradesLocality, "degradesLocality");
+function pasteNote(model, pitch, start, duration, opts = {}) {
+  const cleared = {
+    ...model,
+    notes: model.notes.filter((n) => !(n.start === start && n.pitch === pitch))
+  };
+  const placed = placeNote(cleared, pitch, start, duration, opts);
+  return placed === cleared ? model : placed;
+}
+__name(pasteNote, "pasteNote");
+var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value, length = 1) => toggleCell(model, laneIndex, stepIndex, value, length) !== model, "canToggleCell");
+var canPlaceNote = /* @__PURE__ */ __name((model, pitch, start, duration) => placeNote(model, pitch, start, duration) !== model, "canPlaceNote");
+function partRoom(model, laneIndex, stepIndex) {
+  const part = model.lanes[laneIndex]?.part ?? 0;
+  let next = model.steps;
+  for (const lane of model.lanes) {
+    if ((lane.part ?? 0) !== part) continue;
+    for (let j = stepIndex + 1; j < lane.cells.length && j < next; j++) {
+      if (isCellOn(lane.cells[j])) {
+        next = j;
+        break;
+      }
+    }
+  }
+  return next - stepIndex;
+}
+__name(partRoom, "partRoom");
+function resizeCell(model, laneIndex, stepIndex, duration) {
+  const cell = model.lanes[laneIndex]?.cells[stepIndex];
+  if (!isCellOn(cell)) return model;
+  const capped = Math.max(1, Math.min(duration, partRoom(model, laneIndex, stepIndex)));
+  const lanes = model.lanes.map(
+    (lane, i) => i === laneIndex ? {
+      ...lane,
+      cells: clampLane(
+        lane.cells.map((c, j) => j === stepIndex ? cellOn(capped) : c),
+        model.steps
+      )
+    } : lane
+  );
+  const next = lanes[laneIndex].cells[stepIndex];
+  if (isCellOn(next) && next.duration === cell.duration) return model;
+  const written = serializeStepGrid({ ...model, lanes });
+  if (written === null) return model;
+  if (written === serializeStepGrid(model)) return model;
+  return { ...model, lanes };
+}
+__name(resizeCell, "resizeCell");
+var canResizeCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, duration) => resizeCell(model, laneIndex, stepIndex, duration) !== model, "canResizeCell");
+var resizableNotes = /* @__PURE__ */ __name((model) => {
+  const out = /* @__PURE__ */ new Set();
+  const now2 = serializePianoRoll(model);
+  if (now2 === null) return out;
+  for (const n of model.notes) {
+    const writes2 = /* @__PURE__ */ __name((duration) => {
+      const next = resizeNote(model, n.start, n.pitch, duration);
+      if (next === model) return false;
+      const s = serializePianoRoll(next);
+      return s !== null && s !== now2;
+    }, "writes");
+    if (writes2(n.duration + 1) || writes2(Math.max(1, n.duration - 1))) out.add(n);
+  }
+  return out;
+}, "resizableNotes");
+var rollReadsBack = /* @__PURE__ */ __name((next) => {
+  const out = serializePianoRoll(next);
+  if (out === null) return false;
+  let back = parsePianoRoll(out);
+  if (!back.ok) return false;
+  const k = next.steps / back.model.steps;
+  if (next.viewScale !== void 0 && k > 1 && Number.isInteger(k)) {
+    back = parsePianoRoll(out, k);
+    if (!back.ok) return false;
+  }
+  if (back.model.steps !== next.steps) return false;
+  if (back.model.notes.length !== next.notes.length) return false;
+  const key2 = /* @__PURE__ */ __name((n) => `${n.pitch}@${n.start}+${n.duration}`, "key");
+  const meant = next.notes.map(key2).sort();
+  const got = back.model.notes.map(key2).sort();
+  return meant.every((s, i) => s === got[i]);
+}, "rollReadsBack");
+function resizeNote(model, start, pitch, duration, opts = {}) {
+  const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
+  if ((model.bars ?? 1) > 1) {
+    const capTo = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
+      ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
+      model.steps
+    ), "capTo");
+    const build = /* @__PURE__ */ __name((cap, scoped) => {
+      const capped2 = Math.max(1, Math.min(duration, cap - start));
+      return {
+        ...model,
+        notes: model.notes.map(
+          (n) => n.start === start && (!scoped || n.pitch === pitch) ? { ...n, duration: capped2 } : n
+        )
+      };
+    }, "build");
+    const anyCap = capTo(false);
+    const sameCap = capTo(true);
+    const legacy = build(anyCap, false);
+    if (sameCap === anyCap && model.notes.filter((n) => n.start === start).length < 2)
+      return accept(legacy);
+    const floor = serializePianoRollWithExtent(legacy);
+    for (const rung of [build(sameCap, true), build(anyCap, true)]) {
+      const out = serializePianoRollWithExtent(rung);
+      if (out.mini === null) continue;
+      if (degradesLocality(out.extent, floor.extent)) continue;
+      if (opts.readback && !rollReadsBack(rung)) continue;
+      return rung;
+    }
+    const movesOthers = legacy.notes.some(
+      (n, i) => n.duration !== model.notes[i].duration && !(n.start === start && n.pitch === pitch)
+    );
+    return movesOthers ? model : accept(legacy);
+  }
+  const capped = Math.max(1, Math.min(duration, model.steps - start));
+  return accept({
+    ...model,
+    notes: model.notes.map(
+      (n) => n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n
+    )
+  });
+}
+__name(resizeNote, "resizeNote");
+function removeNote(model, start, pitch, opts = {}) {
+  const notes = model.notes.filter((n) => !(n.pitch === pitch && n.start === start));
+  if (notes.length === model.notes.length) return model;
+  const next = { ...model, notes };
+  return opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next);
+}
+__name(removeNote, "removeNote");
+function moveNote(base, fromPitch, fromStart, toPitch, toStart, opts = {}) {
+  const idx = base.notes.findIndex((n) => n.pitch === fromPitch && n.start === fromStart);
+  if (idx < 0) return base;
+  const grabbed = base.notes[idx];
+  const start = Math.max(0, Math.min(toStart, base.steps - 1));
+  const rest = base.notes.filter((_, i) => i !== idx);
+  const landed = {
+    ...grabbed,
+    pitch: toPitch,
+    start,
+    duration: Math.max(1, Math.min(grabbed.duration, base.steps - start))
+  };
+  const notes = [...rest, landed];
+  const rebuilt = {
+    steps: base.steps,
+    ...base.bars != null ? { bars: base.bars } : {},
+    // Not a source: the RULER the notes are measured in. A roll drawn per bar (#1827)
+    // holds drawn columns, and without its counts the writer reads them as shared ones.
+    ...base.barSteps ? { barSteps: base.barSteps } : {},
+    ...base.numeric ? { numeric: true } : {},
+    notes
+  };
+  return opts.readback ? rollReadsBack(rebuilt) ? rebuilt : base : ifRollSpellable(base, rebuilt);
+}
+__name(moveNote, "moveNote");
+
+// src/codeView/notation/resize.ts
+var restructured = /* @__PURE__ */ __name(({ source: _drop, ...rest }) => rest, "restructured");
+function resizeGrid(model, nextSteps, mode) {
+  if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
+  if (mode === "pad" || model.steps === 0) {
+    return ifGridSpellable(model, {
+      ...restructured(model),
+      steps: nextSteps,
+      lanes: model.lanes.map((l) => ({
+        ...l,
+        cells: clampLane(padCells(l.cells, nextSteps), nextSteps)
+      }))
+    });
+  }
+  const from = model.steps;
+  const factor = nextSteps / from;
+  return ifGridSpellable(model, {
+    ...restructured(model),
+    steps: nextSteps,
+    lanes: model.lanes.map((l) => {
+      const cells = Array.from({ length: nextSteps }, (_, j) => {
+        if (nextSteps >= from) {
+          if (j * from % nextSteps !== 0) return false;
+          return scaleCell(l.cells[j * from / nextSteps] ?? false, factor);
+        }
+        const lo = Math.ceil(j * from / nextSteps);
+        const hi = Math.ceil((j + 1) * from / nextSteps);
+        const hits = l.cells.slice(lo, hi).filter(isCellOn);
+        return hits.length === 0 ? false : cellOn(Math.min(...hits.map((h) => h.duration)) * factor);
+      });
+      return { ...l, cells: clampLane(cells, nextSteps) };
+    })
+  });
+}
+__name(resizeGrid, "resizeGrid");
+function resizeRoll(model, nextSteps, mode) {
+  if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
+  if (mode === "pad" || model.steps === 0) {
+    return ifRollSpellable(model, {
+      ...model,
+      steps: nextSteps,
+      notes: model.notes.filter((n) => n.start < nextSteps).map((n) => ({ ...n, duration: Math.min(n.duration, nextSteps - n.start) }))
+    });
+  }
+  const factor = nextSteps / model.steps;
+  const scaled2 = model.notes.map((n) => {
+    const start = Math.floor(n.start * factor);
+    const end = Math.max(start + 1, Math.round((n.start + n.duration) * factor));
+    return { ...n, start, duration: Math.min(end, nextSteps) - start };
+  }).filter((n) => n.start < nextSteps && n.duration >= 1);
+  const seen = /* @__PURE__ */ new Set();
+  return ifRollSpellable(model, {
+    ...model,
+    steps: nextSteps,
+    notes: scaled2.filter((n) => {
+      const key2 = `${n.pitch}@${n.start}`;
+      if (seen.has(key2)) return false;
+      seen.add(key2);
+      return true;
+    })
+  });
+}
+__name(resizeRoll, "resizeRoll");
+function padCells(cells, steps) {
+  if (cells.length === steps) return [...cells];
+  if (cells.length > steps) return cells.slice(0, steps);
+  return [...cells, ...new Array(steps - cells.length).fill(false)];
+}
+__name(padCells, "padCells");
+
+// src/codeView/notation/lane.ts
+function addLane(model, sound) {
+  const token = sound.trim();
+  if (token === "" || model.lanes.some((l) => l.sound === token)) return model;
+  const lane = {
+    sound: token,
+    part: model.lanes[0]?.part,
+    cells: Array(model.steps).fill(false)
+  };
+  return { ...model, lanes: [...model.lanes, lane] };
+}
+__name(addLane, "addLane");
+function removeLane(model, sound) {
+  if (!model.lanes.some((l) => l.sound === sound)) return model;
+  return { ...model, lanes: model.lanes.filter((l) => l.sound !== sound) };
+}
+__name(removeLane, "removeLane");
 function unwrapAlternation2(mini) {
   const t = mini.trim();
   if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
