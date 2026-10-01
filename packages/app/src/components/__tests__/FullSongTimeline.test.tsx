@@ -72,6 +72,9 @@ vi.mock('@stave/editor', async () => {
   // #1464 — the caption's shape menu reads its options from `shapeAlternatives`.
   // #1611 — and its cross-class options from `crossClassShapes`.
   const { signalAutomations, signalTimeAt, shapeAlternatives, crossClassShapes } = await import('../../../../editor/src/codeView/ir/signalAutomation')
+  // #1886 — what a caption field WRITES is the editor's now; the caption's layout
+  // reads `rateEditable` from it too. Real, from source: pure functions of an automation.
+  const { captionEdit, shapeEdit, shapeOptions, rateEditable } = await import('../../../../editor/src/codeView/automation/captionEdit')
   // #1463 Stage 2 — the same trap, twice more: the component now reads stepped
   // automation and resolves each one's axis. Both real, from source (the knob
   // table imports nothing but its own control list).
@@ -91,6 +94,10 @@ vi.mock('@stave/editor', async () => {
     signalTimeAt,
     shapeAlternatives,
     crossClassShapes,
+    captionEdit,
+    shapeEdit,
+    shapeOptions,
+    rateEditable,
     steppedAutomations,
     stepValueEdit,
     stepIndexAtCycle,

@@ -18,6 +18,9 @@ export { parseMini, parseStrudel, classifyLiteralRhs } from './codeView'
 // (moved out of @stave/app by #1489 so `songAnalysis` can reach it too).
 export { signalAutomations, signalCarryingParamKeys, signalTimeAt, shapeAlternatives, crossClassShapes } from './codeView'
 export type { SignalAutomation, SignalKind, SignalSpans, UnboundedSignalKind } from './codeView'
+// #1886 — what the lane's caption writes: a typed bound or rate, a chosen shape.
+export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './codeView'
+export type { CaptionFieldKind } from './codeView'
 // #1463 Stage 1 — the stepped class, for the same lane.
 export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './codeView'
 export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp } from './codeView'

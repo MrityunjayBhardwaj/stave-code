@@ -214,11 +214,6 @@
       "issue": "#1880"
     },
     {
-      "file": "packages/app/src/components/musicalTimeline/automationCaption.ts",
-      "what": "builds replacement text for the document",
-      "issue": "#1880"
-    },
-    {
       "file": "packages/app/src/components/musicalTimeline/pitch.ts",
       "what": "reads syntax from user code by hand",
       "issue": "#1880"
