@@ -302,8 +302,12 @@ export interface EnforcedException {
   why: string
   /** the issue that removes this entry: `#1234` */
   issue: string
-  /** required on any reach `origin/main` does not already list: `#<issue> <why it was allowed in>` */
-  added?: string
+  /**
+   * Required for each reach `origin/main` does not already list, keyed by THAT reach:
+   * `{ "<reach>": "#<issue> <why it was allowed in>" }`. Per reach, not per entry — one
+   * line on the entry would wave through every reach added after it.
+   */
+  added?: Record<string, string>
 }
 export interface DeclaredException {
   file: string
@@ -332,11 +336,22 @@ export function listProblems(list: ExceptionList, fileExists: (rel: string) => b
     const at = `${section}[${i}] ${e.file}`
     if (!fileExists(e.file)) out.push(`${at}: no such file — a moved or deleted file takes its entry with it`)
     if (!ISSUE.test(e.issue)) out.push(`${at}: "issue" must be one issue number (#1234), got ${JSON.stringify(e.issue)}`)
-    if (e.added !== undefined && !ADDED.test(e.added)) out.push(`${at}: "added" must start with an issue number and say why, got ${JSON.stringify(e.added)}`)
+  }
+  const addedLine = (at: string, line: unknown): void => {
+    if (typeof line !== 'string' || !ADDED.test(line)) out.push(`${at}: an "added" line must start with an issue number and say why, got ${JSON.stringify(line)}`)
   }
   const files = new Set<string>()
   list.enforced.forEach((e, i) => {
     check('enforced', e, i)
+    if (e.added !== undefined) {
+      if (typeof e.added !== 'object' || e.added === null) out.push(`enforced[${i}] ${e.file}: "added" must map each new reach to its "#<issue> <why>" line`)
+      else {
+        for (const [reach, line] of Object.entries(e.added)) {
+          if (!e.reaches.includes(reach)) out.push(`enforced[${i}] ${e.file}: "added" names ${reach}, which the entry does not list`)
+          addedLine(`enforced[${i}] ${e.file} added[${reach}]`, line)
+        }
+      }
+    }
     if (!e.why) out.push(`enforced[${i}] ${e.file}: missing "why"`)
     if (!Array.isArray(e.reaches) || e.reaches.length === 0) out.push(`enforced[${i}] ${e.file}: lists no reaches — delete the entry`)
     else if (new Set(e.reaches).size !== e.reaches.length) out.push(`enforced[${i}] ${e.file}: a reach is listed twice`)
@@ -346,6 +361,7 @@ export function listProblems(list: ExceptionList, fileExists: (rel: string) => b
   const declared = new Set<string>()
   list.declared.forEach((e, i) => {
     check('declared', e, i)
+    if (e.added !== undefined) addedLine(`declared[${i}] ${e.file}`, e.added)
     if (!e.what) out.push(`declared[${i}] ${e.file}: missing "what"`)
     if (declared.has(e.file)) out.push(`declared[${i}] ${e.file}: a second entry for the same file`)
     declared.add(e.file)
@@ -387,9 +403,9 @@ export function shrinkOnlyProblems(current: ExceptionList, base: ExceptionList):
   const out: string[] = []
   const was = new Map(base.enforced.map((e) => [e.file, new Set(e.reaches)]))
   for (const e of current.enforced) {
-    const fresh = e.reaches.filter((r) => !was.get(e.file)?.has(r))
-    if (fresh.length && e.added === undefined) {
-      out.push(`${e.file}: ${fresh.join(', ')} ${fresh.length === 1 ? 'is' : 'are'} not on origin/main's list. The list only shrinks: a new reach needs "added": "#<issue> <why>" on its entry, naming an open issue under #1007.`)
+    const fresh = e.reaches.filter((r) => !was.get(e.file)?.has(r) && e.added?.[r] === undefined)
+    if (fresh.length) {
+      out.push(`${e.file}: ${fresh.join(', ')} ${fresh.length === 1 ? 'is' : 'are'} not on origin/main's list. The list only shrinks: each new reach needs its own line, "added": { "<reach>": "#<issue> <why>" }, naming an open issue under #1007.`)
     }
   }
   const declaredWas = new Set(base.declared.map((e) => e.file))

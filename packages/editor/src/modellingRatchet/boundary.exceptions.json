@@ -1,5 +1,5 @@
 {
-  "about": "The code↔view boundary (#1879). \"enforced\": every reach across the boundary that exists today, exact per file — one more is a failure, one fewer is stale. \"declared\": files that convert between code and views in ways no structural rule can see; named and counted, not enforced. Both lists only shrink: a new reach or file needs \"added\": \"#<issue> <why>\". See boundary.ts.",
+  "about": "The code↔view boundary (#1879). \"enforced\": every reach across the boundary that exists today, exact per file — one more is a failure, one fewer is stale. \"declared\": files that convert between code and views in ways no structural rule can see; named and counted, not enforced. Both lists only shrink: each new enforced reach needs its own line, \"added\": { \"<reach>\": \"#<issue> <why>\" }, and a newly declared file needs \"added\": \"#<issue> <why>\". See boundary.ts.",
   "enforced": [
     {
       "file": "packages/editor/src/engine/StrudelEngine.ts",

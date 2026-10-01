@@ -230,9 +230,12 @@ describe('the code↔view boundary (#1879)', () => {
       expect(shape({ ...ok, file: 'gone.ts' })).toHaveLength(1)
     })
 
-    it('refuses an "added" line that names no issue', () => {
-      expect(shape({ ...ok, added: 'needed it' })).toHaveLength(1)
-      expect(shape({ ...ok, added: '#1880 the grid needs it until the op moves in' })).toEqual([])
+    it('refuses an "added" line that names no issue, is not keyed by reach, or names a reach the entry lacks', () => {
+      expect(shape({ ...ok, added: { 'codeView/x#y': 'needed it' } })).toHaveLength(1)
+      expect(shape({ ...ok, added: { 'codeView/x#y': '#1880 the grid needs it until the op moves in' } })).toEqual([])
+      expect(shape({ ...ok, added: '#1880 one line for the whole entry' })).toHaveLength(1)
+      expect(shape({ ...ok, added: { 'codeView/x#elsewhere': '#1880 not a reach of this entry' } })).toHaveLength(1)
+      expect(shape(ok, [{ file: 'a.ts', what: 'w', issue: '#1880', added: 'later' }])).toHaveLength(1)
     })
 
     it('holds the declared section to the same shape', () => {
@@ -260,8 +263,20 @@ describe('the code↔view boundary (#1879)', () => {
     })
 
     it('accepts them once the entry says which issue let them in', () => {
-      const more = { ...base.enforced[0], reaches: [...base.enforced[0].reaches, 'codeView/x#new'], added: '#1880 needed until the op moves in' }
+      const more = { ...base.enforced[0], reaches: [...base.enforced[0].reaches, 'codeView/x#new'], added: { 'codeView/x#new': '#1880 needed until the op moves in' } }
       expect(shrinkOnlyProblems({ ...base, enforced: [more] }, base)).toEqual([])
+      expect(shrinkOnlyProblems({ ...base, declared: [...base.declared, { file: 'e.ts', what: 'w', issue: '#1880', added: '#1880 found while moving the mixer' }] }, base)).toEqual([])
+    })
+
+    it('one "added" line does not cover the NEXT new reach on the same entry', () => {
+      const two = {
+        ...base.enforced[0],
+        reaches: [...base.enforced[0].reaches, 'codeView/x#new', 'codeView/x#newer'],
+        added: { 'codeView/x#new': '#1880 needed until the op moves in' },
+      }
+      const p = shrinkOnlyProblems({ ...base, enforced: [two] }, base)
+      expect(p).toHaveLength(1)
+      expect(p[0]).toMatch(/codeView\/x#newer is not on origin\/main's list/)
     })
   })
 })
