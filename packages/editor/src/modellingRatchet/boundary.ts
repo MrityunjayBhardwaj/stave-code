@@ -28,6 +28,14 @@
  * and not enforced. A receiver typed `any` is invisible to the door rule for the same reason.
  * The declared list empties as #1880 moves those files in; once nothing outside the area
  * touches the door, text built outside it has no way to reach a document.
+ *
+ * ── DECIDED: THE ENTRY'S NAMES ARE NOT RATCHETED (2026-10-01, #1869) ─────────────────────
+ * Any internal of the area can be exported from `codeView/index.ts` and then imported
+ * legally, so the entry can widen without this test noticing. A ratchet on its names was
+ * considered and turned down: a view legitimately needs a new op now and then, and a gate
+ * that asks for an exemption line on every one teaches people to write exemption lines.
+ * What goes into the entry is a review question. Do not add that ratchet here without
+ * reopening the decision on #1869.
  */
 import fs from 'node:fs'
 import path from 'node:path'
