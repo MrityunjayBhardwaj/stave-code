@@ -60,8 +60,8 @@
  * to be what the routing clause above needed too, which is why one exists
  * rather than two.
  */
-import type { ChunkInfo } from '../../codeView/chunkDetect'
-import { parsePianoRoll, parseStepGrid } from '../../codeView/notation/parse'
+import type { ChunkInfo } from '../../codeView'
+import { parsePianoRoll, parseStepGrid } from '../../codeView'
 import { chordLanes } from './chordLanes'
 import { patternKind, type PatternKind } from './patternKind'
 

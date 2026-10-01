@@ -1,15 +1,15 @@
 import { noteToMidi as noteToMidi$1, Pattern, valueToMidi } from '@strudel/core';
+import { parse } from 'acorn';
 import { parse as parse$1 } from '@strudel/mini/krill-parser.js';
 import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
-import { parse } from 'acorn';
 import { isControlName, getControlName } from '@strudel/core/controls.mjs';
+import { mini } from '@strudel/mini/mini.mjs';
 import * as React21 from 'react';
 import React21__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw, { loader, DiffEditor as DiffEditor$1 } from '@monaco-editor/react';
 import * as Y3 from 'yjs';
-import { mini } from '@strudel/mini/mini.mjs';
 import { get } from '@tonaljs/chord';
 import { createPortal } from 'react-dom';
 import { getCachedBuffer, getSampleInfo, getSound, getAudioContext, loadBuffer, superdough, samples, soundMap } from '@strudel/webaudio';
@@ -37,6 +37,709 @@ var init_piano = __esm({
     };
   }
 });
+function parseTopLevel(doc) {
+  try {
+    const program = parse(doc, {
+      ecmaVersion: "latest",
+      allowAwaitOutsideFunction: true
+    });
+    return program.body;
+  } catch {
+    return null;
+  }
+}
+__name(parseTopLevel, "parseTopLevel");
+function docParses(doc) {
+  return parseTopLevel(doc) !== null;
+}
+__name(docParses, "docParses");
+
+// src/codeView/miniSource/spanRole.ts
+var NOTE_OVERRIDE = /* @__PURE__ */ new Set(["note", "n"]);
+function walk(node, parent, ctx) {
+  if (!node || typeof node.type !== "string") return;
+  ctx.parent.set(node, parent);
+  if (isMiniLiteral(node)) ctx.literals.push(node);
+  for (const key2 of Object.keys(node)) {
+    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
+    const v = node[key2];
+    if (Array.isArray(v)) v.forEach((c) => walk(c, node, ctx));
+    else if (v && typeof v === "object" && typeof v.type === "string") walk(v, node, ctx);
+  }
+}
+__name(walk, "walk");
+function isMiniLiteral(node) {
+  if (node.type === "Literal" && typeof node.value === "string") return true;
+  if (node.type === "TemplateLiteral") return true;
+  return false;
+}
+__name(isMiniLiteral, "isMiniLiteral");
+function literalInterior(node) {
+  return [node.start + 1, node.end - 1];
+}
+__name(literalInterior, "literalInterior");
+function containedIn(node, ranges) {
+  return ranges.some((r) => node.start >= r[0] && node.end <= r[1]);
+}
+__name(containedIn, "containedIn");
+var _SpanIndex = class _SpanIndex {
+  constructor(ctx) {
+    /**
+     * How many times the mixed-use tie-break actually DECIDED a role — a binding
+     * referenced both ways within one unit's boundary. Scoping the question to the
+     * unit is expected to make this rare or zero; if it is zero over the corpus the
+     * tie-break is DEFENSIVE, and saying so is more honest than leaving a comment
+     * claiming it carries weight.
+     */
+    this.tieBreakFired = 0;
+    this.ctx = ctx;
+  }
+  /** Build the index for a document, or null when it does not parse. */
+  static build(doc) {
+    const program = parseTopLevel(doc);
+    if (!program) return null;
+    const ctx = {
+      parent: /* @__PURE__ */ new Map(),
+      literals: [],
+      bindings: /* @__PURE__ */ new Map(),
+      refs: /* @__PURE__ */ new Map()
+    };
+    for (const stmt of program) walk(stmt, null, ctx);
+    const dropped = /* @__PURE__ */ new Set();
+    for (const stmt of program) {
+      if (stmt?.type !== "VariableDeclaration" || !Array.isArray(stmt.declarations)) continue;
+      for (const decl of stmt.declarations) {
+        if (decl?.id?.type !== "Identifier" || !decl.init) continue;
+        const name = decl.id.name;
+        if (ctx.bindings.has(name) || dropped.has(name)) {
+          ctx.bindings.delete(name);
+          dropped.add(name);
+          continue;
+        }
+        ctx.bindings.set(name, decl);
+      }
+    }
+    for (const [node, parent] of ctx.parent) {
+      if (node?.type !== "Identifier") continue;
+      if (parent?.type === "VariableDeclarator" && parent.id === node) continue;
+      if (parent?.type === "MemberExpression" && parent.property === node && !parent.computed) continue;
+      if (parent?.type === "Property" && parent.key === node && !parent.computed) continue;
+      if (parent?.type === "LabeledStatement" && parent.label === node) continue;
+      const list = ctx.refs.get(node.name);
+      if (list) list.push(node);
+      else ctx.refs.set(node.name, [node]);
+    }
+    return new _SpanIndex(ctx);
+  }
+  /** Every mini literal in the document, innermost-last. */
+  get literals() {
+    return this.ctx.literals;
+  }
+  /** The innermost mini literal whose INTERIOR contains `span`, or null. */
+  literalFor(span) {
+    let best = null;
+    for (const lit of this.ctx.literals) {
+      const [s, e] = literalInterior(lit);
+      if (span[0] >= s && span[1] <= e) {
+        if (!best || lit.start >= best.start) best = lit;
+      }
+    }
+    return best;
+  }
+  /** The role of the literal enclosing `span`, or `unknown` when there is none. */
+  roleOfSpan(span, boundary) {
+    const lit = this.literalFor(span);
+    return lit ? this.roleOfNode(lit, boundary) : "unknown";
+  }
+  /**
+   * The role of a VALUE-producing node, decided by its syntactic position.
+   *
+   * Every arm is a position, not a name, with the single stated exception of
+   * `NOTE_OVERRIDE`. Positions the rule does not claim to judge return
+   * `unknown` and are never treated as content.
+   */
+  roleOfNode(node, boundary, seen = /* @__PURE__ */ new Set()) {
+    return this.computeRole(node, boundary, seen);
+  }
+  computeRole(node, boundary, seen) {
+    let child = node;
+    let parent = this.ctx.parent.get(child);
+    for (let guard = 0; parent && guard < 64; guard++) {
+      if (parent.type !== "VariableDeclarator" && !containedIn(parent, boundary)) return "source";
+      switch (parent.type) {
+        case "CallExpression": {
+          if (parent.callee === child) {
+            child = parent;
+            parent = this.ctx.parent.get(child);
+            continue;
+          }
+          if (Array.isArray(parent.arguments) && parent.arguments.includes(child)) {
+            const callee = parent.callee;
+            if (callee?.type === "Identifier") {
+              return this.roleOfNode(parent, boundary, seen);
+            }
+            if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") {
+              if (NOTE_OVERRIDE.has(callee.property.name) && !this.chainRootIsCall(parent)) {
+                return this.roleOfNode(parent, boundary, seen);
+              }
+              return "argument";
+            }
+            return "unknown";
+          }
+          return "unknown";
+        }
+        case "TaggedTemplateExpression":
+          return parent.quasi === child ? this.roleOfNode(parent, boundary, seen) : "unknown";
+        case "MemberExpression": {
+          if (parent.object !== child) return "unknown";
+          if (isMiniLiteral(child) && this.chainOverridesRoot(parent)) return "argument";
+          child = parent;
+          parent = this.ctx.parent.get(child);
+          continue;
+        }
+        case "VariableDeclarator": {
+          if (parent.init !== child) return "unknown";
+          if (boundary.length > 0 && containedIn(parent.init, [boundary[0]])) return "source";
+          const name = parent.id?.type === "Identifier" ? parent.id.name : null;
+          if (!name || seen.has(name)) return "unknown";
+          seen.add(name);
+          return this.roleOfBinding(name, boundary);
+        }
+        case "ExpressionStatement":
+        case "LabeledStatement":
+          return "source";
+        case "ArrayExpression":
+        case "Property":
+        case "ObjectExpression":
+        case "ParenthesizedExpression":
+        case "AwaitExpression":
+        case "SequenceExpression":
+        case "ConditionalExpression":
+        // A pattern-producing helper (`let bass = (lpf) => n("…").lpf(lpf)`) is
+        // called where a pattern is wanted, so the body's role is the role of
+        // the CALL. Transparency is what carries that through — and it is not a
+        // way in for lambdas that are themselves control arguments, because
+        // `.sometimes(x => x.note("c3"))`'s literal is decided at `.note`'s own
+        // chain long before the arrow is reached.
+        case "ArrowFunctionExpression":
+        case "FunctionExpression":
+        case "ReturnStatement":
+        case "BlockStatement":
+          child = parent;
+          parent = this.ctx.parent.get(child);
+          continue;
+        default:
+          return "unknown";
+      }
+    }
+    return "unknown";
+  }
+  /**
+   * Does the chain containing `call` bottom out at a CALL (`sound("hh").note(…)`)
+   * rather than at a bare literal or identifier (`"gm_pad_warm".note(…)`)?
+   *
+   * A chain with a head call already has its source — the head's argument — so a
+   * mid-chain `note`/`n` there is an ordinary control. Only a chain rooted at a
+   * bare value has no source of its own for the override to replace.
+   */
+  chainRootIsCall(call) {
+    let node = call;
+    for (let guard = 0; node && guard < 64; guard++) {
+      if (node.type === "CallExpression") {
+        const callee = node.callee;
+        if (callee?.type === "Identifier") return true;
+        if (callee?.type === "MemberExpression") {
+          node = callee.object;
+          continue;
+        }
+        return false;
+      }
+      if (node.type === "MemberExpression") {
+        node = node.object;
+        continue;
+      }
+      return false;
+    }
+    return false;
+  }
+  /**
+   * Does the member chain rooted at `member` apply a note-content control?
+   * Walks OUTWARD from the root member expression through the call spine.
+   */
+  chainOverridesRoot(member) {
+    let node = member;
+    let parent = this.ctx.parent.get(node);
+    for (let guard = 0; parent && guard < 64; guard++) {
+      if (parent.type === "CallExpression" && parent.callee === node) {
+        const prop = node.type === "MemberExpression" ? node.property : null;
+        if (prop?.type === "Identifier" && NOTE_OVERRIDE.has(prop.name)) {
+          if ((parent.arguments ?? []).length > 0) return true;
+        }
+        node = parent;
+        parent = this.ctx.parent.get(node);
+        continue;
+      }
+      if (parent.type === "MemberExpression" && parent.object === node) {
+        node = parent;
+        parent = this.ctx.parent.get(node);
+        continue;
+      }
+      return false;
+    }
+    return false;
+  }
+  /**
+   * The role of a BOUND value, decided by how the binding is USED.
+   *
+   * `const drums = "Linn9000"` is content or a bank name depending entirely on
+   * whether `drums` appears as `s(drums)` or as `.bank(drums)`. Judging the
+   * initialiser by its own position gets this wrong in the direction that
+   * matters: `const x = "…"` is not syntactically anybody's argument, so a
+   * position-only rule keeps every bound control argument.
+   *
+   * THE QUESTION IS SCOPED TO THE UNIT, because a role is a property of a
+   * REFERENCE and a unit only ever sees its own. Asking it of the whole document
+   * manufactures ties that do not exist locally, and the ranking then resolves
+   * them by source order: `var ch = "[Am C G <Em F>]/8"` is a pattern source in
+   * `chord(ch).voicing()` and a control argument in
+   * `n("[0 1 <- 2>…]*2").chord(ch)`, and a document-wide verdict of `source`
+   * hands the second unit the first one's chord progression as its own content —
+   * because `ch` is declared at the top of the file and the ranking breaks ties
+   * on source order. `boundary` is the unit's own expression plus the initialiser
+   * of every binding it reaches, so filtering references to it asks only about
+   * the uses this unit can actually see.
+   *
+   * A binding used both ways WITHIN one unit still resolves as `source`: losing
+   * real content is the worse error of the two. That tie-break is a JUDGEMENT
+   * CALL, so `mixedUseBindings()` reports the population it could apply to and
+   * `tieBreakFired` counts how often it actually decides — a guard believed
+   * load-bearing is a false claim about the code.
+   */
+  roleOfBinding(name, boundary) {
+    const all = this.ctx.refs.get(name) ?? [];
+    const mine = boundary.length ? all.filter((r) => boundary.some(([s, e]) => r.start >= s && r.end <= e)) : all;
+    const refs = mine.length ? mine : all;
+    let sawArgument = false;
+    let sawSource = false;
+    for (const ref of refs) {
+      const r = this.roleOfRef(ref);
+      if (r === "source") sawSource = true;
+      else if (r === "argument") sawArgument = true;
+    }
+    if (sawSource && sawArgument) this.tieBreakFired++;
+    if (sawSource) return "source";
+    return sawArgument ? "argument" : "unknown";
+  }
+  /**
+   * Bindings referenced BOTH as a pattern and as a control argument SOMEWHERE in
+   * the document. This is the population the tie-break could apply to, not the
+   * set it decides: `roleOfBinding` scopes the question to one unit's references,
+   * so a binding can be mixed-use document-wide and unambiguous in every unit
+   * that reads it. Compare with `tieBreakFired`, which counts the decisions.
+   */
+  mixedUseBindings() {
+    const out = [];
+    for (const [name] of this.ctx.bindings) {
+      let src = false;
+      let arg = false;
+      for (const ref of this.ctx.refs.get(name) ?? []) {
+        const r = this.roleOfRef(ref);
+        if (r === "source") src = true;
+        else if (r === "argument") arg = true;
+      }
+      if (src && arg) out.push(name);
+    }
+    return out;
+  }
+  /**
+   * The role of ONE reference to a binding, from the position that consumes it.
+   * Transparent wrappers are stepped through; nothing else is climbed.
+   */
+  roleOfRef(ref) {
+    let child = ref;
+    let parent = this.ctx.parent.get(child);
+    for (let guard = 0; parent && guard < 32; guard++) {
+      switch (parent.type) {
+        case "CallExpression": {
+          if (!Array.isArray(parent.arguments) || !parent.arguments.includes(child)) return "source";
+          const callee = parent.callee;
+          if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") {
+            return NOTE_OVERRIDE.has(callee.property.name) ? "source" : "argument";
+          }
+          return "source";
+        }
+        case "ArrayExpression":
+        case "Property":
+        case "ObjectExpression":
+        case "ParenthesizedExpression":
+        case "AwaitExpression":
+        case "SequenceExpression":
+          child = parent;
+          parent = this.ctx.parent.get(child);
+          continue;
+        default:
+          return "source";
+      }
+    }
+    return "source";
+  }
+  /**
+   * Ranges a span may live in and still belong to `exprRange`: the expression
+   * itself, plus the initialiser of every binding it references, transitively.
+   * This is what lets an eval-proposed span in ANOTHER top-level statement be
+   * attributed to the unit that plays it.
+   *
+   * Walks REFERENCES, not every identifier that happens to spell a binding's
+   * name. Method names are identifiers too, and Strudel's vocabulary collides
+   * with the names people give their patterns constantly — `.cpm(…)` beside
+   * `let cpm`, and `.p1`/`.d1` (the repl's pattern getters) beside `let p1`,
+   * `let d1`, which is a real document in the corpus. A name-based scan pulls
+   * those unrelated initialisers into the unit's reachable set, and a span
+   * belonging to another statement then becomes admissible content for this one.
+   * Measured: 37 of 148 documents contain at least one such collision.
+   */
+  reachableRanges(exprRange) {
+    const out = [exprRange];
+    const seen = /* @__PURE__ */ new Set();
+    const queue2 = [exprRange];
+    while (queue2.length) {
+      const [s, e] = queue2.shift();
+      for (const [name, refs] of this.ctx.refs) {
+        if (seen.has(name)) continue;
+        if (!refs.some((r) => r.start >= s && r.end <= e)) continue;
+        const decl = this.ctx.bindings.get(name);
+        if (!decl) continue;
+        seen.add(name);
+        const range2 = [decl.init.start, decl.init.end];
+        out.push(range2);
+        queue2.push(range2);
+      }
+    }
+    return out;
+  }
+};
+__name(_SpanIndex, "SpanIndex");
+var SpanIndex = _SpanIndex;
+
+// src/codeView/miniSource/resolveMiniSource.ts
+var within = /* @__PURE__ */ __name((inner, outer) => inner[0] >= outer[0] && inner[1] <= outer[1], "within");
+function resolveMiniSource(doc, unit, opts = {}) {
+  const index = opts.index !== void 0 ? opts.index : SpanIndex.build(doc);
+  if (!index) return { ok: false, reason: "doc-unparsed" };
+  const reachable = index.reachableRanges(unit.exprRange);
+  const evalFirst = opts.proposals?.length ? attempt(doc, index, reachable, unit, opts.proposals) : null;
+  if (evalFirst?.ok) return evalFirst;
+  const walk5 = attempt(
+    doc,
+    index,
+    reachable,
+    unit,
+    index.literals.map((lit) => ({ span: literalInterior(lit), via: "parse" }))
+  );
+  return walk5.ok ? walk5 : evalFirst ?? walk5;
+}
+__name(resolveMiniSource, "resolveMiniSource");
+function attempt(doc, index, reachable, unit, proposals) {
+  const via = proposals[0]?.via ?? "parse";
+  const mine = proposals.filter((p) => reachable.some((r) => within(p.span, r)));
+  if (mine.length === 0) return { ok: false, reason: "no-candidate" };
+  const groups = /* @__PURE__ */ new Map();
+  for (const p of mine) {
+    if (index.roleOfSpan(p.span, reachable) !== "source") continue;
+    const lit = index.literalFor(p.span);
+    if (!lit) continue;
+    const g = groups.get(lit);
+    if (g) g.spans.push(p.span);
+    else groups.set(lit, { lit, spans: [p.span] });
+  }
+  if (groups.size === 0) return { ok: false, reason: "no-source-span" };
+  const ranked = [...groups.values()].sort(
+    (a, b) => b.spans.length - a.spans.length || a.lit.start - b.lit.start
+  );
+  const best = ranked[0];
+  const range2 = literalInterior(best.lit);
+  return {
+    ok: true,
+    via,
+    range: range2,
+    text: doc.slice(range2[0], range2[1]),
+    spans: best.spans,
+    alternatives: ranked.slice(1).map((g) => literalInterior(g.lit)),
+    crossesBinding: !within(range2, unit.exprRange)
+  };
+}
+__name(attempt, "attempt");
+
+// src/codeView/chunkDetect.ts
+var PICK_METHODS = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
+function isChunkFresh(doc, chunk) {
+  if (doc.slice(chunk.statementRange[0], chunk.statementRange[1]) !== chunk.statementText) {
+    return false;
+  }
+  const anchor = chunk.miniAnchor;
+  return anchor === null || doc.slice(anchor.range[0], anchor.range[1]) === anchor.text;
+}
+__name(isChunkFresh, "isChunkFresh");
+function buildBindingIndex(statements) {
+  const map = /* @__PURE__ */ new Map();
+  const dropped = /* @__PURE__ */ new Set();
+  for (const stmt of statements) {
+    if (!stmt || stmt.type !== "VariableDeclaration" || !Array.isArray(stmt.declarations)) continue;
+    for (const decl of stmt.declarations) {
+      if (decl?.id?.type !== "Identifier" || !decl.init) continue;
+      const name = decl.id.name;
+      if (map.has(name) || dropped.has(name)) {
+        map.delete(name);
+        dropped.add(name);
+        continue;
+      }
+      map.set(name, { rhs: decl.init, declStmt: stmt });
+    }
+  }
+  return map;
+}
+__name(buildBindingIndex, "buildBindingIndex");
+function resolveBinding(node, index, seen = /* @__PURE__ */ new Set()) {
+  if (!node || node.type !== "Identifier" || seen.has(node.name)) return null;
+  const b = index.get(node.name);
+  if (!b) return null;
+  seen.add(node.name);
+  if (b.rhs?.type === "Identifier") {
+    const deeper = resolveBinding(b.rhs, index, seen);
+    if (deeper) return deeper;
+  }
+  return b;
+}
+__name(resolveBinding, "resolveBinding");
+function buildMaybeResolved(doc, expr, label, stmtRange, index, nested = false, getIndex) {
+  const resolved = resolveBinding(expr, index);
+  if (resolved) {
+    return buildChunkFromExpr(
+      doc,
+      resolved.rhs,
+      label,
+      [resolved.declStmt.start, resolved.declStmt.end],
+      nested,
+      getIndex
+    );
+  }
+  return buildChunkFromExpr(doc, expr, label, stmtRange, nested, getIndex);
+}
+__name(buildMaybeResolved, "buildMaybeResolved");
+function detectChunk(doc, pos) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return null;
+  const bindings = buildBindingIndex(statements);
+  const getIndex = lazySpanIndex(doc);
+  for (const node of statements) {
+    if (pos >= node.start && pos <= node.end) {
+      if (node.type === "VariableDeclaration") {
+        const decls = Array.isArray(node.declarations) ? node.declarations : [];
+        if (decls.length !== 1) return null;
+        const decl = decls[0];
+        if (decl?.id?.type !== "Identifier" || !decl.init) return null;
+        const initTarget = innermostChainUnder(doc, decl.init, pos, bindings);
+        return initTarget === decl.init ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true, getIndex);
+      }
+      let label = null;
+      let body = node;
+      if (node.type === "LabeledStatement") {
+        label = node.label.name;
+        body = node.body;
+      }
+      if (body.type !== "ExpressionStatement") return null;
+      const topExpr = body.expression;
+      const target = innermostChainUnder(doc, topExpr, pos, bindings);
+      return target === topExpr ? buildMaybeResolved(doc, topExpr, label, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, target, null, [target.start, target.end], bindings, true, getIndex);
+    }
+  }
+  return null;
+}
+__name(detectChunk, "detectChunk");
+function detectAllChunks(doc) {
+  const statements = parseTopLevel(doc);
+  if (!statements) return [];
+  const bindings = buildBindingIndex(statements);
+  const getIndex = lazySpanIndex(doc);
+  return statements.map((node) => buildChunk(doc, node, bindings, getIndex)).filter((c) => c !== null);
+}
+__name(detectAllChunks, "detectAllChunks");
+function buildChunk(doc, node, bindings, getIndex) {
+  let label = null;
+  let body = node;
+  if (node.type === "LabeledStatement") {
+    label = node.label.name;
+    body = node.body;
+  }
+  if (body.type !== "ExpressionStatement") return null;
+  return buildMaybeResolved(doc, body.expression, label, [node.start, node.end], bindings, false, getIndex);
+}
+__name(buildChunk, "buildChunk");
+function lazySpanIndex(doc) {
+  let built = false;
+  let index = null;
+  return () => {
+    if (!built) {
+      built = true;
+      index = SpanIndex.build(doc);
+    }
+    return index;
+  };
+}
+__name(lazySpanIndex, "lazySpanIndex");
+function buildChunkFromExpr(doc, expr, label, stmtRange, nested = false, getIndex) {
+  const headNode = { ref: null };
+  const chain = collectChain(doc, expr, headNode);
+  const headFn = chain.length > 0 ? chain[0].name : null;
+  let miniRange = null;
+  let miniString = null;
+  if (headNode.ref) {
+    const firstString = headNode.ref.arguments.find(
+      (a) => a.type === "Literal" && typeof a.value === "string" || a.type === "TemplateLiteral"
+    );
+    if (firstString) {
+      miniRange = [firstString.start + 1, firstString.end - 1];
+      miniString = doc.slice(firstString.start + 1, firstString.end - 1);
+    }
+  }
+  const info = {
+    statementRange: stmtRange,
+    statementText: doc.slice(stmtRange[0], stmtRange[1]),
+    exprRange: [expr.start, expr.end],
+    label,
+    headFn,
+    miniRange,
+    miniString,
+    miniVia: miniRange ? "literal" : null,
+    miniAnchor: null,
+    chain,
+    type: "unknown",
+    nested
+  };
+  if (info.miniRange === null && getIndex) resolveMini(doc, info, getIndex);
+  info.type = classifyChunk(info);
+  return info;
+}
+__name(buildChunkFromExpr, "buildChunkFromExpr");
+function resolveMini(doc, info, getIndex) {
+  const index = getIndex();
+  if (!index) return;
+  const r = resolveMiniSource(doc, info, { index });
+  if (!r.ok || r.alternatives.length > 0) return;
+  let anchor = null;
+  const inside = r.range[0] >= info.statementRange[0] && r.range[1] <= info.statementRange[1];
+  if (!inside) {
+    const stmt = (parseTopLevel(doc) ?? []).find(
+      (s) => r.range[0] >= s.start && r.range[1] <= s.end
+    );
+    if (!stmt) return;
+    anchor = { range: [stmt.start, stmt.end], text: doc.slice(stmt.start, stmt.end) };
+  }
+  info.miniRange = r.range;
+  info.miniString = r.text;
+  info.miniVia = "resolver";
+  info.miniAnchor = anchor;
+}
+__name(resolveMini, "resolveMini");
+function innermostChainUnder(doc, expr, pos, bindings) {
+  const pickSection = pickSectionUnder(expr, pos);
+  if (pickSection) return innermostChainUnder(doc, pickSection, pos, bindings);
+  const headOut = { ref: null };
+  collectChain(doc, expr, headOut);
+  const head = headOut.ref;
+  if (!head || !Array.isArray(head.arguments)) return expr;
+  for (const arg of head.arguments) {
+    const inner = chainArgUnder(arg, pos, bindings);
+    if (inner && inner.type === "Identifier") return inner;
+    if (inner) return innermostChainUnder(doc, inner, pos, bindings);
+  }
+  return expr;
+}
+__name(innermostChainUnder, "innermostChainUnder");
+function pickSectionUnder(expr, pos) {
+  let node = expr;
+  while (node && node.type === "CallExpression") {
+    const callee = node.callee;
+    if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && PICK_METHODS.has(callee.property.name)) {
+      const obj = node.arguments.find((a) => a && a.type === "ObjectExpression");
+      if (obj) {
+        for (const prop of obj.properties) {
+          const val = prop && prop.type === "Property" ? prop.value : null;
+          if (val && val.type === "CallExpression" && typeof val.start === "number" && pos >= val.start && pos <= val.end) {
+            return val;
+          }
+        }
+      }
+    }
+    node = callee.type === "MemberExpression" ? callee.object : null;
+  }
+  return null;
+}
+__name(pickSectionUnder, "pickSectionUnder");
+function chainArgUnder(arg, pos, bindings) {
+  if (!arg || typeof arg.start !== "number" || pos < arg.start || pos > arg.end) return null;
+  if (arg.type === "CallExpression") return arg;
+  if (arg.type === "Identifier" && bindings?.has(arg.name)) return arg;
+  if (arg.type === "ArrayExpression" && Array.isArray(arg.elements)) {
+    for (const el of arg.elements) {
+      if (el && el.type === "CallExpression" && typeof el.start === "number" && pos >= el.start && pos <= el.end) {
+        return el;
+      }
+    }
+  }
+  return null;
+}
+__name(chainArgUnder, "chainArgUnder");
+function collectChain(doc, expr, headOut) {
+  const calls = [];
+  let node = expr;
+  while (node) {
+    if (node.type === "CallExpression") {
+      const callee = node.callee;
+      if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier") {
+        const dot = doc.lastIndexOf(".", callee.property.start);
+        calls.push({
+          name: callee.property.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [dot, node.end]
+        });
+        node = callee.object;
+        continue;
+      }
+      if (callee.type === "Identifier") {
+        calls.push({
+          name: callee.name,
+          args: node.arguments.map((a) => toArg(doc, a)),
+          range: [node.start, node.end]
+        });
+        headOut.ref = node;
+      }
+    }
+    break;
+  }
+  return calls.reverse();
+}
+__name(collectChain, "collectChain");
+function toArg(doc, node) {
+  let numeric = null;
+  if (node.type === "Literal" && typeof node.value === "number") {
+    numeric = node.value;
+  } else if (node.type === "UnaryExpression" && node.operator === "-" && node.argument.type === "Literal" && typeof node.argument.value === "number") {
+    numeric = -node.argument.value;
+  }
+  return { raw: doc.slice(node.start, node.end), numeric, range: [node.start, node.end] };
+}
+__name(toArg, "toArg");
+function classifyChunk(info) {
+  const head = info.headFn;
+  if (info.miniString !== null) {
+    if (head === "note" || head === "n") return "roll";
+    if (head === "s" || head === "sound") return "step";
+  }
+  if (info.chain.some((c) => c.args.some((a) => a.numeric !== null))) return "knobs";
+  return "unknown";
+}
+__name(classifyChunk, "classifyChunk");
 
 // src/codeView/ir/transforms.ts
 function merge(patterns) {
@@ -4676,6 +5379,6651 @@ function runPasses(input, passes) {
 }
 __name(runPasses, "runPasses");
 
+// src/codeView/notation/pitch.ts
+var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
+var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
+var DEFAULT_OCTAVE = 3;
+function pitchToMidi(token) {
+  if (/^-?\d+$/.test(token)) return parseInt(token, 10);
+  const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)?$/);
+  if (!m) return null;
+  const [, letter, accidental, octave] = m;
+  let semitone = SEMITONE_OF[letter];
+  if (accidental === "s" || accidental === "#") semitone += 1;
+  else if (accidental === "b") semitone -= 1;
+  const oct = octave !== void 0 ? parseInt(octave, 10) : DEFAULT_OCTAVE;
+  return (oct + 1) * 12 + semitone;
+}
+__name(pitchToMidi, "pitchToMidi");
+function midiToPitch(midi) {
+  const octave = Math.floor(midi / 12) - 1;
+  return `${SHARP_NAMES[(midi % 12 + 12) % 12]}${octave}`;
+}
+__name(midiToPitch, "midiToPitch");
+function noteDisplayName(midi) {
+  const token = midiToPitch(midi);
+  return token.charAt(0).toUpperCase() + token.slice(1);
+}
+__name(noteDisplayName, "noteDisplayName");
+function isBlackKey(midi) {
+  return SHARP_NAMES[(midi % 12 + 12) % 12].includes("#");
+}
+__name(isBlackKey, "isBlackKey");
+function cLabel(midi) {
+  if ((midi % 12 + 12) % 12 !== 0) return null;
+  return `C${Math.floor(midi / 12) - 1}`;
+}
+__name(cLabel, "cLabel");
+
+// src/codeView/notation/model.ts
+var gridCellKey = /* @__PURE__ */ __name((c) => `${c.token} ${cellLengthKey(c.duration)}`, "gridCellKey");
+var cellLengthKey = /* @__PURE__ */ __name((duration) => duration.toFixed(6), "cellLengthKey");
+var cellOn = /* @__PURE__ */ __name((duration = 1) => ({ duration }), "cellOn");
+var isCellOn = /* @__PURE__ */ __name((cell) => typeof cell === "object" && cell !== null, "isCellOn");
+var scaleCell = /* @__PURE__ */ __name((cell, factor) => isCellOn(cell) ? cellOn(cell.duration * factor) : false, "scaleCell");
+function clampLane(cells, steps) {
+  const out = [...cells];
+  for (let c = 0; c < out.length; c++) {
+    const cell = out[c];
+    if (!isCellOn(cell)) continue;
+    let next = c + 1;
+    while (next < out.length && !isCellOn(out[next])) next++;
+    const room = Math.min(next, steps) - c;
+    if (cell.duration > room) out[c] = cellOn(room);
+  }
+  return out;
+}
+__name(clampLane, "clampLane");
+var COLUMN_EPS = 1e-9;
+function columnOverlap(begin, end, col) {
+  const lo = Math.max(begin, col);
+  const hi = Math.min(end, col + 1);
+  const extent = hi - lo;
+  if (extent <= COLUMN_EPS) return null;
+  return { offset: lo - col, extent };
+}
+__name(columnOverlap, "columnOverlap");
+function headColumn(n) {
+  return Math.floor(n.start + COLUMN_EPS);
+}
+__name(headColumn, "headColumn");
+function tailColumn(n) {
+  return Math.ceil(n.start + n.duration - COLUMN_EPS) - 1;
+}
+__name(tailColumn, "tailColumn");
+function columnCount(model) {
+  let cols = Math.floor(model.steps + COLUMN_EPS);
+  for (const n of model.notes ?? []) cols = Math.max(cols, tailColumn(n) + 1);
+  return Math.max(0, cols);
+}
+__name(columnCount, "columnCount");
+var DEFAULT_LO = 48;
+var DEFAULT_HI = 72;
+var MIN_SPAN = 12;
+function rollContentRange(model) {
+  const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
+  if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI };
+  const lo = Math.min(...midis) - 2;
+  return { lo, hi: Math.max(Math.max(...midis) + 2, lo + MIN_SPAN) };
+}
+__name(rollContentRange, "rollContentRange");
+function columnSplit(width) {
+  const whole = Math.floor(width + COLUMN_EPS);
+  const remainder = width - whole;
+  return { whole, remainder: remainder <= COLUMN_EPS ? 0 : remainder };
+}
+__name(columnSplit, "columnSplit");
+function laneCoverage(cells, steps) {
+  const out = new Array(cells.length).fill(void 0);
+  const gridEnd = Math.min(cells.length, steps);
+  for (let c = 0; c < cells.length; c++) {
+    const cell = cells[c];
+    if (!isCellOn(cell)) continue;
+    out[c] = { start: c, extent: Math.min(1, Math.max(0, cell.duration)) };
+    for (let k = 1; c + k < gridEnd; k++) {
+      if (isCellOn(cells[c + k])) break;
+      const ov = columnOverlap(c, c + cell.duration, c + k);
+      if (!ov) break;
+      out[c + k] = { start: c, extent: ov.extent };
+    }
+  }
+  return out;
+}
+__name(laneCoverage, "laneCoverage");
+function columnGroups(notes, col) {
+  const endByStart = /* @__PURE__ */ new Map();
+  for (const n of notes) {
+    const end = n.start + n.duration;
+    const prev = endByStart.get(n.start);
+    if (prev === void 0 || end > prev) endByStart.set(n.start, end);
+  }
+  const out = [];
+  for (const [start, end] of endByStart) {
+    const ov = columnOverlap(start, end, col);
+    if (ov) out.push({ start, ...ov });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+__name(columnGroups, "columnGroups");
+function spansAreSequential(spans) {
+  const byOffset = [...spans].sort((a, b) => a.offset - b.offset);
+  for (let i = 1; i < byOffset.length; i++) {
+    const prevEnd = byOffset[i - 1].offset + byOffset[i - 1].extent;
+    if (byOffset[i].offset < prevEnd - COLUMN_EPS) return false;
+  }
+  return true;
+}
+__name(spansAreSequential, "spansAreSequential");
+function sequentialColumnGroups(notes, col) {
+  const groups = columnGroups(notes, col);
+  return groups.length > 1 && spansAreSequential(groups) ? groups : null;
+}
+__name(sequentialColumnGroups, "sequentialColumnGroups");
+function clampPartAtOnset(lanes, part, column) {
+  return lanes.map((lane) => {
+    if ((lane.part ?? 0) !== part) return lane;
+    let touched = false;
+    const cells = lane.cells.map((cell, c) => {
+      if (c >= column || !isCellOn(cell)) return cell;
+      if (!columnOverlap(c, c + cell.duration, column)) return cell;
+      touched = true;
+      return cellOn(column - c);
+    });
+    return touched ? { ...lane, cells } : lane;
+  });
+}
+__name(clampPartAtOnset, "clampPartAtOnset");
+
+// src/codeView/notation/perBar.ts
+var MAX_SHARED_STEPS = 4096;
+var EPS = 1e-9;
+function gcd(a, b) {
+  while (b) [a, b] = [b, a % b];
+  return a;
+}
+__name(gcd, "gcd");
+function lcmOf(ns) {
+  return ns.reduce((l, n) => l / gcd(l, n) * n, 1);
+}
+__name(lcmOf, "lcmOf");
+function perBarLayout(counts) {
+  if (counts.length < 2) return null;
+  if (counts.some((n) => !Number.isInteger(n) || n < 1)) return null;
+  const most = Math.max(...counts);
+  return counts.every((n) => most % n === 0) ? null : [...counts];
+}
+__name(perBarLayout, "perBarLayout");
+function tidy(x) {
+  const r = Math.round(x);
+  return Math.abs(x - r) < EPS ? r : x;
+}
+__name(tidy, "tidy");
+function barStarts(barSteps) {
+  const out = [0];
+  for (const s of barSteps) out.push(out[out.length - 1] + s);
+  return out;
+}
+__name(barStarts, "barStarts");
+function sharedAt(d, barSteps) {
+  const P = lcmOf(barSteps);
+  let at = 0;
+  for (let b = 0; b < barSteps.length; b++) {
+    const s = barSteps[b];
+    if (d <= at + s + EPS || b === barSteps.length - 1) return tidy(b * P + (d - at) * P / s);
+    at += s;
+  }
+  return barSteps.length * P;
+}
+__name(sharedAt, "sharedAt");
+function drawnAt(u, barSteps) {
+  const P = lcmOf(barSteps);
+  const b = Math.min(barSteps.length - 1, Math.max(0, Math.floor((u + EPS) / P)));
+  const starts = barStarts(barSteps);
+  return tidy(starts[b] + (u - b * P) * barSteps[b] / P);
+}
+__name(drawnAt, "drawnAt");
+function barOfDrawn(d, barSteps) {
+  const starts = barStarts(barSteps);
+  for (let b = barSteps.length - 1; b >= 0; b--) if (d + EPS >= starts[b]) return b;
+  return 0;
+}
+__name(barOfDrawn, "barOfDrawn");
+function mapNote(n, f) {
+  const start = f(n.start);
+  return { ...n, start, duration: tidy(f(n.start + n.duration) - start) };
+}
+__name(mapNote, "mapNote");
+function toDrawnRoll(model, barSteps) {
+  const bars = model.bars ?? 1;
+  if (bars !== barSteps.length || model.steps !== bars * lcmOf(barSteps)) return null;
+  const notes = model.notes.map((n) => mapNote(n, (u) => drawnAt(u, barSteps)));
+  if (notes.some((n) => !Number.isInteger(n.start))) return null;
+  return { ...model, steps: barSteps.reduce((a, b) => a + b, 0), barSteps, notes };
+}
+__name(toDrawnRoll, "toDrawnRoll");
+function toUniformRoll(model) {
+  const barSteps = model.barSteps;
+  if (!barSteps) return model;
+  const { barSteps: _drop, ...rest } = model;
+  return {
+    ...rest,
+    steps: barSteps.length * lcmOf(barSteps),
+    notes: model.notes.map((n) => mapNote(n, (d) => sharedAt(d, barSteps)))
+  };
+}
+__name(toUniformRoll, "toUniformRoll");
+function mapCells(cells, length, f) {
+  const out = Array.from({ length }, () => false);
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    if (!c) continue;
+    const at = f(i);
+    if (!Number.isInteger(at) || at < 0 || at >= length) return null;
+    out[at] = { ...c, duration: tidy(f(i + c.duration) - at) };
+  }
+  return out;
+}
+__name(mapCells, "mapCells");
+function toDrawnGrid(model, barSteps) {
+  const bars = model.bars ?? 1;
+  if (bars !== barSteps.length || model.steps !== bars * lcmOf(barSteps) || model.gains) return null;
+  const steps = barSteps.reduce((a, b) => a + b, 0);
+  const lanes = [];
+  for (const lane of model.lanes) {
+    const cells = mapCells(lane.cells, steps, (u) => drawnAt(u, barSteps));
+    if (cells === null) return null;
+    lanes.push({ ...lane, cells });
+  }
+  return { ...model, steps, barSteps, lanes };
+}
+__name(toDrawnGrid, "toDrawnGrid");
+function toUniformGrid(model) {
+  const barSteps = model.barSteps;
+  if (!barSteps) return model;
+  const { barSteps: _drop, ...rest } = model;
+  const steps = barSteps.length * lcmOf(barSteps);
+  return {
+    ...rest,
+    steps,
+    // A drawn cell always lands on the shared grid (each shared bar is a multiple of
+    // every drawn one), so this cannot decline; the fallback is unreachable by design.
+    lanes: model.lanes.map((l) => ({ ...l, cells: mapCells(l.cells, steps, (d) => sharedAt(d, barSteps)) ?? l.cells }))
+  };
+}
+__name(toUniformGrid, "toUniformGrid");
+function drawnLayout(model, cols) {
+  const bs = model.barSteps;
+  if (bs) {
+    const most = Math.max(...bs);
+    const starts = barStarts(bs);
+    return {
+      weight: /* @__PURE__ */ __name((c) => most / bs[barOfDrawn(c, bs)], "weight"),
+      barStart: /* @__PURE__ */ __name((c) => c > 0 && starts.includes(c), "barStart"),
+      lastBarCols: bs[bs.length - 1]
+    };
+  }
+  const bars = model.bars ?? 1;
+  const perBar2 = bars > 1 && Number.isInteger(cols / bars) ? cols / bars : 0;
+  return {
+    weight: /* @__PURE__ */ __name(() => 1, "weight"),
+    barStart: /* @__PURE__ */ __name((c) => perBar2 > 0 && c > 0 && c % perBar2 === 0, "barStart"),
+    lastBarCols: perBar2 || cols
+  };
+}
+__name(drawnLayout, "drawnLayout");
+
+// src/codeView/notation/serialize.ts
+function altSourceFits(a, steps) {
+  return !!a && a.perBar * a.bars === steps;
+}
+__name(altSourceFits, "altSourceFits");
+function fmtGain(v) {
+  if (!Number.isFinite(v)) return "1";
+  if (Number.isInteger(v)) return String(v);
+  return v.toFixed(2).replace(/\.?0+$/, "");
+}
+__name(fmtGain, "fmtGain");
+function ifGridSpellable(input, next) {
+  if (next === input) return input;
+  return serializeStepGrid(next) === null ? input : next;
+}
+__name(ifGridSpellable, "ifGridSpellable");
+function ifRollSpellable(input, next) {
+  if (next === input) return input;
+  return serializePianoRoll(next) === null ? input : next;
+}
+__name(ifRollSpellable, "ifRollSpellable");
+function serializeStepGridWithExtent(drawn) {
+  const model = toUniformGrid(drawn);
+  const respell = drawn.barSteps;
+  const spans = model.leafSource ?? model.surgical?.spans();
+  if (spans) {
+    const surgical = spliceByLeaf(model, spans);
+    if (surgical !== null && !model.leafSource && perBarStack(model)) {
+      const bars = spliceGrid(model, respell);
+      if (typeof bars === "object" && bars.out !== surgical) {
+        return {
+          mini: bars.out,
+          extent: {
+            path: "splice",
+            regions: bars.regions,
+            regionsReemitted: bars.regionsReemitted,
+            rebuiltParts: bars.rebuiltParts
+          }
+        };
+      }
+    }
+    if (surgical !== null) return { mini: surgical, extent: { path: "leaf" } };
+    if (model.leafSource) return { mini: null, extent: { path: "leaf" } };
+  }
+  if (altSourceFits(model.altSource, model.steps))
+    return { mini: spliceAltGrid(model), extent: { path: "alt" } };
+  const spliced = spliceGrid(model, respell);
+  if (spliced === "decline") return { mini: null, extent: { path: "declined" } };
+  if (spliced !== "rebuild")
+    return {
+      mini: spliced.out,
+      extent: {
+        path: "splice",
+        regions: spliced.regions,
+        regionsReemitted: spliced.regionsReemitted,
+        rebuiltParts: spliced.rebuiltParts
+      }
+    };
+  return { mini: rebuildGrid(respell ? drawn : model), extent: { path: "rebuild" } };
+}
+__name(serializeStepGridWithExtent, "serializeStepGridWithExtent");
+function serializeStepGrid(model) {
+  return serializeStepGridWithExtent(model).mini;
+}
+__name(serializeStepGrid, "serializeStepGrid");
+function rebuildGrid(model) {
+  const bars = model.bars ?? 1;
+  if (bars > 1) return gridBars(model, barBounds(model));
+  const parts = [...new Set(model.lanes.map((l) => l.part ?? 0))].sort((a, b) => a - b);
+  if (parts.length <= 1) return gridColumns(model.lanes, model.steps)?.join(" ") ?? null;
+  const lines = parts.map(
+    (p) => gridColumns(
+      model.lanes.filter((l) => (l.part ?? 0) === p),
+      model.steps
+    )?.join(" ")
+  );
+  return lines.some((l) => l === void 0) ? null : lines.join(", ");
+}
+__name(rebuildGrid, "rebuildGrid");
+function spliceGrid(model, respell) {
+  const src = model.source;
+  if (!src || src.parts.length === 0) return "rebuild";
+  let regionsReemitted = 0;
+  const rebuiltParts = [];
+  const splicePart = /* @__PURE__ */ __name((p, lanes, steps) => {
+    const widths = [];
+    const own = partColumns(lanes, steps, p.factor);
+    if (own !== null) widths.push({ cols: own, growth: 1 });
+    else
+      for (let g = p.factor - 1; g >= 1; g--) {
+        if (p.factor % g !== 0) continue;
+        const finer = partColumns(lanes, steps, g);
+        if (finer !== null) widths.push({ cols: finer, growth: p.factor / g });
+      }
+    const last = p.regions[p.regions.length - 1];
+    const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
+    const spliceRegions = /* @__PURE__ */ __name((cols, growth) => {
+      const at = /* @__PURE__ */ __name((n) => n * growth, "at");
+      let body = "";
+      let reemitted = 0;
+      for (let ri = 0; ri < p.regions.length; ri++) {
+        const r = p.regions[ri];
+        const now2 = cols.slice(at(r.from), at(r.to));
+        if (sameCells(now2, growth === 1 ? r.content : stretchCells(r.content, growth))) {
+          body += r.raw;
+          continue;
+        }
+        reemitted++;
+        const div = sole ? 1 : p.div * growth;
+        const re = (respell && growth === 1 ? respellBar(now2, r, div, respell) : null) ?? reemitRegion(now2, div, model.viewScale !== void 0);
+        if (re !== null) {
+          body += r.leading + re + r.trailing;
+          continue;
+        }
+        const reach = noteReach(cols, at(r.from), at(r.to));
+        let end = ri;
+        while (end + 1 < p.regions.length && at(p.regions[end].to) < reach) {
+          const nxt = p.regions[end + 1];
+          const nxtNow = cols.slice(at(nxt.from), at(nxt.to));
+          const wasNxt = growth === 1 ? nxt.content : stretchCells(nxt.content, growth);
+          if (sameCells(nxtNow, wasNxt) && nxtNow.some((col) => col.length > 0)) break;
+          end++;
+        }
+        if (end === ri || at(p.regions[end].to) < reach) return "decline";
+        const last2 = p.regions[end];
+        const merged = reemitRegion(cols.slice(at(r.from), at(last2.to)), div, model.viewScale !== void 0);
+        if (merged === null) return "decline";
+        reemitted += end - ri;
+        body += r.leading + merged + last2.trailing;
+        ri = end;
+      }
+      return { body, reemitted };
+    }, "spliceRegions");
+    let spliced = null;
+    for (const w of widths) {
+      if (last === void 0 || last.to * w.growth !== w.cols.length) continue;
+      const attempt2 = spliceRegions(w.cols, w.growth);
+      if (attempt2 !== "decline") {
+        spliced = attempt2;
+        break;
+      }
+      if (w.growth === 1) return "decline";
+      if (p.regions.length < 2) break;
+    }
+    if (spliced === null) {
+      const partBars = p.bars ?? 1;
+      if (partBars > 1) {
+        const per = steps / partBars;
+        const groups = [];
+        for (let b = 0; b < partBars; b++) {
+          const bar2 = gridColumns(
+            lanes.map((l) => ({ ...l, cells: l.cells.slice(b * per, (b + 1) * per) })),
+            per
+          );
+          if (bar2 === null) return "decline";
+          groups.push(`[${bar2.join(" ")}]`);
+        }
+        return { body: groups.join(" "), reemitted: 0, rebuilt: p.regions.length };
+      }
+      const rebuilt = gridColumns(lanes, steps);
+      if (rebuilt === null) return "decline";
+      return { body: rebuilt.join(" "), reemitted: 0, rebuilt: p.regions.length };
+    }
+    return { body: spliced.body, reemitted: spliced.reemitted, rebuilt: null };
+  }, "splicePart");
+  let out = src.prefix;
+  const stackBars = model.bars ?? 1;
+  for (const p of src.parts) {
+    const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part);
+    const one = p.bars !== void 0 && stackBars > 1 ? spliceBars(p, lanes, model.steps, stackBars, splicePart) : splicePart(p, lanes, model.steps);
+    if (one === "decline") return "decline";
+    regionsReemitted += one.reemitted;
+    if (one.rebuilt !== null) rebuiltParts.push(one.rebuilt);
+    out += "text" in one ? one.text : p.before + one.body + p.after;
+  }
+  const regions = src.parts.reduce((n, p) => n + p.regions.length, 0);
+  return { out: out + src.suffix, regions, regionsReemitted, rebuiltParts };
+}
+__name(spliceGrid, "spliceGrid");
+function anchorsDescribe(model, anchoredWidth) {
+  return anchoredWidth === model.steps;
+}
+__name(anchorsDescribe, "anchorsDescribe");
+var anchorsAreFor = /* @__PURE__ */ __name((model, ls) => ls.attachedSteps === model.steps, "anchorsAreFor");
+function serializeByLeaf(src, edits) {
+  let out = src;
+  for (const e of [...edits].sort((a, b) => b.span.start - a.span.start)) {
+    out = out.slice(0, e.span.start) + e.text + out.slice(e.span.end);
+  }
+  return out;
+}
+__name(serializeByLeaf, "serializeByLeaf");
+function spliceByLeaf(model, ls) {
+  if (!ls || !anchorsAreFor(model, ls) || !anchorsDescribe(model, ls.cols.length)) return null;
+  const now2 = columnAtoms(model.lanes, model.steps);
+  for (let c = 0; c < model.steps; c++) {
+    const avail = ls.cols[c].map((a) => cellLengthKey(a.duration));
+    if (avail.length === 0) continue;
+    for (const n of now2[c]) {
+      const i = avail.indexOf(cellLengthKey(n.duration));
+      if (i < 0) return null;
+      avail.splice(i, 1);
+    }
+  }
+  const want = /* @__PURE__ */ new Map();
+  for (let c = 0; c < model.steps; c++) {
+    const anchors = ls.cols[c];
+    const before = anchors.map((a) => a.atom);
+    const after = [...new Set(now2[c].map((n) => n.token))];
+    const gone = before.filter((a) => !after.includes(a));
+    const added = after.filter((a) => !before.includes(a));
+    const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1;
+    if (added.length > 0 && !swap) {
+      const rest = ls.rests?.[c];
+      if (rest && anchors.length === 0 && added.length === 1 && after.length === 1) {
+        const key2 = `${rest.start}:${rest.end}`;
+        const prev = want.get(key2);
+        if (prev && prev.text !== added[0]) return null;
+        want.set(key2, { span: rest, text: added[0] });
+        continue;
+      }
+      return null;
+    }
+    for (const a of anchors) {
+      const text = swap ? added[0] : gone.includes(a.atom) ? "~" : a.atom;
+      const key2 = `${a.span.start}:${a.span.end}`;
+      const prev = want.get(key2);
+      if (prev && prev.text !== text) return null;
+      want.set(key2, { span: a.span, text });
+    }
+  }
+  const edits = [...want.values()].filter(
+    (e) => ls.src.slice(e.span.start, e.span.end) !== e.text
+  );
+  return serializeByLeaf(ls.src, edits);
+}
+__name(spliceByLeaf, "spliceByLeaf");
+function spliceRollByLeaf(model, ls) {
+  if (!ls || !anchorsAreFor(model, ls) || !anchorsDescribe(model, ls.steps)) return null;
+  const byStart = /* @__PURE__ */ new Map();
+  for (const a of ls.anchors) {
+    const here = byStart.get(a.start);
+    if (here) here.push(a);
+    else byStart.set(a.start, [a]);
+  }
+  for (const [start, anchors] of byStart) {
+    const avail = anchors.map((a) => a.duration);
+    for (const n of model.notes) {
+      if (n.start !== start) continue;
+      const i = avail.indexOf(n.duration);
+      if (i < 0) return null;
+      avail.splice(i, 1);
+    }
+  }
+  for (const n of model.notes) if (!byStart.has(n.start)) return null;
+  const want = /* @__PURE__ */ new Map();
+  for (const [start, anchors] of byStart) {
+    const before = anchors.map((a) => a.pitch);
+    const after = [...new Set(model.notes.filter((n) => n.start === start).map((n) => n.pitch))];
+    const gone = before.filter((p) => !after.includes(p));
+    const added = after.filter((p) => !before.includes(p));
+    const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1;
+    if (added.length > 0 && !swap) return null;
+    for (const a of anchors) {
+      const text = swap ? added[0] : gone.includes(a.pitch) ? "~" : ls.src.slice(a.span.start, a.span.end);
+      const key2 = `${a.span.start}:${a.span.end}`;
+      const prev = want.get(key2);
+      if (prev && prev.text !== text) return null;
+      want.set(key2, { span: a.span, text });
+    }
+  }
+  const edits = [...want.values()].filter(
+    (e) => ls.src.slice(e.span.start, e.span.end) !== e.text
+  );
+  return serializeByLeaf(ls.src, edits);
+}
+__name(spliceRollByLeaf, "spliceRollByLeaf");
+function spliceAltGrid(model) {
+  const a = model.altSource;
+  if (!a) return "";
+  const cols = columnAtoms(model.lanes, model.steps);
+  let out = "";
+  for (const r of a.regions) {
+    const now2 = [];
+    for (let b = 0; b < a.bars; b++) {
+      now2.push(
+        cols.slice(r.from + b * a.perBar, r.to + b * a.perBar).map((c) => [...new Map(c.map((n) => [gridCellKey(n), n])).values()])
+      );
+    }
+    if (now2.every((bar2, b) => sameCells(bar2, r.perBar[b]))) {
+      out += r.raw;
+      continue;
+    }
+    const re = reemitAltRegion(now2, a.div, model.viewScale !== void 0);
+    if (re === null) return null;
+    out += r.leading + re + r.trailing;
+  }
+  return out;
+}
+__name(spliceAltGrid, "spliceAltGrid");
+function reemitAltRegion(perBar2, div, refined = false) {
+  const barTokens = perBar2.map((bar2) => reemitRegion(bar2, div, refined));
+  if (barTokens.some((t) => t === null)) return null;
+  return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(" ")}>`;
+}
+__name(reemitAltRegion, "reemitAltRegion");
+var perBarStack = /* @__PURE__ */ __name((model) => (model.bars ?? 1) > 1 && !!model.source?.parts.some((p) => p.bars !== void 0), "perBarStack");
+function spliceBars(p, lanes, steps, stackBars, splicePart) {
+  const P = p.bars ?? 1;
+  const L = stackBars;
+  if (!Number.isInteger(L / P) || steps % L !== 0) return "decline";
+  const per = steps / L;
+  const window2 = /* @__PURE__ */ __name((from, n) => lanes.map((l) => ({ ...l, cells: l.cells.slice(from * per, (from + n) * per) })), "window");
+  const held2 = Array.from({ length: L }, (_, b) => columnAtoms(window2(b, 1), per));
+  const Q = repeatingRun(held2, L);
+  if (P % Q === 0) {
+    const whole = splicePart(p, window2(0, P), P * per);
+    if (whole === "decline") return "decline";
+    const unchanged = whole.reemitted === 0 && whole.rebuilt === null;
+    if (Q === P || unchanged) return { text: p.before + whole.body + p.after, ...whole };
+  }
+  const before = P > 1 ? p.before.replace(/<\s*$/, "") : p.before;
+  const after = P > 1 ? p.after.replace(/^\s*>/, "") : p.after;
+  if (P > 1 && (before === p.before || after === p.after)) return "decline";
+  const last = p.regions[p.regions.length - 1];
+  if (!last || last.to % P !== 0) return "decline";
+  const ownPer = last.to / P;
+  const texts = [];
+  let reemitted = 0;
+  let rebuilt = null;
+  for (let q = 0; q < Q; q++) {
+    const w = q % P;
+    const regions = p.regions.filter((r) => r.from >= w * ownPer && r.to <= (w + 1) * ownPer).map((r) => ({ ...r, from: r.from - w * ownPer, to: r.to - w * ownPer }));
+    if (regions.length === 0 || regions[0].from !== 0 || regions[regions.length - 1].to !== ownPer) return "decline";
+    if (regions.some((r, i) => i > 0 && r.from !== regions[i - 1].to)) return "decline";
+    const bar2 = splicePart({ ...p, regions, bars: void 0 }, window2(q, 1), per);
+    if (bar2 === "decline") return "decline";
+    reemitted += bar2.reemitted;
+    if (bar2.rebuilt !== null) rebuilt = (rebuilt ?? 0) + bar2.rebuilt;
+    const emptied = (bar2.reemitted > 0 || bar2.rebuilt !== null) && held2[q].every((c) => c.length === 0);
+    texts.push(emptied ? "~" : bar2.body.trim());
+  }
+  const body = Q === 1 ? unbracketed(texts[0]) : `<${texts.map(asEntry).join(" ")}>`;
+  return { text: before + body + after, reemitted, rebuilt };
+}
+__name(spliceBars, "spliceBars");
+function repeatingRun(held2, n) {
+  for (let q = 1; q < n; q++) {
+    if (n % q === 0 && held2.every((cells, b) => sameCells(cells, held2[b % q]))) return q;
+  }
+  return n;
+}
+__name(repeatingRun, "repeatingRun");
+function topLevel(text) {
+  const out = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of text) {
+    if ("[<{(".includes(ch)) depth++;
+    else if ("]>})".includes(ch)) depth--;
+    if (depth === 0 && /\s/.test(ch)) {
+      if (cur) out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+__name(topLevel, "topLevel");
+function asEntry(text) {
+  const els = topLevel(text);
+  return els.length === 1 && !/[@!]/.test(outsideBrackets(els[0])) ? text : `[${text}]`;
+}
+__name(asEntry, "asEntry");
+function unbracketed(text) {
+  const els = topLevel(text);
+  if (els.length !== 1 || !text.startsWith("[") || !text.endsWith("]")) return text;
+  return outsideBrackets(text) === "[]" ? text.slice(1, -1).trim() : text;
+}
+__name(unbracketed, "unbracketed");
+function outsideBrackets(el) {
+  let depth = 0;
+  let out = "";
+  for (const ch of el) {
+    if ("[<{(".includes(ch)) {
+      if (depth === 0) out += ch;
+      depth++;
+    } else if ("]>})".includes(ch)) {
+      depth--;
+      if (depth === 0) out += ch;
+    } else if (depth === 0) out += ch;
+  }
+  return out;
+}
+__name(outsideBrackets, "outsideBrackets");
+function partColumns(lanes, steps, factor) {
+  if (factor < 1 || steps % factor !== 0) return null;
+  const all = columnAtoms(lanes, steps);
+  const cols = [];
+  for (let c = 0; c < steps; c++) {
+    if (c % factor === 0)
+      cols.push(all[c].map((n) => ({ token: n.token, duration: n.duration / factor })));
+    else if (all[c].length > 0) return null;
+  }
+  return cols;
+}
+__name(partColumns, "partColumns");
+function columnAtoms(lanes, steps) {
+  const cols = [];
+  for (let i = 0; i < steps; i++) {
+    const here = [];
+    for (const l of lanes) {
+      const cell = l.cells[i];
+      if (isCellOn(cell)) here.push({ token: l.sound, duration: cell.duration });
+    }
+    cols.push(here);
+  }
+  return cols;
+}
+__name(columnAtoms, "columnAtoms");
+var sameCell = /* @__PURE__ */ __name((a, b) => {
+  const keys = b.map(gridCellKey);
+  return a.length === b.length && a.every((x) => keys.includes(gridCellKey(x)));
+}, "sameCell");
+var sameCells = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((c, i) => sameCell(c, b[i])), "sameCells");
+var stretchCells = /* @__PURE__ */ __name((cells, growth) => cells.flatMap((c) => [
+  c.map((n) => ({ token: n.token, duration: n.duration * growth })),
+  ...Array.from({ length: growth - 1 }, () => [])
+]), "stretchCells");
+function noteReach(cols, from, to) {
+  let reach = to;
+  for (let c = from; c < to; c++) {
+    for (const n of cols[c]) reach = Math.max(reach, c + Math.round(n.duration));
+  }
+  return reach;
+}
+__name(noteReach, "noteReach");
+function respellBar(cols, r, div, barSteps) {
+  const P = lcmOf(barSteps);
+  if (r.to - r.from !== P || r.from % P !== 0 || div !== P) return null;
+  const own = barSteps[r.from / P];
+  const k = P / own;
+  if (k <= 1) return null;
+  const packed = [];
+  for (let i = 0; i < cols.length; i++) {
+    if (i % k !== 0) {
+      if (cols[i].length) return null;
+      continue;
+    }
+    const col = [];
+    for (const c of cols[i]) {
+      const d = c.duration / k;
+      if (Math.abs(d - Math.round(d)) > 1e-9) return null;
+      col.push({ ...c, duration: Math.round(d) });
+    }
+    packed.push(col);
+  }
+  return reemitRegion(packed, own);
+}
+__name(respellBar, "respellBar");
+function reemitRegion(cols, div, refined = false) {
+  const spelled = sustainTokens(cols, div);
+  if (spelled === null) return refined ? stackedRegion(cols, div) : null;
+  const steps = [];
+  for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(spelled.slice(i, i + div)));
+  return steps.join(" ");
+}
+__name(reemitRegion, "reemitRegion");
+function stackedRegion(cols, div) {
+  if (div < 2) return null;
+  const slots = cols.length / div;
+  if (!Number.isInteger(slots) || slots < 1) return null;
+  const sounds = [];
+  for (const col of cols) for (const n of col) if (!sounds.includes(n.token)) sounds.push(n.token);
+  if (sounds.length === 0) return null;
+  const parts = [];
+  for (const sound of sounds) {
+    const seq = new Array(cols.length).fill("~");
+    const covered = new Array(cols.length).fill(false);
+    for (let c = 0; c < cols.length; c++) {
+      for (const n of cols[c]) {
+        if (n.token !== sound) continue;
+        const d = Math.round(n.duration);
+        if (Math.abs(n.duration - d) > 1e-6 || d < 1) return null;
+        if (c + d > cols.length) return null;
+        if (seq[c] !== "~" || covered[c]) return null;
+        seq[c] = sound;
+        for (let k = 1; k < d; k++) {
+          if (seq[c + k] !== "~" || covered[c + k]) return null;
+          covered[c + k] = true;
+        }
+      }
+    }
+    for (let c = 0; c < cols.length; c++) if (covered[c]) seq[c] = "_";
+    parts.push(seq.join(" "));
+  }
+  return `[${parts.join(", ")}]` + (slots > 1 ? `@${slots}` : "");
+}
+__name(stackedRegion, "stackedRegion");
+function sustainTokens(cols, div) {
+  const out = new Array(cols.length).fill("");
+  const covered = new Array(cols.length).fill(false);
+  for (let c = 0; c < cols.length; c++) {
+    for (const n of cols[c]) {
+      const d = Math.round(n.duration);
+      if (Math.abs(n.duration - d) > 1e-6 || d < 1) return null;
+      if (c + d > cols.length) return null;
+      for (let k = 1; k < d; k++) {
+        if (cols[c + k].length > 0) return null;
+        covered[c + k] = true;
+      }
+    }
+  }
+  for (let c = 0; c < cols.length; c++) {
+    if (cols[c].length > 0) {
+      out[c] = cellToken(cols[c].map((n) => n.token));
+      continue;
+    }
+    if (!covered[c]) {
+      out[c] = "~";
+      continue;
+    }
+    if (c === 0 || div > 1 && c % div === 0) return null;
+    out[c] = "_";
+  }
+  return out;
+}
+__name(sustainTokens, "sustainTokens");
+function reemitStep(tokens) {
+  if (tokens.length === 1) return tokens[0];
+  if (tokens.every((t) => t === "~")) return "~";
+  return `[${tokens.join(" ")}]`;
+}
+__name(reemitStep, "reemitStep");
+var cellToken = /* @__PURE__ */ __name((atoms) => atoms.length === 0 ? "~" : atoms.length === 1 ? atoms[0] : `[${atoms.join(",")}]`, "cellToken");
+function gridColumns(lanes, steps) {
+  return sustainTokens(columnAtoms(lanes, steps), 1);
+}
+__name(gridColumns, "gridColumns");
+function serializeStepGain(model) {
+  if (model.gainForeign) return { kind: "skip" };
+  if (model.leafSource) return { kind: "skip" };
+  const bars = model.bars ?? 1;
+  const parts = new Set(model.lanes.map((l) => l.part ?? 0));
+  if (bars > 1 || parts.size > 1) return { kind: "skip" };
+  const gains = model.gains;
+  if (!gains || gains.length !== model.steps) return { kind: "clear" };
+  const cols = gridColumns(model.lanes, model.steps);
+  if (cols === null) return { kind: "skip" };
+  const active2 = gains.filter((_, i) => cols[i] !== "~");
+  if (active2.length === 0 || active2.every((g) => g === 1)) return { kind: "clear" };
+  if (active2.every((g) => g === active2[0])) {
+    return { kind: "write", value: fmtGain(active2[0]), quoted: false };
+  }
+  const mini = cols.map((tok, i) => tok === "~" ? "~" : fmtGain(gains[i])).join(" ");
+  return { kind: "write", value: mini, quoted: true };
+}
+__name(serializeStepGain, "serializeStepGain");
+function gridBars(model, bounds) {
+  const cols = gridColumns(model.lanes, model.steps);
+  if (cols === null) return null;
+  const slots = [];
+  for (let b = 0; b + 1 < bounds.length; b++) {
+    const bar2 = cols.slice(bounds[b], bounds[b + 1]);
+    if (bar2.every((c) => c === "~")) slots.push("~");
+    else if (bar2.length === 1) slots.push(bar2[0]);
+    else slots.push(`[${bar2.join(" ")}]`);
+  }
+  return `<${slots.join(" ")}>`;
+}
+__name(gridBars, "gridBars");
+function barBounds(model) {
+  if (model.barSteps) return barStarts(model.barSteps);
+  const bars = model.bars ?? 1;
+  const perBar2 = model.steps / bars;
+  return Array.from({ length: bars + 1 }, (_, b) => b * perBar2);
+}
+__name(barBounds, "barBounds");
+function heldBars(bounds, b, duration) {
+  for (let k = 1; b + k < bounds.length; k++) {
+    const span = bounds[b + k] - bounds[b];
+    if (Math.abs(span - duration) < 1e-9) return k;
+    if (span > duration) break;
+  }
+  return 0;
+}
+__name(heldBars, "heldBars");
+var groupBody = /* @__PURE__ */ __name((g) => g.pitches.length === 1 ? g.pitches[0] : `[${g.pitches.join(",")}]`, "groupBody");
+var weightToken = /* @__PURE__ */ __name((n) => String(Number(n.toPrecision(12))), "weightToken");
+var groupToken = /* @__PURE__ */ __name((g) => g.duration === 1 ? groupBody(g) : `${groupBody(g)}@${weightToken(g.duration)}`, "groupToken");
+function restTokens(width) {
+  const { whole, remainder } = columnSplit(width);
+  if (whole < 0) return null;
+  const out = new Array(whole).fill("~");
+  if (remainder > 0) out.push(`~@${weightToken(remainder)}`);
+  return out;
+}
+__name(restTokens, "restTokens");
+function buildGroups(model) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+      return null;
+    }
+    const g = groups.get(note.start);
+    if (!g) groups.set(note.start, { pitches: [note.pitch], duration: note.duration });
+    else if (g.duration !== note.duration) return null;
+    else g.pitches.push(note.pitch);
+  }
+  return groups;
+}
+__name(buildGroups, "buildGroups");
+function serializePianoRollWithExtent(drawn) {
+  const model = toUniformRoll(drawn);
+  const respell = drawn.barSteps;
+  const spans = model.leafSource ?? model.surgical?.spans();
+  if (spans) {
+    const surgical = spliceRollByLeaf(model, spans);
+    if (surgical !== null) return { mini: surgical, extent: { path: "leaf" } };
+    if (model.leafSource) return { mini: null, extent: { path: "leaf" } };
+  }
+  if (altSourceFits(model.altSource, model.steps))
+    return { mini: spliceAltRoll(model), extent: { path: "alt" } };
+  const spliced = spliceRoll(model, respell);
+  if (spliced !== null) return { mini: spliced, extent: { path: "splice" } };
+  const bars = model.bars ?? 1;
+  if (bars > 1) {
+    const src = respell ? drawn : model;
+    const bounds = barBounds(src);
+    const groups = buildGroups(src);
+    const flat = groups === null ? null : rollBars(groups, bounds);
+    if (flat !== null) return { mini: flat, extent: { path: "rebuild" } };
+    return { mini: rollBarLanes(src, bounds), extent: { path: "rebuild" } };
+  }
+  return { mini: serializeRollLanes(model), extent: { path: "rebuild" } };
+}
+__name(serializePianoRollWithExtent, "serializePianoRollWithExtent");
+function serializePianoRoll(model) {
+  return serializePianoRollWithExtent(model).mini;
+}
+__name(serializePianoRoll, "serializePianoRoll");
+var noteKey = /* @__PURE__ */ __name((n) => `${n.pitch}:${n.start}:${n.duration}`, "noteKey");
+function assignNotes(model, src) {
+  if (src.parts.length === 1) return /* @__PURE__ */ new Map([[src.parts[0].part, model.notes]]);
+  const taken = /* @__PURE__ */ new Set();
+  const mine = /* @__PURE__ */ new Map();
+  const lost = [];
+  for (const p of src.parts) {
+    const kept = [];
+    let missing = false;
+    for (const was of p.regions.flatMap((r) => r.content)) {
+      const hit = model.notes.find((n) => !taken.has(n) && noteKey(n) === noteKey(was));
+      if (hit) {
+        taken.add(hit);
+        kept.push(hit);
+      } else missing = true;
+    }
+    if (missing) lost.push(p.part);
+    mine.set(p.part, kept);
+  }
+  const strays = model.notes.filter((n) => !taken.has(n));
+  if (strays.length === 0) return mine;
+  if (lost.length !== 1) return null;
+  mine.set(lost[0], [...mine.get(lost[0]) ?? [], ...strays]);
+  return mine;
+}
+__name(assignNotes, "assignNotes");
+function spliceRoll(model, respell) {
+  const src = model.source;
+  if (!src || src.parts.length === 0) return null;
+  const covers = src.parts.every((p) => {
+    const last = p.regions[p.regions.length - 1];
+    return last !== void 0 && last.to === model.steps;
+  });
+  if (!covers) return null;
+  const assigned = assignNotes(model, src);
+  if (assigned === null) return null;
+  const integral = model.notes.every(
+    (n) => Number.isInteger(n.start) && Number.isInteger(n.duration)
+  );
+  let out = src.prefix;
+  for (const p of src.parts) {
+    const notes = assigned.get(p.part) ?? [];
+    if (notes.some((n) => n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps)) {
+      return null;
+    }
+    out += p.before;
+    const last = p.regions[p.regions.length - 1];
+    let body = last === void 0 ? null : "";
+    for (const r of p.regions) {
+      if (body === null) break;
+      const now2 = notes.filter((n) => n.start >= r.from && n.start < r.to);
+      if (sameNotes(now2, r.content)) {
+        body += r.raw;
+        continue;
+      }
+      if (!integral) return null;
+      const re = (respell ? respellRollBar(now2, r, p.div, respell) : null) ?? reemitRollRegion(now2, r.from, r.to, p.div);
+      body = re === null ? null : body + r.leading + re + r.trailing;
+    }
+    if (body === null) {
+      const placed = toPlaced(notes);
+      const rebuilt = placed && laneString(placed, model.steps);
+      if (!rebuilt) return null;
+      out += rebuilt + p.after;
+      continue;
+    }
+    out += body + p.after;
+  }
+  return out + src.suffix;
+}
+__name(spliceRoll, "spliceRoll");
+function spliceAltRoll(model) {
+  const a = model.altSource;
+  if (!a) return null;
+  const gain = serializeRollGain(model);
+  if (gain.kind === "write" && gain.quoted) return null;
+  const integral = model.notes.every(
+    (n) => Number.isInteger(n.start) && Number.isInteger(n.duration)
+  );
+  let out = "";
+  for (const r of a.regions) {
+    const perBarNow = [];
+    for (let b = 0; b < a.bars; b++) {
+      const lo = r.from + b * a.perBar;
+      const hi = r.to + b * a.perBar;
+      perBarNow.push(
+        model.notes.filter((n) => n.start >= lo && n.start < hi).map((n) => ({ pitch: n.pitch, start: n.start - b * a.perBar, duration: n.duration }))
+      );
+    }
+    if (perBarNow.every((bar2, b) => sameNotes(bar2, r.perBar[b]))) {
+      out += r.raw;
+      continue;
+    }
+    if (!integral) return null;
+    const re = reemitAltRoll(perBarNow, r.from, r.to, a.div);
+    if (re === null) return null;
+    out += r.leading + re + r.trailing;
+  }
+  return out;
+}
+__name(spliceAltRoll, "spliceAltRoll");
+function reemitAltRoll(perBar2, from, to, div) {
+  const barTokens = [];
+  for (const notes of perBar2) {
+    const re = reemitRollRegion(notes, from, to, div);
+    if (re === null) return null;
+    barTokens.push(re);
+  }
+  return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(" ")}>`;
+}
+__name(reemitAltRoll, "reemitAltRoll");
+function sameNotes(a, b) {
+  if (a.length !== b.length) return false;
+  const left = a.map(noteKey).sort();
+  const right = b.map(noteKey).sort();
+  return left.every((k, i) => k === right[i]);
+}
+__name(sameNotes, "sameNotes");
+function toPlaced(notes) {
+  const byStart = /* @__PURE__ */ new Map();
+  for (const n of [...notes].sort((x, y) => x.start - y.start)) {
+    const g = byStart.get(n.start);
+    if (!g) byStart.set(n.start, { pitches: [n.pitch], start: n.start, duration: n.duration });
+    else if (g.duration !== n.duration) return null;
+    else g.pitches.push(n.pitch);
+  }
+  return [...byStart.values()];
+}
+__name(toPlaced, "toPlaced");
+function reemitRollRegionFlat(notes, from, to, div) {
+  const groups = toPlaced(notes);
+  if (groups === null) return null;
+  if (columnSplit((to - from) / div).remainder > 0) return null;
+  const at = new Map(groups.map((g) => [g.start, g]));
+  const starts = groups.map((g) => g.start).sort((a, b) => a - b);
+  const tokens = [];
+  let c = from;
+  let crossed = false;
+  while (c < to) {
+    const g = at.get(c);
+    if (g && g.duration % div === 0) {
+      const end2 = c + g.duration;
+      if (end2 > to) return null;
+      if (starts.some((s) => s > c && s < end2)) return null;
+      tokens.push(groupToken({ pitches: g.pitches, duration: g.duration / div }));
+      c = end2;
+      continue;
+    }
+    const end = c + div;
+    const slots = [];
+    let k = c;
+    while (k < end) {
+      const gg = at.get(k);
+      if (!gg) {
+        slots.push("~");
+        k++;
+        continue;
+      }
+      if (k + gg.duration > end) {
+        crossed = true;
+        break;
+      }
+      slots.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
+      k += gg.duration;
+    }
+    if (crossed) break;
+    tokens.push(
+      slots.every((s) => s === "~") ? "~" : slots.length === 1 ? slots[0] : `[${slots.join(" ")}]`
+    );
+    c = end;
+  }
+  if (crossed) return groupWrapRegion(at, starts, from, to, div);
+  return tokens.join(" ");
+}
+__name(reemitRollRegionFlat, "reemitRollRegionFlat");
+function respellRollBar(notes, r, div, barSteps) {
+  const P = lcmOf(barSteps);
+  if (r.to - r.from !== P || r.from % P !== 0 || div !== P) return null;
+  const own = barSteps[r.from / P];
+  const k = P / own;
+  if (k <= 1) return null;
+  const whole = /* @__PURE__ */ __name((x) => Math.abs(x - Math.round(x)) < 1e-9, "whole");
+  const packed = [];
+  for (const n of notes) {
+    const start = (n.start - r.from) / k;
+    const duration = n.duration / k;
+    if (!whole(start) || !whole(duration)) return null;
+    packed.push({ ...n, start: Math.round(start), duration: Math.round(duration) });
+  }
+  return reemitRollRegion(packed, 0, own, own);
+}
+__name(respellRollBar, "respellRollBar");
+function reemitRollRegion(notes, from, to, div) {
+  const flat = reemitRollRegionFlat(notes, from, to, div);
+  if (flat !== null) return flat;
+  return laneWrapRegion(notes, from, to, div);
+}
+__name(reemitRollRegion, "reemitRollRegion");
+function laneWrapRegion(notes, from, to, div) {
+  const width = to - from;
+  const steps = width / div;
+  if (!Number.isInteger(steps) || steps < 1) return null;
+  const byKey = /* @__PURE__ */ new Map();
+  for (const n of [...notes].sort((a, b) => a.start - b.start)) {
+    const start = n.start - from;
+    if (start < 0 || n.duration < 1 || start + n.duration > width) return null;
+    const key2 = `${start}:${n.duration}`;
+    const g = byKey.get(key2);
+    if (g) g.pitches.push(n.pitch);
+    else byKey.set(key2, { pitches: [n.pitch], start, duration: n.duration });
+  }
+  const lanes = packLanes([...byKey.values()]);
+  if (lanes.length < 2) return null;
+  const strings = [];
+  for (const lane of lanes) {
+    const s = laneString(lane, width);
+    if (s === null) return null;
+    strings.push(s);
+  }
+  const body = `[${strings.join(", ")}]`;
+  return steps === 1 ? body : `${body}@${steps}`;
+}
+__name(laneWrapRegion, "laneWrapRegion");
+function groupWrapRegion(at, starts, from, to, div) {
+  const inner = [];
+  let c = from;
+  while (c < to) {
+    const g = at.get(c);
+    if (!g) {
+      inner.push("~");
+      c++;
+      continue;
+    }
+    if (c + g.duration > to) return null;
+    if (starts.some((s) => s > c && s < c + g.duration)) return null;
+    inner.push(groupToken({ pitches: g.pitches, duration: g.duration }));
+    c += g.duration;
+  }
+  const steps = (to - from) / div;
+  const body = `[${inner.join(" ")}]`;
+  return steps === 1 ? body : `${body}@${steps}`;
+}
+__name(groupWrapRegion, "groupWrapRegion");
+function placedGroups(model) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+      return null;
+    }
+    const key2 = `${note.start}:${note.duration}`;
+    const g = byKey.get(key2);
+    if (g) g.pitches.push(note.pitch);
+    else byKey.set(key2, { pitches: [note.pitch], start: note.start, duration: note.duration });
+  }
+  return [...byKey.values()];
+}
+__name(placedGroups, "placedGroups");
+function packLanes(groups) {
+  const sorted = [...groups].sort((a, b) => a.start - b.start || a.duration - b.duration);
+  const lanes = [];
+  for (const g of sorted) {
+    const lane = lanes.find((l) => l.end <= g.start);
+    if (lane) {
+      lane.groups.push(g);
+      lane.end = g.start + g.duration;
+    } else {
+      lanes.push({ end: g.start + g.duration, groups: [g] });
+    }
+  }
+  return lanes.map((l) => l.groups);
+}
+__name(packLanes, "packLanes");
+function laneString(groups, steps) {
+  const cols = [];
+  let col = 0;
+  for (const g of [...groups].sort((a, b) => a.start - b.start)) {
+    const gap = restTokens(g.start - col);
+    if (gap === null) return null;
+    cols.push(...gap, groupToken({ pitches: g.pitches, duration: g.duration }));
+    col = g.start + g.duration;
+  }
+  const tail = restTokens(steps - col);
+  if (tail === null) return null;
+  cols.push(...tail);
+  return cols.join(" ");
+}
+__name(laneString, "laneString");
+function serializeRollLanes(model) {
+  const groups = placedGroups(model);
+  if (groups === null) return null;
+  const lanes = packLanes(groups);
+  if (lanes.length === 0) return laneString([], model.steps);
+  const strings = [];
+  for (const lane of lanes) {
+    const s = laneString(lane, model.steps);
+    if (s === null) return null;
+    strings.push(s);
+  }
+  return strings.join(", ");
+}
+__name(serializeRollLanes, "serializeRollLanes");
+function rollBars(groups, bounds) {
+  if (!bounds.every((x) => Number.isInteger(x))) return null;
+  const bars = bounds.length - 1;
+  const starts = [...groups.keys()].sort((a, b2) => a - b2);
+  const slots = [];
+  let b = 0;
+  while (b < bars) {
+    const barStart = bounds[b];
+    const barEnd = bounds[b + 1];
+    const perBar2 = barEnd - barStart;
+    const atStart = groups.get(barStart);
+    const k = atStart ? heldBars(bounds, b, atStart.duration) : 0;
+    if (atStart && k >= 1) {
+      const heldEnd = barStart + atStart.duration;
+      if (starts.some((s) => s > barStart && s < heldEnd)) return null;
+      slots.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
+      b += k;
+      continue;
+    }
+    if (perBar2 === 1) {
+      slots.push("~");
+      b++;
+      continue;
+    }
+    const tokens = [];
+    let c = barStart;
+    let consumed = 0;
+    while (c < barEnd) {
+      const g = groups.get(c);
+      if (!g) {
+        tokens.push("~");
+        c++;
+        continue;
+      }
+      if (c + g.duration > barEnd) return null;
+      tokens.push(groupToken(g));
+      c += g.duration;
+      consumed++;
+    }
+    if (consumed !== starts.filter((s) => s >= barStart && s < barEnd).length) return null;
+    slots.push(tokens.every((t) => t === "~") ? "~" : `[${tokens.join(" ")}]`);
+    b++;
+  }
+  return `<${slots.join(" ")}>`;
+}
+__name(rollBars, "rollBars");
+function rollBarLanes(model, bounds) {
+  if (!bounds.every((x) => Number.isInteger(x))) return null;
+  const bars = bounds.length - 1;
+  const E = 1e-9;
+  const notes = [...model.notes].sort((a, b2) => a.start - b2.start || a.duration - b2.duration);
+  for (const n of notes)
+    if (n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps + E) return null;
+  const slots = [];
+  let b = 0;
+  while (b < bars) {
+    const barStart = bounds[b];
+    const barEnd = bounds[b + 1];
+    const perBar2 = barEnd - barStart;
+    const over = notes.filter((n) => n.start < barEnd - E && n.start + n.duration > barStart + E);
+    if (over.length === 0) {
+      slots.push("~");
+      b++;
+      continue;
+    }
+    if (over.every((n) => n.start > barStart - E && n.start + n.duration < barEnd + E)) {
+      const byKey = /* @__PURE__ */ new Map();
+      for (const n of over) {
+        const key2 = `${n.start - barStart}:${n.duration}`;
+        const g = byKey.get(key2);
+        if (g) g.pitches.push(n.pitch);
+        else byKey.set(key2, { pitches: [n.pitch], start: n.start - barStart, duration: n.duration });
+      }
+      const strings = [];
+      for (const lane of packLanes([...byKey.values()])) {
+        const str = laneString(lane, perBar2);
+        if (str === null) return null;
+        strings.push(str);
+      }
+      slots.push(`[${strings.join(", ")}]`);
+      b++;
+      continue;
+    }
+    const held2 = over.filter((n) => Math.abs(n.start - barStart) < E);
+    if (held2.length === 0 || held2.length !== over.length) return null;
+    const dur = held2[0].duration;
+    if (held2.some((n) => Math.abs(n.duration - dur) > E)) return null;
+    const k = heldBars(bounds, b, dur);
+    if (k < 1) return null;
+    if (notes.some((n) => n.start > barStart + E && n.start < barStart + dur - E)) return null;
+    const body = groupBody({ pitches: held2.map((n) => n.pitch), duration: dur });
+    slots.push(k === 1 ? body : `${body}@${k}`);
+    b += k;
+  }
+  return `<${slots.join(" ")}>`;
+}
+__name(rollBarLanes, "rollBarLanes");
+function serializeRollGain(model) {
+  if (model.gainForeign) return { kind: "skip" };
+  if (model.leafSource) return { kind: "skip" };
+  const bars = model.bars ?? 1;
+  if (bars > 1 && model.steps !== bars) return { kind: "skip" };
+  const placed = placedGroups(model);
+  if (placed !== null && packLanes(placed).length > 1) return { kind: "skip" };
+  const groups = /* @__PURE__ */ new Map();
+  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
+    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
+      return { kind: "skip" };
+    }
+    const gain = note.gain ?? 1;
+    const g = groups.get(note.start);
+    if (!g) groups.set(note.start, { duration: note.duration, gain });
+    else if (g.duration !== note.duration || g.gain !== gain) return { kind: "skip" };
+  }
+  const vals = [...groups.values()].map((g) => g.gain);
+  if (vals.length === 0 || vals.every((g) => g === 1)) return { kind: "clear" };
+  if (vals.every((g) => g === vals[0])) {
+    return { kind: "write", value: fmtGain(vals[0]), quoted: false };
+  }
+  const cols = [];
+  let col = 0;
+  for (const start of [...groups.keys()].sort((a, b) => a - b)) {
+    const gap = restTokens(start - col);
+    if (gap === null) return { kind: "skip" };
+    const g = groups.get(start);
+    cols.push(
+      ...gap,
+      g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${weightToken(g.duration)}`
+    );
+    col = start + g.duration;
+  }
+  const tail = restTokens(model.steps - col);
+  if (tail === null) return { kind: "skip" };
+  cols.push(...tail);
+  const seq = cols.join(" ");
+  return { kind: "write", value: bars > 1 ? `<${seq}>` : seq, quoted: true };
+}
+__name(serializeRollGain, "serializeRollGain");
+
+// src/codeView/notation/viewResolution.ts
+var UNREFINED = 1;
+var MAX_VIEW_STEPS = 256;
+function isViewScale(k) {
+  return Number.isInteger(k) && k >= UNREFINED;
+}
+__name(isViewScale, "isViewScale");
+function documentSteps(model) {
+  return model.steps / (model.viewScale ?? UNREFINED);
+}
+__name(documentSteps, "documentSteps");
+function viewSteps(documentSteps2, scale) {
+  return documentSteps2 * scale;
+}
+__name(viewSteps, "viewSteps");
+function absorbViewScale(model) {
+  if (model.viewScale === void 0) return model;
+  const { viewScale: _absorbed, ...rest } = model;
+  return rest;
+}
+__name(absorbViewScale, "absorbViewScale");
+function viewScaleFits(perBar2, bars, scale) {
+  if (!isViewScale(scale)) return false;
+  return viewSteps(perBar2 * bars, scale) <= MAX_VIEW_STEPS;
+}
+__name(viewScaleFits, "viewScaleFits");
+
+// src/codeView/notation/parse.ts
+var NUMERIC = /^-?\d+$/;
+var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => allowNumeric || !NUMERIC.test(t), "isAtomToken");
+var MAX_STEPS = 64;
+var ONSET_GRID = 2882880;
+var OVER_CAP = MAX_VIEW_STEPS + 1;
+var gcd2 = /* @__PURE__ */ __name((a, b) => {
+  while (b !== 0) {
+    const r = a % b;
+    a = b;
+    b = r;
+  }
+  return a;
+}, "gcd");
+var lcm = /* @__PURE__ */ __name((a, b) => {
+  if (a >= OVER_CAP || b >= OVER_CAP) return OVER_CAP;
+  const r = a / gcd2(a, b) * b;
+  return r >= OVER_CAP ? OVER_CAP : r;
+}, "lcm");
+var stepUnits = /* @__PURE__ */ __name((s) => s.sub ? s.sub.reduce((n, slot) => n + slot.units, 0) : 1, "stepUnits");
+var division = /* @__PURE__ */ __name((steps) => steps.reduce((d, s) => lcm(d, stepUnits(s)), 1), "division");
+function splitTopLevel(src) {
+  const out = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === "[" || c === "(") depth++;
+    else if (c === "]" || c === ")") depth--;
+    else if (c === "," && depth === 0) {
+      out.push(src.slice(from, i));
+      from = i + 1;
+    }
+  }
+  out.push(src.slice(from));
+  return out;
+}
+__name(splitTopLevel, "splitTopLevel");
+function unwrapAlternation(mini) {
+  const t = mini.trim();
+  if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
+  let depth = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === "<") depth++;
+    else if (t[i] === ">" && --depth === 0 && i !== t.length - 1) return null;
+  }
+  return t.slice(1, -1);
+}
+__name(unwrapAlternation, "unwrapAlternation");
+var isAtom2 = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
+var isRestAtom2 = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
+var tokenOf = /* @__PURE__ */ __name((atom, ops) => {
+  let t = atom.source_;
+  for (const op of ops) {
+    if (op.type_ !== "tail") continue;
+    const node = op.arguments_?.element;
+    if (!node || node.type_ !== "atom" || typeof node.source_ !== "string") return null;
+    t += ":" + node.source_;
+  }
+  return t;
+}, "tokenOf");
+var numArg = /* @__PURE__ */ __name((node) => {
+  const n = node;
+  if (!n || typeof n !== "object") return null;
+  const inner = n.type_ === "element" ? n.source_ : n;
+  if (!inner || inner.type_ !== "atom") return null;
+  const v = Number(inner.source_);
+  return Number.isFinite(v) ? v : null;
+}, "numArg");
+function readOps(ops) {
+  let mult = 1;
+  let euclid = null;
+  for (const op of ops) {
+    switch (op.type_) {
+      case "tail":
+      case "replicate":
+        break;
+      case "stretch": {
+        const type = op.arguments_?.type;
+        if (type !== "fast") {
+          return { reason: `"${String(type)}" stretch is beyond the editable subset` };
+        }
+        const amount = numArg(op.arguments_?.amount);
+        if (amount === null || !Number.isInteger(amount) || amount < 1) {
+          return { reason: "invalid * multiplier" };
+        }
+        mult *= amount;
+        break;
+      }
+      case "bjorklund": {
+        const k = numArg(op.arguments_?.pulse);
+        const n = numArg(op.arguments_?.step);
+        const rot = op.arguments_?.rotation == null ? 0 : numArg(op.arguments_.rotation);
+        if (k === null || n === null || rot === null) {
+          return { reason: "invalid euclid (k,n) arguments" };
+        }
+        if (n < 1) return { reason: "invalid euclid step count" };
+        euclid = { k, n, rot };
+        break;
+      }
+      case "degradeBy":
+        return { reason: '"?" random degrade is beyond the editable subset' };
+      default:
+        return { reason: `"${op.type_}" is beyond the editable subset` };
+    }
+  }
+  return { mult, euclid };
+}
+__name(readOps, "readOps");
+function groupSlots(pat, allowNumeric) {
+  const slots = [];
+  for (const el of pat.source_) {
+    const opts = el.options_ ?? {};
+    const ops = opts.ops ?? [];
+    const units = opts.weight ?? 1;
+    if ((opts.reps ?? 1) > 1) {
+      return { reason: "! inside a group is beyond the editable subset" };
+    }
+    if (ops.some((o) => o.type_ !== "tail")) {
+      return { reason: "operators inside a group are beyond the editable subset" };
+    }
+    if (isAtom2(el.source_)) {
+      if (isRestAtom2(el.source_)) {
+        if (ops.length) return { reason: 'a ":" variant on a rest has nothing to name' };
+        slots.push({ atoms: [], units });
+        continue;
+      }
+      const token = tokenOf(el.source_, ops);
+      if (token === null) {
+        return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
+      }
+      if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
+      slots.push({ atoms: [token], units });
+      continue;
+    }
+    const chord = chordAtoms(el.source_, allowNumeric);
+    if (!Array.isArray(chord)) return chord;
+    slots.push({ atoms: chord, units });
+  }
+  if (slots.length === 0) return { reason: "empty group" };
+  return slots;
+}
+__name(groupSlots, "groupSlots");
+function chordAtoms(pat, allowNumeric) {
+  if (pat.arguments_?.alignment !== "stack") {
+    return { reason: "nested groups are beyond the editable subset" };
+  }
+  const atoms = [];
+  for (const voice of pat.source_) {
+    if (isAtom2(voice)) {
+      return { reason: "stacked sub-sequences are beyond the editable subset" };
+    }
+    const vp = voice;
+    if (vp.arguments_?.alignment !== "fastcat" || vp.source_.length !== 1) {
+      return { reason: "stacked sub-sequences are beyond the editable subset" };
+    }
+    const el = vp.source_[0];
+    const ops = el.options_?.ops ?? [];
+    if (!isAtom2(el.source_) || (el.options_?.reps ?? 1) > 1 || ops.some((o) => o.type_ !== "tail")) {
+      return { reason: "stacked sub-sequences are beyond the editable subset" };
+    }
+    const token = tokenOf(el.source_, ops);
+    if (token === null) {
+      return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
+    }
+    if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
+    atoms.push(token);
+  }
+  return atoms;
+}
+__name(chordAtoms, "chordAtoms");
+function elementToSteps(el, allowNumeric) {
+  const opts = el.options_ ?? {};
+  const ops = opts.ops ?? [];
+  const reps = opts.reps ?? 1;
+  const rawWeight = opts.weight ?? 1;
+  const read5 = readOps(ops);
+  if (!("mult" in read5)) return read5;
+  const { mult, euclid } = read5;
+  if (reps > 1 && rawWeight !== reps) {
+    return { reason: "! combined with * or @ is beyond the editable subset" };
+  }
+  if (reps < 1) return { reason: "a zero replicate has nothing to show" };
+  if (rawWeight <= 0) return { reason: "a zero-width step has nothing to show" };
+  const weight = reps > 1 ? 1 : rawWeight;
+  if (!isAtom2(el.source_)) {
+    const alignment = el.source_.arguments_?.alignment;
+    if (alignment === "stack") {
+      const chord = chordAtoms(el.source_, allowNumeric);
+      if (!Array.isArray(chord)) return chord;
+      if (euclid) return { reason: "euclid on a chord is beyond the editable subset" };
+      if (reps > 1) return { reason: "! on a chord is beyond the editable subset" };
+      if (mult > 1) {
+        if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
+        return [
+          {
+            atoms: [],
+            elongation: weight,
+            sub: Array.from({ length: mult }, () => ({ atoms: [...chord], units: 1 }))
+          }
+        ];
+      }
+      return [{ atoms: chord, elongation: weight, sub: null }];
+    }
+    if (alignment !== "fastcat") {
+      return { reason: `"${String(alignment)}" is beyond the editable subset` };
+    }
+    if (euclid) return { reason: "euclid on a group is beyond the editable subset" };
+    if (reps > 1) return { reason: "! on a group is beyond the editable subset" };
+    if (mult > 1 && weight > 1) {
+      return { reason: "* combined with @ is beyond the editable subset" };
+    }
+    const slots = groupSlots(el.source_, allowNumeric);
+    if (!Array.isArray(slots)) return slots;
+    if (mult > 1) {
+      const sub = [];
+      for (let r = 0; r < mult; r++) {
+        for (const s of slots) sub.push({ atoms: [...s.atoms], units: s.units });
+      }
+      return [{ atoms: [], elongation: weight, sub }];
+    }
+    if (slots.length === 1 && slots[0].units === 1) {
+      return [{ atoms: slots[0].atoms, elongation: weight, sub: null }];
+    }
+    return [{ atoms: [], elongation: weight, sub: slots }];
+  }
+  const atom = el.source_;
+  const rest = isRestAtom2(atom);
+  if (rest && ops.some((o) => o.type_ === "tail")) {
+    return { reason: 'a ":" variant on a rest has nothing to name' };
+  }
+  const token = rest ? "" : tokenOf(atom, ops);
+  if (token === null) {
+    return { reason: `a patterned ":" variant on "${atom.source_}" is beyond the editable subset` };
+  }
+  if (!rest && !isAtomToken(token, allowNumeric)) {
+    return { reason: `unsupported token "${token}"` };
+  }
+  const atoms = rest ? [] : [token];
+  if (euclid) {
+    if (mult > 1 || reps > 1 || weight > 1) {
+      return { reason: "euclid combined with * / ! / @ is beyond the editable subset" };
+    }
+    const hits = rotateEuclid(bjorklund(euclid.k, euclid.n), euclid.rot);
+    return [{ atoms: [], elongation: 1, sub: hits.map((on) => ({ atoms: on ? [...atoms] : [], units: 1 })) }];
+  }
+  if (reps > 1) {
+    if (mult > 1) return { reason: "! combined with * or @ is beyond the editable subset" };
+    return Array.from({ length: reps }, () => ({ atoms: [...atoms], elongation: 1, sub: null }));
+  }
+  if (mult > 1) {
+    if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
+    return [
+      {
+        atoms: [],
+        elongation: 1,
+        sub: Array.from({ length: mult }, () => ({ atoms: [...atoms], units: 1 }))
+      }
+    ];
+  }
+  return [{ atoms, elongation: weight, sub: null }];
+}
+__name(elementToSteps, "elementToSteps");
+function tokenize(mini, allowNumeric = false) {
+  const src = mini.trim();
+  if (src === "") return { ok: true, steps: [], elements: [] };
+  let ast;
+  try {
+    ast = parse$1('"' + src + '"');
+  } catch {
+    return { ok: false, reason: "unsupported mini-notation syntax" };
+  }
+  if (!ast || ast.type_ !== "pattern" || !Array.isArray(ast.source_)) {
+    return { ok: false, reason: "unsupported mini-notation syntax" };
+  }
+  const alignment = ast.arguments_?.alignment;
+  if (alignment !== "fastcat") {
+    return {
+      ok: false,
+      reason: alignment === "stack" ? 'unsupported token ","' : `"${String(alignment)}" is beyond the editable subset`
+    };
+  }
+  const steps = [];
+  const elements = [];
+  for (const el of ast.source_) {
+    const mapped = elementToSteps(el, allowNumeric);
+    if (!Array.isArray(mapped)) return { ok: false, reason: mapped.reason };
+    const loc = el.location_;
+    if (loc) {
+      elements.push({
+        start: loc.start.offset - 1,
+        end: loc.end.offset - 1,
+        weight: mapped.reduce((w, s) => w + s.elongation, 0)
+      });
+    }
+    steps.push(...mapped);
+  }
+  const tiled = elements.length === ast.source_.length;
+  return { ok: true, steps, elements: tiled ? elements : [] };
+}
+__name(tokenize, "tokenize");
+var gridHasElongation = /* @__PURE__ */ __name((steps) => steps.some((s) => s.elongation !== 1 || (s.sub?.some((slot) => slot.units !== 1) ?? false)), "gridHasElongation");
+var tokensOf = /* @__PURE__ */ __name((cols) => cols.map((c) => c.map((n) => ({ ...n }))), "tokensOf");
+function toCells(steps, div) {
+  const cells = [];
+  for (const step of steps) {
+    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const total = stepUnits(step);
+    for (const slot of slots) {
+      const span = div / total * slot.units;
+      cells.push(slot.atoms.map((token) => ({ token, duration: span })));
+      for (let j = 1; j < span; j++) cells.push([]);
+    }
+  }
+  return cells;
+}
+__name(toCells, "toCells");
+function lanesFromCells(cells, part) {
+  const order = [];
+  for (const cell of cells) {
+    for (const n of cell) if (!order.includes(n.token)) order.push(n.token);
+  }
+  return order.map((sound) => ({
+    sound,
+    ...part !== void 0 ? { part } : {},
+    cells: cells.map((cell) => {
+      const note = cell.find((n) => n.token === sound);
+      return note ? cellOn(note.duration) : false;
+    })
+  }));
+}
+__name(lanesFromCells, "lanesFromCells");
+function buildRegions(src, elements, div, total, content) {
+  if (elements.length === 0) return null;
+  const regions = [];
+  let col = 0;
+  for (const el of elements) {
+    const raw = src.slice(el.start, el.end);
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const to = col + el.weight * div;
+    regions.push({ raw, leading, trailing, from: col, to, weight: el.weight, content: content(col, to) });
+    col = to;
+  }
+  if (col !== total) return null;
+  if (regions.map((r) => r.raw).join("") !== src) return null;
+  return regions;
+}
+__name(buildRegions, "buildRegions");
+function columnsFromOnsets(perCycle, perBar2, bars) {
+  const cols = Array.from({ length: perBar2 * bars }, () => []);
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const c = Math.round(o.pos * perBar2);
+      if (c < 0 || c >= perBar2) return null;
+      cols[b * perBar2 + c] = o.atoms.map((token, i) => {
+        const dur = o.durs[i];
+        return { token, duration: dur === null ? 1 : dur * perBar2 };
+      });
+    }
+  }
+  return cols;
+}
+__name(columnsFromOnsets, "columnsFromOnsets");
+var gridContent = /* @__PURE__ */ __name((cells) => (from, to) => cells.slice(from, to).map((c) => [...new Map(c.map((n) => [gridCellKey(n), n])).values()]), "gridContent");
+var rollContent = /* @__PURE__ */ __name((notes) => (from, to) => notes.filter((n) => n.start >= from && n.start < to).map((n) => ({ pitch: n.pitch, start: n.start, duration: n.duration })), "rollContent");
+function singlePart(src, elements, div, total, content) {
+  const regions = buildRegions(src, elements, div, total, content);
+  return regions ? [{ part: 0, div, factor: 1, before: "", after: "", regions }] : null;
+}
+__name(singlePart, "singlePart");
+function altAlternatives(el) {
+  const p = el.source_;
+  if (isAtom2(p) || p.arguments_?.alignment !== "polymeter_slowcat") return null;
+  const o = el.options_;
+  if (o && ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0)) return null;
+  const inner = p.source_[0];
+  if (!inner || inner.type_ !== "pattern" || inner.arguments_?.alignment !== "fastcat") return null;
+  return inner.source_;
+}
+__name(altAlternatives, "altAlternatives");
+function expandAltElements(mini, allowNumeric) {
+  const src = mini.trim();
+  let ast;
+  try {
+    ast = parse$1('"' + src + '"');
+  } catch {
+    return null;
+  }
+  if (!ast || ast.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return null;
+  const topEls = ast.source_;
+  if (!topEls.some((el) => altAlternatives(el) !== null)) return null;
+  let bars = 1;
+  for (const el of topEls) {
+    const alts = altAlternatives(el);
+    if (alts) {
+      if (alts.length === 0) return { reason: "empty alternation" };
+      bars = lcm(bars, alts.length);
+    }
+  }
+  const perBarSteps = [];
+  const elemWeight = [];
+  for (let b = 0; b < bars; b++) {
+    const barSteps = [];
+    for (let i = 0; i < topEls.length; i++) {
+      const alts = altAlternatives(topEls[i]);
+      const node = alts ? alts[b % alts.length] : topEls[i];
+      const st = elementToSteps(node, allowNumeric);
+      if (!Array.isArray(st)) return { reason: st.reason };
+      const w = st.reduce((s, step) => s + step.elongation, 0);
+      if (b === 0) elemWeight[i] = w;
+      else if (w !== elemWeight[i]) {
+        return { reason: "alternation branches of different lengths are beyond the editable subset" };
+      }
+      barSteps.push(...st);
+    }
+    perBarSteps.push(barSteps);
+  }
+  if (topEls.some((el) => !el.location_)) return { reason: "unsupported mini-notation syntax" };
+  if (elemWeight.some((w) => w > 1)) {
+    return { reason: "an elongated element in an alternation pattern is beyond the editable subset" };
+  }
+  const div = perBarSteps.reduce((d, steps) => lcm(d, division(steps)), 1);
+  const perBarCols = elemWeight.reduce((n, c) => n + c, 0) * div;
+  if (perBarCols * bars > MAX_STEPS) {
+    return { reason: `the alternation expands past ${MAX_STEPS} steps` };
+  }
+  const elemSpans = topEls.map((el, i) => ({
+    start: el.location_.start.offset - 1,
+    end: el.location_.end.offset - 1,
+    weight: elemWeight[i]
+  }));
+  return { bars, div, perBarCols, perBarSteps, elemSpans };
+}
+__name(expandAltElements, "expandAltElements");
+function buildAltRegions(src, elemSpans, div, perBarCols, content) {
+  const regions = [];
+  let col = 0;
+  for (const es of elemSpans) {
+    const raw = src.slice(es.start, es.end);
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const to = col + es.weight * div;
+    regions.push({ raw, leading, trailing, from: col, to, perBar: content(col, to) });
+    col = to;
+  }
+  if (col !== perBarCols) return null;
+  if (regions.map((r) => r.raw).join("") !== src) return null;
+  return regions;
+}
+__name(buildAltRegions, "buildAltRegions");
+function gridFromAltElements(mini, viewScale = UNREFINED) {
+  const exp = expandAltElements(mini, false);
+  if (exp === null) return null;
+  if ("reason" in exp) return { ok: false, reason: exp.reason };
+  const { bars, div: documentDiv, perBarCols: documentPerBarCols, perBarSteps, elemSpans } = exp;
+  if (perBarSteps.some(gridHasElongation)) {
+    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+  }
+  if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
+    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
+  }
+  const div = documentDiv * viewScale;
+  const perBarCols = documentPerBarCols * viewScale;
+  const cells = [];
+  for (const steps of perBarSteps) cells.push(...toCells(steps, div));
+  const lanes = lanesFromCells(cells);
+  const src = mini.trim();
+  const regions = buildAltRegions(src, elemSpans, div, perBarCols, (from, to) => {
+    const perBar2 = [];
+    for (let b = 0; b < bars; b++) {
+      perBar2.push(
+        tokensOf(cells.slice(from + b * perBarCols, to + b * perBarCols)).map((c) => [
+          ...new Set(c)
+        ])
+      );
+    }
+    return perBar2;
+  });
+  if (!regions) return { ok: false, reason: "unsupported mini-notation syntax" };
+  return {
+    ok: true,
+    // ⚠ RECORDING THE SCALE IS NOT OPTIONAL ([[P417]]). The entry check reads this
+    // self-report, so a path that multiplies correctly and stays silent is refused —
+    // and refusal is the safe direction, so nothing looks broken while the reach
+    // quietly disappears. Whoever multiplies by the scale also declares it.
+    model: {
+      steps: cells.length,
+      bars,
+      ...viewScale === UNREFINED ? {} : { viewScale },
+      lanes,
+      altSource: { perBar: perBarCols, bars, div, regions }
+    }
+  };
+}
+__name(gridFromAltElements, "gridFromAltElements");
+function denom(x, cap = MAX_STEPS) {
+  for (let d = 1; d <= cap; d++) if (Math.abs(x * d - Math.round(x * d)) < 1e-9) return d;
+  return 0;
+}
+__name(denom, "denom");
+var PERIOD_PROBE = 24;
+var MAX_PROJECT_BARS = 4;
+var LEAF_PROJECT_BARS = { grid: 12, roll: 4 };
+var no = /* @__PURE__ */ __name((gate) => ({ ok: false, gate }), "no");
+function gateReason(gate, surface) {
+  switch (gate) {
+    case "wrong-surface":
+      return surface === "grid" ? "the pattern plays numbers, which the piano roll shows, not the step grid" : "the pattern plays sound names, which the step grid shows, not the piano roll";
+    case "no-note-content":
+      return "the pattern plays no placeable notes";
+    case "unstable-period":
+      return `the pattern does not repeat within ${LEAF_PROJECT_BARS[surface]} bars`;
+    case "mixed-pitch-domain":
+      return "the pattern mixes numeric and note-name pitches";
+    case "irrational-onset":
+      return "an onset does not land on any step column";
+    case "resolution":
+      return `the pattern needs more than ${MAX_STEPS} steps`;
+    case "view-resolution":
+      return `showing this pattern that finely needs more than ${MAX_VIEW_STEPS} columns`;
+    case "element-tiling":
+      return "the source elements do not line up with the columns the pattern plays";
+    case "no-leaf-anchor":
+      return "a played note has no source token of its own to edit";
+    case "note-crosses-bar":
+      return "a played note does not fit inside the bar it starts in";
+    case "edit-unsafe":
+      return "an edit here would not write back the pattern as shown";
+    case "view-unusable":
+      return "nothing in this view could be edited on its own";
+    case "no-finer-view":
+      return "this pattern does not offer a finer view yet";
+    case "escaped-source":
+      return "the source spells this content with a backslash escape, which mini-notation has no syntax for";
+    case "not-a-pattern":
+      return "unsupported mini-notation syntax";
+  }
+}
+__name(gateReason, "gateReason");
+function refused(surface, core, gate, src) {
+  if (gate === "not-a-pattern") {
+    if (src.includes("\\")) {
+      return { ok: false, reason: gateReason("escaped-source", surface), gate: "escaped-source" };
+    }
+    return core;
+  }
+  return { ok: false, reason: gateReason(gate, surface), gate };
+}
+__name(refused, "refused");
+function detectPeriod2(keys, cap) {
+  for (let p = 1; p <= cap; p++) {
+    let ok = true;
+    for (let c = p; c < keys.length; c++) {
+      if (keys[c] !== keys[c % p]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return p;
+  }
+  return 0;
+}
+__name(detectPeriod2, "detectPeriod");
+function isWholeAlternation(src) {
+  let ast;
+  try {
+    ast = parse$1('"' + src + '"');
+  } catch {
+    return false;
+  }
+  if (ast?.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return false;
+  if (ast.source_.length !== 1) return false;
+  const inner = ast.source_[0]?.source_;
+  return inner?.type_ === "pattern" && inner.arguments_?.alignment === "polymeter_slowcat";
+}
+__name(isWholeAlternation, "isWholeAlternation");
+function topLevelSpans(src) {
+  let ast;
+  try {
+    ast = parse$1('"' + src + '"');
+  } catch {
+    return null;
+  }
+  if (!ast || ast.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return null;
+  const out = [];
+  for (const el of ast.source_) {
+    const loc = el.location_;
+    if (!loc) return null;
+    const reps = el.options_?.reps ?? 1;
+    const weight = reps > 1 ? reps : el.options_?.weight ?? 1;
+    if (!Number.isInteger(weight) || weight < 1) return null;
+    out.push({ start: loc.start.offset - 1, end: loc.end.offset - 1, weight });
+  }
+  return out;
+}
+__name(topLevelSpans, "topLevelSpans");
+function leafLoc(h) {
+  const l = h.context?.locations?.[0];
+  if (!l || typeof l.start !== "number" || typeof l.end !== "number") return null;
+  return { start: l.start - 1, end: l.end - 1 };
+}
+__name(leafLoc, "leafLoc");
+function tailToken(v) {
+  if (v.length < 2) return null;
+  if (!v.every((p) => typeof p === "string" || typeof p === "number")) return null;
+  return v.join(":");
+}
+__name(tailToken, "tailToken");
+function deriveColumn(occ) {
+  const atoms = [];
+  const spans = [];
+  const durs = [];
+  for (const o of occ) {
+    if (atoms.includes(o.token)) continue;
+    atoms.push(o.token);
+    spans.push(o.span);
+    durs.push(o.dur);
+  }
+  return { atoms, spans, durs };
+}
+__name(deriveColumn, "deriveColumn");
+function gridOnsets(pat, cyc) {
+  const r = readGridOnsets(pat, cyc);
+  return r.ok ? r.onsets : null;
+}
+__name(gridOnsets, "gridOnsets");
+function readGridOnsets(pat, cyc) {
+  let haps;
+  try {
+    haps = pat.queryArc(cyc, cyc + 1);
+  } catch {
+    return no("no-note-content");
+  }
+  const byCol = /* @__PURE__ */ new Map();
+  for (const h of haps) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
+    const v = h.value;
+    let token;
+    if (typeof v === "string") token = v;
+    else if (typeof v === "number") return no("wrong-surface");
+    else if (Array.isArray(v)) {
+      const t = tailToken(v);
+      if (t === null) return no("no-note-content");
+      token = t;
+    } else if (v && typeof v === "object" && typeof v.s === "string") {
+      token = v.s + (v.n != null ? ":" + String(v.n) : "");
+    } else return no("no-note-content");
+    if (NUMERIC.test(token)) return no("wrong-surface");
+    const pos = h.whole.begin.valueOf() - cyc;
+    const key2 = Math.round(pos * ONSET_GRID);
+    const cell = byCol.get(key2) ?? [];
+    cell.push({
+      token,
+      span: leafLoc(h),
+      dur: h.whole.end.valueOf() - h.whole.begin.valueOf()
+    });
+    byCol.set(key2, cell);
+  }
+  return {
+    ok: true,
+    onsets: [...byCol.entries()].map(([k, occ]) => ({
+      pos: k / ONSET_GRID,
+      occ,
+      ...deriveColumn(occ)
+    }))
+  };
+}
+__name(readGridOnsets, "readGridOnsets");
+var onsetKey = /* @__PURE__ */ __name((o) => JSON.stringify(o.map((x) => [Math.round(x.pos * ONSET_GRID), [...x.atoms].sort()]).sort()), "onsetKey");
+function projectStepGrid(src0, viewScale = UNREFINED) {
+  const src = src0.trim();
+  if (src === "") return no("not-a-pattern");
+  let pat;
+  try {
+    pat = mini(src);
+  } catch {
+    return no("not-a-pattern");
+  }
+  const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null;
+  if (isWholeAlternation(src) && whole === null) return no("element-tiling");
+  const cycles = [];
+  for (let c = 0; c < PERIOD_PROBE; c++) {
+    const cc = readGridOnsets(pat, c);
+    if (!cc.ok) return cc;
+    cycles.push(cc.onsets);
+  }
+  const bars = detectPeriod2(cycles.map(onsetKey), MAX_PROJECT_BARS);
+  if (bars === 0) return no("unstable-period");
+  const perCycle = cycles.slice(0, bars);
+  if (perCycle.every((c) => c.length === 0)) return no("no-note-content");
+  if (whole !== null) {
+    return bars > 1 ? projectAltBars(src, whole, perCycle, bars, viewScale) : no("element-tiling");
+  }
+  const spans = topLevelSpans(src);
+  if (!spans) return no("element-tiling");
+  const totalWeight = spans.reduce((s, e) => s + e.weight, 0);
+  const bounds = [];
+  let accW = 0;
+  for (const e of spans) {
+    bounds.push(accW / totalWeight);
+    accW += e.weight;
+  }
+  let documentPerBar = 1;
+  for (const x of [...perCycle.flat().map((o) => o.pos), ...bounds]) {
+    const d = denom(x);
+    if (d === 0) return no("irrational-onset");
+    documentPerBar = lcm(documentPerBar, d);
+  }
+  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
+  const perBar2 = documentPerBar * viewScale;
+  if (perBar2 % totalWeight !== 0) return no("element-tiling");
+  const divPerUnit = perBar2 / totalWeight;
+  const cells = columnsFromOnsets(perCycle, perBar2, bars);
+  if (cells === null) return no("irrational-onset");
+  const lanes = lanesFromCells(cells);
+  if (bars === 1) {
+    const parts = singlePart(src, spans, divPerUnit, perBar2, gridContent(tokensOf(cells)));
+    if (!parts) return no("element-tiling");
+    const model2 = {
+      steps: perBar2,
+      ...viewScale === UNREFINED ? {} : { viewScale },
+      lanes,
+      source: { prefix: "", suffix: "", parts }
+    };
+    const cols0 = parts[0].regions.map((r) => r.from);
+    if (!projectionEditSafe(model2, perBar2, 1, perCycle, cols0)) return no("edit-unsafe");
+    return { ok: true, model: model2 };
+  }
+  const regions = buildAltRegions(
+    src,
+    spans,
+    divPerUnit,
+    perBar2,
+    (from, to) => Array.from(
+      { length: bars },
+      (_, b) => tokensOf(cells.slice(from + b * perBar2, to + b * perBar2)).map((c) => [...new Set(c)])
+    )
+  );
+  if (!regions) return no("element-tiling");
+  const model = {
+    steps: perBar2 * bars,
+    bars,
+    ...viewScale === UNREFINED ? {} : { viewScale },
+    lanes,
+    altSource: { perBar: perBar2, bars, div: divPerUnit, regions }
+  };
+  const cols = regions.flatMap(
+    (r) => Array.from({ length: bars }, (_, b) => b * perBar2 + r.from)
+  );
+  if (!projectionEditSafe(model, perBar2, bars, perCycle, cols)) return no("edit-unsafe");
+  return { ok: true, model };
+}
+__name(projectStepGrid, "projectStepGrid");
+function projectAltBars(src, inner, perCycle, bars, viewScale = UNREFINED) {
+  const innerSrc = inner.trim();
+  const spans = topLevelSpans(innerSrc);
+  if (!spans) return no("element-tiling");
+  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no("element-tiling");
+  let documentPerBar = 1;
+  for (const o of perCycle.flat()) {
+    const d = denom(o.pos);
+    if (d === 0) return no("irrational-onset");
+    documentPerBar = lcm(documentPerBar, d);
+  }
+  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
+  const perBar2 = documentPerBar * viewScale;
+  const cells = columnsFromOnsets(perCycle, perBar2, bars);
+  if (cells === null) return no("irrational-onset");
+  const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, gridContent(tokensOf(cells)));
+  if (!parts) return no("element-tiling");
+  const model = {
+    steps: perBar2 * bars,
+    bars,
+    ...viewScale === UNREFINED ? {} : { viewScale },
+    lanes: lanesFromCells(cells),
+    source: {
+      parts,
+      prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
+      suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
+    }
+  };
+  const cols = parts[0].regions.map((r) => r.from);
+  if (!projectionEditSafe(model, perBar2, bars, perCycle, cols)) return no("edit-unsafe");
+  if (serializeStepGrid(model) !== src.trim()) return no("edit-unsafe");
+  return { ok: true, model };
+}
+__name(projectAltBars, "projectAltBars");
+var PROBE_SOUND = "zzstaveprobezz";
+function projectionEditSafe(model, perBar2, bars, base, probeCols) {
+  for (const col of probeCols) {
+    const b = Math.floor(col / perBar2);
+    const t = col % perBar2 / perBar2;
+    const lanes = model.lanes.map((l) => ({ ...l, cells: [...l.cells] }));
+    let probe = lanes.find((l) => l.sound === PROBE_SOUND);
+    if (!probe) {
+      probe = { sound: PROBE_SOUND, cells: Array(perBar2 * bars).fill(false) };
+      lanes.push(probe);
+    }
+    probe.cells[col] = cellOn();
+    const out = serializeStepGrid({ ...model, lanes });
+    if (out == null) return false;
+    let edited;
+    try {
+      edited = mini(out);
+    } catch {
+      return false;
+    }
+    const expectedFor = /* @__PURE__ */ __name((bb) => {
+      const want = base[bb];
+      if (bb !== b) return want;
+      const hit = want.find((o) => Math.abs(o.pos - t) < 1e-9);
+      const probeOcc = { token: PROBE_SOUND, span: null, dur: null };
+      const out2 = want.map(
+        (o) => o === hit ? {
+          pos: o.pos,
+          occ: [...o.occ, probeOcc],
+          atoms: [...o.atoms, PROBE_SOUND],
+          spans: [...o.spans, null],
+          durs: [...o.durs, null]
+        } : o
+      );
+      if (!hit) {
+        out2.push({ pos: t, occ: [probeOcc], atoms: [PROBE_SOUND], spans: [null], durs: [null] });
+      }
+      return out2;
+    }, "expectedFor");
+    for (let bb = 0; bb < bars; bb++) {
+      const got = gridOnsets(edited, bb);
+      if (got === null) return false;
+      if (onsetKey(got) !== onsetKey(expectedFor(bb))) return false;
+    }
+    const wrap = gridOnsets(edited, bars);
+    if (wrap === null) return false;
+    if (onsetKey(wrap) !== onsetKey(expectedFor(0))) return false;
+  }
+  return true;
+}
+__name(projectionEditSafe, "projectionEditSafe");
+function restSpansByColumn(src, perBar2, bars) {
+  let ast;
+  try {
+    ast = parse$1('"' + src + '"');
+  } catch {
+    return null;
+  }
+  const spans = [];
+  const walk5 = /* @__PURE__ */ __name((node) => {
+    if (!node || typeof node !== "object") return;
+    if (node.type_ === "pattern") {
+      for (const el of node.source_ ?? []) walk5(el);
+      return;
+    }
+    if (node.type_ === "element") {
+      const el = node;
+      const inner = el.source_;
+      if (inner && inner.type_ === "atom") {
+        const atom = inner;
+        const loc = el.location_;
+        if (isRestAtom2(atom) && loc) {
+          let s = loc.start.offset - 1;
+          while (s < src.length && /\s/.test(src[s])) s++;
+          if (src.slice(s, s + atom.source_.length) === atom.source_)
+            spans.push({ start: s, end: s + atom.source_.length });
+        }
+      } else walk5(inner);
+      return;
+    }
+  }, "walk");
+  walk5(ast);
+  if (spans.length === 0) return null;
+  const SENTINEL = /* @__PURE__ */ __name((i) => `qzrest${i}`, "SENTINEL");
+  let probeSrc = src;
+  const ordered = [...spans].sort((a, b) => b.start - a.start);
+  for (let i = 0; i < ordered.length; i++) {
+    const s = ordered[i];
+    probeSrc = probeSrc.slice(0, s.start) + SENTINEL(i) + probeSrc.slice(s.end);
+  }
+  let probePat;
+  try {
+    probePat = mini(probeSrc);
+  } catch {
+    return null;
+  }
+  const size = perBar2 * bars;
+  const claims = Array.from({ length: size }, () => /* @__PURE__ */ new Set());
+  const located = /* @__PURE__ */ new Set();
+  for (let b = 0; b < bars; b++) {
+    const read5 = readGridOnsets(probePat, b);
+    if (!read5.ok) return null;
+    for (const o of read5.onsets) {
+      const c = b * perBar2 + Math.round(o.pos * perBar2);
+      if (c < 0 || c >= size) continue;
+      for (const atom of o.atoms) {
+        const m = /^qzrest(\d+)$/.exec(atom);
+        if (!m) continue;
+        const idx = Number(m[1]);
+        if (idx >= ordered.length) continue;
+        claims[c].add(idx);
+        located.add(idx);
+      }
+    }
+  }
+  if (located.size !== ordered.length) return null;
+  return claims.map((s) => s.size === 1 ? ordered[[...s][0]] : null);
+}
+__name(restSpansByColumn, "restSpansByColumn");
+function projectStepGridByLeaf(src0) {
+  const src = src0.trim();
+  if (src === "") return no("not-a-pattern");
+  let pat;
+  try {
+    pat = mini(src);
+  } catch {
+    return no("not-a-pattern");
+  }
+  const cycles = [];
+  for (let c = 0; c < PERIOD_PROBE; c++) {
+    const cc = readGridOnsets(pat, c);
+    if (!cc.ok) return cc;
+    cycles.push(cc.onsets);
+  }
+  const bars = detectPeriod2(cycles.map(onsetKey), LEAF_PROJECT_BARS.grid);
+  if (bars === 0) return no("unstable-period");
+  const perCycle = cycles.slice(0, bars);
+  if (perCycle.every((c) => c.length === 0)) return no("no-note-content");
+  let perBar2 = 1;
+  for (const o of perCycle.flat()) {
+    const d = denom(o.pos);
+    if (d === 0) return no("irrational-onset");
+    perBar2 = lcm(perBar2, d);
+  }
+  if (perBar2 * bars > MAX_STEPS) return no("resolution");
+  const anchored = leafAnchors(src, perCycle, perBar2, bars);
+  if (!anchored.ok) return anchored;
+  const played = columnsFromOnsets(perCycle, perBar2, bars);
+  if (played === null) return no("irrational-onset");
+  const cols = anchored.cols.map(
+    (col, i) => col.map((a) => ({
+      ...a,
+      duration: played[i].find((n) => n.token === a.atom)?.duration ?? 1
+    }))
+  );
+  const rests = restSpansByColumn(src, perBar2, bars);
+  const model = {
+    steps: perBar2 * bars,
+    ...bars > 1 ? { bars } : {},
+    lanes: lanesFromCells(
+      cols.map((col) => col.map((a) => ({ token: a.atom, duration: a.duration })))
+    ),
+    leafSource: { src, cols, attachedSteps: perBar2 * bars, ...rests ? { rests } : {} }
+  };
+  if (!leafEditSafe(model, perBar2, bars)) return no("edit-unsafe");
+  if (!leafViewUsable(model)) return no("view-unusable");
+  return { ok: true, model };
+}
+__name(projectStepGridByLeaf, "projectStepGridByLeaf");
+function leafViewUsable(model) {
+  for (let c = 0; c < model.steps; c++) {
+    const on = model.lanes.find((l) => isCellOn(l.cells[c]));
+    if (!on) continue;
+    const lanes = model.lanes.map(
+      (l) => l === on ? { ...l, cells: l.cells.map((v, j) => j === c ? false : v) } : l
+    );
+    if (serializeStepGrid({ ...model, lanes }) !== null) return true;
+  }
+  return false;
+}
+__name(leafViewUsable, "leafViewUsable");
+function claimLeafSpan(src, span, token, seen, fold2 = false) {
+  const no2 = { ok: false, gate: "no-leaf-anchor" };
+  if (!span) return no2;
+  const bytes = src.slice(span.start, span.end);
+  const isOwn = fold2 ? bytes.toLowerCase() === token.toLowerCase() : bytes === token;
+  if (!isOwn) return no2;
+  for (const s of seen) {
+    const identical = s.start === span.start && s.end === span.end;
+    if (!identical && s.end > span.start && span.end > s.start) return no2;
+  }
+  seen.push(span);
+  return { ok: true, span };
+}
+__name(claimLeafSpan, "claimLeafSpan");
+function leafAnchors(src, perCycle, perBar2, bars) {
+  const cols = Array.from({ length: perBar2 * bars }, () => []);
+  const seen = [];
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const c = b * perBar2 + Math.round(o.pos * perBar2);
+      if (c < 0 || c >= perBar2 * bars) return { ok: false, gate: "note-crosses-bar" };
+      for (let i = 0; i < o.atoms.length; i++) {
+        const claim = claimLeafSpan(src, o.spans[i], o.atoms[i], seen);
+        if (!claim.ok) return claim;
+        cols[c].push({ atom: o.atoms[i], span: claim.span });
+      }
+    }
+  }
+  return { ok: true, cols };
+}
+__name(leafAnchors, "leafAnchors");
+function leafEditSafe(model, perBar2, bars) {
+  const ls = model.leafSource;
+  if (!ls) return false;
+  const probes = /* @__PURE__ */ new Map();
+  for (const col of ls.cols) {
+    for (const a of col) probes.set(`${a.span.start}:${a.span.end}`, a);
+  }
+  for (const anchor of probes.values()) {
+    for (const text of [PROBE_SOUND, "~"]) {
+      const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }]);
+      let edited;
+      try {
+        edited = mini(out);
+      } catch {
+        return false;
+      }
+      const want = leafExpected(ls.cols, perBar2, bars, anchor.span, text === "~" ? null : text);
+      for (let b = 0; b < bars; b++) {
+        const got = gridOnsets(edited, b);
+        if (got === null || onsetKey(got) !== onsetKey(want[b])) return false;
+      }
+      const wrap = gridOnsets(edited, bars);
+      if (wrap === null || onsetKey(wrap) !== onsetKey(want[0])) return false;
+    }
+  }
+  return true;
+}
+__name(leafEditSafe, "leafEditSafe");
+function leafExpected(cols, perBar2, bars, span, text) {
+  const out = [];
+  for (let b = 0; b < bars; b++) {
+    const bar2 = [];
+    for (let i = 0; i < perBar2; i++) {
+      const atoms = /* @__PURE__ */ new Set();
+      for (const a of cols[b * perBar2 + i]) {
+        const hit = a.span.start === span.start && a.span.end === span.end;
+        if (hit && text === null) continue;
+        atoms.add(hit ? text : a.atom);
+      }
+      if (atoms.size > 0) {
+        const occ = [...atoms].map((a) => ({ token: a, span: null, dur: null }));
+        bar2.push({ pos: i / perBar2, occ, ...deriveColumn(occ) });
+      }
+    }
+    out.push(bar2);
+  }
+  return out;
+}
+__name(leafExpected, "leafExpected");
+function overlayWidth(model) {
+  return model.barSteps ? model.barSteps.length * lcmOf(model.barSteps) : documentSteps(model);
+}
+__name(overlayWidth, "overlayWidth");
+function withSurgery(mini, r) {
+  if (!r.ok) return r;
+  return {
+    ok: true,
+    model: { ...r.model, surgical: lazyGridLeaf(mini, overlayWidth(r.model)) }
+  };
+}
+__name(withSurgery, "withSurgery");
+function lazyGridLeaf(mini, attachedSteps) {
+  let computed = false;
+  let spans;
+  return {
+    attachedSteps,
+    spans: /* @__PURE__ */ __name(() => {
+      if (!computed) {
+        computed = true;
+        const leaf = projectStepGridByLeaf(mini);
+        spans = leaf.ok && leaf.model.leafSource ? { ...leaf.model.leafSource, attachedSteps } : void 0;
+      }
+      return spans;
+    }, "spans")
+  };
+}
+__name(lazyGridLeaf, "lazyGridLeaf");
+function vacuousLocality(a) {
+  if (!a || a.bars <= 1 || a.regions.length !== 1) return false;
+  return a.regions[0].from === 0 && a.regions[0].to === a.perBar;
+}
+__name(vacuousLocality, "vacuousLocality");
+function projectStepGridDerived(mini, fallbackReason, viewScale = UNREFINED) {
+  const owner = projectStepGrid(mini);
+  const asOwner = /* @__PURE__ */ __name((ok) => {
+    if (viewScale === UNREFINED) return ok;
+    const scaled2 = projectStepGrid(mini, viewScale);
+    return scaled2.ok ? scaled2 : refused("grid", fallbackReason, scaled2.gate, mini);
+  }, "asOwner");
+  if (owner.ok && !vacuousLocality(owner.model.altSource)) return withSurgery(mini, asOwner(owner));
+  const leaf = projectStepGridByLeaf(mini);
+  if (leaf.ok) return leaf;
+  if (owner.ok) return asOwner(owner);
+  return refused("grid", fallbackReason, leaf.gate, mini);
+}
+__name(projectStepGridDerived, "projectStepGridDerived");
+function parseStepGrid(mini, viewScale = UNREFINED) {
+  const owner = parseStepGridCore(mini);
+  if (viewScale === UNREFINED) {
+    return owner.ok ? withSurgery(mini, owner) : projectStepGridDerived(mini, owner, UNREFINED);
+  }
+  const result = owner.ok ? withSurgery(mini, parseStepGridCore(mini, viewScale)) : projectStepGridDerived(mini, owner, viewScale);
+  return honoursViewScale(result, viewScale, "grid");
+}
+__name(parseStepGrid, "parseStepGrid");
+function honoursViewScale(result, viewScale, surface) {
+  if (!result.ok || viewScale === UNREFINED) return result;
+  if ((result.model.viewScale ?? UNREFINED) === viewScale) return result;
+  return { ok: false, reason: gateReason("no-finer-view", surface), gate: "no-finer-view" };
+}
+__name(honoursViewScale, "honoursViewScale");
+function parseStepGridCore(mini, viewScale = UNREFINED) {
+  const alt = unwrapAlternation(mini);
+  if (alt !== null) return gridFromAlternation(alt, viewScale);
+  const parts = splitTopLevel(mini);
+  if (parts.length > 1) return gridFromStack(parts, viewScale);
+  const altEl = gridFromAltElements(mini, viewScale);
+  if (altEl !== null) return altEl;
+  const tok = tokenize(mini);
+  if (!tok.ok) return tok;
+  if (gridHasElongation(tok.steps)) {
+    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+  }
+  const documentDiv = division(tok.steps);
+  const documentCols = tok.steps.length * documentDiv;
+  if (documentCols > MAX_STEPS) {
+    return { ok: false, reason: `sub-sequences expand the grid past ${MAX_STEPS} steps` };
+  }
+  if (!viewScaleFits(documentCols, 1, viewScale)) {
+    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
+  }
+  const div = documentDiv * viewScale;
+  const cells = toCells(tok.steps, div);
+  const src = mini.trim();
+  const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)));
+  return {
+    ok: true,
+    model: {
+      steps: cells.length,
+      ...viewScale === UNREFINED ? {} : { viewScale },
+      lanes: lanesFromCells(cells),
+      ...sourceParts ? { source: { prefix: "", suffix: "", parts: sourceParts } } : {}
+    }
+  };
+}
+__name(parseStepGridCore, "parseStepGridCore");
+function gridFromAlternation(inner, viewScale = UNREFINED) {
+  const tok = tokenize(inner);
+  if (!tok.ok) return tok;
+  if (tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
+  if (gridHasElongation(tok.steps)) {
+    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
+  }
+  const documentDiv = division(tok.steps);
+  const perBar2 = perBarLayout(tok.steps.map(stepUnits));
+  const layout = viewScale === UNREFINED ? perBar2 : null;
+  const tooWide = layout ? layout.some((n) => n > MAX_STEPS) || tok.steps.length * documentDiv > MAX_SHARED_STEPS : tok.steps.length * documentDiv > MAX_STEPS;
+  if (tooWide) {
+    if (perBar2 && !layout) {
+      return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
+    }
+    return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` };
+  }
+  if (!layout && !viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
+    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
+  }
+  const div = documentDiv * viewScale;
+  const cells = toCells(tok.steps, div);
+  const src = inner.trim();
+  const parts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)));
+  const model = {
+    steps: cells.length,
+    bars: tok.steps.length,
+    ...viewScale === UNREFINED ? {} : { viewScale },
+    lanes: lanesFromCells(cells),
+    ...parts ? {
+      source: {
+        parts,
+        prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
+        suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
+      }
+    } : {}
+  };
+  if (!layout) return { ok: true, model };
+  const drawn = toDrawnGrid(model, layout);
+  if (drawn) return { ok: true, model: drawn };
+  return cells.length > MAX_STEPS ? { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` } : { ok: true, model };
+}
+__name(gridFromAlternation, "gridFromAlternation");
+function gridFromStack(parts, viewScale = UNREFINED) {
+  const partCells = [];
+  const divs = [];
+  const elements = [];
+  const given = [];
+  const partBars = [];
+  const wraps = [];
+  let documentTotal = 1;
+  for (const part of parts) {
+    if (part.trim() === "") return { ok: false, reason: "empty stack part" };
+    const tok = tokenize(part);
+    const flatRefusal = !tok.ok ? tok : gridHasElongation(tok.steps) ? { ok: false, reason: "elongation is beyond the drum-grid subset" } : null;
+    if (flatRefusal || !tok.ok) {
+      const lone = loneGridPart(part.trim(), viewScale);
+      if (!lone) {
+        if (viewScale !== UNREFINED && loneGridPart(part.trim(), UNREFINED)) {
+          return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
+        }
+        return flatRefusal ?? { ok: false, reason: "unsupported mini-notation syntax" };
+      }
+      documentTotal = lcm(documentTotal, lone.steps / viewScale);
+      divs.push(lone.div);
+      elements.push([]);
+      partCells.push(lone.cells);
+      given.push(lone.regions);
+      partBars.push(lone.bars);
+      wraps.push({ prefix: lone.prefix, suffix: lone.suffix });
+      continue;
+    }
+    given.push(null);
+    partBars.push(1);
+    wraps.push({ prefix: "", suffix: "" });
+    const documentDiv = division(tok.steps);
+    documentTotal = lcm(documentTotal, tok.steps.length * documentDiv || 1);
+    const div = documentDiv * viewScale;
+    divs.push(div);
+    elements.push(tok.elements);
+    partCells.push(toCells(tok.steps, div));
+  }
+  if (partBars.some((b) => b > 1)) {
+    return gridFromBarStack(parts, viewScale, { partCells, partBars, divs, elements, given, wraps });
+  }
+  if (documentTotal > MAX_STEPS) {
+    return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` };
+  }
+  if (!viewScaleFits(documentTotal, 1, viewScale)) {
+    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
+  }
+  const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1);
+  const lanes = [];
+  partCells.forEach((cells, part) => {
+    const factor = total / (cells.length || 1);
+    const stretched = Array.from(
+      { length: total },
+      (_, c) => c % factor === 0 ? (cells[c / factor] ?? []).map((n) => ({ ...n, duration: n.duration * factor })) : []
+    );
+    lanes.push(...lanesFromCells(stretched, part));
+  });
+  return {
+    ok: true,
+    model: {
+      steps: total,
+      ...viewScale === UNREFINED ? {} : { viewScale },
+      lanes,
+      ...stackSource(parts, divs, elements, partCells, total, given) ?? {}
+    }
+  };
+}
+__name(gridFromStack, "gridFromStack");
+function gridFromBarStack(parts, viewScale, read5) {
+  const { partCells, partBars, divs, elements, given, wraps } = read5;
+  const bars = partBars.reduce((l, b) => lcm(l, b), 1);
+  if (bars > MAX_PROJECT_BARS) {
+    return { ok: false, reason: `the stack does not repeat within ${MAX_PROJECT_BARS} bars` };
+  }
+  const perBar2 = partCells.map((cells, i) => cells.length / partBars[i]);
+  if (perBar2.some((n) => !Number.isInteger(n) || n < 1)) {
+    return { ok: false, reason: "a part does not split into whole bars" };
+  }
+  const width = perBar2.reduce((l, n) => lcm(l, n), 1);
+  const total = bars * width;
+  if (total / viewScale > MAX_STEPS) {
+    return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` };
+  }
+  if (!viewScaleFits(width / viewScale, bars, viewScale)) {
+    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
+  }
+  const lanes = [];
+  const factors = perBar2.map((n) => width / n);
+  partCells.forEach((cells, part) => {
+    const factor = factors[part];
+    const shown = Array.from({ length: total }, (_, c) => {
+      const within2 = c % width;
+      if (within2 % factor !== 0) return [];
+      const own = Math.floor(c / width) % partBars[part] * perBar2[part] + within2 / factor;
+      return (cells[own] ?? []).map((n) => ({ ...n, duration: n.duration * factor }));
+    });
+    lanes.push(...lanesFromCells(shown, part));
+  });
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const raw = parts[i];
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const regions = given[i] ?? buildRegions(raw.trim(), elements[i], divs[i], partCells[i].length, gridContent(tokensOf(partCells[i])));
+    if (!regions) return { ok: false, reason: "a stack part could not be tiled" };
+    out.push({
+      part: i,
+      div: divs[i],
+      factor: factors[i],
+      bars: partBars[i],
+      before: (i > 0 ? "," : "") + leading + wraps[i].prefix,
+      after: wraps[i].suffix + after,
+      regions
+    });
+  }
+  const model = {
+    steps: total,
+    bars,
+    ...viewScale === UNREFINED ? {} : { viewScale },
+    lanes
+  };
+  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
+  if (rebuilt !== parts.join(",")) return { ok: false, reason: "a stack part could not be tiled" };
+  return { ok: true, model: { ...model, source: { prefix: "", suffix: "", parts: out } } };
+}
+__name(gridFromBarStack, "gridFromBarStack");
+function loneGridPart(part, viewScale) {
+  const r = parseStepGrid(part, viewScale);
+  if (!r.ok) return null;
+  const m = r.model;
+  const src = m.source;
+  if (!src || src.parts.length !== 1) return null;
+  if (m.altSource || m.barSteps || (m.viewScale ?? UNREFINED) !== viewScale) return null;
+  const bars = m.bars ?? 1;
+  const wrapped = bars > 1 && src.prefix.startsWith("<") && src.suffix.endsWith(">");
+  if (!wrapped && (bars !== 1 || src.prefix !== "" || src.suffix !== "")) return null;
+  if (m.steps % bars !== 0) return null;
+  const cells = Array.from(
+    { length: m.steps },
+    (_, c) => m.lanes.flatMap((l) => {
+      const cell = l.cells[c];
+      return isCellOn(cell) ? [{ token: l.sound, duration: cell.duration }] : [];
+    })
+  );
+  return {
+    steps: m.steps,
+    div: src.parts[0].div,
+    cells,
+    regions: src.parts[0].regions,
+    bars,
+    prefix: src.prefix,
+    suffix: src.suffix
+  };
+}
+__name(loneGridPart, "loneGridPart");
+function stackSource(parts, divs, elements, partCells, total, given = []) {
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const raw = parts[i];
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const regions = given[i] ?? buildRegions(
+      raw.trim(),
+      elements[i],
+      divs[i],
+      partCells[i].length,
+      gridContent(tokensOf(partCells[i]))
+    );
+    if (!regions) return null;
+    out.push({
+      part: i,
+      div: divs[i],
+      factor: total / (partCells[i].length || 1),
+      before: (i > 0 ? "," : "") + leading,
+      after,
+      regions
+    });
+  }
+  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
+  if (rebuilt !== parts.join(",")) return null;
+  return { source: { prefix: "", suffix: "", parts: out } };
+}
+__name(stackSource, "stackSource");
+var GAIN_TOKEN = /^\d+(\.\d+)?$/;
+function parseGainMini(mini, count) {
+  const tokens = mini.trim().split(/\s+/).filter((t) => t !== "");
+  if (tokens.length !== count) return null;
+  const out = [];
+  for (const t of tokens) {
+    if (t === "~") {
+      out.push(1);
+      continue;
+    }
+    if (!GAIN_TOKEN.test(t)) return null;
+    out.push(parseFloat(t));
+  }
+  return out;
+}
+__name(parseGainMini, "parseGainMini");
+function applyStepGain(model, gain) {
+  if (gain.foreign) return { ...model, gainForeign: true };
+  if (gain.numeric !== null) {
+    return gain.numeric === 1 ? model : { ...model, gains: Array(model.steps).fill(gain.numeric) };
+  }
+  if (gain.mini === null) return model;
+  const docSteps = documentSteps(model);
+  const docGains = parseGainMini(gain.mini, docSteps);
+  if (docGains === null) return { ...model, gainForeign: true };
+  const k = model.steps / docSteps;
+  const gains = k === 1 ? docGains : docGains.flatMap((g) => [g, ...Array(k - 1).fill(1)]);
+  return { ...model, gains };
+}
+__name(applyStepGain, "applyStepGain");
+function applyRollGain(model, gain) {
+  if (gain.foreign) return { ...model, gainForeign: true };
+  if (gain.numeric !== null) {
+    return gain.numeric === 1 ? model : { ...model, notes: model.notes.map((n) => ({ ...n, gain: gain.numeric })) };
+  }
+  if (gain.mini === null) return model;
+  let mini = gain.mini;
+  if (model.bars != null) {
+    const inner = model.steps === model.bars ? unwrapAlternation(mini) : null;
+    if (inner === null) return { ...model, gainForeign: true };
+    mini = inner;
+  }
+  const byStart = /* @__PURE__ */ new Map();
+  const k = model.steps / documentSteps(model);
+  let col = 0;
+  for (const t of mini.trim().split(/\s+/).filter((s) => s !== "")) {
+    if (t === "~") {
+      col += k;
+      continue;
+    }
+    const m = t.match(/^(\d+(?:\.\d+)?)(?:@(\d+))?$/);
+    if (!m) return { ...model, gainForeign: true };
+    byStart.set(col, parseFloat(m[1]));
+    col += (m[2] ? parseInt(m[2], 10) : 1) * k;
+  }
+  if (col !== model.steps) return { ...model, gainForeign: true };
+  const noteStarts = new Set(model.notes.map((n) => n.start));
+  for (const [c, v] of byStart) {
+    if (v !== 1 && !noteStarts.has(c)) return { ...model, gainForeign: true };
+  }
+  return {
+    ...model,
+    notes: model.notes.map((n) => {
+      const v = byStart.get(n.start);
+      return v != null && v !== 1 ? { ...n, gain: v } : n;
+    })
+  };
+}
+__name(applyRollGain, "applyRollGain");
+function rollFromAltElements(mini, viewScale = UNREFINED) {
+  const exp = expandAltElements(mini, true);
+  if (exp === null) return null;
+  if ("reason" in exp) return { ok: false, reason: exp.reason };
+  const { bars, div: documentDiv, perBarCols: documentPerBarCols, perBarSteps, elemSpans } = exp;
+  if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
+    return { ok: false, reason: gateReason("view-resolution", "roll"), gate: "view-resolution" };
+  }
+  const div = documentDiv * viewScale;
+  const perBarCols = documentPerBarCols * viewScale;
+  const notes = [];
+  let col = 0;
+  let sawNumeric = false;
+  let sawNamed = false;
+  for (const barSteps of perBarSteps) {
+    for (const step of barSteps) {
+      const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+      const total = stepUnits(step);
+      for (const slot of slots) {
+        const span = step.elongation * div * slot.units / total;
+        for (const token of slot.atoms) {
+          const isNum = /^-?\d+$/.test(token);
+          if (!isNum && pitchToMidi(token) === null) {
+            return { ok: false, reason: `"${token}" is not a note name` };
+          }
+          if (isNum) sawNumeric = true;
+          else sawNamed = true;
+          notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span });
+        }
+        col += span;
+      }
+    }
+  }
+  if (sawNumeric && sawNamed) {
+    return { ok: false, reason: "mixed numeric and note-name tokens are beyond the editable subset" };
+  }
+  const src = mini.trim();
+  const regions = buildAltRegions(src, elemSpans, div, perBarCols, (from, to) => {
+    const perBar2 = [];
+    for (let b = 0; b < bars; b++) {
+      const lo = from + b * perBarCols;
+      const hi = to + b * perBarCols;
+      perBar2.push(
+        notes.filter((n) => n.start >= lo && n.start < hi).map((n) => ({ pitch: n.pitch, start: n.start - b * perBarCols, duration: n.duration }))
+      );
+    }
+    return perBar2;
+  });
+  if (!regions) return { ok: false, reason: "unsupported mini-notation syntax" };
+  return {
+    ok: true,
+    model: {
+      steps: col,
+      bars,
+      notes,
+      ...sawNumeric ? { numeric: true } : {},
+      ...viewScale === UNREFINED ? {} : { viewScale },
+      altSource: { perBar: perBarCols, bars, div, regions }
+    }
+  };
+}
+__name(rollFromAltElements, "rollFromAltElements");
+function rollOnsets(pat, cyc) {
+  const r = readRollOnsets(pat, cyc);
+  return r.ok ? r.onsets : null;
+}
+__name(rollOnsets, "rollOnsets");
+function readRollOnsets(pat, cyc) {
+  let haps;
+  try {
+    haps = pat.queryArc(cyc, cyc + 1);
+  } catch {
+    return no("no-note-content");
+  }
+  const out = [];
+  for (const h of haps) {
+    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
+    const v = h.value;
+    let pitch;
+    let numeric;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      pitch = String(v);
+      numeric = true;
+    } else {
+      const s = typeof v === "string" ? v : Array.isArray(v) ? tailToken(v) : null;
+      if (s === null) return no("no-note-content");
+      if (NUMERIC.test(s)) {
+        pitch = s;
+        numeric = true;
+      } else if (pitchToMidi(s.toLowerCase()) !== null) {
+        pitch = s.toLowerCase();
+        numeric = false;
+      } else return no("wrong-surface");
+    }
+    const pos = h.whole.begin.valueOf() - cyc;
+    const dur = h.whole.end.valueOf() - h.whole.begin.valueOf();
+    if (dur <= 0) return no("no-note-content");
+    out.push({ pos, dur, pitch, numeric, loc: leafLoc(h) });
+  }
+  return { ok: true, onsets: out };
+}
+__name(readRollOnsets, "readRollOnsets");
+var rollKey = /* @__PURE__ */ __name((o) => JSON.stringify(
+  o.map((x) => [Math.round(x.pos * ONSET_GRID), Math.round(x.dur * ONSET_GRID), x.pitch]).sort()
+), "rollKey");
+var PROBE_NOTE = "c9";
+var PROBE_NUM = "999";
+function projectionRollEditSafe(model, perBar2, bars, numeric, probes) {
+  const probePitch = numeric ? PROBE_NUM : PROBE_NOTE;
+  for (const { from, to } of probes) {
+    const idx = model.notes.findIndex((n) => n.start >= from && n.start < to);
+    if (idx < 0) continue;
+    const edited = {
+      ...model,
+      notes: model.notes.map((n, i) => i === idx ? { ...n, pitch: probePitch } : n)
+    };
+    const out = serializePianoRoll(edited);
+    if (out == null) return false;
+    let pat;
+    try {
+      pat = mini(out);
+    } catch {
+      return false;
+    }
+    for (let bb = 0; bb < bars; bb++) {
+      const got = rollOnsets(pat, bb);
+      if (got === null) return false;
+      const expected = edited.notes.filter((n) => n.start >= bb * perBar2 && n.start < (bb + 1) * perBar2).map((n) => ({
+        pos: (n.start - bb * perBar2) / perBar2,
+        dur: n.duration / perBar2,
+        pitch: n.pitch
+      }));
+      if (rollKey(got) !== rollKey(expected)) return false;
+    }
+    const wrap = rollOnsets(pat, bars);
+    if (wrap === null) return false;
+    const wrap0 = edited.notes.filter((n) => n.start < perBar2).map((n) => ({ pos: n.start / perBar2, dur: n.duration / perBar2, pitch: n.pitch }));
+    if (rollKey(wrap) !== rollKey(wrap0)) return false;
+  }
+  return true;
+}
+__name(projectionRollEditSafe, "projectionRollEditSafe");
+function projectPianoRoll(src0, viewScale = UNREFINED) {
+  const src = src0.trim();
+  if (src === "") return no("not-a-pattern");
+  let pat;
+  try {
+    pat = mini(src);
+  } catch {
+    return no("not-a-pattern");
+  }
+  const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null;
+  if (isWholeAlternation(src) && whole === null) return no("element-tiling");
+  const cycles = [];
+  for (let c = 0; c < PERIOD_PROBE; c++) {
+    const cc = readRollOnsets(pat, c);
+    if (!cc.ok) return cc;
+    cycles.push(cc.onsets);
+  }
+  const bars = detectPeriod2(cycles.map(rollKey), MAX_PROJECT_BARS);
+  if (bars === 0) return no("unstable-period");
+  const perCycle = cycles.slice(0, bars);
+  const all = perCycle.flat();
+  if (all.length === 0) return no("no-note-content");
+  const numeric = all.some((o) => o.numeric);
+  if (numeric && all.some((o) => !o.numeric)) return no("mixed-pitch-domain");
+  if (whole !== null) {
+    return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric, viewScale) : no("element-tiling");
+  }
+  const spans = topLevelSpans(src);
+  if (!spans) return no("element-tiling");
+  const totalWeight = spans.reduce((s, e) => s + e.weight, 0);
+  const bounds = [];
+  let accW = 0;
+  for (const e of spans) {
+    bounds.push(accW / totalWeight);
+    accW += e.weight;
+  }
+  let documentPerBar = 1;
+  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur), ...bounds]) {
+    const d = denom(x);
+    if (d === 0) return no("irrational-onset");
+    documentPerBar = lcm(documentPerBar, d);
+  }
+  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
+  const perBar2 = documentPerBar * viewScale;
+  if (perBar2 % totalWeight !== 0) return no("element-tiling");
+  const divPerUnit = perBar2 / totalWeight;
+  const notes = barNotes(perCycle, perBar2);
+  if (notes === null) return no("element-tiling");
+  if (bars === 1) {
+    const parts = singlePart(src, spans, divPerUnit, perBar2, rollContent(notes));
+    if (!parts) return no("element-tiling");
+    const model2 = {
+      steps: perBar2,
+      ...viewScale === UNREFINED ? {} : { viewScale },
+      notes,
+      ...numeric ? { numeric: true } : {},
+      source: { prefix: "", suffix: "", parts }
+    };
+    const probes0 = parts[0].regions.map((r) => ({ from: r.from, to: r.to }));
+    if (!projectionRollEditSafe(model2, perBar2, 1, numeric, probes0)) return no("edit-unsafe");
+    return { ok: true, model: model2 };
+  }
+  const regions = buildAltRegions(
+    src,
+    spans,
+    divPerUnit,
+    perBar2,
+    (from, to) => Array.from(
+      { length: bars },
+      (_, b) => notes.filter((n) => n.start >= from + b * perBar2 && n.start < to + b * perBar2).map((n) => ({ pitch: n.pitch, start: n.start - b * perBar2, duration: n.duration }))
+    )
+  );
+  if (!regions) return no("element-tiling");
+  const model = {
+    steps: perBar2 * bars,
+    bars,
+    ...viewScale === UNREFINED ? {} : { viewScale },
+    notes,
+    ...numeric ? { numeric: true } : {},
+    altSource: { perBar: perBar2, bars, div: divPerUnit, regions }
+  };
+  const probes = regions.flatMap(
+    (r) => Array.from({ length: bars }, (_, b) => ({
+      from: b * perBar2 + r.from,
+      to: b * perBar2 + r.to
+    }))
+  );
+  if (!projectionRollEditSafe(model, perBar2, bars, numeric, probes)) return no("edit-unsafe");
+  return { ok: true, model };
+}
+__name(projectPianoRoll, "projectPianoRoll");
+function barNotes(perCycle, perBar2) {
+  const notes = [];
+  for (let b = 0; b < perCycle.length; b++) {
+    for (const o of perCycle[b]) {
+      const start = Math.round(o.pos * perBar2);
+      const duration = Math.round(o.dur * perBar2);
+      if (start < 0 || duration < 1 || start + duration > perBar2) return null;
+      notes.push({ pitch: o.pitch, start: b * perBar2 + start, duration });
+    }
+  }
+  return notes;
+}
+__name(barNotes, "barNotes");
+function projectAltRollBars(src, inner, perCycle, numeric, viewScale = UNREFINED) {
+  const bars = perCycle.length;
+  const innerSrc = inner.trim();
+  const spans = topLevelSpans(innerSrc);
+  if (!spans) return no("element-tiling");
+  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no("element-tiling");
+  const all = perCycle.flat();
+  let documentPerBar = 1;
+  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
+    const d = denom(x);
+    if (d === 0) return no("irrational-onset");
+    documentPerBar = lcm(documentPerBar, d);
+  }
+  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
+  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
+  const perBar2 = documentPerBar * viewScale;
+  const notes = barNotes(perCycle, perBar2);
+  if (notes === null) return no("element-tiling");
+  const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, rollContent(notes));
+  if (!parts) return no("element-tiling");
+  const model = {
+    steps: perBar2 * bars,
+    bars,
+    notes,
+    ...numeric ? { numeric: true } : {},
+    ...viewScale === UNREFINED ? {} : { viewScale },
+    source: {
+      parts,
+      prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
+      suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
+    }
+  };
+  const probes = parts[0].regions.map((r) => ({ from: r.from, to: r.to }));
+  if (!projectionRollEditSafe(model, perBar2, bars, numeric, probes)) return no("edit-unsafe");
+  if (serializePianoRoll(model) !== src.trim()) return no("edit-unsafe");
+  return { ok: true, model };
+}
+__name(projectAltRollBars, "projectAltRollBars");
+function projectPianoRollByLeaf(src0) {
+  const src = src0.trim();
+  if (src === "") return no("not-a-pattern");
+  let pat;
+  try {
+    pat = mini(src);
+  } catch {
+    return no("not-a-pattern");
+  }
+  const cycles = [];
+  for (let c = 0; c < PERIOD_PROBE; c++) {
+    const cc = readRollOnsets(pat, c);
+    if (!cc.ok) return cc;
+    cycles.push(cc.onsets);
+  }
+  const bars = detectPeriod2(cycles.map(rollKey), LEAF_PROJECT_BARS.roll);
+  if (bars === 0) return no("unstable-period");
+  const perCycle = cycles.slice(0, bars);
+  const all = perCycle.flat();
+  if (all.length === 0) return no("no-note-content");
+  const numeric = all.some((o) => o.numeric);
+  if (numeric && all.some((o) => !o.numeric)) return no("mixed-pitch-domain");
+  let perBar2 = 1;
+  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
+    const d = denom(x);
+    if (d === 0) return no("irrational-onset");
+    perBar2 = lcm(perBar2, d);
+  }
+  if (perBar2 * bars > MAX_STEPS) return no("resolution");
+  const anchored = rollAnchors(src, perCycle, perBar2, bars);
+  if (!anchored.ok) return anchored;
+  const anchors = anchored.anchors;
+  const model = {
+    steps: perBar2 * bars,
+    ...bars > 1 ? { bars } : {},
+    // the notes ARE the anchors — one source of truth, so the view and the spans
+    // that write it back can never describe different music
+    notes: anchors.map((a) => ({ pitch: a.pitch, start: a.start, duration: a.duration })),
+    ...numeric ? { numeric: true } : {},
+    leafSource: { src, anchors, steps: perBar2 * bars, attachedSteps: perBar2 * bars }
+  };
+  if (!leafRollEditSafe(model, perBar2, bars, numeric)) return no("edit-unsafe");
+  if (!leafRollViewUsable(model)) return no("view-unusable");
+  return { ok: true, model };
+}
+__name(projectPianoRollByLeaf, "projectPianoRollByLeaf");
+function rollAnchors(src, perCycle, perBar2, bars) {
+  const out = [];
+  const seen = [];
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const start = Math.round(o.pos * perBar2);
+      const duration = Math.round(o.dur * perBar2);
+      if (start < 0 || duration < 1 || start + duration > perBar2) {
+        return { ok: false, gate: "note-crosses-bar" };
+      }
+      const claim = claimLeafSpan(src, o.loc, o.pitch, seen, true);
+      if (!claim.ok) return claim;
+      out.push({ pitch: o.pitch, start: b * perBar2 + start, duration, span: claim.span });
+    }
+  }
+  return { ok: true, anchors: out };
+}
+__name(rollAnchors, "rollAnchors");
+function leafRollEditSafe(model, perBar2, bars, numeric) {
+  const ls = model.leafSource;
+  if (!ls) return false;
+  const probePitch = numeric ? PROBE_NUM : PROBE_NOTE;
+  const probes = /* @__PURE__ */ new Map();
+  for (const a of ls.anchors) probes.set(`${a.span.start}:${a.span.end}`, a);
+  for (const anchor of probes.values()) {
+    for (const text of [probePitch, "~"]) {
+      const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }]);
+      let edited;
+      try {
+        edited = mini(out);
+      } catch {
+        return false;
+      }
+      const want = leafRollExpected(
+        ls.anchors,
+        perBar2,
+        bars,
+        anchor.span,
+        text === "~" ? null : text
+      );
+      for (let b = 0; b < bars; b++) {
+        const got = rollOnsets(edited, b);
+        if (got === null || rollKey(got) !== rollKey(want[b])) return false;
+      }
+      const wrap = rollOnsets(edited, bars);
+      if (wrap === null || rollKey(wrap) !== rollKey(want[0])) return false;
+    }
+  }
+  return true;
+}
+__name(leafRollEditSafe, "leafRollEditSafe");
+function leafRollExpected(anchors, perBar2, bars, span, text) {
+  const out = [];
+  for (let b = 0; b < bars; b++) out.push([]);
+  for (const a of anchors) {
+    const hit = a.span.start === span.start && a.span.end === span.end;
+    const pitch = hit ? text : a.pitch;
+    if (pitch === null) continue;
+    const b = Math.floor(a.start / perBar2);
+    if (b < 0 || b >= bars) continue;
+    out[b].push({
+      pos: (a.start - b * perBar2) / perBar2,
+      dur: a.duration / perBar2,
+      pitch
+    });
+  }
+  return out;
+}
+__name(leafRollExpected, "leafRollExpected");
+function leafRollViewUsable(model) {
+  for (const n of model.notes) {
+    if (serializePianoRoll({ ...model, notes: model.notes.filter((x) => x !== n) }) !== null) {
+      return true;
+    }
+  }
+  return false;
+}
+__name(leafRollViewUsable, "leafRollViewUsable");
+function withRollSurgery(mini, r) {
+  if (!r.ok) return r;
+  return {
+    ok: true,
+    model: { ...r.model, surgical: lazyRollLeaf(mini, overlayWidth(r.model)) }
+  };
+}
+__name(withRollSurgery, "withRollSurgery");
+function lazyRollLeaf(mini, attachedSteps) {
+  let computed = false;
+  let spans;
+  return {
+    attachedSteps,
+    spans: /* @__PURE__ */ __name(() => {
+      if (!computed) {
+        computed = true;
+        const leaf = projectPianoRollByLeaf(mini);
+        spans = leaf.ok && leaf.model.leafSource ? { ...leaf.model.leafSource, attachedSteps } : void 0;
+      }
+      return spans;
+    }, "spans")
+  };
+}
+__name(lazyRollLeaf, "lazyRollLeaf");
+function projectPianoRollDerived(mini, fallbackReason, viewScale = UNREFINED) {
+  const owner = projectPianoRoll(mini);
+  const asOwner = /* @__PURE__ */ __name((ok) => {
+    if (viewScale === UNREFINED) return ok;
+    const scaled2 = projectPianoRoll(mini, viewScale);
+    return scaled2.ok ? scaled2 : refused("roll", fallbackReason, scaled2.gate, mini);
+  }, "asOwner");
+  if (owner.ok) return withRollSurgery(mini, asOwner(owner));
+  const leaf = projectPianoRollByLeaf(mini);
+  if (leaf.ok) return leaf;
+  return refused("roll", fallbackReason, leaf.gate, mini);
+}
+__name(projectPianoRollDerived, "projectPianoRollDerived");
+function parsePianoRoll(mini, viewScale = UNREFINED) {
+  const owner = parsePianoRollCore(mini);
+  if (viewScale === UNREFINED) {
+    return owner.ok ? withRollSurgery(mini, owner) : projectPianoRollDerived(mini, owner, UNREFINED);
+  }
+  const result = owner.ok ? withRollSurgery(mini, parsePianoRollCore(mini, viewScale)) : projectPianoRollDerived(mini, owner, viewScale);
+  return honoursViewScale(result, viewScale, "roll");
+}
+__name(parsePianoRoll, "parsePianoRoll");
+function parsePianoRollCore(mini, viewScale = UNREFINED) {
+  const alt = unwrapAlternation(mini);
+  if (alt === null) {
+    const parts2 = splitTopLevel(mini);
+    if (parts2.length > 1) return parseRollLanes(parts2, viewScale);
+    const altEl = rollFromAltElements(mini, viewScale);
+    if (altEl !== null) return altEl;
+  }
+  const tok = tokenize(
+    alt ?? mini,
+    /* allowNumeric */
+    true
+  );
+  if (!tok.ok) return tok;
+  if (alt !== null && tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
+  const documentDiv = division(tok.steps);
+  const bars = tok.steps.reduce((b, s) => b + s.elongation, 0);
+  const perBar2 = alt !== null && tok.steps.every((st) => st.elongation === 1) ? perBarLayout(tok.steps.map(stepUnits)) : null;
+  const layout = viewScale === UNREFINED ? perBar2 : null;
+  const tooWide = layout ? layout.some((n) => n > MAX_STEPS) || bars * documentDiv > MAX_SHARED_STEPS : (documentDiv > 1 || alt !== null) && bars * documentDiv > MAX_STEPS;
+  if (tooWide) {
+    if (perBar2 && !layout) {
+      return { ok: false, reason: gateReason("view-resolution", "roll"), gate: "view-resolution" };
+    }
+    return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` };
+  }
+  if (!layout && !viewScaleFits(documentDiv, bars, viewScale)) {
+    return { ok: false, reason: gateReason("view-resolution", "roll"), gate: "view-resolution" };
+  }
+  const div = documentDiv * viewScale;
+  const notes = [];
+  let col = 0;
+  let sawNumeric = false;
+  let sawNamed = false;
+  for (const step of tok.steps) {
+    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
+    const total = stepUnits(step);
+    for (const slot of slots) {
+      const span = step.elongation * div * slot.units / total;
+      for (const token of slot.atoms) {
+        const isNum = /^-?\d+$/.test(token);
+        if (!isNum && pitchToMidi(token) === null) {
+          return { ok: false, reason: `"${token}" is not a note name` };
+        }
+        if (isNum) sawNumeric = true;
+        else sawNamed = true;
+        notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span });
+      }
+      col += span;
+    }
+  }
+  if (sawNumeric && sawNamed) {
+    return { ok: false, reason: "mixed numeric and note-name tokens are beyond the editable subset" };
+  }
+  const src = (alt ?? mini).trim();
+  const parts = singlePart(src, tok.elements, div, col, rollContent(notes));
+  const model = {
+    steps: col,
+    ...alt !== null ? { bars } : {},
+    ...viewScale === UNREFINED ? {} : { viewScale },
+    notes,
+    ...sawNumeric ? { numeric: true } : {},
+    ...parts ? {
+      source: {
+        parts,
+        prefix: alt !== null ? "<" + (/^\s*/.exec(alt)?.[0] ?? "") : "",
+        suffix: alt !== null ? (/\s*$/.exec(alt)?.[0] ?? "") + ">" : ""
+      }
+    } : {}
+  };
+  if (!layout) return { ok: true, model };
+  const drawn = toDrawnRoll(model, layout);
+  if (drawn) return { ok: true, model: drawn };
+  return col > MAX_STEPS ? { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` } : { ok: true, model };
+}
+__name(parsePianoRollCore, "parsePianoRollCore");
+function parseRollLanes(parts, viewScale = UNREFINED) {
+  let models = [];
+  for (const part of parts) {
+    let r = parsePianoRollCore(part.trim(), viewScale);
+    if (!r.ok) {
+      const lone = parsePianoRoll(part.trim(), viewScale);
+      const src = lone.ok ? lone.model.source : void 0;
+      const flat = lone.ok && !!src && src.parts.length === 1 && src.prefix === "" && src.suffix === "" && !lone.model.altSource && lone.model.bars == null && (lone.model.viewScale ?? UNREFINED) === viewScale;
+      if (!flat) return r;
+      r = lone;
+    }
+    if (r.model.bars != null) {
+      return { ok: false, reason: "multi-bar parallel note lanes are beyond the editable subset" };
+    }
+    models.push(r.model);
+  }
+  const widths = models.map((m) => m.steps / viewScale);
+  if (!widths.every((w) => w === widths[0])) {
+    if (!widths.every((w) => Number.isInteger(w))) {
+      return { ok: false, reason: "parallel note lanes must share a step grid" };
+    }
+    const documentTotal = widths.reduce((l, w) => lcm(l, Math.max(1, w)), 1);
+    if (documentTotal > MAX_STEPS) {
+      return { ok: false, reason: `the stack expands the roll past ${MAX_STEPS} steps` };
+    }
+    const shared = documentTotal * viewScale;
+    models = models.map((m) => scaleRoll(m, shared / m.steps));
+  }
+  const steps = models[0].steps;
+  const numeric = models.some((m) => m.numeric);
+  if (numeric && models.some((m) => !m.numeric && m.notes.length > 0)) {
+    return { ok: false, reason: "mixed numeric and note-name lanes are beyond the editable subset" };
+  }
+  const notes = models.flatMap((m) => m.notes);
+  return {
+    ok: true,
+    model: {
+      steps,
+      ...viewScale === UNREFINED ? {} : { viewScale },
+      notes,
+      ...numeric ? { numeric: true } : {},
+      ...rollStackSource(parts, models) ?? {}
+    }
+  };
+}
+__name(parseRollLanes, "parseRollLanes");
+function scaleRoll(m, f) {
+  if (f === 1) return m;
+  const note = /* @__PURE__ */ __name((n) => ({ ...n, start: n.start * f, duration: n.duration * f }), "note");
+  return {
+    ...m,
+    steps: m.steps * f,
+    notes: m.notes.map(note),
+    ...m.source ? {
+      source: {
+        ...m.source,
+        parts: m.source.parts.map((p) => ({
+          ...p,
+          div: p.div * f,
+          regions: p.regions.map((r) => ({ ...r, from: r.from * f, to: r.to * f, content: r.content.map(note) }))
+        }))
+      }
+    } : {}
+  };
+}
+__name(scaleRoll, "scaleRoll");
+function rollStackSource(parts, models) {
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const raw = parts[i];
+    const leading = /^\s*/.exec(raw)?.[0] ?? "";
+    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
+    const own = models[i].source;
+    if (!own || own.parts.length !== 1 || own.prefix !== "" || own.suffix !== "") return null;
+    out.push({
+      part: i,
+      div: own.parts[0].div,
+      factor: 1,
+      before: (i > 0 ? "," : "") + leading,
+      after,
+      regions: own.parts[0].regions
+    });
+  }
+  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
+  if (rebuilt !== parts.join(",")) return null;
+  return { source: { prefix: "", suffix: "", parts: out } };
+}
+__name(rollStackSource, "rollStackSource");
+
+// src/codeView/notation/place.ts
+function viewPlacesNotes(model) {
+  let asked = 0;
+  if ("lanes" in model) {
+    for (let lane = 0; lane < model.lanes.length; lane++)
+      for (let col = 0; col < model.steps; col++) {
+        if (isCellOn(model.lanes[lane].cells[col])) continue;
+        asked++;
+        if (canToggleCell(model, lane, col, true)) return true;
+      }
+    return asked === 0;
+  }
+  const pitches = new Set(model.notes.map((n) => n.pitch));
+  if (model.notes.some((n) => pitchToMidi(n.pitch) !== null)) {
+    const below = rollContentRange(model).lo;
+    pitches.add(model.numeric ? String(below) : midiToPitch(below));
+  }
+  for (const pitch of pitches)
+    for (let step = 0; step < model.steps; step++) {
+      if (model.notes.some((n) => n.pitch === pitch && n.start === step)) continue;
+      asked++;
+      if (canPlaceNote(model, pitch, step, 1)) return true;
+    }
+  return asked === 0;
+}
+__name(viewPlacesNotes, "viewPlacesNotes");
+var paint = /* @__PURE__ */ __name((value, length = 1) => value ? cellOn(length) : false, "paint");
+function toggleCell(model, laneIndex, stepIndex, value, length = 1) {
+  const painted = model.lanes.map(
+    (lane, i) => i === laneIndex ? {
+      ...lane,
+      // CLAMPED, because a promise about lengths is a promise about ROOM
+      // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
+      // still sounding through shortens that note — the room it had is gone.
+      // Without this the model keeps a length that reaches past the new hit,
+      // which is notation nothing can spell, and the writer rightly declines
+      // an edit the user plainly made. The resize and quantize ops already
+      // clamp for exactly this reason; paint is the third op that moves
+      // onsets closer together, and it was the one still missing it.
+      cells: clampLane(
+        lane.cells.map((c, j) => j === stepIndex ? paint(value, length) : c),
+        model.steps
+      )
+    } : lane
+  );
+  const lanes = value ? clampPartAtOnset(painted, model.lanes[laneIndex]?.part ?? 0, stepIndex) : painted;
+  return ifGridSpellable(model, { ...model, lanes });
+}
+__name(toggleCell, "toggleCell");
+function placeNote(model, pitch, start, duration, opts = {}) {
+  const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
+  const at = model.notes.filter((n) => n.start === start);
+  const shared = at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null;
+  if (shared !== null) {
+    return accept({
+      ...model,
+      notes: [...model.notes, { pitch, start, duration: shared }]
+    });
+  }
+  const capAt = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
+    ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
+    model.steps
+  ), "capAt");
+  const nextStart = capAt(false);
+  const notes = model.notes.map(
+    (n) => (
+      // "does this note reach into this column?" is `columnOverlap`'s question, and this file
+      // had been answering it with an inline twin. `model.ts` records what happened the last
+      // time that predicate lived in two places: two thresholds a hundred lines apart. The
+      // `n.start < start` conjunct stays because it asks something DIFFERENT — a note
+      // starting exactly here is the chord-join case handled above, not something to trim.
+      // What the shared rule adds is the sliver threshold, so a length that merely ENDS at
+      // the onset is no longer counted as sounding through it. Measured across every ask in
+      // the corpus: this moves NOTHING, which is the only kind of consolidation worth making
+      // quietly — and it is the same result the grid's own consolidation measured.
+      n.pitch === pitch && n.start < start && columnOverlap(n.start, n.start + n.duration, start) !== null ? { ...n, duration: start - n.start } : n
+    )
+  );
+  const withCap = /* @__PURE__ */ __name((cap) => ({
+    ...model,
+    notes: [...notes, { pitch, start, duration: Math.max(1, Math.min(duration, cap - start)) }]
+  }), "withCap");
+  const wideCap = capAt(true);
+  if (wideCap === nextStart) return accept(withCap(nextStart));
+  const wide = withCap(wideCap);
+  const narrow = withCap(nextStart);
+  const wideOut = serializePianoRollWithExtent(wide);
+  if (wideOut.mini !== null) {
+    const local = !degradesLocality(
+      wideOut.extent,
+      serializePianoRollWithExtent(narrow).extent
+    );
+    if (local && (!opts.readback || rollReadsBack(wide))) return wide;
+  }
+  return accept(narrow);
+}
+__name(placeNote, "placeNote");
+function degradesLocality(next, floor) {
+  const rank = /* @__PURE__ */ __name((p) => p === "leaf" ? 0 : p === "rebuild" ? 2 : 1, "rank");
+  return rank(next.path) > rank(floor.path);
+}
+__name(degradesLocality, "degradesLocality");
+function pasteNote(model, pitch, start, duration, opts = {}) {
+  const cleared = {
+    ...model,
+    notes: model.notes.filter((n) => !(n.start === start && n.pitch === pitch))
+  };
+  const placed = placeNote(cleared, pitch, start, duration, opts);
+  return placed === cleared ? model : placed;
+}
+__name(pasteNote, "pasteNote");
+var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value, length = 1) => toggleCell(model, laneIndex, stepIndex, value, length) !== model, "canToggleCell");
+var canPlaceNote = /* @__PURE__ */ __name((model, pitch, start, duration) => placeNote(model, pitch, start, duration) !== model, "canPlaceNote");
+function partRoom(model, laneIndex, stepIndex) {
+  const part = model.lanes[laneIndex]?.part ?? 0;
+  let next = model.steps;
+  for (const lane of model.lanes) {
+    if ((lane.part ?? 0) !== part) continue;
+    for (let j = stepIndex + 1; j < lane.cells.length && j < next; j++) {
+      if (isCellOn(lane.cells[j])) {
+        next = j;
+        break;
+      }
+    }
+  }
+  return next - stepIndex;
+}
+__name(partRoom, "partRoom");
+function resizeCell(model, laneIndex, stepIndex, duration) {
+  const cell = model.lanes[laneIndex]?.cells[stepIndex];
+  if (!isCellOn(cell)) return model;
+  const capped = Math.max(1, Math.min(duration, partRoom(model, laneIndex, stepIndex)));
+  const lanes = model.lanes.map(
+    (lane, i) => i === laneIndex ? {
+      ...lane,
+      cells: clampLane(
+        lane.cells.map((c, j) => j === stepIndex ? cellOn(capped) : c),
+        model.steps
+      )
+    } : lane
+  );
+  const next = lanes[laneIndex].cells[stepIndex];
+  if (isCellOn(next) && next.duration === cell.duration) return model;
+  const written = serializeStepGrid({ ...model, lanes });
+  if (written === null) return model;
+  if (written === serializeStepGrid(model)) return model;
+  return { ...model, lanes };
+}
+__name(resizeCell, "resizeCell");
+var canResizeCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, duration) => resizeCell(model, laneIndex, stepIndex, duration) !== model, "canResizeCell");
+var resizableNotes = /* @__PURE__ */ __name((model) => {
+  const out = /* @__PURE__ */ new Set();
+  const now2 = serializePianoRoll(model);
+  if (now2 === null) return out;
+  for (const n of model.notes) {
+    const writes2 = /* @__PURE__ */ __name((duration) => {
+      const next = resizeNote(model, n.start, n.pitch, duration);
+      if (next === model) return false;
+      const s = serializePianoRoll(next);
+      return s !== null && s !== now2;
+    }, "writes");
+    if (writes2(n.duration + 1) || writes2(Math.max(1, n.duration - 1))) out.add(n);
+  }
+  return out;
+}, "resizableNotes");
+var rollReadsBack = /* @__PURE__ */ __name((next) => {
+  const out = serializePianoRoll(next);
+  if (out === null) return false;
+  let back = parsePianoRoll(out);
+  if (!back.ok) return false;
+  const k = next.steps / back.model.steps;
+  if (next.viewScale !== void 0 && k > 1 && Number.isInteger(k)) {
+    back = parsePianoRoll(out, k);
+    if (!back.ok) return false;
+  }
+  if (back.model.steps !== next.steps) return false;
+  if (back.model.notes.length !== next.notes.length) return false;
+  const key2 = /* @__PURE__ */ __name((n) => `${n.pitch}@${n.start}+${n.duration}`, "key");
+  const meant = next.notes.map(key2).sort();
+  const got = back.model.notes.map(key2).sort();
+  return meant.every((s, i) => s === got[i]);
+}, "rollReadsBack");
+function resizeNote(model, start, pitch, duration, opts = {}) {
+  const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
+  if ((model.bars ?? 1) > 1) {
+    const capTo = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
+      ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
+      model.steps
+    ), "capTo");
+    const build = /* @__PURE__ */ __name((cap, scoped) => {
+      const capped2 = Math.max(1, Math.min(duration, cap - start));
+      return {
+        ...model,
+        notes: model.notes.map(
+          (n) => n.start === start && (!scoped || n.pitch === pitch) ? { ...n, duration: capped2 } : n
+        )
+      };
+    }, "build");
+    const anyCap = capTo(false);
+    const sameCap = capTo(true);
+    const legacy = build(anyCap, false);
+    if (sameCap === anyCap && model.notes.filter((n) => n.start === start).length < 2)
+      return accept(legacy);
+    const floor = serializePianoRollWithExtent(legacy);
+    for (const rung of [build(sameCap, true), build(anyCap, true)]) {
+      const out = serializePianoRollWithExtent(rung);
+      if (out.mini === null) continue;
+      if (degradesLocality(out.extent, floor.extent)) continue;
+      if (opts.readback && !rollReadsBack(rung)) continue;
+      return rung;
+    }
+    const movesOthers = legacy.notes.some(
+      (n, i) => n.duration !== model.notes[i].duration && !(n.start === start && n.pitch === pitch)
+    );
+    return movesOthers ? model : accept(legacy);
+  }
+  const capped = Math.max(1, Math.min(duration, model.steps - start));
+  return accept({
+    ...model,
+    notes: model.notes.map(
+      (n) => n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n
+    )
+  });
+}
+__name(resizeNote, "resizeNote");
+function removeNote(model, start, pitch, opts = {}) {
+  const notes = model.notes.filter((n) => !(n.pitch === pitch && n.start === start));
+  if (notes.length === model.notes.length) return model;
+  const next = { ...model, notes };
+  return opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next);
+}
+__name(removeNote, "removeNote");
+function moveNote(base, fromPitch, fromStart, toPitch, toStart, opts = {}) {
+  const idx = base.notes.findIndex((n) => n.pitch === fromPitch && n.start === fromStart);
+  if (idx < 0) return base;
+  const grabbed = base.notes[idx];
+  const start = Math.max(0, Math.min(toStart, base.steps - 1));
+  const rest = base.notes.filter((_, i) => i !== idx);
+  const landed = {
+    ...grabbed,
+    pitch: toPitch,
+    start,
+    duration: Math.max(1, Math.min(grabbed.duration, base.steps - start))
+  };
+  const notes = [...rest, landed];
+  const rebuilt = {
+    steps: base.steps,
+    ...base.bars != null ? { bars: base.bars } : {},
+    // Not a source: the RULER the notes are measured in. A roll drawn per bar (#1827)
+    // holds drawn columns, and without its counts the writer reads them as shared ones.
+    ...base.barSteps ? { barSteps: base.barSteps } : {},
+    ...base.numeric ? { numeric: true } : {},
+    notes
+  };
+  return opts.readback ? rollReadsBack(rebuilt) ? rebuilt : base : ifRollSpellable(base, rebuilt);
+}
+__name(moveNote, "moveNote");
+
+// src/codeView/notation/resize.ts
+var restructured = /* @__PURE__ */ __name(({ source: _drop, ...rest }) => rest, "restructured");
+function resizeGrid(model, nextSteps, mode) {
+  if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
+  if (mode === "pad" || model.steps === 0) {
+    return ifGridSpellable(model, {
+      ...restructured(model),
+      steps: nextSteps,
+      lanes: model.lanes.map((l) => ({
+        ...l,
+        cells: clampLane(padCells(l.cells, nextSteps), nextSteps)
+      }))
+    });
+  }
+  const from = model.steps;
+  const factor = nextSteps / from;
+  return ifGridSpellable(model, {
+    ...restructured(model),
+    steps: nextSteps,
+    lanes: model.lanes.map((l) => {
+      const cells = Array.from({ length: nextSteps }, (_, j) => {
+        if (nextSteps >= from) {
+          if (j * from % nextSteps !== 0) return false;
+          return scaleCell(l.cells[j * from / nextSteps] ?? false, factor);
+        }
+        const lo = Math.ceil(j * from / nextSteps);
+        const hi = Math.ceil((j + 1) * from / nextSteps);
+        const hits = l.cells.slice(lo, hi).filter(isCellOn);
+        return hits.length === 0 ? false : cellOn(Math.min(...hits.map((h) => h.duration)) * factor);
+      });
+      return { ...l, cells: clampLane(cells, nextSteps) };
+    })
+  });
+}
+__name(resizeGrid, "resizeGrid");
+function resizeRoll(model, nextSteps, mode) {
+  if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
+  if (mode === "pad" || model.steps === 0) {
+    return ifRollSpellable(model, {
+      ...model,
+      steps: nextSteps,
+      notes: model.notes.filter((n) => n.start < nextSteps).map((n) => ({ ...n, duration: Math.min(n.duration, nextSteps - n.start) }))
+    });
+  }
+  const factor = nextSteps / model.steps;
+  const scaled2 = model.notes.map((n) => {
+    const start = Math.floor(n.start * factor);
+    const end = Math.max(start + 1, Math.round((n.start + n.duration) * factor));
+    return { ...n, start, duration: Math.min(end, nextSteps) - start };
+  }).filter((n) => n.start < nextSteps && n.duration >= 1);
+  const seen = /* @__PURE__ */ new Set();
+  return ifRollSpellable(model, {
+    ...model,
+    steps: nextSteps,
+    notes: scaled2.filter((n) => {
+      const key2 = `${n.pitch}@${n.start}`;
+      if (seen.has(key2)) return false;
+      seen.add(key2);
+      return true;
+    })
+  });
+}
+__name(resizeRoll, "resizeRoll");
+function padCells(cells, steps) {
+  if (cells.length === steps) return [...cells];
+  if (cells.length > steps) return cells.slice(0, steps);
+  return [...cells, ...new Array(steps - cells.length).fill(false)];
+}
+__name(padCells, "padCells");
+
+// src/codeView/notation/lane.ts
+function addLane(model, sound) {
+  const token = sound.trim();
+  if (token === "" || model.lanes.some((l) => l.sound === token)) return model;
+  const lane = {
+    sound: token,
+    part: model.lanes[0]?.part,
+    cells: Array(model.steps).fill(false)
+  };
+  return { ...model, lanes: [...model.lanes, lane] };
+}
+__name(addLane, "addLane");
+function removeLane(model, sound) {
+  if (!model.lanes.some((l) => l.sound === sound)) return model;
+  return { ...model, lanes: model.lanes.filter((l) => l.sound !== sound) };
+}
+__name(removeLane, "removeLane");
+
+// src/codeView/notation/resolution.ts
+var MAX_RESOLUTION_STEPS = 256;
+function perBar(steps, bars) {
+  return bars && bars > 0 ? steps / bars : steps;
+}
+__name(perBar, "perBar");
+function structurallyCanDouble(model) {
+  return model.steps >= 1 && model.steps * 2 <= MAX_RESOLUTION_STEPS;
+}
+__name(structurallyCanDouble, "structurallyCanDouble");
+function structurallyCanHalve(model) {
+  if (model.steps < 2 || model.steps % 2 !== 0) return false;
+  if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false;
+  const oddCellEmpty = model.lanes.every(
+    (lane) => lane.cells.every((cell, i) => i % 2 === 0 || !isCellOn(cell))
+  );
+  if (!oddCellEmpty) return false;
+  if (model.gains) {
+    if (!model.gains.every((g, i) => i % 2 === 0 || g === 1)) return false;
+  }
+  return true;
+}
+__name(structurallyCanHalve, "structurallyCanHalve");
+function scaleStepGrid(model, dir) {
+  if (dir === "double") {
+    if (!structurallyCanDouble(model)) return model;
+    return ifGridSpellable(model, {
+      ...model,
+      steps: model.steps * 2,
+      lanes: model.lanes.map((lane) => ({
+        ...lane,
+        cells: lane.cells.flatMap((cell) => [scaleCell(cell, 2), false])
+      })),
+      ...model.gains ? { gains: model.gains.flatMap((g) => [g, 1]) } : {}
+    });
+  }
+  if (!structurallyCanHalve(model)) return model;
+  return ifGridSpellable(model, {
+    ...model,
+    steps: model.steps / 2,
+    lanes: model.lanes.map((lane) => ({
+      ...lane,
+      cells: lane.cells.filter((_, i) => i % 2 === 0).map((cell) => scaleCell(cell, 0.5))
+    })),
+    ...model.gains ? { gains: model.gains.filter((_, i) => i % 2 === 0) } : {}
+  });
+}
+__name(scaleStepGrid, "scaleStepGrid");
+function structurallyCanDoubleRoll(model) {
+  return model.steps >= 1 && model.steps * 2 <= MAX_RESOLUTION_STEPS;
+}
+__name(structurallyCanDoubleRoll, "structurallyCanDoubleRoll");
+function structurallyCanHalveRoll(model) {
+  if (model.steps < 2 || model.steps % 2 !== 0) return false;
+  if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false;
+  return model.notes.every((n) => n.start % 2 === 0 && n.duration % 2 === 0);
+}
+__name(structurallyCanHalveRoll, "structurallyCanHalveRoll");
+function scalePianoRoll(model, dir) {
+  if (dir === "double") {
+    if (!structurallyCanDoubleRoll(model)) return model;
+    return ifRollSpellable(model, {
+      ...model,
+      steps: model.steps * 2,
+      notes: model.notes.map((n) => ({ ...n, start: n.start * 2, duration: n.duration * 2 }))
+    });
+  }
+  if (!structurallyCanHalveRoll(model)) return model;
+  return ifRollSpellable(model, {
+    ...model,
+    steps: model.steps / 2,
+    notes: model.notes.map((n) => ({ ...n, start: n.start / 2, duration: n.duration / 2 }))
+  });
+}
+__name(scalePianoRoll, "scalePianoRoll");
+var RESOLUTION_PRESETS = [4, 8, 16, 32, 64];
+function isPow2(n) {
+  return n >= 1 && Number.isInteger(n) && (n & n - 1) === 0;
+}
+__name(isPow2, "isPow2");
+function scaleTo(model, target, scale) {
+  if (target < 1 || target === model.steps) return model;
+  const up = target > model.steps;
+  const ratio = up ? target / model.steps : model.steps / target;
+  if (!isPow2(ratio)) return model;
+  let cur = model;
+  while (cur.steps !== target) {
+    const next = scale(cur, up ? "double" : "halve");
+    if (next === cur) return model;
+    cur = next;
+  }
+  return cur;
+}
+__name(scaleTo, "scaleTo");
+function scaleStepGridTo(model, target) {
+  return scaleTo(model, target, scaleStepGrid);
+}
+__name(scaleStepGridTo, "scaleStepGridTo");
+function scalePianoRollTo(model, target) {
+  return scaleTo(model, target, scalePianoRoll);
+}
+__name(scalePianoRollTo, "scalePianoRollTo");
+function canScaleStepGridTo(model, target) {
+  return target !== model.steps && scaleStepGridTo(model, target) !== model;
+}
+__name(canScaleStepGridTo, "canScaleStepGridTo");
+function canScalePianoRollTo(model, target) {
+  return target !== model.steps && scalePianoRollTo(model, target) !== model;
+}
+__name(canScalePianoRollTo, "canScalePianoRollTo");
+var clampInt = /* @__PURE__ */ __name((v, lo, hi) => Math.max(lo, Math.min(hi, v)), "clampInt");
+var bucket = /* @__PURE__ */ __name((c, from, to) => clampInt(Math.round(c * to / from), 0, to - 1), "bucket");
+var NO_EFFECT = { lengthened: 0, snapped: 0, merged: 0 };
+var COARSEN_FLOOR = 1;
+function quantizeStepGridToWithEffect(model, target) {
+  const unchanged = { model, effect: NO_EFFECT };
+  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return unchanged;
+  if ((model.bars ?? 1) > 1) {
+    const scaled2 = scaleStepGridTo(model, target);
+    return scaled2 === model ? unchanged : { model: scaled2, effect: NO_EFFECT };
+  }
+  const from = model.steps;
+  const addingSlots = target > from;
+  let lengthened = 0;
+  let snapped = 0;
+  let merged = 0;
+  const lanes = model.lanes.map((lane) => {
+    const cells = Array(target).fill(false);
+    lane.cells.forEach((cell, c) => {
+      if (!isCellOn(cell)) return;
+      const b = bucket(c, from, target);
+      if (b !== c * target / from) snapped++;
+      const exact = addingSlots ? cell.duration : cell.duration * (target / from);
+      const scaled2 = addingSlots ? exact : Math.max(COARSEN_FLOOR, exact);
+      if (scaled2 !== exact) lengthened++;
+      const prev = cells[b];
+      if (isCellOn(prev)) merged++;
+      cells[b] = cellOn(isCellOn(prev) ? Math.min(prev.duration, scaled2) : scaled2);
+    });
+    return { ...lane, cells: clampLane(cells, target) };
+  });
+  let gains;
+  if (model.gains) {
+    gains = Array(target).fill(1);
+    const filled = /* @__PURE__ */ new Set();
+    for (let c = 0; c < from; c++) {
+      if (!model.lanes.some((l) => isCellOn(l.cells[c]))) continue;
+      const b = bucket(c, from, target);
+      const g = model.gains[c] ?? 1;
+      gains[b] = filled.has(b) ? Math.max(gains[b], g) : g;
+      filled.add(b);
+    }
+  }
+  const next = ifGridSpellable(model, {
+    ...model,
+    steps: target,
+    lanes,
+    ...gains ? { gains } : {}
+  });
+  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged } };
+}
+__name(quantizeStepGridToWithEffect, "quantizeStepGridToWithEffect");
+function quantizeStepGridTo(model, target) {
+  return quantizeStepGridToWithEffect(model, target).model;
+}
+__name(quantizeStepGridTo, "quantizeStepGridTo");
+function stepResolutionEffect(model, target) {
+  return quantizeStepGridToWithEffect(model, target).effect;
+}
+__name(stepResolutionEffect, "stepResolutionEffect");
+function quantizePianoRollTo(model, target) {
+  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model;
+  if ((model.bars ?? 1) > 1) {
+    if (target <= model.steps) return scalePianoRollTo(model, target);
+    if (!isPow2(target / model.steps)) return model;
+    let cur = model;
+    while (cur.steps < target) {
+      cur = { ...cur, steps: cur.steps * 2, notes: cur.notes.map((n) => ({ ...n, start: n.start * 2 })) };
+    }
+    return ifRollSpellable(model, cur);
+  }
+  const from = model.steps;
+  const addingSlots = target > from;
+  const q = model.notes.map((n) => ({
+    pitch: n.pitch,
+    start: bucket(n.start, from, target),
+    duration: addingSlots ? Math.max(1, n.duration) : Math.max(1, Math.round(n.duration * target / from)),
+    gain: n.gain ?? 1
+  })).sort((a, b) => a.start - b.start);
+  const byCol = /* @__PURE__ */ new Map();
+  for (const n of q) {
+    const grp = byCol.get(n.start) ?? [];
+    if (grp.some((m) => m.pitch === n.pitch)) continue;
+    grp.push({ pitch: n.pitch, duration: n.duration, gain: n.gain });
+    byCol.set(n.start, grp);
+  }
+  const starts = [...byCol.keys()].sort((a, b) => a - b);
+  const notes = [];
+  starts.forEach((start, i) => {
+    const limit = (i + 1 < starts.length ? starts[i + 1] : target) - start;
+    const grp = byCol.get(start);
+    const duration = clampInt(Math.min(...grp.map((m) => m.duration)), 1, limit);
+    const gain = Math.max(...grp.map((m) => m.gain));
+    for (const m of grp) notes.push({ pitch: m.pitch, start, duration, gain });
+  });
+  return ifRollSpellable(model, { ...model, steps: target, notes });
+}
+__name(quantizePianoRollTo, "quantizePianoRollTo");
+function freeZoneScale(docSteps, target) {
+  if (!Number.isInteger(docSteps) || docSteps < 1) return null;
+  if (target < docSteps || target % docSteps !== 0) return null;
+  if (target > MAX_VIEW_STEPS) return null;
+  return target / docSteps;
+}
+__name(freeZoneScale, "freeZoneScale");
+function collapseStepGridToDocument(model) {
+  if (model.viewScale === void 0) return model;
+  const docSteps = documentSteps(model);
+  if (docSteps === model.steps) return absorbViewScale(model);
+  if (!canScaleStepGridTo(model, docSteps)) return null;
+  return absorbViewScale(
+    descaleSource(scaleStepGridTo(model, docSteps), model.viewScale, descaleGridCells)
+  );
+}
+__name(collapseStepGridToDocument, "collapseStepGridToDocument");
+function collapsePianoRollToDocument(model) {
+  if (model.viewScale === void 0) return model;
+  const docSteps = documentSteps(model);
+  if (docSteps === model.steps) return absorbViewScale(model);
+  if (!canScalePianoRollTo(model, docSteps)) return null;
+  return absorbViewScale(
+    descaleSource(scalePianoRollTo(model, docSteps), model.viewScale, descaleRollNotes)
+  );
+}
+__name(collapsePianoRollToDocument, "collapsePianoRollToDocument");
+function descaleSource(model, k, content) {
+  if (k === UNREFINED) return model;
+  if (model.altSource) {
+    const a = model.altSource;
+    return {
+      ...model,
+      altSource: {
+        ...a,
+        perBar: a.perBar / k,
+        div: a.div / k,
+        regions: a.regions.map((r) => ({
+          ...r,
+          from: r.from / k,
+          to: r.to / k,
+          perBar: r.perBar.map((c) => content(c, k))
+        }))
+      }
+    };
+  }
+  if (model.source) {
+    const s = model.source;
+    return {
+      ...model,
+      source: {
+        ...s,
+        parts: s.parts.map((p) => ({
+          ...p,
+          div: p.div / k,
+          regions: p.regions.map((r) => ({
+            ...r,
+            from: r.from / k,
+            to: r.to / k,
+            content: content(r.content, k)
+          }))
+        }))
+      }
+    };
+  }
+  return model;
+}
+__name(descaleSource, "descaleSource");
+var descaleGridCells = /* @__PURE__ */ __name((cells, k) => cells.filter((_, i) => i % k === 0).map((column) => column.map((cell) => ({ ...cell, duration: cell.duration / k }))), "descaleGridCells");
+var descaleRollNotes = /* @__PURE__ */ __name((notes, k) => notes.map((n) => ({ ...n, start: n.start / k, duration: n.duration / k })), "descaleRollNotes");
+function slotState(steps, docSteps, bars, lossless, applies, target, canDrawView) {
+  if (target === steps) return "active";
+  if (canDrawView) {
+    const scale = freeZoneScale(docSteps, target);
+    if (scale !== null && canDrawView(scale)) return "view";
+  }
+  if (lossless) return "lossless";
+  if ((bars ?? 1) > 1) return "disabled";
+  return applies ? "quantize" : "disabled";
+}
+__name(slotState, "slotState");
+function stepSlotState(model, target, canDrawView) {
+  return slotState(
+    model.steps,
+    documentSteps(model),
+    model.bars,
+    canScaleStepGridTo(model, target),
+    quantizeStepGridTo(model, target) !== model,
+    target,
+    canDrawView
+  );
+}
+__name(stepSlotState, "stepSlotState");
+function rollSlotState(model, target, canDrawView) {
+  return slotState(
+    model.steps,
+    documentSteps(model),
+    model.bars,
+    canScalePianoRollTo(model, target),
+    quantizePianoRollTo(model, target) !== model,
+    target,
+    canDrawView
+  );
+}
+__name(rollSlotState, "rollSlotState");
+var COMBINATORS = /* @__PURE__ */ new Set(["arrange", "cat", "slowcat"]);
+function parseProgram(doc) {
+  try {
+    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+  } catch {
+    return null;
+  }
+}
+__name(parseProgram, "parseProgram");
+function isCombinatorCall(node) {
+  return node && node.type === "CallExpression" && node.callee?.type === "Identifier" && COMBINATORS.has(node.callee.name);
+}
+__name(isCombinatorCall, "isCombinatorCall");
+function walk2(node, visit) {
+  if (!node || typeof node !== "object") return;
+  if (typeof node.type === "string" && typeof node.start === "number") visit(node);
+  for (const key2 of Object.keys(node)) {
+    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
+    const child = node[key2];
+    if (Array.isArray(child)) {
+      for (const c of child) walk2(c, visit);
+    } else if (child && typeof child === "object") {
+      walk2(child, visit);
+    }
+  }
+}
+__name(walk2, "walk");
+function armFromArg(mode, arg) {
+  if (mode === "arrange") {
+    if (arg.type !== "ArrayExpression" || arg.elements.length < 2) return null;
+    const weight = arg.elements[0];
+    const pat = arg.elements[1];
+    if (!weight || !pat) return null;
+    return {
+      weightRange: [weight.start, weight.end],
+      patternRange: [pat.start, pat.end],
+      armRange: [arg.start, arg.end]
+    };
+  }
+  return {
+    weightRange: null,
+    patternRange: [arg.start, arg.end],
+    armRange: [arg.start, arg.end]
+  };
+}
+__name(armFromArg, "armFromArg");
+function buildCall(doc, node) {
+  const mode = node.callee.name;
+  if (node.arguments.length === 0) return null;
+  const arms = [];
+  for (const arg of node.arguments) {
+    const arm = armFromArg(mode, arg);
+    if (!arm) return null;
+    arms.push(arm);
+  }
+  const open = doc.indexOf("(", node.callee.end);
+  if (open < 0) return null;
+  return {
+    mode,
+    callRange: [node.start, node.end],
+    calleeRange: [node.callee.start, node.callee.end],
+    argsRange: [open + 1, node.end - 1],
+    arms
+  };
+}
+__name(buildCall, "buildCall");
+function detectArrangeAt(doc, pos) {
+  const program = parseProgram(doc);
+  if (!program) return null;
+  let best = null;
+  walk2(program, (n) => {
+    if (!isCombinatorCall(n)) return;
+    if (pos < n.start || pos > n.end) return;
+    if (!best || n.start > best.start) best = n;
+  });
+  return best ? buildCall(doc, best) : null;
+}
+__name(detectArrangeAt, "detectArrangeAt");
+function detectAllArrangeCalls(doc) {
+  const program = parseProgram(doc);
+  if (!program) return [];
+  const nodes = [];
+  walk2(program, (n) => {
+    if (isCombinatorCall(n)) nodes.push(n);
+  });
+  nodes.sort((a, b) => a.start - b.start);
+  return nodes.map((n) => buildCall(doc, n)).filter((c) => c !== null);
+}
+__name(detectAllArrangeCalls, "detectAllArrangeCalls");
+function detectBarePattern(doc, pos) {
+  const program = parseProgram(doc);
+  if (!program?.body) return null;
+  for (const stmt of program.body) {
+    const exprStmt = stmt?.type === "LabeledStatement" ? stmt.body : stmt;
+    if (exprStmt?.type !== "ExpressionStatement") continue;
+    const expr = exprStmt.expression;
+    if (!expr || pos < expr.start || pos > expr.end) continue;
+    let hasCombinator = false;
+    walk2(expr, (n) => {
+      if (isCombinatorCall(n)) hasCombinator = true;
+    });
+    if (hasCombinator) return null;
+    let pat = expr;
+    while (pat?.type === "CallExpression" && pat.callee?.type === "MemberExpression" && !pat.callee.computed && pat.callee.property?.name === "viz") {
+      pat = pat.callee.object;
+    }
+    if (!pat) return null;
+    return { patternRange: [pat.start, pat.end] };
+  }
+  return null;
+}
+__name(detectBarePattern, "detectBarePattern");
+
+// src/codeView/arrange/serialize.ts
+function asWeight(n) {
+  return Math.max(1, Math.round(n));
+}
+__name(asWeight, "asWeight");
+function armText(doc, call, i) {
+  return doc.slice(call.arms[i].armRange[0], call.arms[i].armRange[1]);
+}
+__name(armText, "armText");
+function patternText(doc, call, i) {
+  return doc.slice(call.arms[i].patternRange[0], call.arms[i].patternRange[1]);
+}
+__name(patternText, "patternText");
+function setWeight(doc, call, i, weight) {
+  const w = asWeight(weight);
+  const arm = call.arms[i];
+  if (!arm) return [];
+  if (call.mode === "arrange") {
+    if (!arm.weightRange) return [];
+    return [{ range: arm.weightRange, text: String(w) }];
+  }
+  if (w === 1) return [];
+  const edits = [{ range: call.calleeRange, text: "arrange" }];
+  for (let j = 0; j < call.arms.length; j++) {
+    const aw = j === i ? w : 1;
+    const pat = call.arms[j];
+    edits.push({ range: [pat.armRange[0], pat.armRange[0]], text: `[${aw}, ` });
+    edits.push({ range: [pat.armRange[1], pat.armRange[1]], text: `]` });
+  }
+  return edits;
+}
+__name(setWeight, "setWeight");
+function reorderArm(doc, call, from, to) {
+  const n = call.arms.length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return [];
+  const order = Array.from({ length: n }, (_, k) => k);
+  order.splice(to, 0, order.splice(from, 1)[0]);
+  const text = order.map((k) => armText(doc, call, k)).join(", ");
+  return [{ range: call.argsRange, text }];
+}
+__name(reorderArm, "reorderArm");
+function insertArm(doc, call, at, armSource) {
+  const n = call.arms.length;
+  const idx = Math.max(0, Math.min(at, n));
+  if (n === 0) return [{ range: [call.argsRange[0], call.argsRange[1]], text: armSource }];
+  if (idx === n) {
+    const end = call.arms[n - 1].armRange[1];
+    return [{ range: [end, end], text: `, ${armSource}` }];
+  }
+  const start = call.arms[idx].armRange[0];
+  return [{ range: [start, start], text: `${armSource}, ` }];
+}
+__name(insertArm, "insertArm");
+function insertSilenceArm(doc, call, i) {
+  const arm = call.arms[i];
+  if (!arm) return [];
+  if (call.mode !== "arrange") {
+    return insertArm(doc, call, i + 1, "silence");
+  }
+  if (!arm.weightRange) return [];
+  const weightText = doc.slice(arm.weightRange[0], arm.weightRange[1]);
+  return insertArm(doc, call, i + 1, `[${weightText}, silence]`);
+}
+__name(insertSilenceArm, "insertSilenceArm");
+function removeArm(doc, call, i) {
+  const n = call.arms.length;
+  if (i < 0 || i >= n || n <= 1) return [];
+  if (i < n - 1) {
+    return [{ range: [call.arms[i].armRange[0], call.arms[i + 1].armRange[0]], text: "" }];
+  }
+  return [{ range: [call.arms[i - 1].armRange[1], call.arms[i].armRange[1]], text: "" }];
+}
+__name(removeArm, "removeArm");
+function silenceArm(doc, call, i) {
+  const arm = call.arms[i];
+  if (!arm) return [];
+  if (doc.slice(arm.patternRange[0], arm.patternRange[1]) === "silence") return [];
+  return [{ range: arm.patternRange, text: "silence" }];
+}
+__name(silenceArm, "silenceArm");
+function setArmPattern(doc, call, i, source) {
+  const arm = call.arms[i];
+  if (!arm) return [];
+  const next = source.trim();
+  if (next === "") return [];
+  if (patternText(doc, call, i).trim() === next) return [];
+  return [{ range: arm.patternRange, text: next }];
+}
+__name(setArmPattern, "setArmPattern");
+function wrapBare(patternRange, leadingWeight, patternWeight) {
+  const lead = asWeight(leadingWeight);
+  const pw = asWeight(patternWeight);
+  return [
+    { range: [patternRange[0], patternRange[0]], text: `arrange([${lead}, silence], [${pw}, ` },
+    { range: [patternRange[1], patternRange[1]], text: `])` }
+  ];
+}
+__name(wrapBare, "wrapBare");
+function materializeBareDelete(doc, patternRange, barIndex, span) {
+  const total = asWeight(span);
+  const i = Math.max(0, Math.min(Math.round(barIndex), total - 1));
+  const lead = i;
+  const rest = total - i - 1;
+  if (lead === 0 && rest === 0) return [];
+  const pat = doc.slice(patternRange[0], patternRange[1]);
+  const arms = [];
+  if (lead > 0) arms.push(`[${lead}, ${pat}]`);
+  arms.push(`[1, silence]`);
+  if (rest > 0) arms.push(`[${rest}, ${pat}]`);
+  return [{ range: patternRange, text: `arrange(${arms.join(", ")})` }];
+}
+__name(materializeBareDelete, "materializeBareDelete");
+function materializeBareSplit(doc, patternRange, barIndex, span) {
+  const total = asWeight(span);
+  if (total < 2) return [];
+  const k = Math.max(1, Math.min(Math.round(barIndex), total - 1));
+  const pat = doc.slice(patternRange[0], patternRange[1]);
+  return [{ range: patternRange, text: `arrange([${k}, ${pat}], [${total - k}, ${pat}])` }];
+}
+__name(materializeBareSplit, "materializeBareSplit");
+function splitArm(doc, call, i, firstWeight) {
+  const arm = call.arms[i];
+  if (!arm || !arm.weightRange) return [];
+  const n = parseInt(doc.slice(arm.weightRange[0], arm.weightRange[1]), 10);
+  if (!Number.isFinite(n) || n < 2) return [];
+  const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
+  const n2 = n - n1;
+  const pat = doc.slice(arm.patternRange[0], arm.patternRange[1]);
+  return [{ range: arm.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
+}
+__name(splitArm, "splitArm");
+var IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+var NOT_A_NAME = "__proto__";
+function walk3(node, parent, key2, visit) {
+  if (!node || typeof node !== "object") return;
+  if (typeof node.type === "string" && typeof node.start === "number") visit(node, parent, key2);
+  for (const k of Object.keys(node)) {
+    if (k === "type" || k === "start" || k === "end") continue;
+    const child = node[k];
+    if (Array.isArray(child)) {
+      for (const c of child) walk3(c, node, k, visit);
+    } else if (child && typeof child === "object") {
+      walk3(child, node, k, visit);
+    }
+  }
+}
+__name(walk3, "walk");
+function parseProgram2(doc) {
+  try {
+    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+  } catch {
+    return null;
+  }
+}
+__name(parseProgram2, "parseProgram");
+function isNonReference(node, parent, key2) {
+  if (!parent) return false;
+  if (parent.type === "Property" && key2 === "key" && !parent.computed) return true;
+  if (parent.type === "MemberExpression" && key2 === "property" && !parent.computed) return true;
+  if (parent.type === "LabeledStatement" && key2 === "label") return true;
+  if (parent.type === "BreakStatement" || parent.type === "ContinueStatement") return true;
+  if ((parent.type === "MethodDefinition" || parent.type === "PropertyDefinition") && key2 === "key" && !parent.computed) {
+    return true;
+  }
+  return false;
+}
+__name(isNonReference, "isNonReference");
+function isBindingIntroduction(parent, key2) {
+  if (!parent) return false;
+  if (parent.type === "VariableDeclarator" && key2 === "id") return true;
+  if ((parent.type === "FunctionDeclaration" || parent.type === "FunctionExpression" || parent.type === "ClassDeclaration") && key2 === "id") {
+    return true;
+  }
+  if (key2 === "params") return true;
+  if (parent.type === "ArrowFunctionExpression" && key2 === "params") return true;
+  return false;
+}
+__name(isBindingIntroduction, "isBindingIntroduction");
+function armIdentifier(doc, call, i) {
+  const arm = call.arms[i];
+  if (!arm) return null;
+  const text = doc.slice(arm.patternRange[0], arm.patternRange[1]).trim();
+  return IDENTIFIER.test(text) ? text : null;
+}
+__name(armIdentifier, "armIdentifier");
+function countSectionArms(doc, call, i) {
+  const name = armIdentifier(doc, call, i);
+  if (name == null) return 0;
+  if (analyze(doc, name, null) == null) return 0;
+  return call.arms.filter((_, k) => armIdentifier(doc, call, k) === name).length;
+}
+__name(countSectionArms, "countSectionArms");
+function renameSection(doc, call, i, newName) {
+  if (!IDENTIFIER.test(newName) || newName === NOT_A_NAME) return [];
+  const oldName = armIdentifier(doc, call, i);
+  if (oldName == null || oldName === newName) return [];
+  const references = analyze(doc, oldName, newName);
+  if (references == null) return [];
+  return references.map((r) => ({
+    range: r.range,
+    // `{verse}` keeps its key and moves only its value → `{verse: intro}`.
+    text: r.shorthand ? `${oldName}: ${newName}` : newName
+  }));
+}
+__name(renameSection, "renameSection");
+function analyze(doc, oldName, newName) {
+  const program = parseProgram2(doc);
+  if (!program) return null;
+  const references = [];
+  let declarations = 0;
+  let introductions = 0;
+  let newNameSeen = false;
+  walk3(program, null, null, (node, parent, key2) => {
+    if (node.type !== "Identifier") return;
+    if (newName != null && node.name === newName) {
+      newNameSeen = true;
+      return;
+    }
+    if (node.name !== oldName) return;
+    if (isNonReference(node, parent, key2)) return;
+    const shorthand = parent?.type === "Property" && parent.shorthand === true;
+    if (isBindingIntroduction(parent, key2)) {
+      introductions++;
+      const isTopLevelVar = parent.type === "VariableDeclarator" && program.body.some(
+        (st) => st.type === "VariableDeclaration" && st.declarations.some((d) => d === parent)
+      );
+      const isTopLevelFn = (parent.type === "FunctionDeclaration" || parent.type === "ClassDeclaration") && program.body.includes(parent);
+      if (isTopLevelVar || isTopLevelFn) declarations++;
+    }
+    references.push({ range: [node.start, node.end], shorthand });
+  });
+  if (newNameSeen) return null;
+  if (declarations !== 1) return null;
+  if (introductions !== declarations) return null;
+  if (references.length === 0) return null;
+  return references;
+}
+__name(analyze, "analyze");
+function parseProgram3(doc) {
+  try {
+    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+  } catch {
+    return null;
+  }
+}
+__name(parseProgram3, "parseProgram");
+function isArrangeable(init) {
+  if (!init) return false;
+  if (init.type === "Literal" && typeof init.value === "number") return false;
+  if (init.type === "FunctionExpression" || init.type === "ArrowFunctionExpression") return false;
+  return true;
+}
+__name(isArrangeable, "isArrangeable");
+function listSectionParts(doc, call) {
+  const program = parseProgram3(doc);
+  if (!program) return [];
+  const [callStart, callEnd] = call.callRange;
+  const names = [];
+  for (const stmt of program.body ?? []) {
+    if (stmt.type !== "VariableDeclaration") continue;
+    for (const decl of stmt.declarations ?? []) {
+      if (decl.id?.type !== "Identifier") continue;
+      if (!isArrangeable(decl.init)) continue;
+      if (decl.start <= callStart && decl.end >= callEnd) continue;
+      if (decl.start > callStart) continue;
+      if (!names.includes(decl.id.name)) names.push(decl.id.name);
+    }
+  }
+  return names;
+}
+__name(listSectionParts, "listSectionParts");
+function unwrapAlternation2(mini) {
+  const t = mini.trim();
+  if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
+  let depth = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === "<") depth++;
+    else if (t[i] === ">" && --depth === 0 && i !== t.length - 1) return null;
+  }
+  return t.slice(1, -1);
+}
+__name(unwrapAlternation2, "unwrapAlternation");
+function entriesOf(mini) {
+  const alt = unwrapAlternation2(mini);
+  return alt !== null ? alt.trim() : `[${mini.trim()}]`;
+}
+__name(entriesOf, "entriesOf");
+function splitEntries(inner) {
+  const out = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of inner) {
+    if ("[<{(".includes(ch)) depth++;
+    else if ("]>})".includes(ch)) depth--;
+    if (depth === 0 && ",|".includes(ch)) return null;
+    if (depth === 0 && /\s/.test(ch)) {
+      if (cur) out.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out.some((e) => e === "." || e === "!" || e === "_") ? null : out;
+}
+__name(splitEntries, "splitEntries");
+function fromBar(t, bar2) {
+  const d = t.sub?.(bar2);
+  return d?.toFraction ? d.toFraction() : String(+t - bar2);
+}
+__name(fromBar, "fromBar");
+function barKey(pat, bar2) {
+  let haps;
+  try {
+    haps = pat.queryArc(bar2, bar2 + 1);
+  } catch {
+    return null;
+  }
+  return haps.filter((h) => (h.hasOnset?.() ?? false) && h.whole).map((h) => `${JSON.stringify(h.value)}|${fromBar(h.whole.begin, bar2)}|${fromBar(h.whole.end, bar2)}`).sort().join(" ");
+}
+__name(barKey, "barKey");
+function reify(mini$1) {
+  try {
+    return mini(mini$1);
+  } catch {
+    return null;
+  }
+}
+__name(reify, "reify");
+var CHANGES_PER_CYCLE = "this pattern plays differently from one cycle to the next, and repeating it as bars would change what it plays";
+function oldBars(oldMini, bars) {
+  const before = reify(oldMini);
+  if (before === null) return { reason: "Strudel can't read the pattern" };
+  const old = [];
+  for (let b = 0; b < bars; b++) {
+    const k = barKey(before, b);
+    if (k === null || barKey(before, b + bars) !== k) return { reason: CHANGES_PER_CYCLE };
+    old.push(k);
+  }
+  return old;
+}
+__name(oldBars, "oldBars");
+function playsAsIntended(old, newMini, newBars, expect) {
+  const after = reify(newMini);
+  if (after === null) return "Strudel can't read the result";
+  for (let b = 0; b < 2 * newBars; b++) {
+    const want = expect(b % newBars);
+    const got = barKey(after, b);
+    if (got === null) return "Strudel can't read the result";
+    if (got !== (want === null ? "" : old[want])) return CHANGES_PER_CYCLE;
+  }
+  return null;
+}
+__name(playsAsIntended, "playsAsIntended");
+function shortestRun(old) {
+  for (let p = 1; p < old.length; p++) {
+    if (old.every((k, i) => i < p || k === old[i - p])) return p;
+  }
+  return old.length;
+}
+__name(shortestRun, "shortestRun");
+var WHICH_BAR = "its text can't be split into one entry per bar";
+function duplicateBar(mini, bars) {
+  const old = oldBars(mini, bars);
+  if (!Array.isArray(old)) return { ok: false, reason: old.reason };
+  const inner = unwrapAlternation2(mini);
+  if (inner === null && bars !== 1) return { ok: false, reason: CHANGES_PER_CYCLE };
+  const entries3 = inner !== null ? splitEntries(inner) : [`[${mini.trim()}]`];
+  if (entries3 === null || entries3.length !== bars) return { ok: false, reason: WHICH_BAR };
+  const source = bars % shortestRun(old);
+  const next = `<${entriesOf(mini)} ${entries3[source]}>`;
+  const why = playsAsIntended(old, next, bars + 1, (b) => b < bars ? b : source);
+  return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
+}
+__name(duplicateBar, "duplicateBar");
+function appendEmptyBars(mini, bars, add) {
+  if (!Number.isInteger(add) || add < 1) return { ok: false, reason: "nothing to add" };
+  const old = oldBars(mini, bars);
+  if (!Array.isArray(old)) return { ok: false, reason: old.reason };
+  const next = `<${entriesOf(mini)}${" ~".repeat(add)}>`;
+  const why = playsAsIntended(old, next, bars + add, (b) => b < bars ? b : null);
+  return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
+}
+__name(appendEmptyBars, "appendEmptyBars");
+var PICK_METHODS2 = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
+function parseProgram4(doc) {
+  try {
+    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
+  } catch {
+    return null;
+  }
+}
+__name(parseProgram4, "parseProgram");
+function isPickCall(node) {
+  return node && node.type === "CallExpression" && node.callee?.type === "MemberExpression" && node.callee.property?.type === "Identifier" && PICK_METHODS2.has(node.callee.property.name) && node.callee.object?.type === "Literal" && typeof node.callee.object.value === "string";
+}
+__name(isPickCall, "isPickCall");
+function walk4(node, visit) {
+  if (!node || typeof node !== "object") return;
+  if (typeof node.type === "string" && typeof node.start === "number") visit(node);
+  for (const key2 of Object.keys(node)) {
+    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
+    const child = node[key2];
+    if (Array.isArray(child)) for (const c of child) walk4(c, visit);
+    else if (child && typeof child === "object") walk4(child, visit);
+  }
+}
+__name(walk4, "walk");
+function scanControlArms(raw, litStart) {
+  const open = raw.indexOf("<");
+  if (open < 0) return null;
+  let depth = 0;
+  let close = -1;
+  for (let i2 = open; i2 < raw.length; i2++) {
+    if (raw[i2] === "<") depth++;
+    else if (raw[i2] === ">") {
+      depth--;
+      if (depth === 0) {
+        close = i2;
+        break;
+      }
+    }
+  }
+  if (close < 0) return null;
+  const inner = raw.slice(open + 1, close);
+  const innerBase = litStart + open + 1;
+  const arms = [];
+  let i = 0;
+  const n = inner.length;
+  while (i < n) {
+    while (i < n && /\s/.test(inner[i])) i++;
+    if (i >= n) break;
+    const armStart = i;
+    let d = 0;
+    let atRel = -1;
+    while (i < n) {
+      const c = inner[i];
+      if (c === "[" || c === "<" || c === "{" || c === "(") d++;
+      else if (c === "]" || c === ">" || c === "}" || c === ")") d--;
+      else if (d === 0 && c === "@") {
+        atRel = i;
+        break;
+      } else if (d === 0 && /\s/.test(c)) break;
+      i++;
+    }
+    const headEnd = atRel >= 0 ? atRel : i;
+    let weightRange = null;
+    let weight = 1;
+    if (atRel >= 0) {
+      i = atRel + 1;
+      const digitsStart = i;
+      while (i < n && /[0-9.]/.test(inner[i])) i++;
+      if (i > digitsStart) {
+        weightRange = [innerBase + digitsStart, innerBase + i];
+        weight = parseFloat(inner.slice(digitsStart, i)) || 1;
+      }
+      let dd = 0;
+      while (i < n) {
+        const c = inner[i];
+        if (c === "[" || c === "<" || c === "{" || c === "(") dd++;
+        else if (c === "]" || c === ">" || c === "}" || c === ")") dd--;
+        else if (dd === 0 && /\s/.test(c)) break;
+        i++;
+      }
+    }
+    arms.push({
+      armRange: [innerBase + armStart, innerBase + i],
+      headRange: [innerBase + armStart, innerBase + headEnd],
+      weightRange,
+      weight
+    });
+  }
+  if (arms.length === 0) return null;
+  return { arms, innerRange: [innerBase, innerBase + inner.length] };
+}
+__name(scanControlArms, "scanControlArms");
+function collectSectionEntries(node) {
+  const arg = node.arguments?.[0];
+  if (!arg || arg.type !== "ObjectExpression") return [];
+  const entries3 = [];
+  for (const prop of arg.properties ?? []) {
+    if (prop.type !== "Property" || prop.kind !== "init" || prop.computed) continue;
+    const key2 = prop.key;
+    let name = null;
+    if (key2?.type === "Identifier") name = key2.name;
+    else if (key2?.type === "Literal" && typeof key2.value === "string") name = key2.value;
+    else if (key2?.type === "Literal" && typeof key2.value === "number") name = String(key2.value);
+    if (name == null) continue;
+    entries3.push({
+      key: name,
+      keyRange: [key2.start, key2.end],
+      shorthand: prop.shorthand === true
+    });
+  }
+  return entries3;
+}
+__name(collectSectionEntries, "collectSectionEntries");
+function buildControl(doc, node) {
+  const lit = node.callee.object;
+  const raw = doc.slice(lit.start, lit.end);
+  const scanned = scanControlArms(raw, lit.start);
+  if (!scanned) return null;
+  return {
+    method: node.callee.property.name,
+    callRange: [node.start, node.end],
+    stringRange: [lit.start, lit.end],
+    innerRange: scanned.innerRange,
+    arms: scanned.arms,
+    entries: collectSectionEntries(node)
+  };
+}
+__name(buildControl, "buildControl");
+function detectPickControlAt(doc, pos) {
+  const program = parseProgram4(doc);
+  if (!program) return null;
+  let best = null;
+  walk4(program, (n) => {
+    if (!isPickCall(n)) return;
+    if (pos < n.start || pos > n.end) return;
+    if (!best || n.start > best.start) best = n;
+  });
+  return best ? buildControl(doc, best) : null;
+}
+__name(detectPickControlAt, "detectPickControlAt");
+function detectAllPickControls(doc) {
+  const program = parseProgram4(doc);
+  if (!program) return [];
+  const nodes = [];
+  walk4(program, (n) => {
+    if (isPickCall(n)) nodes.push(n);
+  });
+  nodes.sort((a, b) => a.start - b.start);
+  return nodes.map((n) => buildControl(doc, n)).filter((c) => c !== null);
+}
+__name(detectAllPickControls, "detectAllPickControls");
+
+// src/codeView/pickControl/serialize.ts
+function asWeight2(n) {
+  return Math.max(1, Math.round(n));
+}
+__name(asWeight2, "asWeight");
+function armText2(doc, control, i) {
+  return doc.slice(control.arms[i].armRange[0], control.arms[i].armRange[1]);
+}
+__name(armText2, "armText");
+function headText(doc, control, i) {
+  return doc.slice(control.arms[i].headRange[0], control.arms[i].headRange[1]);
+}
+__name(headText, "headText");
+function setWeight2(doc, control, i, weight) {
+  const w = asWeight2(weight);
+  const arm = control.arms[i];
+  if (!arm) return [];
+  if (arm.weightRange) return [{ range: arm.weightRange, text: String(w) }];
+  if (w === 1) return [];
+  return [{ range: [arm.headRange[1], arm.headRange[1]], text: `@${w}` }];
+}
+__name(setWeight2, "setWeight");
+function splitArm2(doc, control, i, firstWeight) {
+  const arm = control.arms[i];
+  if (!arm) return [];
+  const n = asWeight2(arm.weight);
+  if (n < 2) return [];
+  const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
+  const n2 = n - n1;
+  const head = headText(doc, control, i);
+  return [{ range: arm.armRange, text: `${head}@${n1} ${head}@${n2}` }];
+}
+__name(splitArm2, "splitArm");
+function silenceArm2(doc, control, i) {
+  const arm = control.arms[i];
+  if (!arm) return [];
+  if (headText(doc, control, i) === "~") return [];
+  return [{ range: arm.headRange, text: "~" }];
+}
+__name(silenceArm2, "silenceArm");
+var SELECTOR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+function setArmHead(doc, control, i, key2) {
+  const arm = control.arms[i];
+  if (!arm) return [];
+  const next = key2.trim();
+  if (!SELECTOR_NAME.test(next)) return [];
+  if (!control.entries.some((e) => e.key === next)) return [];
+  if (headText(doc, control, i) === next) return [];
+  return [{ range: arm.headRange, text: next }];
+}
+__name(setArmHead, "setArmHead");
+function listSectionParts2(control) {
+  const names = [];
+  for (const entry of control.entries) {
+    if (!SELECTOR_NAME.test(entry.key)) continue;
+    if (!names.includes(entry.key)) names.push(entry.key);
+  }
+  return names;
+}
+__name(listSectionParts2, "listSectionParts");
+function insertSilenceArm2(doc, control, i) {
+  const arm = control.arms[i];
+  if (!arm) return [];
+  const armSource = arm.weightRange ? `~@${doc.slice(arm.weightRange[0], arm.weightRange[1])}` : "~";
+  return insertArm2(doc, control, i + 1, armSource);
+}
+__name(insertSilenceArm2, "insertSilenceArm");
+function removeArm2(doc, control, i) {
+  const n = control.arms.length;
+  if (i < 0 || i >= n || n <= 1) return [];
+  if (i < n - 1) {
+    return [{ range: [control.arms[i].armRange[0], control.arms[i + 1].armRange[0]], text: "" }];
+  }
+  return [{ range: [control.arms[i - 1].armRange[1], control.arms[i].armRange[1]], text: "" }];
+}
+__name(removeArm2, "removeArm");
+function reorderArm2(doc, control, from, to) {
+  const n = control.arms.length;
+  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return [];
+  const order = Array.from({ length: n }, (_, k) => k);
+  order.splice(to, 0, order.splice(from, 1)[0]);
+  const text = order.map((k) => armText2(doc, control, k)).join(" ");
+  return [{ range: control.innerRange, text }];
+}
+__name(reorderArm2, "reorderArm");
+function insertArm2(doc, control, at, armSource) {
+  const n = control.arms.length;
+  const idx = Math.max(0, Math.min(at, n));
+  if (n === 0) return [{ range: control.innerRange, text: armSource }];
+  if (idx === n) {
+    const end = control.arms[n - 1].armRange[1];
+    return [{ range: [end, end], text: ` ${armSource}` }];
+  }
+  const start = control.arms[idx].armRange[0];
+  return [{ range: [start, start], text: `${armSource} ` }];
+}
+__name(insertArm2, "insertArm");
+function duplicateArm(doc, control, i) {
+  const arm = control.arms[i];
+  if (!arm) return [];
+  return insertArm2(doc, control, i + 1, armText2(doc, control, i));
+}
+__name(duplicateArm, "duplicateArm");
+var SECTION_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+var NOT_A_KEY = "__proto__";
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+__name(escapeRe, "escapeRe");
+function everyOccurrenceIsAnArmHead(doc, control, name) {
+  const [from, to] = control.innerRange;
+  const inner = doc.slice(from, to);
+  const re = new RegExp(`(^|[^A-Za-z0-9_$])(${escapeRe(name)})(?![A-Za-z0-9_$])`, "g");
+  let m;
+  while ((m = re.exec(inner)) !== null) {
+    const at = from + m.index + m[1].length;
+    const covered = control.arms.some(
+      (a) => a.headRange[0] === at && a.headRange[1] === at + name.length
+    );
+    if (!covered) return false;
+    re.lastIndex = m.index + m[1].length + name.length;
+  }
+  return true;
+}
+__name(everyOccurrenceIsAnArmHead, "everyOccurrenceIsAnArmHead");
+function countSectionArms2(doc, control, i) {
+  const arm = control.arms[i];
+  if (!arm) return 0;
+  const name = headText(doc, control, i);
+  if (control.entries.filter((e) => e.key === name).length !== 1) return 0;
+  if (!everyOccurrenceIsAnArmHead(doc, control, name)) return 0;
+  return control.arms.filter((_, k) => headText(doc, control, k) === name).length;
+}
+__name(countSectionArms2, "countSectionArms");
+function renameSection2(doc, control, i, newName) {
+  const arm = control.arms[i];
+  if (!arm) return [];
+  if (!SECTION_NAME.test(newName) || newName === NOT_A_KEY) return [];
+  const oldName = headText(doc, control, i);
+  if (newName === oldName) return [];
+  const entry = control.entries.find((e) => e.key === oldName);
+  if (!entry) return [];
+  if (control.entries.filter((e) => e.key === oldName).length !== 1) return [];
+  if (control.entries.some((e) => e.key === newName)) return [];
+  if (!everyOccurrenceIsAnArmHead(doc, control, oldName)) return [];
+  const keyText = entry.shorthand ? `${newName}: ${oldName}` : quoteLike(doc.slice(entry.keyRange[0], entry.keyRange[1]), newName);
+  const edits = [{ range: entry.keyRange, text: keyText }];
+  for (const a of control.arms) {
+    if (doc.slice(a.headRange[0], a.headRange[1]) === oldName) {
+      edits.push({ range: a.headRange, text: newName });
+    }
+  }
+  return edits;
+}
+__name(renameSection2, "renameSection");
+function quoteLike(oldToken, name) {
+  const q = oldToken[0];
+  return q === '"' || q === "'" ? `${q}${name}${q}` : name;
+}
+__name(quoteLike, "quoteLike");
+
+// src/visualizers/signals/aliasMap.ts
+var DEFAULT_VIZ_ENGINE = "strudel";
+var BUILTIN_ALIASES = {
+  uKick: { strudel: "bd", sonicpi: "drum_heavy_kick" },
+  uSnare: { strudel: "sd", sonicpi: "drum_snare_hard" },
+  uHat: { strudel: "hh", sonicpi: "drum_cymbal_closed" },
+  uOpenHat: { strudel: "oh", sonicpi: "drum_cymbal_open" },
+  uClap: { strudel: "cp" },
+  uRim: { strudel: "rim" },
+  uTom: {
+    strudel: ["lt", "mt", "ht"],
+    sonicpi: ["drum_tom_lo_hard", "drum_tom_mid_hard", "drum_tom_hi_hard"]
+  }
+};
+function resolveAliasesForEngine(custom, engine) {
+  const out = {};
+  for (const [name, slots] of Object.entries(BUILTIN_ALIASES)) {
+    const v = slots[engine];
+    if (v != null) out[name] = v;
+  }
+  for (const [name, slots] of Object.entries(custom)) {
+    const v = slots[engine];
+    if (v != null) out[name] = v;
+  }
+  return out;
+}
+__name(resolveAliasesForEngine, "resolveAliasesForEngine");
+var ALIAS_MAP = resolveAliasesForEngine(
+  {},
+  DEFAULT_VIZ_ENGINE
+);
+
+// src/perf/profiler.ts
+var RING = 240;
+var DROP_FACTOR = 2;
+var SLOW_FRAME_MS = 1e3 / 30;
+function nowMs() {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : 0;
+}
+__name(nowMs, "nowMs");
+var _Ring = class _Ring {
+  constructor() {
+    this.buf = [];
+    this.head = 0;
+    /** Total pushed since reset (uncapped) — distinct from retained length. */
+    this.total = 0;
+  }
+  push(v) {
+    if (this.buf.length < RING) this.buf.push(v);
+    else this.buf[this.head] = v;
+    this.head = (this.head + 1) % RING;
+    this.total++;
+  }
+  get last() {
+    if (this.buf.length === 0) return 0;
+    const i = (this.head - 1 + RING) % RING;
+    return this.buf[i] ?? 0;
+  }
+  /** Sorted copy of the retained samples (ascending). */
+  sorted() {
+    return this.buf.slice().sort((a, b) => a - b);
+  }
+  stats() {
+    const n = this.buf.length;
+    if (n === 0) {
+      return { count: 0, mean: 0, p50: 0, p95: 0, p99: 0, max: 0, last: 0 };
+    }
+    const s = this.sorted();
+    let sum = 0;
+    for (const v of this.buf) sum += v;
+    return {
+      count: this.total,
+      mean: sum / n,
+      p50: percentile(s, 0.5),
+      p95: percentile(s, 0.95),
+      p99: percentile(s, 0.99),
+      max: s[n - 1],
+      last: this.last
+    };
+  }
+  /** Median over the retained samples (for the drop-detection threshold). */
+  median() {
+    if (this.buf.length === 0) return 0;
+    return percentile(this.sorted(), 0.5);
+  }
+};
+__name(_Ring, "Ring");
+var Ring = _Ring;
+function percentile(sortedAsc, q) {
+  const n = sortedAsc.length;
+  if (n === 0) return 0;
+  if (n === 1) return sortedAsc[0];
+  const idx = Math.min(n - 1, Math.max(0, Math.ceil(q * n) - 1));
+  return sortedAsc[idx];
+}
+__name(percentile, "percentile");
+var _FrameTracker = class _FrameTracker {
+  constructor() {
+    this.intervals = new Ring();
+    this.lastTs = null;
+    this.dropCount = 0;
+    this.slowCount = 0;
+    this.frameCount = 0;
+  }
+  tick(ts) {
+    this.frameCount++;
+    if (this.lastTs != null) {
+      const dt = ts - this.lastTs;
+      const med = this.intervals.median();
+      if (med > 0 && dt > med * DROP_FACTOR) this.dropCount++;
+      if (dt > SLOW_FRAME_MS) this.slowCount++;
+      this.intervals.push(dt);
+    }
+    this.lastTs = ts;
+  }
+  stats() {
+    const s = this.intervals.stats();
+    return {
+      count: this.frameCount,
+      fps: s.p50 > 0 ? 1e3 / s.p50 : 0,
+      p50: s.p50,
+      p95: s.p95,
+      drops: this.dropCount,
+      slowFrames: this.slowCount
+    };
+  }
+};
+__name(_FrameTracker, "FrameTracker");
+var FrameTracker = _FrameTracker;
+var _Profiler = class _Profiler {
+  constructor() {
+    /** Plain field (not a getter) so the hot-path branch is a bare load. */
+    this._enabled = false;
+    this.startTs = 0;
+    this.sections = /* @__PURE__ */ new Map();
+    this.frames = /* @__PURE__ */ new Map();
+    this.counters = /* @__PURE__ */ new Map();
+    /** Live gauges (current-state counts) — survive reset(), unlike counters. */
+    this.gauges = /* @__PURE__ */ new Map();
+    /** Open spans for begin()/end() keyed by label — last-write-wins (a label
+     *  isn't expected to nest with itself within a frame). */
+    this.open = /* @__PURE__ */ new Map();
+    this.longtaskCount = 0;
+    this.longtaskTotalMs = 0;
+    this.longtaskMaxMs = 0;
+    this.ltObserver = null;
+  }
+  get enabled() {
+    return this._enabled;
+  }
+  /** Turn profiling on/off. Enabling (re)starts the longtask observer and
+   *  stamps the uptime origin; disabling tears the observer down so a disabled
+   *  profiler has no live platform hook. Idempotent. */
+  setEnabled(on) {
+    if (on === this._enabled) return;
+    this._enabled = on;
+    if (on) {
+      this.startTs = nowMs();
+      this.startLongtaskObserver();
+    } else {
+      this.ltObserver?.disconnect();
+      this.ltObserver = null;
+    }
+  }
+  startLongtaskObserver() {
+    if (this.ltObserver) return;
+    if (typeof PerformanceObserver === "undefined") return;
+    try {
+      this.ltObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          this.longtaskCount++;
+          this.longtaskTotalMs += entry.duration;
+          if (entry.duration > this.longtaskMaxMs) this.longtaskMaxMs = entry.duration;
+        }
+      });
+      this.ltObserver.observe({ entryTypes: ["longtask"] });
+    } catch {
+      this.ltObserver = null;
+    }
+  }
+  // ── section timing ────────────────────────────────────────────────────────
+  /** Record a section duration directly (ms). Cheap no-op when disabled. */
+  record(name, ms) {
+    if (!this._enabled) return;
+    let ring = this.sections.get(name);
+    if (!ring) {
+      ring = new Ring();
+      this.sections.set(name, ring);
+    }
+    ring.push(ms);
+  }
+  /** Open a span. Pair with `end(name)`. No-op when disabled. */
+  begin(name) {
+    if (!this._enabled) return;
+    this.open.set(name, nowMs());
+  }
+  /** Close a span opened by `begin(name)` and record its duration. No-op when
+   *  disabled or when no matching open span exists. */
+  end(name) {
+    if (!this._enabled) return;
+    const t0 = this.open.get(name);
+    if (t0 === void 0) return;
+    this.open.delete(name);
+    this.record(name, nowMs() - t0);
+  }
+  /** Time a synchronous function and record it under `name`. Returns the fn's
+   *  result. When disabled, calls the fn with no timing overhead. The fn runs
+   *  even if disabled (it's the real work, not just measurement). */
+  time(name, fn) {
+    if (!this._enabled) return fn();
+    const t0 = nowMs();
+    try {
+      return fn();
+    } finally {
+      this.record(name, nowMs() - t0);
+    }
+  }
+  // ── frames ──────────────────────────────────────────────────────────────
+  /** Record a rendered frame for an instance (e.g. `'p5#3'`). No-op when
+   *  disabled. */
+  frame(instanceId) {
+    if (!this._enabled) return;
+    let ft = this.frames.get(instanceId);
+    if (!ft) {
+      ft = new FrameTracker();
+      this.frames.set(instanceId, ft);
+    }
+    ft.tick(nowMs());
+  }
+  /** Forget an instance's frame history (on renderer destroy) so a dead viz
+   *  doesn't linger in the snapshot. No-op when disabled. */
+  dropFrames(instanceId) {
+    if (!this._enabled) return;
+    this.frames.delete(instanceId);
+  }
+  // ── counters ──────────────────────────────────────────────────────────────
+  /** Add to a CUMULATIVE counter (reset() clears it; rate = value/uptime). */
+  inc(name, by = 1) {
+    if (!this._enabled) return;
+    this.counters.set(name, (this.counters.get(name) ?? 0) + by);
+  }
+  dec(name, by = 1) {
+    if (!this._enabled) return;
+    this.counters.set(name, (this.counters.get(name) ?? 0) - by);
+  }
+  /** Adjust a LIVE GAUGE (current-state count, e.g. mounted viz instances).
+   *  Gauges survive reset() — they reflect what's live now, not samples.
+   *  Use +1 on mount, -1 on destroy. */
+  gauge(name, delta) {
+    if (!this._enabled) return;
+    this.gauges.set(name, (this.gauges.get(name) ?? 0) + delta);
+  }
+  // ── read / reset ────────────────────────────────────────────────────────
+  snapshot() {
+    const sections = {};
+    for (const [name, ring] of this.sections) sections[name] = ring.stats();
+    const frames = {};
+    for (const [id, ft] of this.frames) frames[id] = ft.stats();
+    const counters = {};
+    for (const [name, v] of this.counters) counters[name] = v;
+    const gauges = {};
+    for (const [name, v] of this.gauges) gauges[name] = Math.max(0, v);
+    return {
+      enabled: this._enabled,
+      uptimeMs: this._enabled ? nowMs() - this.startTs : 0,
+      sections,
+      frames,
+      counters,
+      gauges,
+      longtasks: {
+        count: this.longtaskCount,
+        totalMs: this.longtaskTotalMs,
+        maxMs: this.longtaskMaxMs
+      }
+    };
+  }
+  /** Clear all samples/counters but keep the enabled state + observer. Use to
+   *  start a clean measurement window (e.g. before driving a heavy patch). */
+  reset() {
+    this.sections.clear();
+    this.frames.clear();
+    this.counters.clear();
+    this.open.clear();
+    this.longtaskCount = 0;
+    this.longtaskTotalMs = 0;
+    this.longtaskMaxMs = 0;
+    this.startTs = nowMs();
+  }
+};
+__name(_Profiler, "Profiler");
+var Profiler = _Profiler;
+var perf = new Profiler();
+try {
+  const g = globalThis;
+  if (g.__STAVE_PERF__ === true) perf.setEnabled(true);
+  g.__stavePerf = {
+    snapshot: /* @__PURE__ */ __name(() => perf.snapshot(), "snapshot"),
+    reset: /* @__PURE__ */ __name(() => perf.reset(), "reset"),
+    setEnabled: /* @__PURE__ */ __name((on) => perf.setEnabled(on), "setEnabled")
+  };
+} catch {
+}
+
+// src/visualizers/vizFlags.ts
+var VIZ_FLAG_KEYS = {
+  worker: "stave.viz.worker",
+  p5direct: "stave.viz.p5direct",
+  pool: "stave.viz.pool",
+  governor: "stave.viz.governor",
+  pump: "stave.viz.pump",
+  maxFps: "stave.viz.maxFps",
+  maxDpr: "stave.viz.maxDpr"
+};
+function read(key2) {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    return localStorage.getItem(key2);
+  } catch {
+    return null;
+  }
+}
+__name(read, "read");
+function enabledByDefault(key2) {
+  return read(key2) !== "0";
+}
+__name(enabledByDefault, "enabledByDefault");
+function optIn(key2) {
+  return read(key2) === "1";
+}
+__name(optIn, "optIn");
+function triState(key2) {
+  const v = read(key2);
+  return v === "1" ? true : v === "0" ? false : null;
+}
+__name(triState, "triState");
+function numFlag(key2) {
+  const n = Number(read(key2));
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+__name(numFlag, "numFlag");
+function isP5DirectCanvasEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.p5direct);
+}
+__name(isP5DirectCanvasEnabled, "isP5DirectCanvasEnabled");
+function isVizGovernorEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.governor);
+}
+__name(isVizGovernorEnabled, "isVizGovernorEnabled");
+function isVizPumpSharedCacheEnabled() {
+  return enabledByDefault(VIZ_FLAG_KEYS.pump);
+}
+__name(isVizPumpSharedCacheEnabled, "isVizPumpSharedCacheEnabled");
+function isVizWorkerPoolEnabled() {
+  return optIn(VIZ_FLAG_KEYS.pool);
+}
+__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
+function getVizWorkerOverride() {
+  return triState(VIZ_FLAG_KEYS.worker);
+}
+__name(getVizWorkerOverride, "getVizWorkerOverride");
+function getVizMaxFpsOverride() {
+  return numFlag(VIZ_FLAG_KEYS.maxFps);
+}
+__name(getVizMaxFpsOverride, "getVizMaxFpsOverride");
+function getVizMaxDprOverride() {
+  return numFlag(VIZ_FLAG_KEYS.maxDpr);
+}
+__name(getVizMaxDprOverride, "getVizMaxDprOverride");
+
+// src/visualizers/vizGovernor.ts
+var HEALTHY_MS = 20;
+var JANK_MS = 45;
+var MIN_FPS = 10;
+var EMA_ALPHA = 0.25;
+var STRESS_RAMP_DOWN = 0.012;
+var IDLE_GAP_MS = 400;
+var RES_MIN_SCALE = 0.5;
+var RES_STRESS_ON = 0.5;
+function computeStress(emaMs, healthy = HEALTHY_MS, jank = JANK_MS) {
+  if (emaMs <= healthy) return 0;
+  if (emaMs >= jank) return 1;
+  return (emaMs - healthy) / (jank - healthy);
+}
+__name(computeStress, "computeStress");
+function maxPerFrame(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.round(n * (1 - stress)));
+}
+__name(maxPerFrame, "maxPerFrame");
+function periodFor(n, stress) {
+  if (n <= 1) return 1;
+  return Math.max(1, Math.ceil(n / maxPerFrame(n, stress)));
+}
+__name(periodFor, "periodFor");
+function minGapMs(stress) {
+  if (stress <= 0) return 0;
+  return stress * (1e3 / MIN_FPS);
+}
+__name(minGapMs, "minGapMs");
+function resolutionScaleFor(stress) {
+  if (stress < RES_STRESS_ON) return 1;
+  const t = (stress - RES_STRESS_ON) / (1 - RES_STRESS_ON);
+  const raw = 1 - t * (1 - RES_MIN_SCALE);
+  return Math.max(RES_MIN_SCALE, Math.round(raw * 4) / 4);
+}
+__name(resolutionScaleFor, "resolutionScaleFor");
+var _VizGovernor = class _VizGovernor {
+  constructor() {
+    this.enabled = true;
+    /** Active (looping) renderer id → its stable round-robin offset. */
+    this.registered = /* @__PURE__ */ new Map();
+    this.lastProduce = /* @__PURE__ */ new Map();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
+    this.enabled = isVizGovernorEnabled();
+  }
+  /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */
+  register(id) {
+    if (!this.registered.has(id)) this.registered.set(id, this.nextOffset++);
+  }
+  /** Unregister when the loop STOPS (pause/destroy). Resets stress when the last
+   *  viz leaves so a fresh mount starts from a healthy baseline. */
+  unregister(id) {
+    this.registered.delete(id);
+    this.lastProduce.delete(id);
+    if (this.registered.size === 0) {
+      this.stress = 0;
+      this.emaMs = HEALTHY_MS;
+      this.lastObserveTs = 0;
+    }
+  }
+  /** Feed the cadence monitor — call once per rAF tick from EVERY active loop
+   *  (idempotent per timestamp: only the first call for a new `ts` advances the
+   *  frame + updates stress, so N renderers calling with the same ts is fine). */
+  observeFrame(ts) {
+    if (!this.enabled || this.registered.size === 0) return;
+    if (this.lastObserveTs > 0 && ts > this.lastObserveTs) {
+      const d = ts - this.lastObserveTs;
+      if (d > IDLE_GAP_MS) {
+        this.emaMs = HEALTHY_MS;
+      } else {
+        this.emaMs = this.emaMs * (1 - EMA_ALPHA) + d * EMA_ALPHA;
+      }
+      const target = computeStress(this.emaMs);
+      this.stress = target > this.stress ? target : Math.max(target, this.stress - STRESS_RAMP_DOWN);
+      this.frameIndex++;
+      perf.record("viz.governor.stress", Math.round(this.stress * 100));
+    }
+    if (ts > this.lastObserveTs) this.lastObserveTs = ts;
+  }
+  /** Gate: may renderer `id` produce a frame at `ts`? Composed with (and called
+   *  after) the renderer's own backpressure + maxFps checks. */
+  mayProduce(id, ts) {
+    if (!this.enabled) return true;
+    const n = this.registered.size;
+    if (n === 0 || this.stress <= 0) return true;
+    const gap = minGapMs(this.stress);
+    if (gap > 0) {
+      const last = this.lastProduce.get(id) ?? 0;
+      if (last > 0 && ts - last < gap - 1) return false;
+    }
+    if (n > 1) {
+      const period = periodFor(n, this.stress);
+      if (period > 1) {
+        const offset = this.registered.get(id) ?? 0;
+        if ((this.frameIndex + offset) % period !== 0) return false;
+      }
+    }
+    this.lastProduce.set(id, ts);
+    return true;
+  }
+  /** Render-resolution scale (lever 3) the renderer should apply to its backing
+   *  store at the current stress, in `[RES_MIN_SCALE, 1]`. 1 (full) when disabled
+   *  or smooth — so a renderer multiplying its `resize` w,h by this is a total
+   *  no-op in the common case (transparency, PV91). The `WorkerVizRenderer` reads
+   *  this each rAF and re-posts a scaled `resize` only when the quantized step
+   *  changes (the backing-store realloc is relatively expensive). */
+  resolutionScale() {
+    if (!this.enabled || this.stress <= 0) return 1;
+    return resolutionScaleFor(this.stress);
+  }
+  /** Observability / test hook. */
+  state() {
+    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() };
+  }
+  /** Live enable/disable (the "Adaptive performance" toggle, persisted via
+   *  editorRegistry under the SAME `stave.viz.governor` key this reads at
+   *  construction). Unlike `_setEnabledForTest` it KEEPS the registered renderers
+   *  (live viz stay tracked) — it only flips the gate. Disabling resets stress so
+   *  the levers release immediately: `mayProduce` returns true and
+   *  `resolutionScale` returns 1, so each WorkerVizRenderer's next tick re-posts a
+   *  full-resolution resize and stops being throttled. Re-enabling lets stress
+   *  rebuild from the live rAF cadence via observeFrame. */
+  setEnabled(on) {
+    this.enabled = on;
+    if (!on) {
+      this.stress = 0;
+      this.emaMs = HEALTHY_MS;
+      this.lastObserveTs = 0;
+    }
+  }
+  /** Test helper — force enabled state (and reset) deterministically. */
+  _setEnabledForTest(on) {
+    this.enabled = on;
+    this.registered.clear();
+    this.lastProduce.clear();
+    this.nextOffset = 0;
+    this.frameIndex = 0;
+    this.lastObserveTs = 0;
+    this.emaMs = HEALTHY_MS;
+    this.stress = 0;
+  }
+};
+__name(_VizGovernor, "VizGovernor");
+var VizGovernor = _VizGovernor;
+var vizGovernor = new VizGovernor();
+
+// src/visualizers/vizConfig.ts
+var DEFAULT_VIZ_CONFIG = {
+  // Resolver
+  defaultRenderer: "p5",
+  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
+  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
+  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
+  // automatic fallback when a browser can't offload (no OffscreenCanvas /
+  // transferControlToOffscreen / worker factory). Opt OUT per project via
+  // localStorage['stave.viz.worker'] = '0'.
+  workerRenderer: true,
+  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
+  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
+  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
+  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
+  // composite wall measured for multi-instance inline viz.
+  maxFps: 60,
+  maxDpr: 1,
+  // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
+  // values are opted into via "performance mode" (deriveVizQuality) and read by
+  // sketches as `sig.density`. Marshalled to the worker via the config channel.
+  density: 1,
+  // Inline view zones
+  inlineZoneHeight: 150,
+  // Audio analysis
+  fftSize: 2048,
+  smoothingTimeConstant: 0.8,
+  // Hydra
+  hydraAudioBins: 4,
+  hydraAutoLoop: true,
+  // Pianoroll
+  pianorollWindowSeconds: 6,
+  pianorollCycles: 4,
+  pianorollPlayhead: 0.5,
+  pianorollMidiMin: 24,
+  pianorollMidiMax: 96,
+  // Scope / FScope
+  scopeWindowSeconds: 4,
+  scopeAmplitudeScale: 0.25,
+  scopeBaseline: 0.75,
+  // Spectrum
+  spectrumMinDb: -80,
+  spectrumMaxDb: 0,
+  spectrumScrollSpeed: 2,
+  // Colors
+  backgroundColor: "#090912",
+  accentColor: "#75baff",
+  activeColor: "#FFCA28",
+  playheadColor: "rgba(255,255,255,0.5)"
+};
+function createVizConfig(overrides) {
+  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
+}
+__name(createVizConfig, "createVizConfig");
+var DEFAULT_VIZ_QUALITY = "balanced";
+function deriveVizQuality(level) {
+  switch (level) {
+    case "high":
+      return { resolution: 1024, density: 1 };
+    case "performance":
+      return { resolution: 256, density: 0.5 };
+    case "balanced":
+    default:
+      return { resolution: 512, density: 1 };
+  }
+}
+__name(deriveVizQuality, "deriveVizQuality");
+var _active = { ...DEFAULT_VIZ_CONFIG };
+var _listeners = /* @__PURE__ */ new Set();
+function notify() {
+  for (const cb of Array.from(_listeners)) cb(_active);
+}
+__name(notify, "notify");
+function getVizConfig() {
+  return _active;
+}
+__name(getVizConfig, "getVizConfig");
+function setVizConfig(config) {
+  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
+  notify();
+}
+__name(setVizConfig, "setVizConfig");
+function updateVizConfig(patch) {
+  _active = { ..._active, ...patch };
+  notify();
+}
+__name(updateVizConfig, "updateVizConfig");
+function onVizConfigChange(cb) {
+  _listeners.add(cb);
+  return () => {
+    _listeners.delete(cb);
+  };
+}
+__name(onVizConfigChange, "onVizConfigChange");
+var WORKER_VIZ_CONFIG_KEYS = ["hydraAudioBins", "density"];
+function pickWorkerVizConfig(config = _active) {
+  return WORKER_VIZ_CONFIG_KEYS.reduce((acc, k) => {
+    acc[k] = config[k];
+    return acc;
+  }, {});
+}
+__name(pickWorkerVizConfig, "pickWorkerVizConfig");
+
+// src/workspace/editorRegistry.ts
+var editors = /* @__PURE__ */ new Map();
+var monacoNs = null;
+function registerMonacoNamespace(monaco) {
+  if (!monacoNs) monacoNs = monaco;
+}
+__name(registerMonacoNamespace, "registerMonacoNamespace");
+function getMonacoNamespace() {
+  return monacoNs;
+}
+__name(getMonacoNamespace, "getMonacoNamespace");
+function registerEditor(fileId, editor) {
+  editors.set(fileId, editor);
+}
+__name(registerEditor, "registerEditor");
+function unregisterEditor(fileId, editor) {
+  if (editors.get(fileId) === editor) editors.delete(fileId);
+  if (activeEditor === editor) setActiveEditor(null);
+}
+__name(unregisterEditor, "unregisterEditor");
+function getEditorForFile(fileId) {
+  return editors.get(fileId);
+}
+__name(getEditorForFile, "getEditorForFile");
+var activeEditor = null;
+var activeEditorListeners = /* @__PURE__ */ new Set();
+function setActiveEditor(editor) {
+  if (activeEditor === editor) return;
+  activeEditor = editor;
+  for (const l of activeEditorListeners) {
+    try {
+      l();
+    } catch {
+    }
+  }
+}
+__name(setActiveEditor, "setActiveEditor");
+function getActiveEditor() {
+  return activeEditor;
+}
+__name(getActiveEditor, "getActiveEditor");
+function getActiveFileId() {
+  if (!activeEditor) return null;
+  for (const [fileId, ed] of editors) {
+    if (ed === activeEditor) return fileId;
+  }
+  return null;
+}
+__name(getActiveFileId, "getActiveFileId");
+function getFileIdForEditor(editor) {
+  for (const [fileId, ed] of editors) {
+    if (ed === editor) return fileId;
+  }
+  return null;
+}
+__name(getFileIdForEditor, "getFileIdForEditor");
+function onActiveEditorChange(cb) {
+  activeEditorListeners.add(cb);
+  return () => {
+    activeEditorListeners.delete(cb);
+  };
+}
+__name(onActiveEditorChange, "onActiveEditorChange");
+var reevalHandler = null;
+function registerReevalHandler(fn) {
+  reevalHandler = fn;
+  return () => {
+    if (reevalHandler === fn) reevalHandler = null;
+  };
+}
+__name(registerReevalHandler, "registerReevalHandler");
+function requestReeval(fileId) {
+  if (fileId) reevalHandler?.(fileId);
+}
+__name(requestReeval, "requestReeval");
+var evalSourceTransform = null;
+function registerEvalSourceTransform(fn) {
+  evalSourceTransform = fn;
+  return () => {
+    if (evalSourceTransform === fn) evalSourceTransform = null;
+  };
+}
+__name(registerEvalSourceTransform, "registerEvalSourceTransform");
+function applyEvalSourceTransform(fileId, raw) {
+  if (!evalSourceTransform) return raw;
+  try {
+    return evalSourceTransform(fileId, raw);
+  } catch {
+    return raw;
+  }
+}
+__name(applyEvalSourceTransform, "applyEvalSourceTransform");
+function revealLineInFile(fileId, line) {
+  const editor = editors.get(fileId);
+  if (!editor) return false;
+  try {
+    editor.revealLineInCenter?.(line);
+    editor.setPosition?.({ lineNumber: line, column: 1 });
+    editor.focus?.();
+    return true;
+  } catch {
+    return false;
+  }
+}
+__name(revealLineInFile, "revealLineInFile");
+function revealOffsetInFile(fileId, offset) {
+  const editor = editors.get(fileId);
+  if (!editor) return false;
+  try {
+    const pos = editor.getModel?.()?.getPositionAt?.(offset);
+    if (!pos) return false;
+    editor.revealLineInCenter?.(pos.lineNumber);
+    editor.setPosition?.(pos);
+    editor.focus?.();
+    return true;
+  } catch {
+    return false;
+  }
+}
+__name(revealOffsetInFile, "revealOffsetInFile");
+function applyOffsetEditsToFile(fileId, edits, source, expectedDoc) {
+  const editor = editors.get(fileId);
+  if (!editor) return "no-editor";
+  if (!monacoNs) return "no-monaco";
+  if (edits.length === 0) return "no-edits";
+  if (expectedDoc != null && editor.getModel?.()?.getValue?.() !== expectedDoc) {
+    return "stale-document";
+  }
+  try {
+    new Writeback(editor, monacoNs).replaceRanges(edits, source);
+    return "applied";
+  } catch {
+    return "writeback-threw";
+  }
+}
+__name(applyOffsetEditsToFile, "applyOffsetEditsToFile");
+var DEFAULT_FONT_SIZE = 14;
+var FONT_SIZE_STORAGE = "stave:editorFontSize";
+var MINIMAP_STORAGE = "stave:editorMinimap";
+var DEFAULT_UI_ICON_SIZE = 25;
+var UI_ICON_SIZE_STORAGE = "stave:uiIconSize";
+var UI_ICON_SIZE_VAR = "--ui-icon-size";
+var DEFAULT_INLINE_VIZ_ACTION_SIZE = 11;
+var INLINE_VIZ_ACTION_SIZE_STORAGE = "stave:inlineVizActionSize";
+var INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
+function safeLocalStorage() {
+  try {
+    if (typeof window === "undefined") return null;
+    if (typeof window.localStorage?.getItem !== "function") return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+__name(safeLocalStorage, "safeLocalStorage");
+function readFontSize() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_FONT_SIZE;
+  const saved = Number(ls.getItem(FONT_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 8 && saved <= 40 ? saved : DEFAULT_FONT_SIZE;
+}
+__name(readFontSize, "readFontSize");
+function readMinimap() {
+  const ls = safeLocalStorage();
+  return ls?.getItem(MINIMAP_STORAGE) === "1";
+}
+__name(readMinimap, "readMinimap");
+function writeFontSize(size) {
+  safeLocalStorage()?.setItem(FONT_SIZE_STORAGE, String(size));
+}
+__name(writeFontSize, "writeFontSize");
+function writeMinimap(on) {
+  safeLocalStorage()?.setItem(MINIMAP_STORAGE, on ? "1" : "0");
+}
+__name(writeMinimap, "writeMinimap");
+function applyOptionsToEditor(editor) {
+  const fontSize = readFontSize();
+  const minimap = readMinimap();
+  editor.updateOptions?.({ fontSize, minimap: { enabled: minimap } });
+}
+__name(applyOptionsToEditor, "applyOptionsToEditor");
+function getEditorFontSize() {
+  return readFontSize();
+}
+__name(getEditorFontSize, "getEditorFontSize");
+function getEditorMinimap() {
+  return readMinimap();
+}
+__name(getEditorMinimap, "getEditorMinimap");
+function setEditorFontSize(size) {
+  const clamped = Math.max(8, Math.min(40, Math.round(size)));
+  writeFontSize(clamped);
+  for (const ed of editors.values()) ed.updateOptions?.({ fontSize: clamped });
+}
+__name(setEditorFontSize, "setEditorFontSize");
+function bumpEditorFontSize(delta) {
+  setEditorFontSize(readFontSize() + delta);
+}
+__name(bumpEditorFontSize, "bumpEditorFontSize");
+function toggleEditorMinimap() {
+  const next = !readMinimap();
+  writeMinimap(next);
+  for (const ed of editors.values()) ed.updateOptions?.({ minimap: { enabled: next } });
+}
+__name(toggleEditorMinimap, "toggleEditorMinimap");
+var uiIconSizeListeners = /* @__PURE__ */ new Set();
+function readUiIconSize() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_UI_ICON_SIZE;
+  const saved = Number(ls.getItem(UI_ICON_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 10 && saved <= 40 ? saved : DEFAULT_UI_ICON_SIZE;
+}
+__name(readUiIconSize, "readUiIconSize");
+function writeUiIconSize(size) {
+  safeLocalStorage()?.setItem(UI_ICON_SIZE_STORAGE, String(size));
+}
+__name(writeUiIconSize, "writeUiIconSize");
+function applyUiIconSizeVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(UI_ICON_SIZE_VAR, `${size}px`);
+}
+__name(applyUiIconSizeVar, "applyUiIconSizeVar");
+function getEditorUiIconSize() {
+  return readUiIconSize();
+}
+__name(getEditorUiIconSize, "getEditorUiIconSize");
+function setEditorUiIconSize(size) {
+  const clamped = Math.max(10, Math.min(40, Math.round(size)));
+  writeUiIconSize(clamped);
+  applyUiIconSizeVar(clamped);
+  for (const cb of Array.from(uiIconSizeListeners)) cb(clamped);
+}
+__name(setEditorUiIconSize, "setEditorUiIconSize");
+function onUiIconSizeChange(cb) {
+  uiIconSizeListeners.add(cb);
+  return () => {
+    uiIconSizeListeners.delete(cb);
+  };
+}
+__name(onUiIconSizeChange, "onUiIconSizeChange");
+function applyPersistedUiIconSize() {
+  applyUiIconSizeVar(readUiIconSize());
+}
+__name(applyPersistedUiIconSize, "applyPersistedUiIconSize");
+var inlineVizActionSizeListeners = /* @__PURE__ */ new Set();
+function readInlineVizActionSize() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_INLINE_VIZ_ACTION_SIZE;
+  const saved = Number(ls.getItem(INLINE_VIZ_ACTION_SIZE_STORAGE));
+  return Number.isFinite(saved) && saved >= 8 && saved <= 28 ? saved : DEFAULT_INLINE_VIZ_ACTION_SIZE;
+}
+__name(readInlineVizActionSize, "readInlineVizActionSize");
+function writeInlineVizActionSize(size) {
+  safeLocalStorage()?.setItem(INLINE_VIZ_ACTION_SIZE_STORAGE, String(size));
+}
+__name(writeInlineVizActionSize, "writeInlineVizActionSize");
+function applyInlineVizActionSizeVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(
+    INLINE_VIZ_ACTION_SIZE_VAR,
+    `${size}px`
+  );
+}
+__name(applyInlineVizActionSizeVar, "applyInlineVizActionSizeVar");
+function getInlineVizActionSize() {
+  return readInlineVizActionSize();
+}
+__name(getInlineVizActionSize, "getInlineVizActionSize");
+function setInlineVizActionSize(size) {
+  const clamped = Math.max(8, Math.min(28, Math.round(size)));
+  writeInlineVizActionSize(clamped);
+  applyInlineVizActionSizeVar(clamped);
+  for (const cb of Array.from(inlineVizActionSizeListeners)) cb(clamped);
+}
+__name(setInlineVizActionSize, "setInlineVizActionSize");
+function onInlineVizActionSizeChange(cb) {
+  inlineVizActionSizeListeners.add(cb);
+  return () => {
+    inlineVizActionSizeListeners.delete(cb);
+  };
+}
+__name(onInlineVizActionSizeChange, "onInlineVizActionSizeChange");
+function applyPersistedInlineVizActionSize() {
+  applyInlineVizActionSizeVar(readInlineVizActionSize());
+}
+__name(applyPersistedInlineVizActionSize, "applyPersistedInlineVizActionSize");
+var DEFAULT_INLINE_VIZ_RESOLUTION = 512;
+var MIN_INLINE_VIZ_RESOLUTION = 64;
+var MAX_INLINE_VIZ_RESOLUTION = 2048;
+var INLINE_VIZ_RESOLUTION_STORAGE = "stave:inlineVizResolution";
+var inlineVizResolutionListeners = /* @__PURE__ */ new Set();
+function readInlineVizResolution() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_INLINE_VIZ_RESOLUTION;
+  const saved = Number(ls.getItem(INLINE_VIZ_RESOLUTION_STORAGE));
+  return Number.isFinite(saved) && saved >= MIN_INLINE_VIZ_RESOLUTION && saved <= MAX_INLINE_VIZ_RESOLUTION ? saved : DEFAULT_INLINE_VIZ_RESOLUTION;
+}
+__name(readInlineVizResolution, "readInlineVizResolution");
+function writeInlineVizResolution(n) {
+  safeLocalStorage()?.setItem(INLINE_VIZ_RESOLUTION_STORAGE, String(n));
+}
+__name(writeInlineVizResolution, "writeInlineVizResolution");
+function getInlineVizResolution() {
+  return readInlineVizResolution();
+}
+__name(getInlineVizResolution, "getInlineVizResolution");
+function setInlineVizResolution(n) {
+  const clamped = Math.max(
+    MIN_INLINE_VIZ_RESOLUTION,
+    Math.min(MAX_INLINE_VIZ_RESOLUTION, Math.round(n))
+  );
+  writeInlineVizResolution(clamped);
+  for (const cb of Array.from(inlineVizResolutionListeners)) cb(clamped);
+}
+__name(setInlineVizResolution, "setInlineVizResolution");
+function onInlineVizResolutionChange(cb) {
+  inlineVizResolutionListeners.add(cb);
+  return () => {
+    inlineVizResolutionListeners.delete(cb);
+  };
+}
+__name(onInlineVizResolutionChange, "onInlineVizResolutionChange");
+var VIZ_QUALITY_STORAGE = "stave:vizQuality";
+var VIZ_QUALITY_LEVELS = ["high", "balanced", "performance"];
+var vizQualityListeners = /* @__PURE__ */ new Set();
+function readVizQuality() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_VIZ_QUALITY;
+  const saved = ls.getItem(VIZ_QUALITY_STORAGE);
+  return VIZ_QUALITY_LEVELS.includes(saved) ? saved : DEFAULT_VIZ_QUALITY;
+}
+__name(readVizQuality, "readVizQuality");
+function writeVizQuality(level) {
+  safeLocalStorage()?.setItem(VIZ_QUALITY_STORAGE, level);
+}
+__name(writeVizQuality, "writeVizQuality");
+function applyVizQuality(level) {
+  const { resolution, density } = deriveVizQuality(level);
+  setInlineVizResolution(resolution);
+  updateVizConfig({ density });
+}
+__name(applyVizQuality, "applyVizQuality");
+function getVizQuality() {
+  return readVizQuality();
+}
+__name(getVizQuality, "getVizQuality");
+function setVizQuality(level) {
+  const safe2 = VIZ_QUALITY_LEVELS.includes(level) ? level : DEFAULT_VIZ_QUALITY;
+  writeVizQuality(safe2);
+  applyVizQuality(safe2);
+  for (const cb of Array.from(vizQualityListeners)) cb(safe2);
+}
+__name(setVizQuality, "setVizQuality");
+function onVizQualityChange(cb) {
+  vizQualityListeners.add(cb);
+  return () => {
+    vizQualityListeners.delete(cb);
+  };
+}
+__name(onVizQualityChange, "onVizQualityChange");
+function applyPersistedVizQuality() {
+  const { density } = deriveVizQuality(readVizQuality());
+  updateVizConfig({ density });
+}
+__name(applyPersistedVizQuality, "applyPersistedVizQuality");
+var INLINE_VIZ_TEARDOWN_MS = 6e4;
+var DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true;
+var INLINE_VIZ_TEARDOWN_STORAGE = "stave:inlineVizTeardown";
+var inlineVizTeardownListeners = /* @__PURE__ */ new Set();
+function readInlineVizTeardownEnabled() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
+  const saved = ls.getItem(INLINE_VIZ_TEARDOWN_STORAGE);
+  if (saved === null) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
+  return saved === "1";
+}
+__name(readInlineVizTeardownEnabled, "readInlineVizTeardownEnabled");
+function getInlineVizTeardownEnabled() {
+  return readInlineVizTeardownEnabled();
+}
+__name(getInlineVizTeardownEnabled, "getInlineVizTeardownEnabled");
+function setInlineVizTeardownEnabled(on) {
+  safeLocalStorage()?.setItem(INLINE_VIZ_TEARDOWN_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(inlineVizTeardownListeners)) cb(on);
+}
+__name(setInlineVizTeardownEnabled, "setInlineVizTeardownEnabled");
+function onInlineVizTeardownChange(cb) {
+  inlineVizTeardownListeners.add(cb);
+  return () => {
+    inlineVizTeardownListeners.delete(cb);
+  };
+}
+__name(onInlineVizTeardownChange, "onInlineVizTeardownChange");
+var DEFAULT_TRACK_COLOUR_BARS_ENABLED = true;
+var TRACK_COLOUR_BARS_STORAGE = "stave:trackColourBars";
+var trackColourBarsListeners = /* @__PURE__ */ new Set();
+function readTrackColourBarsEnabled() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_TRACK_COLOUR_BARS_ENABLED;
+  const saved = ls.getItem(TRACK_COLOUR_BARS_STORAGE);
+  if (saved === null) return DEFAULT_TRACK_COLOUR_BARS_ENABLED;
+  return saved === "1";
+}
+__name(readTrackColourBarsEnabled, "readTrackColourBarsEnabled");
+function getTrackColourBarsEnabled() {
+  return readTrackColourBarsEnabled();
+}
+__name(getTrackColourBarsEnabled, "getTrackColourBarsEnabled");
+function setTrackColourBarsEnabled(on) {
+  safeLocalStorage()?.setItem(TRACK_COLOUR_BARS_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(trackColourBarsListeners)) cb(on);
+}
+__name(setTrackColourBarsEnabled, "setTrackColourBarsEnabled");
+function onTrackColourBarsChange(cb) {
+  trackColourBarsListeners.add(cb);
+  return () => {
+    trackColourBarsListeners.delete(cb);
+  };
+}
+__name(onTrackColourBarsChange, "onTrackColourBarsChange");
+var DEFAULT_PLAY_VIZ_ON_HOVER = false;
+var PLAY_VIZ_ON_HOVER_STORAGE = "stave:playVizOnHover";
+var playVizOnHoverListeners = /* @__PURE__ */ new Set();
+function readPlayVizOnHoverEnabled() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_PLAY_VIZ_ON_HOVER;
+  const saved = ls.getItem(PLAY_VIZ_ON_HOVER_STORAGE);
+  if (saved === null) return DEFAULT_PLAY_VIZ_ON_HOVER;
+  return saved === "1";
+}
+__name(readPlayVizOnHoverEnabled, "readPlayVizOnHoverEnabled");
+function getPlayVizOnHoverEnabled() {
+  return readPlayVizOnHoverEnabled();
+}
+__name(getPlayVizOnHoverEnabled, "getPlayVizOnHoverEnabled");
+function setPlayVizOnHoverEnabled(on) {
+  safeLocalStorage()?.setItem(PLAY_VIZ_ON_HOVER_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(playVizOnHoverListeners)) cb(on);
+}
+__name(setPlayVizOnHoverEnabled, "setPlayVizOnHoverEnabled");
+function onPlayVizOnHoverChange(cb) {
+  playVizOnHoverListeners.add(cb);
+  return () => {
+    playVizOnHoverListeners.delete(cb);
+  };
+}
+__name(onPlayVizOnHoverChange, "onPlayVizOnHoverChange");
+var DEFAULT_BACKDROP_VIZ_SPAN = "file";
+var BACKDROP_VIZ_SPAN_STORAGE = "stave:backdropVizSpan";
+var backdropVizSpanListeners = /* @__PURE__ */ new Set();
+function readBackdropVizSpan() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_BACKDROP_VIZ_SPAN;
+  return ls.getItem(BACKDROP_VIZ_SPAN_STORAGE) === "workspace" ? "workspace" : "file";
+}
+__name(readBackdropVizSpan, "readBackdropVizSpan");
+function getBackdropVizSpan() {
+  return readBackdropVizSpan();
+}
+__name(getBackdropVizSpan, "getBackdropVizSpan");
+function setBackdropVizSpan(span) {
+  safeLocalStorage()?.setItem(BACKDROP_VIZ_SPAN_STORAGE, span);
+  for (const cb of Array.from(backdropVizSpanListeners)) cb(span);
+}
+__name(setBackdropVizSpan, "setBackdropVizSpan");
+function onBackdropVizSpanChange(cb) {
+  backdropVizSpanListeners.add(cb);
+  return () => {
+    backdropVizSpanListeners.delete(cb);
+  };
+}
+__name(onBackdropVizSpanChange, "onBackdropVizSpanChange");
+function getInlineVizTeardownMs() {
+  if (!readInlineVizTeardownEnabled()) return 0;
+  try {
+    const raw = safeLocalStorage()?.getItem("stave:inlineVizTeardownMs");
+    if (raw != null) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 1e3) return n;
+    }
+  } catch {
+  }
+  return INLINE_VIZ_TEARDOWN_MS;
+}
+__name(getInlineVizTeardownMs, "getInlineVizTeardownMs");
+var DEFAULT_VIZ_INPUTS_LIVE_VALUES = true;
+var VIZ_INPUTS_LIVE_VALUES_STORAGE = "stave:vizInputsLiveValues";
+var vizInputsLiveValuesListeners = /* @__PURE__ */ new Set();
+function readVizInputsLiveValuesEnabled() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_VIZ_INPUTS_LIVE_VALUES;
+  const saved = ls.getItem(VIZ_INPUTS_LIVE_VALUES_STORAGE);
+  if (saved === null) return DEFAULT_VIZ_INPUTS_LIVE_VALUES;
+  return saved === "1";
+}
+__name(readVizInputsLiveValuesEnabled, "readVizInputsLiveValuesEnabled");
+function getVizInputsLiveValuesEnabled() {
+  return readVizInputsLiveValuesEnabled();
+}
+__name(getVizInputsLiveValuesEnabled, "getVizInputsLiveValuesEnabled");
+function setVizInputsLiveValuesEnabled(on) {
+  safeLocalStorage()?.setItem(VIZ_INPUTS_LIVE_VALUES_STORAGE, on ? "1" : "0");
+  for (const cb of Array.from(vizInputsLiveValuesListeners)) cb(on);
+}
+__name(setVizInputsLiveValuesEnabled, "setVizInputsLiveValuesEnabled");
+function onVizInputsLiveValuesChange(cb) {
+  vizInputsLiveValuesListeners.add(cb);
+  return () => {
+    vizInputsLiveValuesListeners.delete(cb);
+  };
+}
+__name(onVizInputsLiveValuesChange, "onVizInputsLiveValuesChange");
+var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 25;
+var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN = 12;
+var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX = 48;
+var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
+var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
+function readMusicalTimelineSubRowHeight() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
+  const saved = Number(ls.getItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE));
+  return Number.isFinite(saved) && saved >= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN && saved <= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX ? saved : DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
+}
+__name(readMusicalTimelineSubRowHeight, "readMusicalTimelineSubRowHeight");
+function writeMusicalTimelineSubRowHeight(h) {
+  safeLocalStorage()?.setItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE, String(h));
+}
+__name(writeMusicalTimelineSubRowHeight, "writeMusicalTimelineSubRowHeight");
+function getMusicalTimelineSubRowHeight() {
+  return readMusicalTimelineSubRowHeight();
+}
+__name(getMusicalTimelineSubRowHeight, "getMusicalTimelineSubRowHeight");
+function setMusicalTimelineSubRowHeight(h) {
+  const clamped = Math.max(
+    MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN,
+    Math.min(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, Math.round(h))
+  );
+  writeMusicalTimelineSubRowHeight(clamped);
+  for (const cb of Array.from(musicalTimelineSubRowHeightListeners)) cb(clamped);
+}
+__name(setMusicalTimelineSubRowHeight, "setMusicalTimelineSubRowHeight");
+function onMusicalTimelineSubRowHeightChange(cb) {
+  musicalTimelineSubRowHeightListeners.add(cb);
+  return () => {
+    musicalTimelineSubRowHeightListeners.delete(cb);
+  };
+}
+__name(onMusicalTimelineSubRowHeightChange, "onMusicalTimelineSubRowHeightChange");
+var DEFAULT_BACKDROP_BLUR = 8;
+var BACKDROP_BLUR_STORAGE = "stave:backdropBlur";
+var BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
+function readBackdropBlur() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_BACKDROP_BLUR;
+  const raw = ls.getItem(BACKDROP_BLUR_STORAGE);
+  if (raw == null || raw === "") return DEFAULT_BACKDROP_BLUR;
+  const saved = Number(raw);
+  return Number.isFinite(saved) && saved >= 0 && saved <= 40 ? saved : DEFAULT_BACKDROP_BLUR;
+}
+__name(readBackdropBlur, "readBackdropBlur");
+function writeBackdropBlur(size) {
+  safeLocalStorage()?.setItem(BACKDROP_BLUR_STORAGE, String(size));
+}
+__name(writeBackdropBlur, "writeBackdropBlur");
+function applyBackdropBlurVar(size) {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(
+    BACKDROP_BLUR_VAR,
+    `${size}px`
+  );
+}
+__name(applyBackdropBlurVar, "applyBackdropBlurVar");
+function getEditorBackdropBlur() {
+  return readBackdropBlur();
+}
+__name(getEditorBackdropBlur, "getEditorBackdropBlur");
+function setEditorBackdropBlur(size) {
+  const clamped = Math.max(0, Math.min(40, Math.round(size)));
+  writeBackdropBlur(clamped);
+  applyBackdropBlurVar(clamped);
+}
+__name(setEditorBackdropBlur, "setEditorBackdropBlur");
+function applyPersistedBackdropBlur() {
+  applyBackdropBlurVar(readBackdropBlur());
+}
+__name(applyPersistedBackdropBlur, "applyPersistedBackdropBlur");
+var DEFAULT_BACKDROP_OPACITY = 1;
+var BACKDROP_OPACITY_STORAGE = "stave:backdropOpacity";
+var backdropOpacityListeners = /* @__PURE__ */ new Set();
+function readBackdropOpacity() {
+  const ls = safeLocalStorage();
+  if (!ls) return DEFAULT_BACKDROP_OPACITY;
+  const raw = ls.getItem(BACKDROP_OPACITY_STORAGE);
+  if (raw == null || raw === "") return DEFAULT_BACKDROP_OPACITY;
+  const saved = Number(raw);
+  return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
+}
+__name(readBackdropOpacity, "readBackdropOpacity");
+function writeBackdropOpacity(o) {
+  safeLocalStorage()?.setItem(BACKDROP_OPACITY_STORAGE, String(o));
+}
+__name(writeBackdropOpacity, "writeBackdropOpacity");
+function getBackdropOpacity() {
+  return readBackdropOpacity();
+}
+__name(getBackdropOpacity, "getBackdropOpacity");
+function setBackdropOpacity(o) {
+  const clamped = Math.max(0, Math.min(1, o));
+  writeBackdropOpacity(clamped);
+  for (const cb of Array.from(backdropOpacityListeners)) cb(clamped);
+}
+__name(setBackdropOpacity, "setBackdropOpacity");
+function onBackdropOpacityChange(cb) {
+  backdropOpacityListeners.add(cb);
+  return () => {
+    backdropOpacityListeners.delete(cb);
+  };
+}
+__name(onBackdropOpacityChange, "onBackdropOpacityChange");
+var DEFAULT_STORED_ALIASES = {};
+var SIGNAL_ALIASES_STORAGE = "stave:signalAliases";
+var signalAliasesListeners = /* @__PURE__ */ new Set();
+function isNonEmptyString(v) {
+  return typeof v === "string" && v.length > 0;
+}
+__name(isNonEmptyString, "isNonEmptyString");
+function sanitizeAliasValue(v) {
+  if (isNonEmptyString(v)) return v;
+  if (Array.isArray(v) && v.length > 0 && v.every(isNonEmptyString)) {
+    return v;
+  }
+  return null;
+}
+__name(sanitizeAliasValue, "sanitizeAliasValue");
+function sanitizeStoredSignalAliases(raw) {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [key2, value] of Object.entries(raw)) {
+    if (!isNonEmptyString(key2)) continue;
+    const legacy = sanitizeAliasValue(value);
+    if (legacy != null) {
+      out[key2] = { [DEFAULT_VIZ_ENGINE]: legacy };
+      continue;
+    }
+    if (value != null && typeof value === "object" && !Array.isArray(value)) {
+      const slot = {};
+      for (const [eng, ev] of Object.entries(value)) {
+        if (!isNonEmptyString(eng)) continue;
+        const sv = sanitizeAliasValue(ev);
+        if (sv != null) slot[eng] = sv;
+      }
+      if (Object.keys(slot).length > 0) out[key2] = slot;
+    }
+  }
+  return out;
+}
+__name(sanitizeStoredSignalAliases, "sanitizeStoredSignalAliases");
+function readStoredSignalAliases() {
+  const ls = safeLocalStorage();
+  if (!ls) return { ...DEFAULT_STORED_ALIASES };
+  try {
+    const saved = ls.getItem(SIGNAL_ALIASES_STORAGE);
+    if (saved == null) return { ...DEFAULT_STORED_ALIASES };
+    return sanitizeStoredSignalAliases(JSON.parse(saved));
+  } catch {
+    return { ...DEFAULT_STORED_ALIASES };
+  }
+}
+__name(readStoredSignalAliases, "readStoredSignalAliases");
+function writeStoredSignalAliases(map) {
+  try {
+    safeLocalStorage()?.setItem(SIGNAL_ALIASES_STORAGE, JSON.stringify(map));
+  } catch {
+  }
+}
+__name(writeStoredSignalAliases, "writeStoredSignalAliases");
+function flattenForEngine(stored, engine) {
+  const out = {};
+  for (const [name, slot] of Object.entries(stored)) {
+    const v = slot[engine];
+    if (v != null) out[name] = v;
+  }
+  return out;
+}
+__name(flattenForEngine, "flattenForEngine");
+function getStoredSignalAliases() {
+  return readStoredSignalAliases();
+}
+__name(getStoredSignalAliases, "getStoredSignalAliases");
+function getSignalAliases(engine = DEFAULT_VIZ_ENGINE) {
+  return flattenForEngine(readStoredSignalAliases(), engine);
+}
+__name(getSignalAliases, "getSignalAliases");
+function setSignalAliases(map, engine = DEFAULT_VIZ_ENGINE) {
+  const prev = readStoredSignalAliases();
+  const next = {};
+  for (const [name, value] of Object.entries(map)) {
+    if (!isNonEmptyString(name)) continue;
+    const sv = sanitizeAliasValue(value);
+    if (sv == null) continue;
+    next[name] = { ...prev[name] ?? {}, [engine]: sv };
+  }
+  writeStoredSignalAliases(next);
+  const flat = flattenForEngine(next, engine);
+  for (const cb of Array.from(signalAliasesListeners)) cb(flat);
+}
+__name(setSignalAliases, "setSignalAliases");
+function onSignalAliasesChange(cb) {
+  signalAliasesListeners.add(cb);
+  return () => {
+    signalAliasesListeners.delete(cb);
+  };
+}
+__name(onSignalAliasesChange, "onSignalAliasesChange");
+var DEFAULT_BACKDROP_QUALITY = "half";
+var BACKDROP_QUALITY_STORAGE = "stave:backdropQuality";
+var backdropQualityListeners = /* @__PURE__ */ new Set();
+function readBackdropQuality() {
+  const ls = safeLocalStorage();
+  const v = ls?.getItem(BACKDROP_QUALITY_STORAGE);
+  return v === "full" || v === "half" || v === "quarter" ? v : DEFAULT_BACKDROP_QUALITY;
+}
+__name(readBackdropQuality, "readBackdropQuality");
+function writeBackdropQuality(q) {
+  safeLocalStorage()?.setItem(BACKDROP_QUALITY_STORAGE, q);
+}
+__name(writeBackdropQuality, "writeBackdropQuality");
+function getBackdropQuality() {
+  return readBackdropQuality();
+}
+__name(getBackdropQuality, "getBackdropQuality");
+function setBackdropQuality(q) {
+  writeBackdropQuality(q);
+  for (const cb of Array.from(backdropQualityListeners)) cb(q);
+}
+__name(setBackdropQuality, "setBackdropQuality");
+function onBackdropQualityChange(cb) {
+  backdropQualityListeners.add(cb);
+  return () => {
+    backdropQualityListeners.delete(cb);
+  };
+}
+__name(onBackdropQualityChange, "onBackdropQualityChange");
+function backdropQualityFactor(q) {
+  return q === "full" ? 1 : q === "quarter" ? 0.25 : 0.5;
+}
+__name(backdropQualityFactor, "backdropQualityFactor");
+function applyPersistedEditorOptions(editor) {
+  applyOptionsToEditor(editor);
+}
+__name(applyPersistedEditorOptions, "applyPersistedEditorOptions");
+var THEME_STORAGE = "stave:editorTheme";
+function readTheme() {
+  const ls = safeLocalStorage();
+  const v = ls?.getItem(THEME_STORAGE);
+  return v === "light" || v === "system" ? v : v === "dark" ? "dark" : "dark";
+}
+__name(readTheme, "readTheme");
+function writeTheme(t) {
+  safeLocalStorage()?.setItem(THEME_STORAGE, t);
+}
+__name(writeTheme, "writeTheme");
+function systemPrefersLight() {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-color-scheme: light)").matches;
+}
+__name(systemPrefersLight, "systemPrefersLight");
+function resolveTheme(t) {
+  if (t === "dark" || t === "light") return t;
+  return systemPrefersLight() ? "light" : "dark";
+}
+__name(resolveTheme, "resolveTheme");
+var themeListeners = /* @__PURE__ */ new Set();
+var systemMqlWired = false;
+var systemMql = null;
+function notifyThemeListeners(resolved) {
+  for (const fn of themeListeners) {
+    try {
+      fn(resolved);
+    } catch {
+    }
+  }
+}
+__name(notifyThemeListeners, "notifyThemeListeners");
+function wireSystemMqlOnce() {
+  if (systemMqlWired || typeof window === "undefined" || !window.matchMedia) return;
+  systemMqlWired = true;
+  systemMql = window.matchMedia("(prefers-color-scheme: light)");
+  const onChange = /* @__PURE__ */ __name(() => {
+    if (readTheme() !== "system") return;
+    applyResolvedTheme(resolveTheme("system"));
+  }, "onChange");
+  try {
+    systemMql.addEventListener("change", onChange);
+  } catch {
+    systemMql.addListener?.(onChange);
+  }
+}
+__name(wireSystemMqlOnce, "wireSystemMqlOnce");
+function applyResolvedTheme(resolved) {
+  if (monacoNs?.editor?.setTheme) {
+    monacoNs.editor.setTheme(resolved === "light" ? "stave-light" : "stave-dark");
+  }
+  if (typeof document !== "undefined") {
+    document.documentElement.setAttribute("data-stave-theme", resolved);
+  }
+  notifyThemeListeners(resolved);
+}
+__name(applyResolvedTheme, "applyResolvedTheme");
+function getEditorTheme() {
+  return readTheme();
+}
+__name(getEditorTheme, "getEditorTheme");
+function getResolvedTheme() {
+  return resolveTheme(readTheme());
+}
+__name(getResolvedTheme, "getResolvedTheme");
+function setEditorTheme(theme) {
+  writeTheme(theme);
+  wireSystemMqlOnce();
+  applyResolvedTheme(resolveTheme(theme));
+}
+__name(setEditorTheme, "setEditorTheme");
+function cycleEditorTheme() {
+  const next = readTheme() === "dark" ? "light" : readTheme() === "light" ? "system" : "dark";
+  setEditorTheme(next);
+  return next;
+}
+__name(cycleEditorTheme, "cycleEditorTheme");
+function onThemeChange(fn) {
+  themeListeners.add(fn);
+  return () => {
+    themeListeners.delete(fn);
+  };
+}
+__name(onThemeChange, "onThemeChange");
+function applyPersistedTheme() {
+  wireSystemMqlOnce();
+  setEditorTheme(readTheme());
+}
+__name(applyPersistedTheme, "applyPersistedTheme");
+var PERF_ENABLED_STORAGE = "stave:perfEnabled";
+var perfEnabledListeners = /* @__PURE__ */ new Set();
+function readPerfEnabled() {
+  try {
+    if (globalThis.__STAVE_PERF__ === true) {
+      return true;
+    }
+  } catch {
+  }
+  return safeLocalStorage()?.getItem(PERF_ENABLED_STORAGE) === "1";
+}
+__name(readPerfEnabled, "readPerfEnabled");
+function getPerfEnabled() {
+  return readPerfEnabled();
+}
+__name(getPerfEnabled, "getPerfEnabled");
+function setPerfEnabled(on) {
+  try {
+    safeLocalStorage()?.setItem(PERF_ENABLED_STORAGE, on ? "1" : "0");
+  } catch {
+  }
+  perf.setEnabled(on);
+  for (const cb of Array.from(perfEnabledListeners)) cb(on);
+}
+__name(setPerfEnabled, "setPerfEnabled");
+function togglePerfEnabled() {
+  const next = !readPerfEnabled();
+  setPerfEnabled(next);
+  return next;
+}
+__name(togglePerfEnabled, "togglePerfEnabled");
+function onPerfEnabledChange(cb) {
+  perfEnabledListeners.add(cb);
+  return () => {
+    perfEnabledListeners.delete(cb);
+  };
+}
+__name(onPerfEnabledChange, "onPerfEnabledChange");
+function applyPersistedPerfEnabled() {
+  perf.setEnabled(readPerfEnabled());
+}
+__name(applyPersistedPerfEnabled, "applyPersistedPerfEnabled");
+var ADAPTIVE_PERF_STORAGE = "stave.viz.governor";
+var adaptivePerfListeners = /* @__PURE__ */ new Set();
+function readAdaptivePerf() {
+  return safeLocalStorage()?.getItem(ADAPTIVE_PERF_STORAGE) !== "0";
+}
+__name(readAdaptivePerf, "readAdaptivePerf");
+function getAdaptivePerfEnabled() {
+  return readAdaptivePerf();
+}
+__name(getAdaptivePerfEnabled, "getAdaptivePerfEnabled");
+function setAdaptivePerfEnabled(on) {
+  try {
+    safeLocalStorage()?.setItem(ADAPTIVE_PERF_STORAGE, on ? "1" : "0");
+  } catch {
+  }
+  vizGovernor.setEnabled(on);
+  for (const cb of Array.from(adaptivePerfListeners)) cb(on);
+}
+__name(setAdaptivePerfEnabled, "setAdaptivePerfEnabled");
+function toggleAdaptivePerfEnabled() {
+  const next = !readAdaptivePerf();
+  setAdaptivePerfEnabled(next);
+  return next;
+}
+__name(toggleAdaptivePerfEnabled, "toggleAdaptivePerfEnabled");
+function onAdaptivePerfChange(cb) {
+  adaptivePerfListeners.add(cb);
+  return () => {
+    adaptivePerfListeners.delete(cb);
+  };
+}
+__name(onAdaptivePerfChange, "onAdaptivePerfChange");
+function applyPersistedAdaptivePerf() {
+  vizGovernor.setEnabled(readAdaptivePerf());
+}
+__name(applyPersistedAdaptivePerf, "applyPersistedAdaptivePerf");
+
+// src/codeView/writeback.ts
+var REEVAL_DEBOUNCE_MS = 120;
+function formatNumber(v, maxDecimals = 4) {
+  if (!Number.isFinite(v)) return "0";
+  if (Number.isInteger(v)) return String(v);
+  const fixed = v.toFixed(maxDecimals);
+  return fixed.replace(/\.?0+$/, "");
+}
+__name(formatNumber, "formatNumber");
+function normalizeEdits(edits) {
+  for (const e of edits) {
+    if (e.range[0] > e.range[1]) {
+      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
+    }
+  }
+  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1].range;
+    const cur = sorted[i].range;
+    if (cur[0] < prev[1]) {
+      throw new Error(
+        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
+      );
+    }
+  }
+  return sorted;
+}
+__name(normalizeEdits, "normalizeEdits");
+function applyEdits(doc, edits) {
+  const sorted = normalizeEdits(edits);
+  let out = doc;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const { range: range2, text } = sorted[i];
+    out = out.slice(0, range2[0]) + text + out.slice(range2[1]);
+  }
+  return out;
+}
+__name(applyEdits, "applyEdits");
+var _Writeback = class _Writeback {
+  constructor(editor, monaco) {
+    this.editor = editor;
+    this.monaco = monaco;
+    this.writingSource = null;
+    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+    this.inGesture = false;
+    /** whether the in-flight gesture has applied any edit — gates the one re-eval
+     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
+    this.gestureDidEdit = false;
+    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
+    this.reevalTimer = null;
+  }
+  /**
+   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+   * the undo grouping is affected. Idempotent if already in a gesture.
+   */
+  beginGesture() {
+    if (this.inGesture) return;
+    const model = this.editor.getModel();
+    if (!model) return;
+    model.pushStackElement();
+    this.inGesture = true;
+    this.gestureDidEdit = false;
+  }
+  /** Close the gesture, sealing all its edits as one undo step — and, if the
+   * gesture changed anything, make it audible immediately (one re-eval on
+   * release, not per drag frame). */
+  endGesture() {
+    if (!this.inGesture) return;
+    this.inGesture = false;
+    this.editor.getModel()?.pushStackElement();
+    if (this.gestureDidEdit) {
+      this.gestureDidEdit = false;
+      this.requestLiveReeval();
+    }
+  }
+  /**
+   * The source of the edit currently being applied, or null. The host's
+   * `onDidChangeModelContent` listener reads this synchronously to attribute
+   * the change. It is non-null ONLY for the duration of `apply`.
+   */
+  get currentSource() {
+    return this.writingSource;
+  }
+  /** Replace a single offset range. One undo step. */
+  replaceRange(range2, text, source) {
+    this.apply([{ range: range2, text }], source);
+  }
+  /**
+   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
+   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
+   * the whole gesture).
+   */
+  replaceRanges(edits, source) {
+    this.apply(edits, source);
+  }
+  /** Insert text at an offset (zero-width edit). */
+  insertAt(offset, text, source) {
+    this.apply([{ range: [offset, offset], text }], source);
+  }
+  /** Delete an offset range. */
+  deleteRange(range2, source) {
+    this.apply([{ range: range2, text: "" }], source);
+  }
+  /**
+   * Freshness-guarded write. Re-reads the live model text and refuses the edit
+   * if the chunk's statement no longer matches what it was detected from
+   * (the doc changed under the panel). Returns true if applied, false if stale.
+   * Prefer this over the raw methods on any path that can race a typed edit.
+   */
+  applyFresh(chunk, edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return false;
+    if (!isChunkFresh(model.getValue(), chunk)) return false;
+    this.apply(edits, source);
+    return true;
+  }
+  apply(edits, source) {
+    const model = this.editor.getModel();
+    if (!model) return;
+    const normalized = normalizeEdits(edits);
+    const ops = normalized.map((e) => {
+      const start = model.getPositionAt(e.range[0]);
+      const end = model.getPositionAt(e.range[1]);
+      return {
+        range: new this.monaco.Range(
+          start.lineNumber,
+          start.column,
+          end.lineNumber,
+          end.column
+        ),
+        text: e.text,
+        forceMoveMarkers: true
+      };
+    });
+    if (!this.inGesture) model.pushStackElement();
+    this.writingSource = source;
+    try {
+      model.pushEditOperations([], ops, () => null);
+    } finally {
+      this.writingSource = null;
+    }
+    if (!this.inGesture) model.pushStackElement();
+    if (this.inGesture) this.gestureDidEdit = true;
+    else this.requestLiveReeval();
+  }
+  /**
+   * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
+   * the moment it commits. Centralised here so every visual surface — sequencer,
+   * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
+   * re-evals only a PLAYING file, and only when live mode isn't already doing
+   * it, so this never auto-starts audio nor double-evaluates.
+   *
+   * Trailing-debounced: rapid successive commits (e.g. clearing several
+   * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
+   * which also lets the Monaco→file-store sync settle so the re-eval reads the
+   * final content rather than racing a not-yet-synced edit.
+   */
+  requestLiveReeval() {
+    if (this.reevalTimer) clearTimeout(this.reevalTimer);
+    this.reevalTimer = setTimeout(() => {
+      this.reevalTimer = null;
+      requestReeval(getFileIdForEditor(this.editor));
+    }, REEVAL_DEBOUNCE_MS);
+  }
+};
+__name(_Writeback, "Writeback");
+var Writeback = _Writeback;
+
 // src/engine/noteToMidi.ts
 function noteToMidi(note) {
   if (typeof note === "number") return Math.round(note);
@@ -5193,277 +12541,6 @@ function trimToFrames(chunks, frames) {
   }
 }
 __name(trimToFrames, "trimToFrames");
-
-// src/perf/profiler.ts
-var RING = 240;
-var DROP_FACTOR = 2;
-var SLOW_FRAME_MS = 1e3 / 30;
-function nowMs() {
-  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : 0;
-}
-__name(nowMs, "nowMs");
-var _Ring = class _Ring {
-  constructor() {
-    this.buf = [];
-    this.head = 0;
-    /** Total pushed since reset (uncapped) — distinct from retained length. */
-    this.total = 0;
-  }
-  push(v) {
-    if (this.buf.length < RING) this.buf.push(v);
-    else this.buf[this.head] = v;
-    this.head = (this.head + 1) % RING;
-    this.total++;
-  }
-  get last() {
-    if (this.buf.length === 0) return 0;
-    const i = (this.head - 1 + RING) % RING;
-    return this.buf[i] ?? 0;
-  }
-  /** Sorted copy of the retained samples (ascending). */
-  sorted() {
-    return this.buf.slice().sort((a, b) => a - b);
-  }
-  stats() {
-    const n = this.buf.length;
-    if (n === 0) {
-      return { count: 0, mean: 0, p50: 0, p95: 0, p99: 0, max: 0, last: 0 };
-    }
-    const s = this.sorted();
-    let sum = 0;
-    for (const v of this.buf) sum += v;
-    return {
-      count: this.total,
-      mean: sum / n,
-      p50: percentile(s, 0.5),
-      p95: percentile(s, 0.95),
-      p99: percentile(s, 0.99),
-      max: s[n - 1],
-      last: this.last
-    };
-  }
-  /** Median over the retained samples (for the drop-detection threshold). */
-  median() {
-    if (this.buf.length === 0) return 0;
-    return percentile(this.sorted(), 0.5);
-  }
-};
-__name(_Ring, "Ring");
-var Ring = _Ring;
-function percentile(sortedAsc, q) {
-  const n = sortedAsc.length;
-  if (n === 0) return 0;
-  if (n === 1) return sortedAsc[0];
-  const idx = Math.min(n - 1, Math.max(0, Math.ceil(q * n) - 1));
-  return sortedAsc[idx];
-}
-__name(percentile, "percentile");
-var _FrameTracker = class _FrameTracker {
-  constructor() {
-    this.intervals = new Ring();
-    this.lastTs = null;
-    this.dropCount = 0;
-    this.slowCount = 0;
-    this.frameCount = 0;
-  }
-  tick(ts) {
-    this.frameCount++;
-    if (this.lastTs != null) {
-      const dt = ts - this.lastTs;
-      const med = this.intervals.median();
-      if (med > 0 && dt > med * DROP_FACTOR) this.dropCount++;
-      if (dt > SLOW_FRAME_MS) this.slowCount++;
-      this.intervals.push(dt);
-    }
-    this.lastTs = ts;
-  }
-  stats() {
-    const s = this.intervals.stats();
-    return {
-      count: this.frameCount,
-      fps: s.p50 > 0 ? 1e3 / s.p50 : 0,
-      p50: s.p50,
-      p95: s.p95,
-      drops: this.dropCount,
-      slowFrames: this.slowCount
-    };
-  }
-};
-__name(_FrameTracker, "FrameTracker");
-var FrameTracker = _FrameTracker;
-var _Profiler = class _Profiler {
-  constructor() {
-    /** Plain field (not a getter) so the hot-path branch is a bare load. */
-    this._enabled = false;
-    this.startTs = 0;
-    this.sections = /* @__PURE__ */ new Map();
-    this.frames = /* @__PURE__ */ new Map();
-    this.counters = /* @__PURE__ */ new Map();
-    /** Live gauges (current-state counts) — survive reset(), unlike counters. */
-    this.gauges = /* @__PURE__ */ new Map();
-    /** Open spans for begin()/end() keyed by label — last-write-wins (a label
-     *  isn't expected to nest with itself within a frame). */
-    this.open = /* @__PURE__ */ new Map();
-    this.longtaskCount = 0;
-    this.longtaskTotalMs = 0;
-    this.longtaskMaxMs = 0;
-    this.ltObserver = null;
-  }
-  get enabled() {
-    return this._enabled;
-  }
-  /** Turn profiling on/off. Enabling (re)starts the longtask observer and
-   *  stamps the uptime origin; disabling tears the observer down so a disabled
-   *  profiler has no live platform hook. Idempotent. */
-  setEnabled(on) {
-    if (on === this._enabled) return;
-    this._enabled = on;
-    if (on) {
-      this.startTs = nowMs();
-      this.startLongtaskObserver();
-    } else {
-      this.ltObserver?.disconnect();
-      this.ltObserver = null;
-    }
-  }
-  startLongtaskObserver() {
-    if (this.ltObserver) return;
-    if (typeof PerformanceObserver === "undefined") return;
-    try {
-      this.ltObserver = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          this.longtaskCount++;
-          this.longtaskTotalMs += entry.duration;
-          if (entry.duration > this.longtaskMaxMs) this.longtaskMaxMs = entry.duration;
-        }
-      });
-      this.ltObserver.observe({ entryTypes: ["longtask"] });
-    } catch {
-      this.ltObserver = null;
-    }
-  }
-  // ── section timing ────────────────────────────────────────────────────────
-  /** Record a section duration directly (ms). Cheap no-op when disabled. */
-  record(name, ms) {
-    if (!this._enabled) return;
-    let ring = this.sections.get(name);
-    if (!ring) {
-      ring = new Ring();
-      this.sections.set(name, ring);
-    }
-    ring.push(ms);
-  }
-  /** Open a span. Pair with `end(name)`. No-op when disabled. */
-  begin(name) {
-    if (!this._enabled) return;
-    this.open.set(name, nowMs());
-  }
-  /** Close a span opened by `begin(name)` and record its duration. No-op when
-   *  disabled or when no matching open span exists. */
-  end(name) {
-    if (!this._enabled) return;
-    const t0 = this.open.get(name);
-    if (t0 === void 0) return;
-    this.open.delete(name);
-    this.record(name, nowMs() - t0);
-  }
-  /** Time a synchronous function and record it under `name`. Returns the fn's
-   *  result. When disabled, calls the fn with no timing overhead. The fn runs
-   *  even if disabled (it's the real work, not just measurement). */
-  time(name, fn) {
-    if (!this._enabled) return fn();
-    const t0 = nowMs();
-    try {
-      return fn();
-    } finally {
-      this.record(name, nowMs() - t0);
-    }
-  }
-  // ── frames ──────────────────────────────────────────────────────────────
-  /** Record a rendered frame for an instance (e.g. `'p5#3'`). No-op when
-   *  disabled. */
-  frame(instanceId) {
-    if (!this._enabled) return;
-    let ft = this.frames.get(instanceId);
-    if (!ft) {
-      ft = new FrameTracker();
-      this.frames.set(instanceId, ft);
-    }
-    ft.tick(nowMs());
-  }
-  /** Forget an instance's frame history (on renderer destroy) so a dead viz
-   *  doesn't linger in the snapshot. No-op when disabled. */
-  dropFrames(instanceId) {
-    if (!this._enabled) return;
-    this.frames.delete(instanceId);
-  }
-  // ── counters ──────────────────────────────────────────────────────────────
-  /** Add to a CUMULATIVE counter (reset() clears it; rate = value/uptime). */
-  inc(name, by = 1) {
-    if (!this._enabled) return;
-    this.counters.set(name, (this.counters.get(name) ?? 0) + by);
-  }
-  dec(name, by = 1) {
-    if (!this._enabled) return;
-    this.counters.set(name, (this.counters.get(name) ?? 0) - by);
-  }
-  /** Adjust a LIVE GAUGE (current-state count, e.g. mounted viz instances).
-   *  Gauges survive reset() — they reflect what's live now, not samples.
-   *  Use +1 on mount, -1 on destroy. */
-  gauge(name, delta) {
-    if (!this._enabled) return;
-    this.gauges.set(name, (this.gauges.get(name) ?? 0) + delta);
-  }
-  // ── read / reset ────────────────────────────────────────────────────────
-  snapshot() {
-    const sections = {};
-    for (const [name, ring] of this.sections) sections[name] = ring.stats();
-    const frames = {};
-    for (const [id, ft] of this.frames) frames[id] = ft.stats();
-    const counters = {};
-    for (const [name, v] of this.counters) counters[name] = v;
-    const gauges = {};
-    for (const [name, v] of this.gauges) gauges[name] = Math.max(0, v);
-    return {
-      enabled: this._enabled,
-      uptimeMs: this._enabled ? nowMs() - this.startTs : 0,
-      sections,
-      frames,
-      counters,
-      gauges,
-      longtasks: {
-        count: this.longtaskCount,
-        totalMs: this.longtaskTotalMs,
-        maxMs: this.longtaskMaxMs
-      }
-    };
-  }
-  /** Clear all samples/counters but keep the enabled state + observer. Use to
-   *  start a clean measurement window (e.g. before driving a heavy patch). */
-  reset() {
-    this.sections.clear();
-    this.frames.clear();
-    this.counters.clear();
-    this.open.clear();
-    this.longtaskCount = 0;
-    this.longtaskTotalMs = 0;
-    this.longtaskMaxMs = 0;
-    this.startTs = nowMs();
-  }
-};
-__name(_Profiler, "Profiler");
-var Profiler = _Profiler;
-var perf = new Profiler();
-try {
-  const g = globalThis;
-  if (g.__STAVE_PERF__ === true) perf.setEnabled(true);
-  g.__stavePerf = {
-    snapshot: /* @__PURE__ */ __name(() => perf.snapshot(), "snapshot"),
-    reset: /* @__PURE__ */ __name(() => perf.reset(), "reset"),
-    setEnabled: /* @__PURE__ */ __name((on) => perf.setEnabled(on), "setEnabled")
-  };
-} catch {
-}
 
 // src/engine/engineLog.ts
 var MAX_HISTORY = 500;
@@ -6278,7 +13355,7 @@ var ALL_TIERS = [
   "motion",
   "mqtt"
 ];
-function safeLocalStorage() {
+function safeLocalStorage2() {
   try {
     if (typeof window === "undefined") return null;
     const ls = window.localStorage;
@@ -6288,15 +13365,15 @@ function safeLocalStorage() {
     return null;
   }
 }
-__name(safeLocalStorage, "safeLocalStorage");
+__name(safeLocalStorage2, "safeLocalStorage");
 function readTierFlag(name) {
-  const ls = safeLocalStorage();
+  const ls = safeLocalStorage2();
   if (!ls) return false;
   return ls.getItem(`${STORAGE_PREFIX}${name}`) === "1";
 }
 __name(readTierFlag, "readTierFlag");
 function writeTierFlag(name, on) {
-  safeLocalStorage()?.setItem(`${STORAGE_PREFIX}${name}`, on ? "1" : "0");
+  safeLocalStorage2()?.setItem(`${STORAGE_PREFIX}${name}`, on ? "1" : "0");
 }
 __name(writeTierFlag, "writeTierFlag");
 function getTierFlags() {
@@ -6802,709 +13879,6 @@ function installMiniStringParser(deps) {
   });
 }
 __name(installMiniStringParser, "installMiniStringParser");
-function parseTopLevel(doc) {
-  try {
-    const program = parse(doc, {
-      ecmaVersion: "latest",
-      allowAwaitOutsideFunction: true
-    });
-    return program.body;
-  } catch {
-    return null;
-  }
-}
-__name(parseTopLevel, "parseTopLevel");
-function docParses(doc) {
-  return parseTopLevel(doc) !== null;
-}
-__name(docParses, "docParses");
-
-// src/codeView/miniSource/spanRole.ts
-var NOTE_OVERRIDE = /* @__PURE__ */ new Set(["note", "n"]);
-function walk(node, parent, ctx) {
-  if (!node || typeof node.type !== "string") return;
-  ctx.parent.set(node, parent);
-  if (isMiniLiteral(node)) ctx.literals.push(node);
-  for (const key2 of Object.keys(node)) {
-    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
-    const v = node[key2];
-    if (Array.isArray(v)) v.forEach((c) => walk(c, node, ctx));
-    else if (v && typeof v === "object" && typeof v.type === "string") walk(v, node, ctx);
-  }
-}
-__name(walk, "walk");
-function isMiniLiteral(node) {
-  if (node.type === "Literal" && typeof node.value === "string") return true;
-  if (node.type === "TemplateLiteral") return true;
-  return false;
-}
-__name(isMiniLiteral, "isMiniLiteral");
-function literalInterior(node) {
-  return [node.start + 1, node.end - 1];
-}
-__name(literalInterior, "literalInterior");
-function containedIn(node, ranges) {
-  return ranges.some((r) => node.start >= r[0] && node.end <= r[1]);
-}
-__name(containedIn, "containedIn");
-var _SpanIndex = class _SpanIndex {
-  constructor(ctx) {
-    /**
-     * How many times the mixed-use tie-break actually DECIDED a role — a binding
-     * referenced both ways within one unit's boundary. Scoping the question to the
-     * unit is expected to make this rare or zero; if it is zero over the corpus the
-     * tie-break is DEFENSIVE, and saying so is more honest than leaving a comment
-     * claiming it carries weight.
-     */
-    this.tieBreakFired = 0;
-    this.ctx = ctx;
-  }
-  /** Build the index for a document, or null when it does not parse. */
-  static build(doc) {
-    const program = parseTopLevel(doc);
-    if (!program) return null;
-    const ctx = {
-      parent: /* @__PURE__ */ new Map(),
-      literals: [],
-      bindings: /* @__PURE__ */ new Map(),
-      refs: /* @__PURE__ */ new Map()
-    };
-    for (const stmt of program) walk(stmt, null, ctx);
-    const dropped = /* @__PURE__ */ new Set();
-    for (const stmt of program) {
-      if (stmt?.type !== "VariableDeclaration" || !Array.isArray(stmt.declarations)) continue;
-      for (const decl of stmt.declarations) {
-        if (decl?.id?.type !== "Identifier" || !decl.init) continue;
-        const name = decl.id.name;
-        if (ctx.bindings.has(name) || dropped.has(name)) {
-          ctx.bindings.delete(name);
-          dropped.add(name);
-          continue;
-        }
-        ctx.bindings.set(name, decl);
-      }
-    }
-    for (const [node, parent] of ctx.parent) {
-      if (node?.type !== "Identifier") continue;
-      if (parent?.type === "VariableDeclarator" && parent.id === node) continue;
-      if (parent?.type === "MemberExpression" && parent.property === node && !parent.computed) continue;
-      if (parent?.type === "Property" && parent.key === node && !parent.computed) continue;
-      if (parent?.type === "LabeledStatement" && parent.label === node) continue;
-      const list = ctx.refs.get(node.name);
-      if (list) list.push(node);
-      else ctx.refs.set(node.name, [node]);
-    }
-    return new _SpanIndex(ctx);
-  }
-  /** Every mini literal in the document, innermost-last. */
-  get literals() {
-    return this.ctx.literals;
-  }
-  /** The innermost mini literal whose INTERIOR contains `span`, or null. */
-  literalFor(span) {
-    let best = null;
-    for (const lit of this.ctx.literals) {
-      const [s, e] = literalInterior(lit);
-      if (span[0] >= s && span[1] <= e) {
-        if (!best || lit.start >= best.start) best = lit;
-      }
-    }
-    return best;
-  }
-  /** The role of the literal enclosing `span`, or `unknown` when there is none. */
-  roleOfSpan(span, boundary) {
-    const lit = this.literalFor(span);
-    return lit ? this.roleOfNode(lit, boundary) : "unknown";
-  }
-  /**
-   * The role of a VALUE-producing node, decided by its syntactic position.
-   *
-   * Every arm is a position, not a name, with the single stated exception of
-   * `NOTE_OVERRIDE`. Positions the rule does not claim to judge return
-   * `unknown` and are never treated as content.
-   */
-  roleOfNode(node, boundary, seen = /* @__PURE__ */ new Set()) {
-    return this.computeRole(node, boundary, seen);
-  }
-  computeRole(node, boundary, seen) {
-    let child = node;
-    let parent = this.ctx.parent.get(child);
-    for (let guard = 0; parent && guard < 64; guard++) {
-      if (parent.type !== "VariableDeclarator" && !containedIn(parent, boundary)) return "source";
-      switch (parent.type) {
-        case "CallExpression": {
-          if (parent.callee === child) {
-            child = parent;
-            parent = this.ctx.parent.get(child);
-            continue;
-          }
-          if (Array.isArray(parent.arguments) && parent.arguments.includes(child)) {
-            const callee = parent.callee;
-            if (callee?.type === "Identifier") {
-              return this.roleOfNode(parent, boundary, seen);
-            }
-            if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") {
-              if (NOTE_OVERRIDE.has(callee.property.name) && !this.chainRootIsCall(parent)) {
-                return this.roleOfNode(parent, boundary, seen);
-              }
-              return "argument";
-            }
-            return "unknown";
-          }
-          return "unknown";
-        }
-        case "TaggedTemplateExpression":
-          return parent.quasi === child ? this.roleOfNode(parent, boundary, seen) : "unknown";
-        case "MemberExpression": {
-          if (parent.object !== child) return "unknown";
-          if (isMiniLiteral(child) && this.chainOverridesRoot(parent)) return "argument";
-          child = parent;
-          parent = this.ctx.parent.get(child);
-          continue;
-        }
-        case "VariableDeclarator": {
-          if (parent.init !== child) return "unknown";
-          if (boundary.length > 0 && containedIn(parent.init, [boundary[0]])) return "source";
-          const name = parent.id?.type === "Identifier" ? parent.id.name : null;
-          if (!name || seen.has(name)) return "unknown";
-          seen.add(name);
-          return this.roleOfBinding(name, boundary);
-        }
-        case "ExpressionStatement":
-        case "LabeledStatement":
-          return "source";
-        case "ArrayExpression":
-        case "Property":
-        case "ObjectExpression":
-        case "ParenthesizedExpression":
-        case "AwaitExpression":
-        case "SequenceExpression":
-        case "ConditionalExpression":
-        // A pattern-producing helper (`let bass = (lpf) => n("…").lpf(lpf)`) is
-        // called where a pattern is wanted, so the body's role is the role of
-        // the CALL. Transparency is what carries that through — and it is not a
-        // way in for lambdas that are themselves control arguments, because
-        // `.sometimes(x => x.note("c3"))`'s literal is decided at `.note`'s own
-        // chain long before the arrow is reached.
-        case "ArrowFunctionExpression":
-        case "FunctionExpression":
-        case "ReturnStatement":
-        case "BlockStatement":
-          child = parent;
-          parent = this.ctx.parent.get(child);
-          continue;
-        default:
-          return "unknown";
-      }
-    }
-    return "unknown";
-  }
-  /**
-   * Does the chain containing `call` bottom out at a CALL (`sound("hh").note(…)`)
-   * rather than at a bare literal or identifier (`"gm_pad_warm".note(…)`)?
-   *
-   * A chain with a head call already has its source — the head's argument — so a
-   * mid-chain `note`/`n` there is an ordinary control. Only a chain rooted at a
-   * bare value has no source of its own for the override to replace.
-   */
-  chainRootIsCall(call) {
-    let node = call;
-    for (let guard = 0; node && guard < 64; guard++) {
-      if (node.type === "CallExpression") {
-        const callee = node.callee;
-        if (callee?.type === "Identifier") return true;
-        if (callee?.type === "MemberExpression") {
-          node = callee.object;
-          continue;
-        }
-        return false;
-      }
-      if (node.type === "MemberExpression") {
-        node = node.object;
-        continue;
-      }
-      return false;
-    }
-    return false;
-  }
-  /**
-   * Does the member chain rooted at `member` apply a note-content control?
-   * Walks OUTWARD from the root member expression through the call spine.
-   */
-  chainOverridesRoot(member) {
-    let node = member;
-    let parent = this.ctx.parent.get(node);
-    for (let guard = 0; parent && guard < 64; guard++) {
-      if (parent.type === "CallExpression" && parent.callee === node) {
-        const prop = node.type === "MemberExpression" ? node.property : null;
-        if (prop?.type === "Identifier" && NOTE_OVERRIDE.has(prop.name)) {
-          if ((parent.arguments ?? []).length > 0) return true;
-        }
-        node = parent;
-        parent = this.ctx.parent.get(node);
-        continue;
-      }
-      if (parent.type === "MemberExpression" && parent.object === node) {
-        node = parent;
-        parent = this.ctx.parent.get(node);
-        continue;
-      }
-      return false;
-    }
-    return false;
-  }
-  /**
-   * The role of a BOUND value, decided by how the binding is USED.
-   *
-   * `const drums = "Linn9000"` is content or a bank name depending entirely on
-   * whether `drums` appears as `s(drums)` or as `.bank(drums)`. Judging the
-   * initialiser by its own position gets this wrong in the direction that
-   * matters: `const x = "…"` is not syntactically anybody's argument, so a
-   * position-only rule keeps every bound control argument.
-   *
-   * THE QUESTION IS SCOPED TO THE UNIT, because a role is a property of a
-   * REFERENCE and a unit only ever sees its own. Asking it of the whole document
-   * manufactures ties that do not exist locally, and the ranking then resolves
-   * them by source order: `var ch = "[Am C G <Em F>]/8"` is a pattern source in
-   * `chord(ch).voicing()` and a control argument in
-   * `n("[0 1 <- 2>…]*2").chord(ch)`, and a document-wide verdict of `source`
-   * hands the second unit the first one's chord progression as its own content —
-   * because `ch` is declared at the top of the file and the ranking breaks ties
-   * on source order. `boundary` is the unit's own expression plus the initialiser
-   * of every binding it reaches, so filtering references to it asks only about
-   * the uses this unit can actually see.
-   *
-   * A binding used both ways WITHIN one unit still resolves as `source`: losing
-   * real content is the worse error of the two. That tie-break is a JUDGEMENT
-   * CALL, so `mixedUseBindings()` reports the population it could apply to and
-   * `tieBreakFired` counts how often it actually decides — a guard believed
-   * load-bearing is a false claim about the code.
-   */
-  roleOfBinding(name, boundary) {
-    const all = this.ctx.refs.get(name) ?? [];
-    const mine = boundary.length ? all.filter((r) => boundary.some(([s, e]) => r.start >= s && r.end <= e)) : all;
-    const refs = mine.length ? mine : all;
-    let sawArgument = false;
-    let sawSource = false;
-    for (const ref of refs) {
-      const r = this.roleOfRef(ref);
-      if (r === "source") sawSource = true;
-      else if (r === "argument") sawArgument = true;
-    }
-    if (sawSource && sawArgument) this.tieBreakFired++;
-    if (sawSource) return "source";
-    return sawArgument ? "argument" : "unknown";
-  }
-  /**
-   * Bindings referenced BOTH as a pattern and as a control argument SOMEWHERE in
-   * the document. This is the population the tie-break could apply to, not the
-   * set it decides: `roleOfBinding` scopes the question to one unit's references,
-   * so a binding can be mixed-use document-wide and unambiguous in every unit
-   * that reads it. Compare with `tieBreakFired`, which counts the decisions.
-   */
-  mixedUseBindings() {
-    const out = [];
-    for (const [name] of this.ctx.bindings) {
-      let src = false;
-      let arg = false;
-      for (const ref of this.ctx.refs.get(name) ?? []) {
-        const r = this.roleOfRef(ref);
-        if (r === "source") src = true;
-        else if (r === "argument") arg = true;
-      }
-      if (src && arg) out.push(name);
-    }
-    return out;
-  }
-  /**
-   * The role of ONE reference to a binding, from the position that consumes it.
-   * Transparent wrappers are stepped through; nothing else is climbed.
-   */
-  roleOfRef(ref) {
-    let child = ref;
-    let parent = this.ctx.parent.get(child);
-    for (let guard = 0; parent && guard < 32; guard++) {
-      switch (parent.type) {
-        case "CallExpression": {
-          if (!Array.isArray(parent.arguments) || !parent.arguments.includes(child)) return "source";
-          const callee = parent.callee;
-          if (callee?.type === "MemberExpression" && callee.property?.type === "Identifier") {
-            return NOTE_OVERRIDE.has(callee.property.name) ? "source" : "argument";
-          }
-          return "source";
-        }
-        case "ArrayExpression":
-        case "Property":
-        case "ObjectExpression":
-        case "ParenthesizedExpression":
-        case "AwaitExpression":
-        case "SequenceExpression":
-          child = parent;
-          parent = this.ctx.parent.get(child);
-          continue;
-        default:
-          return "source";
-      }
-    }
-    return "source";
-  }
-  /**
-   * Ranges a span may live in and still belong to `exprRange`: the expression
-   * itself, plus the initialiser of every binding it references, transitively.
-   * This is what lets an eval-proposed span in ANOTHER top-level statement be
-   * attributed to the unit that plays it.
-   *
-   * Walks REFERENCES, not every identifier that happens to spell a binding's
-   * name. Method names are identifiers too, and Strudel's vocabulary collides
-   * with the names people give their patterns constantly — `.cpm(…)` beside
-   * `let cpm`, and `.p1`/`.d1` (the repl's pattern getters) beside `let p1`,
-   * `let d1`, which is a real document in the corpus. A name-based scan pulls
-   * those unrelated initialisers into the unit's reachable set, and a span
-   * belonging to another statement then becomes admissible content for this one.
-   * Measured: 37 of 148 documents contain at least one such collision.
-   */
-  reachableRanges(exprRange) {
-    const out = [exprRange];
-    const seen = /* @__PURE__ */ new Set();
-    const queue2 = [exprRange];
-    while (queue2.length) {
-      const [s, e] = queue2.shift();
-      for (const [name, refs] of this.ctx.refs) {
-        if (seen.has(name)) continue;
-        if (!refs.some((r) => r.start >= s && r.end <= e)) continue;
-        const decl = this.ctx.bindings.get(name);
-        if (!decl) continue;
-        seen.add(name);
-        const range2 = [decl.init.start, decl.init.end];
-        out.push(range2);
-        queue2.push(range2);
-      }
-    }
-    return out;
-  }
-};
-__name(_SpanIndex, "SpanIndex");
-var SpanIndex = _SpanIndex;
-
-// src/codeView/miniSource/resolveMiniSource.ts
-var within = /* @__PURE__ */ __name((inner, outer) => inner[0] >= outer[0] && inner[1] <= outer[1], "within");
-function resolveMiniSource(doc, unit, opts = {}) {
-  const index = opts.index !== void 0 ? opts.index : SpanIndex.build(doc);
-  if (!index) return { ok: false, reason: "doc-unparsed" };
-  const reachable = index.reachableRanges(unit.exprRange);
-  const evalFirst = opts.proposals?.length ? attempt(doc, index, reachable, unit, opts.proposals) : null;
-  if (evalFirst?.ok) return evalFirst;
-  const walk5 = attempt(
-    doc,
-    index,
-    reachable,
-    unit,
-    index.literals.map((lit) => ({ span: literalInterior(lit), via: "parse" }))
-  );
-  return walk5.ok ? walk5 : evalFirst ?? walk5;
-}
-__name(resolveMiniSource, "resolveMiniSource");
-function attempt(doc, index, reachable, unit, proposals) {
-  const via = proposals[0]?.via ?? "parse";
-  const mine = proposals.filter((p) => reachable.some((r) => within(p.span, r)));
-  if (mine.length === 0) return { ok: false, reason: "no-candidate" };
-  const groups = /* @__PURE__ */ new Map();
-  for (const p of mine) {
-    if (index.roleOfSpan(p.span, reachable) !== "source") continue;
-    const lit = index.literalFor(p.span);
-    if (!lit) continue;
-    const g = groups.get(lit);
-    if (g) g.spans.push(p.span);
-    else groups.set(lit, { lit, spans: [p.span] });
-  }
-  if (groups.size === 0) return { ok: false, reason: "no-source-span" };
-  const ranked = [...groups.values()].sort(
-    (a, b) => b.spans.length - a.spans.length || a.lit.start - b.lit.start
-  );
-  const best = ranked[0];
-  const range2 = literalInterior(best.lit);
-  return {
-    ok: true,
-    via,
-    range: range2,
-    text: doc.slice(range2[0], range2[1]),
-    spans: best.spans,
-    alternatives: ranked.slice(1).map((g) => literalInterior(g.lit)),
-    crossesBinding: !within(range2, unit.exprRange)
-  };
-}
-__name(attempt, "attempt");
-
-// src/codeView/chunkDetect.ts
-var PICK_METHODS = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
-function isChunkFresh(doc, chunk) {
-  if (doc.slice(chunk.statementRange[0], chunk.statementRange[1]) !== chunk.statementText) {
-    return false;
-  }
-  const anchor = chunk.miniAnchor;
-  return anchor === null || doc.slice(anchor.range[0], anchor.range[1]) === anchor.text;
-}
-__name(isChunkFresh, "isChunkFresh");
-function buildBindingIndex(statements) {
-  const map = /* @__PURE__ */ new Map();
-  const dropped = /* @__PURE__ */ new Set();
-  for (const stmt of statements) {
-    if (!stmt || stmt.type !== "VariableDeclaration" || !Array.isArray(stmt.declarations)) continue;
-    for (const decl of stmt.declarations) {
-      if (decl?.id?.type !== "Identifier" || !decl.init) continue;
-      const name = decl.id.name;
-      if (map.has(name) || dropped.has(name)) {
-        map.delete(name);
-        dropped.add(name);
-        continue;
-      }
-      map.set(name, { rhs: decl.init, declStmt: stmt });
-    }
-  }
-  return map;
-}
-__name(buildBindingIndex, "buildBindingIndex");
-function resolveBinding(node, index, seen = /* @__PURE__ */ new Set()) {
-  if (!node || node.type !== "Identifier" || seen.has(node.name)) return null;
-  const b = index.get(node.name);
-  if (!b) return null;
-  seen.add(node.name);
-  if (b.rhs?.type === "Identifier") {
-    const deeper = resolveBinding(b.rhs, index, seen);
-    if (deeper) return deeper;
-  }
-  return b;
-}
-__name(resolveBinding, "resolveBinding");
-function buildMaybeResolved(doc, expr, label, stmtRange, index, nested = false, getIndex) {
-  const resolved = resolveBinding(expr, index);
-  if (resolved) {
-    return buildChunkFromExpr(
-      doc,
-      resolved.rhs,
-      label,
-      [resolved.declStmt.start, resolved.declStmt.end],
-      nested,
-      getIndex
-    );
-  }
-  return buildChunkFromExpr(doc, expr, label, stmtRange, nested, getIndex);
-}
-__name(buildMaybeResolved, "buildMaybeResolved");
-function detectChunk(doc, pos) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return null;
-  const bindings = buildBindingIndex(statements);
-  const getIndex = lazySpanIndex(doc);
-  for (const node of statements) {
-    if (pos >= node.start && pos <= node.end) {
-      if (node.type === "VariableDeclaration") {
-        const decls = Array.isArray(node.declarations) ? node.declarations : [];
-        if (decls.length !== 1) return null;
-        const decl = decls[0];
-        if (decl?.id?.type !== "Identifier" || !decl.init) return null;
-        const initTarget = innermostChainUnder(doc, decl.init, pos, bindings);
-        return initTarget === decl.init ? buildMaybeResolved(doc, decl.init, null, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, initTarget, null, [initTarget.start, initTarget.end], bindings, true, getIndex);
-      }
-      let label = null;
-      let body = node;
-      if (node.type === "LabeledStatement") {
-        label = node.label.name;
-        body = node.body;
-      }
-      if (body.type !== "ExpressionStatement") return null;
-      const topExpr = body.expression;
-      const target = innermostChainUnder(doc, topExpr, pos, bindings);
-      return target === topExpr ? buildMaybeResolved(doc, topExpr, label, [node.start, node.end], bindings, false, getIndex) : buildMaybeResolved(doc, target, null, [target.start, target.end], bindings, true, getIndex);
-    }
-  }
-  return null;
-}
-__name(detectChunk, "detectChunk");
-function detectAllChunks(doc) {
-  const statements = parseTopLevel(doc);
-  if (!statements) return [];
-  const bindings = buildBindingIndex(statements);
-  const getIndex = lazySpanIndex(doc);
-  return statements.map((node) => buildChunk(doc, node, bindings, getIndex)).filter((c) => c !== null);
-}
-__name(detectAllChunks, "detectAllChunks");
-function buildChunk(doc, node, bindings, getIndex) {
-  let label = null;
-  let body = node;
-  if (node.type === "LabeledStatement") {
-    label = node.label.name;
-    body = node.body;
-  }
-  if (body.type !== "ExpressionStatement") return null;
-  return buildMaybeResolved(doc, body.expression, label, [node.start, node.end], bindings, false, getIndex);
-}
-__name(buildChunk, "buildChunk");
-function lazySpanIndex(doc) {
-  let built = false;
-  let index = null;
-  return () => {
-    if (!built) {
-      built = true;
-      index = SpanIndex.build(doc);
-    }
-    return index;
-  };
-}
-__name(lazySpanIndex, "lazySpanIndex");
-function buildChunkFromExpr(doc, expr, label, stmtRange, nested = false, getIndex) {
-  const headNode = { ref: null };
-  const chain = collectChain(doc, expr, headNode);
-  const headFn = chain.length > 0 ? chain[0].name : null;
-  let miniRange = null;
-  let miniString = null;
-  if (headNode.ref) {
-    const firstString = headNode.ref.arguments.find(
-      (a) => a.type === "Literal" && typeof a.value === "string" || a.type === "TemplateLiteral"
-    );
-    if (firstString) {
-      miniRange = [firstString.start + 1, firstString.end - 1];
-      miniString = doc.slice(firstString.start + 1, firstString.end - 1);
-    }
-  }
-  const info = {
-    statementRange: stmtRange,
-    statementText: doc.slice(stmtRange[0], stmtRange[1]),
-    exprRange: [expr.start, expr.end],
-    label,
-    headFn,
-    miniRange,
-    miniString,
-    miniVia: miniRange ? "literal" : null,
-    miniAnchor: null,
-    chain,
-    type: "unknown",
-    nested
-  };
-  if (info.miniRange === null && getIndex) resolveMini(doc, info, getIndex);
-  info.type = classifyChunk(info);
-  return info;
-}
-__name(buildChunkFromExpr, "buildChunkFromExpr");
-function resolveMini(doc, info, getIndex) {
-  const index = getIndex();
-  if (!index) return;
-  const r = resolveMiniSource(doc, info, { index });
-  if (!r.ok || r.alternatives.length > 0) return;
-  let anchor = null;
-  const inside = r.range[0] >= info.statementRange[0] && r.range[1] <= info.statementRange[1];
-  if (!inside) {
-    const stmt = (parseTopLevel(doc) ?? []).find(
-      (s) => r.range[0] >= s.start && r.range[1] <= s.end
-    );
-    if (!stmt) return;
-    anchor = { range: [stmt.start, stmt.end], text: doc.slice(stmt.start, stmt.end) };
-  }
-  info.miniRange = r.range;
-  info.miniString = r.text;
-  info.miniVia = "resolver";
-  info.miniAnchor = anchor;
-}
-__name(resolveMini, "resolveMini");
-function innermostChainUnder(doc, expr, pos, bindings) {
-  const pickSection = pickSectionUnder(expr, pos);
-  if (pickSection) return innermostChainUnder(doc, pickSection, pos, bindings);
-  const headOut = { ref: null };
-  collectChain(doc, expr, headOut);
-  const head = headOut.ref;
-  if (!head || !Array.isArray(head.arguments)) return expr;
-  for (const arg of head.arguments) {
-    const inner = chainArgUnder(arg, pos, bindings);
-    if (inner && inner.type === "Identifier") return inner;
-    if (inner) return innermostChainUnder(doc, inner, pos, bindings);
-  }
-  return expr;
-}
-__name(innermostChainUnder, "innermostChainUnder");
-function pickSectionUnder(expr, pos) {
-  let node = expr;
-  while (node && node.type === "CallExpression") {
-    const callee = node.callee;
-    if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && PICK_METHODS.has(callee.property.name)) {
-      const obj = node.arguments.find((a) => a && a.type === "ObjectExpression");
-      if (obj) {
-        for (const prop of obj.properties) {
-          const val = prop && prop.type === "Property" ? prop.value : null;
-          if (val && val.type === "CallExpression" && typeof val.start === "number" && pos >= val.start && pos <= val.end) {
-            return val;
-          }
-        }
-      }
-    }
-    node = callee.type === "MemberExpression" ? callee.object : null;
-  }
-  return null;
-}
-__name(pickSectionUnder, "pickSectionUnder");
-function chainArgUnder(arg, pos, bindings) {
-  if (!arg || typeof arg.start !== "number" || pos < arg.start || pos > arg.end) return null;
-  if (arg.type === "CallExpression") return arg;
-  if (arg.type === "Identifier" && bindings?.has(arg.name)) return arg;
-  if (arg.type === "ArrayExpression" && Array.isArray(arg.elements)) {
-    for (const el of arg.elements) {
-      if (el && el.type === "CallExpression" && typeof el.start === "number" && pos >= el.start && pos <= el.end) {
-        return el;
-      }
-    }
-  }
-  return null;
-}
-__name(chainArgUnder, "chainArgUnder");
-function collectChain(doc, expr, headOut) {
-  const calls = [];
-  let node = expr;
-  while (node) {
-    if (node.type === "CallExpression") {
-      const callee = node.callee;
-      if (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier") {
-        const dot = doc.lastIndexOf(".", callee.property.start);
-        calls.push({
-          name: callee.property.name,
-          args: node.arguments.map((a) => toArg(doc, a)),
-          range: [dot, node.end]
-        });
-        node = callee.object;
-        continue;
-      }
-      if (callee.type === "Identifier") {
-        calls.push({
-          name: callee.name,
-          args: node.arguments.map((a) => toArg(doc, a)),
-          range: [node.start, node.end]
-        });
-        headOut.ref = node;
-      }
-    }
-    break;
-  }
-  return calls.reverse();
-}
-__name(collectChain, "collectChain");
-function toArg(doc, node) {
-  let numeric = null;
-  if (node.type === "Literal" && typeof node.value === "number") {
-    numeric = node.value;
-  } else if (node.type === "UnaryExpression" && node.operator === "-" && node.argument.type === "Literal" && typeof node.argument.value === "number") {
-    numeric = -node.argument.value;
-  }
-  return { raw: doc.slice(node.start, node.end), numeric, range: [node.start, node.end] };
-}
-__name(toArg, "toArg");
-function classifyChunk(info) {
-  const head = info.headFn;
-  if (info.miniString !== null) {
-    if (head === "note" || head === "n") return "roll";
-    if (head === "s" || head === "sound") return "step";
-  }
-  if (info.chain.some((c) => c.args.some((a) => a.numeric !== null))) return "knobs";
-  return "unknown";
-}
-__name(classifyChunk, "classifyChunk");
 
 // src/visualEdit/panels/patternKind.ts
 function isStepChunk(chunk) {
@@ -7626,1450 +14000,8 @@ function trackIdentity(key2, customColor) {
 }
 __name(trackIdentity, "trackIdentity");
 
-// src/visualizers/signals/aliasMap.ts
-var DEFAULT_VIZ_ENGINE = "strudel";
-var BUILTIN_ALIASES = {
-  uKick: { strudel: "bd", sonicpi: "drum_heavy_kick" },
-  uSnare: { strudel: "sd", sonicpi: "drum_snare_hard" },
-  uHat: { strudel: "hh", sonicpi: "drum_cymbal_closed" },
-  uOpenHat: { strudel: "oh", sonicpi: "drum_cymbal_open" },
-  uClap: { strudel: "cp" },
-  uRim: { strudel: "rim" },
-  uTom: {
-    strudel: ["lt", "mt", "ht"],
-    sonicpi: ["drum_tom_lo_hard", "drum_tom_mid_hard", "drum_tom_hi_hard"]
-  }
-};
-function resolveAliasesForEngine(custom, engine) {
-  const out = {};
-  for (const [name, slots] of Object.entries(BUILTIN_ALIASES)) {
-    const v = slots[engine];
-    if (v != null) out[name] = v;
-  }
-  for (const [name, slots] of Object.entries(custom)) {
-    const v = slots[engine];
-    if (v != null) out[name] = v;
-  }
-  return out;
-}
-__name(resolveAliasesForEngine, "resolveAliasesForEngine");
-var ALIAS_MAP = resolveAliasesForEngine(
-  {},
-  DEFAULT_VIZ_ENGINE
-);
-
-// src/visualizers/vizFlags.ts
-var VIZ_FLAG_KEYS = {
-  worker: "stave.viz.worker",
-  p5direct: "stave.viz.p5direct",
-  pool: "stave.viz.pool",
-  governor: "stave.viz.governor",
-  pump: "stave.viz.pump",
-  maxFps: "stave.viz.maxFps",
-  maxDpr: "stave.viz.maxDpr"
-};
-function read(key2) {
-  try {
-    if (typeof localStorage === "undefined") return null;
-    return localStorage.getItem(key2);
-  } catch {
-    return null;
-  }
-}
-__name(read, "read");
-function enabledByDefault(key2) {
-  return read(key2) !== "0";
-}
-__name(enabledByDefault, "enabledByDefault");
-function optIn(key2) {
-  return read(key2) === "1";
-}
-__name(optIn, "optIn");
-function triState(key2) {
-  const v = read(key2);
-  return v === "1" ? true : v === "0" ? false : null;
-}
-__name(triState, "triState");
-function numFlag(key2) {
-  const n = Number(read(key2));
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-__name(numFlag, "numFlag");
-function isP5DirectCanvasEnabled() {
-  return enabledByDefault(VIZ_FLAG_KEYS.p5direct);
-}
-__name(isP5DirectCanvasEnabled, "isP5DirectCanvasEnabled");
-function isVizGovernorEnabled() {
-  return enabledByDefault(VIZ_FLAG_KEYS.governor);
-}
-__name(isVizGovernorEnabled, "isVizGovernorEnabled");
-function isVizPumpSharedCacheEnabled() {
-  return enabledByDefault(VIZ_FLAG_KEYS.pump);
-}
-__name(isVizPumpSharedCacheEnabled, "isVizPumpSharedCacheEnabled");
-function isVizWorkerPoolEnabled() {
-  return optIn(VIZ_FLAG_KEYS.pool);
-}
-__name(isVizWorkerPoolEnabled, "isVizWorkerPoolEnabled");
-function getVizWorkerOverride() {
-  return triState(VIZ_FLAG_KEYS.worker);
-}
-__name(getVizWorkerOverride, "getVizWorkerOverride");
-function getVizMaxFpsOverride() {
-  return numFlag(VIZ_FLAG_KEYS.maxFps);
-}
-__name(getVizMaxFpsOverride, "getVizMaxFpsOverride");
-function getVizMaxDprOverride() {
-  return numFlag(VIZ_FLAG_KEYS.maxDpr);
-}
-__name(getVizMaxDprOverride, "getVizMaxDprOverride");
-
-// src/visualizers/vizGovernor.ts
-var HEALTHY_MS = 20;
-var JANK_MS = 45;
-var MIN_FPS = 10;
-var EMA_ALPHA = 0.25;
-var STRESS_RAMP_DOWN = 0.012;
-var IDLE_GAP_MS = 400;
-var RES_MIN_SCALE = 0.5;
-var RES_STRESS_ON = 0.5;
-function computeStress(emaMs, healthy = HEALTHY_MS, jank = JANK_MS) {
-  if (emaMs <= healthy) return 0;
-  if (emaMs >= jank) return 1;
-  return (emaMs - healthy) / (jank - healthy);
-}
-__name(computeStress, "computeStress");
-function maxPerFrame(n, stress) {
-  if (n <= 1) return 1;
-  return Math.max(1, Math.round(n * (1 - stress)));
-}
-__name(maxPerFrame, "maxPerFrame");
-function periodFor(n, stress) {
-  if (n <= 1) return 1;
-  return Math.max(1, Math.ceil(n / maxPerFrame(n, stress)));
-}
-__name(periodFor, "periodFor");
-function minGapMs(stress) {
-  if (stress <= 0) return 0;
-  return stress * (1e3 / MIN_FPS);
-}
-__name(minGapMs, "minGapMs");
-function resolutionScaleFor(stress) {
-  if (stress < RES_STRESS_ON) return 1;
-  const t = (stress - RES_STRESS_ON) / (1 - RES_STRESS_ON);
-  const raw = 1 - t * (1 - RES_MIN_SCALE);
-  return Math.max(RES_MIN_SCALE, Math.round(raw * 4) / 4);
-}
-__name(resolutionScaleFor, "resolutionScaleFor");
-var _VizGovernor = class _VizGovernor {
-  constructor() {
-    this.enabled = true;
-    /** Active (looping) renderer id → its stable round-robin offset. */
-    this.registered = /* @__PURE__ */ new Map();
-    this.lastProduce = /* @__PURE__ */ new Map();
-    this.nextOffset = 0;
-    this.frameIndex = 0;
-    this.lastObserveTs = 0;
-    this.emaMs = HEALTHY_MS;
-    this.stress = 0;
-    this.enabled = isVizGovernorEnabled();
-  }
-  /** Register a renderer when its loop STARTS (resume/mount). Idempotent. */
-  register(id) {
-    if (!this.registered.has(id)) this.registered.set(id, this.nextOffset++);
-  }
-  /** Unregister when the loop STOPS (pause/destroy). Resets stress when the last
-   *  viz leaves so a fresh mount starts from a healthy baseline. */
-  unregister(id) {
-    this.registered.delete(id);
-    this.lastProduce.delete(id);
-    if (this.registered.size === 0) {
-      this.stress = 0;
-      this.emaMs = HEALTHY_MS;
-      this.lastObserveTs = 0;
-    }
-  }
-  /** Feed the cadence monitor — call once per rAF tick from EVERY active loop
-   *  (idempotent per timestamp: only the first call for a new `ts` advances the
-   *  frame + updates stress, so N renderers calling with the same ts is fine). */
-  observeFrame(ts) {
-    if (!this.enabled || this.registered.size === 0) return;
-    if (this.lastObserveTs > 0 && ts > this.lastObserveTs) {
-      const d = ts - this.lastObserveTs;
-      if (d > IDLE_GAP_MS) {
-        this.emaMs = HEALTHY_MS;
-      } else {
-        this.emaMs = this.emaMs * (1 - EMA_ALPHA) + d * EMA_ALPHA;
-      }
-      const target = computeStress(this.emaMs);
-      this.stress = target > this.stress ? target : Math.max(target, this.stress - STRESS_RAMP_DOWN);
-      this.frameIndex++;
-      perf.record("viz.governor.stress", Math.round(this.stress * 100));
-    }
-    if (ts > this.lastObserveTs) this.lastObserveTs = ts;
-  }
-  /** Gate: may renderer `id` produce a frame at `ts`? Composed with (and called
-   *  after) the renderer's own backpressure + maxFps checks. */
-  mayProduce(id, ts) {
-    if (!this.enabled) return true;
-    const n = this.registered.size;
-    if (n === 0 || this.stress <= 0) return true;
-    const gap = minGapMs(this.stress);
-    if (gap > 0) {
-      const last = this.lastProduce.get(id) ?? 0;
-      if (last > 0 && ts - last < gap - 1) return false;
-    }
-    if (n > 1) {
-      const period = periodFor(n, this.stress);
-      if (period > 1) {
-        const offset = this.registered.get(id) ?? 0;
-        if ((this.frameIndex + offset) % period !== 0) return false;
-      }
-    }
-    this.lastProduce.set(id, ts);
-    return true;
-  }
-  /** Render-resolution scale (lever 3) the renderer should apply to its backing
-   *  store at the current stress, in `[RES_MIN_SCALE, 1]`. 1 (full) when disabled
-   *  or smooth — so a renderer multiplying its `resize` w,h by this is a total
-   *  no-op in the common case (transparency, PV91). The `WorkerVizRenderer` reads
-   *  this each rAF and re-posts a scaled `resize` only when the quantized step
-   *  changes (the backing-store realloc is relatively expensive). */
-  resolutionScale() {
-    if (!this.enabled || this.stress <= 0) return 1;
-    return resolutionScaleFor(this.stress);
-  }
-  /** Observability / test hook. */
-  state() {
-    return { enabled: this.enabled, n: this.registered.size, stress: this.stress, emaMs: this.emaMs, frameIndex: this.frameIndex, resScale: this.resolutionScale() };
-  }
-  /** Live enable/disable (the "Adaptive performance" toggle, persisted via
-   *  editorRegistry under the SAME `stave.viz.governor` key this reads at
-   *  construction). Unlike `_setEnabledForTest` it KEEPS the registered renderers
-   *  (live viz stay tracked) — it only flips the gate. Disabling resets stress so
-   *  the levers release immediately: `mayProduce` returns true and
-   *  `resolutionScale` returns 1, so each WorkerVizRenderer's next tick re-posts a
-   *  full-resolution resize and stops being throttled. Re-enabling lets stress
-   *  rebuild from the live rAF cadence via observeFrame. */
-  setEnabled(on) {
-    this.enabled = on;
-    if (!on) {
-      this.stress = 0;
-      this.emaMs = HEALTHY_MS;
-      this.lastObserveTs = 0;
-    }
-  }
-  /** Test helper — force enabled state (and reset) deterministically. */
-  _setEnabledForTest(on) {
-    this.enabled = on;
-    this.registered.clear();
-    this.lastProduce.clear();
-    this.nextOffset = 0;
-    this.frameIndex = 0;
-    this.lastObserveTs = 0;
-    this.emaMs = HEALTHY_MS;
-    this.stress = 0;
-  }
-};
-__name(_VizGovernor, "VizGovernor");
-var VizGovernor = _VizGovernor;
-var vizGovernor = new VizGovernor();
-
-// src/visualizers/vizConfig.ts
-var DEFAULT_VIZ_CONFIG = {
-  // Resolver
-  defaultRenderer: "p5",
-  // Phase B / B-3 — OffscreenCanvas-worker rendering. ON: the matrix gate is GREEN
-  // (#245 — trig/s holds 8.4 regardless of viz load, was collapsing to 2.9; main
-  // longtasks 0, was up to 251ms). The main-thread P5VizRenderer stays the
-  // automatic fallback when a browser can't offload (no OffscreenCanvas /
-  // transferControlToOffscreen / worker factory). Opt OUT per project via
-  // localStorage['stave.viz.worker'] = '0'.
-  workerRenderer: true,
-  // Worker pacing / resolution (#261 follow-up). 60fps is the perceptual ceiling
-  // for music viz; maxDpr 1 makes the presenting canvas match the worker's actual
-  // 1× render (quality-neutral, ~4× cheaper composite on retina than the prior
-  // upscale-to-2× behaviour). Both are zero-rewrite levers against the blit/
-  // composite wall measured for multi-instance inline viz.
-  maxFps: 60,
-  maxDpr: 1,
-  // Quality / LOD (#269). 1 = full detail, today's behaviour unchanged. Lower
-  // values are opted into via "performance mode" (deriveVizQuality) and read by
-  // sketches as `sig.density`. Marshalled to the worker via the config channel.
-  density: 1,
-  // Inline view zones
-  inlineZoneHeight: 150,
-  // Audio analysis
-  fftSize: 2048,
-  smoothingTimeConstant: 0.8,
-  // Hydra
-  hydraAudioBins: 4,
-  hydraAutoLoop: true,
-  // Pianoroll
-  pianorollWindowSeconds: 6,
-  pianorollCycles: 4,
-  pianorollPlayhead: 0.5,
-  pianorollMidiMin: 24,
-  pianorollMidiMax: 96,
-  // Scope / FScope
-  scopeWindowSeconds: 4,
-  scopeAmplitudeScale: 0.25,
-  scopeBaseline: 0.75,
-  // Spectrum
-  spectrumMinDb: -80,
-  spectrumMaxDb: 0,
-  spectrumScrollSpeed: 2,
-  // Colors
-  backgroundColor: "#090912",
-  accentColor: "#75baff",
-  activeColor: "#FFCA28",
-  playheadColor: "rgba(255,255,255,0.5)"
-};
-function createVizConfig(overrides) {
-  return { ...DEFAULT_VIZ_CONFIG, ...overrides };
-}
-__name(createVizConfig, "createVizConfig");
-var DEFAULT_VIZ_QUALITY = "balanced";
-function deriveVizQuality(level) {
-  switch (level) {
-    case "high":
-      return { resolution: 1024, density: 1 };
-    case "performance":
-      return { resolution: 256, density: 0.5 };
-    case "balanced":
-    default:
-      return { resolution: 512, density: 1 };
-  }
-}
-__name(deriveVizQuality, "deriveVizQuality");
-var _active = { ...DEFAULT_VIZ_CONFIG };
-var _listeners = /* @__PURE__ */ new Set();
-function notify() {
-  for (const cb of Array.from(_listeners)) cb(_active);
-}
-__name(notify, "notify");
-function getVizConfig() {
-  return _active;
-}
-__name(getVizConfig, "getVizConfig");
-function setVizConfig(config) {
-  _active = { ...DEFAULT_VIZ_CONFIG, ...config };
-  notify();
-}
-__name(setVizConfig, "setVizConfig");
-function updateVizConfig(patch) {
-  _active = { ..._active, ...patch };
-  notify();
-}
-__name(updateVizConfig, "updateVizConfig");
-function onVizConfigChange(cb) {
-  _listeners.add(cb);
-  return () => {
-    _listeners.delete(cb);
-  };
-}
-__name(onVizConfigChange, "onVizConfigChange");
-var WORKER_VIZ_CONFIG_KEYS = ["hydraAudioBins", "density"];
-function pickWorkerVizConfig(config = _active) {
-  return WORKER_VIZ_CONFIG_KEYS.reduce((acc, k) => {
-    acc[k] = config[k];
-    return acc;
-  }, {});
-}
-__name(pickWorkerVizConfig, "pickWorkerVizConfig");
-
-// src/workspace/editorRegistry.ts
-var editors = /* @__PURE__ */ new Map();
-var monacoNs = null;
-function registerMonacoNamespace(monaco) {
-  if (!monacoNs) monacoNs = monaco;
-}
-__name(registerMonacoNamespace, "registerMonacoNamespace");
-function getMonacoNamespace() {
-  return monacoNs;
-}
-__name(getMonacoNamespace, "getMonacoNamespace");
-function registerEditor(fileId, editor) {
-  editors.set(fileId, editor);
-}
-__name(registerEditor, "registerEditor");
-function unregisterEditor(fileId, editor) {
-  if (editors.get(fileId) === editor) editors.delete(fileId);
-  if (activeEditor === editor) setActiveEditor(null);
-}
-__name(unregisterEditor, "unregisterEditor");
-function getEditorForFile(fileId) {
-  return editors.get(fileId);
-}
-__name(getEditorForFile, "getEditorForFile");
-var activeEditor = null;
-var activeEditorListeners = /* @__PURE__ */ new Set();
-function setActiveEditor(editor) {
-  if (activeEditor === editor) return;
-  activeEditor = editor;
-  for (const l of activeEditorListeners) {
-    try {
-      l();
-    } catch {
-    }
-  }
-}
-__name(setActiveEditor, "setActiveEditor");
-function getActiveEditor() {
-  return activeEditor;
-}
-__name(getActiveEditor, "getActiveEditor");
-function getActiveFileId() {
-  if (!activeEditor) return null;
-  for (const [fileId, ed] of editors) {
-    if (ed === activeEditor) return fileId;
-  }
-  return null;
-}
-__name(getActiveFileId, "getActiveFileId");
-function getFileIdForEditor(editor) {
-  for (const [fileId, ed] of editors) {
-    if (ed === editor) return fileId;
-  }
-  return null;
-}
-__name(getFileIdForEditor, "getFileIdForEditor");
-function onActiveEditorChange(cb) {
-  activeEditorListeners.add(cb);
-  return () => {
-    activeEditorListeners.delete(cb);
-  };
-}
-__name(onActiveEditorChange, "onActiveEditorChange");
-var reevalHandler = null;
-function registerReevalHandler(fn) {
-  reevalHandler = fn;
-  return () => {
-    if (reevalHandler === fn) reevalHandler = null;
-  };
-}
-__name(registerReevalHandler, "registerReevalHandler");
-function requestReeval(fileId) {
-  if (fileId) reevalHandler?.(fileId);
-}
-__name(requestReeval, "requestReeval");
-var evalSourceTransform = null;
-function registerEvalSourceTransform(fn) {
-  evalSourceTransform = fn;
-  return () => {
-    if (evalSourceTransform === fn) evalSourceTransform = null;
-  };
-}
-__name(registerEvalSourceTransform, "registerEvalSourceTransform");
-function applyEvalSourceTransform(fileId, raw) {
-  if (!evalSourceTransform) return raw;
-  try {
-    return evalSourceTransform(fileId, raw);
-  } catch {
-    return raw;
-  }
-}
-__name(applyEvalSourceTransform, "applyEvalSourceTransform");
-function revealLineInFile(fileId, line) {
-  const editor = editors.get(fileId);
-  if (!editor) return false;
-  try {
-    editor.revealLineInCenter?.(line);
-    editor.setPosition?.({ lineNumber: line, column: 1 });
-    editor.focus?.();
-    return true;
-  } catch {
-    return false;
-  }
-}
-__name(revealLineInFile, "revealLineInFile");
-function revealOffsetInFile(fileId, offset) {
-  const editor = editors.get(fileId);
-  if (!editor) return false;
-  try {
-    const pos = editor.getModel?.()?.getPositionAt?.(offset);
-    if (!pos) return false;
-    editor.revealLineInCenter?.(pos.lineNumber);
-    editor.setPosition?.(pos);
-    editor.focus?.();
-    return true;
-  } catch {
-    return false;
-  }
-}
-__name(revealOffsetInFile, "revealOffsetInFile");
-function applyOffsetEditsToFile(fileId, edits, source, expectedDoc) {
-  const editor = editors.get(fileId);
-  if (!editor) return "no-editor";
-  if (!monacoNs) return "no-monaco";
-  if (edits.length === 0) return "no-edits";
-  if (expectedDoc != null && editor.getModel?.()?.getValue?.() !== expectedDoc) {
-    return "stale-document";
-  }
-  try {
-    new Writeback(editor, monacoNs).replaceRanges(edits, source);
-    return "applied";
-  } catch {
-    return "writeback-threw";
-  }
-}
-__name(applyOffsetEditsToFile, "applyOffsetEditsToFile");
-var DEFAULT_FONT_SIZE = 14;
-var FONT_SIZE_STORAGE = "stave:editorFontSize";
-var MINIMAP_STORAGE = "stave:editorMinimap";
-var DEFAULT_UI_ICON_SIZE = 25;
-var UI_ICON_SIZE_STORAGE = "stave:uiIconSize";
-var UI_ICON_SIZE_VAR = "--ui-icon-size";
-var DEFAULT_INLINE_VIZ_ACTION_SIZE = 11;
-var INLINE_VIZ_ACTION_SIZE_STORAGE = "stave:inlineVizActionSize";
-var INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
-function safeLocalStorage2() {
-  try {
-    if (typeof window === "undefined") return null;
-    if (typeof window.localStorage?.getItem !== "function") return null;
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-__name(safeLocalStorage2, "safeLocalStorage");
-function readFontSize() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_FONT_SIZE;
-  const saved = Number(ls.getItem(FONT_SIZE_STORAGE));
-  return Number.isFinite(saved) && saved >= 8 && saved <= 40 ? saved : DEFAULT_FONT_SIZE;
-}
-__name(readFontSize, "readFontSize");
-function readMinimap() {
-  const ls = safeLocalStorage2();
-  return ls?.getItem(MINIMAP_STORAGE) === "1";
-}
-__name(readMinimap, "readMinimap");
-function writeFontSize(size) {
-  safeLocalStorage2()?.setItem(FONT_SIZE_STORAGE, String(size));
-}
-__name(writeFontSize, "writeFontSize");
-function writeMinimap(on) {
-  safeLocalStorage2()?.setItem(MINIMAP_STORAGE, on ? "1" : "0");
-}
-__name(writeMinimap, "writeMinimap");
-function applyOptionsToEditor(editor) {
-  const fontSize = readFontSize();
-  const minimap = readMinimap();
-  editor.updateOptions?.({ fontSize, minimap: { enabled: minimap } });
-}
-__name(applyOptionsToEditor, "applyOptionsToEditor");
-function getEditorFontSize() {
-  return readFontSize();
-}
-__name(getEditorFontSize, "getEditorFontSize");
-function getEditorMinimap() {
-  return readMinimap();
-}
-__name(getEditorMinimap, "getEditorMinimap");
-function setEditorFontSize(size) {
-  const clamped = Math.max(8, Math.min(40, Math.round(size)));
-  writeFontSize(clamped);
-  for (const ed of editors.values()) ed.updateOptions?.({ fontSize: clamped });
-}
-__name(setEditorFontSize, "setEditorFontSize");
-function bumpEditorFontSize(delta) {
-  setEditorFontSize(readFontSize() + delta);
-}
-__name(bumpEditorFontSize, "bumpEditorFontSize");
-function toggleEditorMinimap() {
-  const next = !readMinimap();
-  writeMinimap(next);
-  for (const ed of editors.values()) ed.updateOptions?.({ minimap: { enabled: next } });
-}
-__name(toggleEditorMinimap, "toggleEditorMinimap");
-var uiIconSizeListeners = /* @__PURE__ */ new Set();
-function readUiIconSize() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_UI_ICON_SIZE;
-  const saved = Number(ls.getItem(UI_ICON_SIZE_STORAGE));
-  return Number.isFinite(saved) && saved >= 10 && saved <= 40 ? saved : DEFAULT_UI_ICON_SIZE;
-}
-__name(readUiIconSize, "readUiIconSize");
-function writeUiIconSize(size) {
-  safeLocalStorage2()?.setItem(UI_ICON_SIZE_STORAGE, String(size));
-}
-__name(writeUiIconSize, "writeUiIconSize");
-function applyUiIconSizeVar(size) {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.setProperty(UI_ICON_SIZE_VAR, `${size}px`);
-}
-__name(applyUiIconSizeVar, "applyUiIconSizeVar");
-function getEditorUiIconSize() {
-  return readUiIconSize();
-}
-__name(getEditorUiIconSize, "getEditorUiIconSize");
-function setEditorUiIconSize(size) {
-  const clamped = Math.max(10, Math.min(40, Math.round(size)));
-  writeUiIconSize(clamped);
-  applyUiIconSizeVar(clamped);
-  for (const cb of Array.from(uiIconSizeListeners)) cb(clamped);
-}
-__name(setEditorUiIconSize, "setEditorUiIconSize");
-function onUiIconSizeChange(cb) {
-  uiIconSizeListeners.add(cb);
-  return () => {
-    uiIconSizeListeners.delete(cb);
-  };
-}
-__name(onUiIconSizeChange, "onUiIconSizeChange");
-function applyPersistedUiIconSize() {
-  applyUiIconSizeVar(readUiIconSize());
-}
-__name(applyPersistedUiIconSize, "applyPersistedUiIconSize");
-var inlineVizActionSizeListeners = /* @__PURE__ */ new Set();
-function readInlineVizActionSize() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_INLINE_VIZ_ACTION_SIZE;
-  const saved = Number(ls.getItem(INLINE_VIZ_ACTION_SIZE_STORAGE));
-  return Number.isFinite(saved) && saved >= 8 && saved <= 28 ? saved : DEFAULT_INLINE_VIZ_ACTION_SIZE;
-}
-__name(readInlineVizActionSize, "readInlineVizActionSize");
-function writeInlineVizActionSize(size) {
-  safeLocalStorage2()?.setItem(INLINE_VIZ_ACTION_SIZE_STORAGE, String(size));
-}
-__name(writeInlineVizActionSize, "writeInlineVizActionSize");
-function applyInlineVizActionSizeVar(size) {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.setProperty(
-    INLINE_VIZ_ACTION_SIZE_VAR,
-    `${size}px`
-  );
-}
-__name(applyInlineVizActionSizeVar, "applyInlineVizActionSizeVar");
-function getInlineVizActionSize() {
-  return readInlineVizActionSize();
-}
-__name(getInlineVizActionSize, "getInlineVizActionSize");
-function setInlineVizActionSize(size) {
-  const clamped = Math.max(8, Math.min(28, Math.round(size)));
-  writeInlineVizActionSize(clamped);
-  applyInlineVizActionSizeVar(clamped);
-  for (const cb of Array.from(inlineVizActionSizeListeners)) cb(clamped);
-}
-__name(setInlineVizActionSize, "setInlineVizActionSize");
-function onInlineVizActionSizeChange(cb) {
-  inlineVizActionSizeListeners.add(cb);
-  return () => {
-    inlineVizActionSizeListeners.delete(cb);
-  };
-}
-__name(onInlineVizActionSizeChange, "onInlineVizActionSizeChange");
-function applyPersistedInlineVizActionSize() {
-  applyInlineVizActionSizeVar(readInlineVizActionSize());
-}
-__name(applyPersistedInlineVizActionSize, "applyPersistedInlineVizActionSize");
-var DEFAULT_INLINE_VIZ_RESOLUTION = 512;
-var MIN_INLINE_VIZ_RESOLUTION = 64;
-var MAX_INLINE_VIZ_RESOLUTION = 2048;
-var INLINE_VIZ_RESOLUTION_STORAGE = "stave:inlineVizResolution";
-var inlineVizResolutionListeners = /* @__PURE__ */ new Set();
-function readInlineVizResolution() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_INLINE_VIZ_RESOLUTION;
-  const saved = Number(ls.getItem(INLINE_VIZ_RESOLUTION_STORAGE));
-  return Number.isFinite(saved) && saved >= MIN_INLINE_VIZ_RESOLUTION && saved <= MAX_INLINE_VIZ_RESOLUTION ? saved : DEFAULT_INLINE_VIZ_RESOLUTION;
-}
-__name(readInlineVizResolution, "readInlineVizResolution");
-function writeInlineVizResolution(n) {
-  safeLocalStorage2()?.setItem(INLINE_VIZ_RESOLUTION_STORAGE, String(n));
-}
-__name(writeInlineVizResolution, "writeInlineVizResolution");
-function getInlineVizResolution() {
-  return readInlineVizResolution();
-}
-__name(getInlineVizResolution, "getInlineVizResolution");
-function setInlineVizResolution(n) {
-  const clamped = Math.max(
-    MIN_INLINE_VIZ_RESOLUTION,
-    Math.min(MAX_INLINE_VIZ_RESOLUTION, Math.round(n))
-  );
-  writeInlineVizResolution(clamped);
-  for (const cb of Array.from(inlineVizResolutionListeners)) cb(clamped);
-}
-__name(setInlineVizResolution, "setInlineVizResolution");
-function onInlineVizResolutionChange(cb) {
-  inlineVizResolutionListeners.add(cb);
-  return () => {
-    inlineVizResolutionListeners.delete(cb);
-  };
-}
-__name(onInlineVizResolutionChange, "onInlineVizResolutionChange");
-var VIZ_QUALITY_STORAGE = "stave:vizQuality";
-var VIZ_QUALITY_LEVELS = ["high", "balanced", "performance"];
-var vizQualityListeners = /* @__PURE__ */ new Set();
-function readVizQuality() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_VIZ_QUALITY;
-  const saved = ls.getItem(VIZ_QUALITY_STORAGE);
-  return VIZ_QUALITY_LEVELS.includes(saved) ? saved : DEFAULT_VIZ_QUALITY;
-}
-__name(readVizQuality, "readVizQuality");
-function writeVizQuality(level) {
-  safeLocalStorage2()?.setItem(VIZ_QUALITY_STORAGE, level);
-}
-__name(writeVizQuality, "writeVizQuality");
-function applyVizQuality(level) {
-  const { resolution, density } = deriveVizQuality(level);
-  setInlineVizResolution(resolution);
-  updateVizConfig({ density });
-}
-__name(applyVizQuality, "applyVizQuality");
-function getVizQuality() {
-  return readVizQuality();
-}
-__name(getVizQuality, "getVizQuality");
-function setVizQuality(level) {
-  const safe2 = VIZ_QUALITY_LEVELS.includes(level) ? level : DEFAULT_VIZ_QUALITY;
-  writeVizQuality(safe2);
-  applyVizQuality(safe2);
-  for (const cb of Array.from(vizQualityListeners)) cb(safe2);
-}
-__name(setVizQuality, "setVizQuality");
-function onVizQualityChange(cb) {
-  vizQualityListeners.add(cb);
-  return () => {
-    vizQualityListeners.delete(cb);
-  };
-}
-__name(onVizQualityChange, "onVizQualityChange");
-function applyPersistedVizQuality() {
-  const { density } = deriveVizQuality(readVizQuality());
-  updateVizConfig({ density });
-}
-__name(applyPersistedVizQuality, "applyPersistedVizQuality");
-var INLINE_VIZ_TEARDOWN_MS = 6e4;
-var DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED = true;
-var INLINE_VIZ_TEARDOWN_STORAGE = "stave:inlineVizTeardown";
-var inlineVizTeardownListeners = /* @__PURE__ */ new Set();
-function readInlineVizTeardownEnabled() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
-  const saved = ls.getItem(INLINE_VIZ_TEARDOWN_STORAGE);
-  if (saved === null) return DEFAULT_INLINE_VIZ_TEARDOWN_ENABLED;
-  return saved === "1";
-}
-__name(readInlineVizTeardownEnabled, "readInlineVizTeardownEnabled");
-function getInlineVizTeardownEnabled() {
-  return readInlineVizTeardownEnabled();
-}
-__name(getInlineVizTeardownEnabled, "getInlineVizTeardownEnabled");
-function setInlineVizTeardownEnabled(on) {
-  safeLocalStorage2()?.setItem(INLINE_VIZ_TEARDOWN_STORAGE, on ? "1" : "0");
-  for (const cb of Array.from(inlineVizTeardownListeners)) cb(on);
-}
-__name(setInlineVizTeardownEnabled, "setInlineVizTeardownEnabled");
-function onInlineVizTeardownChange(cb) {
-  inlineVizTeardownListeners.add(cb);
-  return () => {
-    inlineVizTeardownListeners.delete(cb);
-  };
-}
-__name(onInlineVizTeardownChange, "onInlineVizTeardownChange");
-var DEFAULT_TRACK_COLOUR_BARS_ENABLED = true;
-var TRACK_COLOUR_BARS_STORAGE = "stave:trackColourBars";
-var trackColourBarsListeners = /* @__PURE__ */ new Set();
-function readTrackColourBarsEnabled() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_TRACK_COLOUR_BARS_ENABLED;
-  const saved = ls.getItem(TRACK_COLOUR_BARS_STORAGE);
-  if (saved === null) return DEFAULT_TRACK_COLOUR_BARS_ENABLED;
-  return saved === "1";
-}
-__name(readTrackColourBarsEnabled, "readTrackColourBarsEnabled");
-function getTrackColourBarsEnabled() {
-  return readTrackColourBarsEnabled();
-}
-__name(getTrackColourBarsEnabled, "getTrackColourBarsEnabled");
-function setTrackColourBarsEnabled(on) {
-  safeLocalStorage2()?.setItem(TRACK_COLOUR_BARS_STORAGE, on ? "1" : "0");
-  for (const cb of Array.from(trackColourBarsListeners)) cb(on);
-}
-__name(setTrackColourBarsEnabled, "setTrackColourBarsEnabled");
-function onTrackColourBarsChange(cb) {
-  trackColourBarsListeners.add(cb);
-  return () => {
-    trackColourBarsListeners.delete(cb);
-  };
-}
-__name(onTrackColourBarsChange, "onTrackColourBarsChange");
-var DEFAULT_PLAY_VIZ_ON_HOVER = false;
-var PLAY_VIZ_ON_HOVER_STORAGE = "stave:playVizOnHover";
-var playVizOnHoverListeners = /* @__PURE__ */ new Set();
-function readPlayVizOnHoverEnabled() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_PLAY_VIZ_ON_HOVER;
-  const saved = ls.getItem(PLAY_VIZ_ON_HOVER_STORAGE);
-  if (saved === null) return DEFAULT_PLAY_VIZ_ON_HOVER;
-  return saved === "1";
-}
-__name(readPlayVizOnHoverEnabled, "readPlayVizOnHoverEnabled");
-function getPlayVizOnHoverEnabled() {
-  return readPlayVizOnHoverEnabled();
-}
-__name(getPlayVizOnHoverEnabled, "getPlayVizOnHoverEnabled");
-function setPlayVizOnHoverEnabled(on) {
-  safeLocalStorage2()?.setItem(PLAY_VIZ_ON_HOVER_STORAGE, on ? "1" : "0");
-  for (const cb of Array.from(playVizOnHoverListeners)) cb(on);
-}
-__name(setPlayVizOnHoverEnabled, "setPlayVizOnHoverEnabled");
-function onPlayVizOnHoverChange(cb) {
-  playVizOnHoverListeners.add(cb);
-  return () => {
-    playVizOnHoverListeners.delete(cb);
-  };
-}
-__name(onPlayVizOnHoverChange, "onPlayVizOnHoverChange");
-var DEFAULT_BACKDROP_VIZ_SPAN = "file";
-var BACKDROP_VIZ_SPAN_STORAGE = "stave:backdropVizSpan";
-var backdropVizSpanListeners = /* @__PURE__ */ new Set();
-function readBackdropVizSpan() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_BACKDROP_VIZ_SPAN;
-  return ls.getItem(BACKDROP_VIZ_SPAN_STORAGE) === "workspace" ? "workspace" : "file";
-}
-__name(readBackdropVizSpan, "readBackdropVizSpan");
-function getBackdropVizSpan() {
-  return readBackdropVizSpan();
-}
-__name(getBackdropVizSpan, "getBackdropVizSpan");
-function setBackdropVizSpan(span) {
-  safeLocalStorage2()?.setItem(BACKDROP_VIZ_SPAN_STORAGE, span);
-  for (const cb of Array.from(backdropVizSpanListeners)) cb(span);
-}
-__name(setBackdropVizSpan, "setBackdropVizSpan");
-function onBackdropVizSpanChange(cb) {
-  backdropVizSpanListeners.add(cb);
-  return () => {
-    backdropVizSpanListeners.delete(cb);
-  };
-}
-__name(onBackdropVizSpanChange, "onBackdropVizSpanChange");
-function getInlineVizTeardownMs() {
-  if (!readInlineVizTeardownEnabled()) return 0;
-  try {
-    const raw = safeLocalStorage2()?.getItem("stave:inlineVizTeardownMs");
-    if (raw != null) {
-      const n = Number(raw);
-      if (Number.isFinite(n) && n >= 1e3) return n;
-    }
-  } catch {
-  }
-  return INLINE_VIZ_TEARDOWN_MS;
-}
-__name(getInlineVizTeardownMs, "getInlineVizTeardownMs");
-var DEFAULT_VIZ_INPUTS_LIVE_VALUES = true;
-var VIZ_INPUTS_LIVE_VALUES_STORAGE = "stave:vizInputsLiveValues";
-var vizInputsLiveValuesListeners = /* @__PURE__ */ new Set();
-function readVizInputsLiveValuesEnabled() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_VIZ_INPUTS_LIVE_VALUES;
-  const saved = ls.getItem(VIZ_INPUTS_LIVE_VALUES_STORAGE);
-  if (saved === null) return DEFAULT_VIZ_INPUTS_LIVE_VALUES;
-  return saved === "1";
-}
-__name(readVizInputsLiveValuesEnabled, "readVizInputsLiveValuesEnabled");
-function getVizInputsLiveValuesEnabled() {
-  return readVizInputsLiveValuesEnabled();
-}
-__name(getVizInputsLiveValuesEnabled, "getVizInputsLiveValuesEnabled");
-function setVizInputsLiveValuesEnabled(on) {
-  safeLocalStorage2()?.setItem(VIZ_INPUTS_LIVE_VALUES_STORAGE, on ? "1" : "0");
-  for (const cb of Array.from(vizInputsLiveValuesListeners)) cb(on);
-}
-__name(setVizInputsLiveValuesEnabled, "setVizInputsLiveValuesEnabled");
-function onVizInputsLiveValuesChange(cb) {
-  vizInputsLiveValuesListeners.add(cb);
-  return () => {
-    vizInputsLiveValuesListeners.delete(cb);
-  };
-}
-__name(onVizInputsLiveValuesChange, "onVizInputsLiveValuesChange");
-var DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT = 25;
-var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN = 12;
-var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX = 48;
-var MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE = "stave:musicalTimeline.subRowHeight";
-var musicalTimelineSubRowHeightListeners = /* @__PURE__ */ new Set();
-function readMusicalTimelineSubRowHeight() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
-  const saved = Number(ls.getItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE));
-  return Number.isFinite(saved) && saved >= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN && saved <= MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX ? saved : DEFAULT_MUSICAL_TIMELINE_SUB_ROW_HEIGHT;
-}
-__name(readMusicalTimelineSubRowHeight, "readMusicalTimelineSubRowHeight");
-function writeMusicalTimelineSubRowHeight(h) {
-  safeLocalStorage2()?.setItem(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_STORAGE, String(h));
-}
-__name(writeMusicalTimelineSubRowHeight, "writeMusicalTimelineSubRowHeight");
-function getMusicalTimelineSubRowHeight() {
-  return readMusicalTimelineSubRowHeight();
-}
-__name(getMusicalTimelineSubRowHeight, "getMusicalTimelineSubRowHeight");
-function setMusicalTimelineSubRowHeight(h) {
-  const clamped = Math.max(
-    MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN,
-    Math.min(MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, Math.round(h))
-  );
-  writeMusicalTimelineSubRowHeight(clamped);
-  for (const cb of Array.from(musicalTimelineSubRowHeightListeners)) cb(clamped);
-}
-__name(setMusicalTimelineSubRowHeight, "setMusicalTimelineSubRowHeight");
-function onMusicalTimelineSubRowHeightChange(cb) {
-  musicalTimelineSubRowHeightListeners.add(cb);
-  return () => {
-    musicalTimelineSubRowHeightListeners.delete(cb);
-  };
-}
-__name(onMusicalTimelineSubRowHeightChange, "onMusicalTimelineSubRowHeightChange");
-var DEFAULT_BACKDROP_BLUR = 8;
-var BACKDROP_BLUR_STORAGE = "stave:backdropBlur";
-var BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
-function readBackdropBlur() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_BACKDROP_BLUR;
-  const raw = ls.getItem(BACKDROP_BLUR_STORAGE);
-  if (raw == null || raw === "") return DEFAULT_BACKDROP_BLUR;
-  const saved = Number(raw);
-  return Number.isFinite(saved) && saved >= 0 && saved <= 40 ? saved : DEFAULT_BACKDROP_BLUR;
-}
-__name(readBackdropBlur, "readBackdropBlur");
-function writeBackdropBlur(size) {
-  safeLocalStorage2()?.setItem(BACKDROP_BLUR_STORAGE, String(size));
-}
-__name(writeBackdropBlur, "writeBackdropBlur");
-function applyBackdropBlurVar(size) {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.setProperty(
-    BACKDROP_BLUR_VAR,
-    `${size}px`
-  );
-}
-__name(applyBackdropBlurVar, "applyBackdropBlurVar");
-function getEditorBackdropBlur() {
-  return readBackdropBlur();
-}
-__name(getEditorBackdropBlur, "getEditorBackdropBlur");
-function setEditorBackdropBlur(size) {
-  const clamped = Math.max(0, Math.min(40, Math.round(size)));
-  writeBackdropBlur(clamped);
-  applyBackdropBlurVar(clamped);
-}
-__name(setEditorBackdropBlur, "setEditorBackdropBlur");
-function applyPersistedBackdropBlur() {
-  applyBackdropBlurVar(readBackdropBlur());
-}
-__name(applyPersistedBackdropBlur, "applyPersistedBackdropBlur");
-var DEFAULT_BACKDROP_OPACITY = 1;
-var BACKDROP_OPACITY_STORAGE = "stave:backdropOpacity";
-var backdropOpacityListeners = /* @__PURE__ */ new Set();
-function readBackdropOpacity() {
-  const ls = safeLocalStorage2();
-  if (!ls) return DEFAULT_BACKDROP_OPACITY;
-  const raw = ls.getItem(BACKDROP_OPACITY_STORAGE);
-  if (raw == null || raw === "") return DEFAULT_BACKDROP_OPACITY;
-  const saved = Number(raw);
-  return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : DEFAULT_BACKDROP_OPACITY;
-}
-__name(readBackdropOpacity, "readBackdropOpacity");
-function writeBackdropOpacity(o) {
-  safeLocalStorage2()?.setItem(BACKDROP_OPACITY_STORAGE, String(o));
-}
-__name(writeBackdropOpacity, "writeBackdropOpacity");
-function getBackdropOpacity() {
-  return readBackdropOpacity();
-}
-__name(getBackdropOpacity, "getBackdropOpacity");
-function setBackdropOpacity(o) {
-  const clamped = Math.max(0, Math.min(1, o));
-  writeBackdropOpacity(clamped);
-  for (const cb of Array.from(backdropOpacityListeners)) cb(clamped);
-}
-__name(setBackdropOpacity, "setBackdropOpacity");
-function onBackdropOpacityChange(cb) {
-  backdropOpacityListeners.add(cb);
-  return () => {
-    backdropOpacityListeners.delete(cb);
-  };
-}
-__name(onBackdropOpacityChange, "onBackdropOpacityChange");
-var DEFAULT_STORED_ALIASES = {};
-var SIGNAL_ALIASES_STORAGE = "stave:signalAliases";
-var signalAliasesListeners = /* @__PURE__ */ new Set();
-function isNonEmptyString(v) {
-  return typeof v === "string" && v.length > 0;
-}
-__name(isNonEmptyString, "isNonEmptyString");
-function sanitizeAliasValue(v) {
-  if (isNonEmptyString(v)) return v;
-  if (Array.isArray(v) && v.length > 0 && v.every(isNonEmptyString)) {
-    return v;
-  }
-  return null;
-}
-__name(sanitizeAliasValue, "sanitizeAliasValue");
-function sanitizeStoredSignalAliases(raw) {
-  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out = {};
-  for (const [key2, value] of Object.entries(raw)) {
-    if (!isNonEmptyString(key2)) continue;
-    const legacy = sanitizeAliasValue(value);
-    if (legacy != null) {
-      out[key2] = { [DEFAULT_VIZ_ENGINE]: legacy };
-      continue;
-    }
-    if (value != null && typeof value === "object" && !Array.isArray(value)) {
-      const slot = {};
-      for (const [eng, ev] of Object.entries(value)) {
-        if (!isNonEmptyString(eng)) continue;
-        const sv = sanitizeAliasValue(ev);
-        if (sv != null) slot[eng] = sv;
-      }
-      if (Object.keys(slot).length > 0) out[key2] = slot;
-    }
-  }
-  return out;
-}
-__name(sanitizeStoredSignalAliases, "sanitizeStoredSignalAliases");
-function readStoredSignalAliases() {
-  const ls = safeLocalStorage2();
-  if (!ls) return { ...DEFAULT_STORED_ALIASES };
-  try {
-    const saved = ls.getItem(SIGNAL_ALIASES_STORAGE);
-    if (saved == null) return { ...DEFAULT_STORED_ALIASES };
-    return sanitizeStoredSignalAliases(JSON.parse(saved));
-  } catch {
-    return { ...DEFAULT_STORED_ALIASES };
-  }
-}
-__name(readStoredSignalAliases, "readStoredSignalAliases");
-function writeStoredSignalAliases(map) {
-  try {
-    safeLocalStorage2()?.setItem(SIGNAL_ALIASES_STORAGE, JSON.stringify(map));
-  } catch {
-  }
-}
-__name(writeStoredSignalAliases, "writeStoredSignalAliases");
-function flattenForEngine(stored, engine) {
-  const out = {};
-  for (const [name, slot] of Object.entries(stored)) {
-    const v = slot[engine];
-    if (v != null) out[name] = v;
-  }
-  return out;
-}
-__name(flattenForEngine, "flattenForEngine");
-function getStoredSignalAliases() {
-  return readStoredSignalAliases();
-}
-__name(getStoredSignalAliases, "getStoredSignalAliases");
-function getSignalAliases(engine = DEFAULT_VIZ_ENGINE) {
-  return flattenForEngine(readStoredSignalAliases(), engine);
-}
-__name(getSignalAliases, "getSignalAliases");
-function setSignalAliases(map, engine = DEFAULT_VIZ_ENGINE) {
-  const prev = readStoredSignalAliases();
-  const next = {};
-  for (const [name, value] of Object.entries(map)) {
-    if (!isNonEmptyString(name)) continue;
-    const sv = sanitizeAliasValue(value);
-    if (sv == null) continue;
-    next[name] = { ...prev[name] ?? {}, [engine]: sv };
-  }
-  writeStoredSignalAliases(next);
-  const flat = flattenForEngine(next, engine);
-  for (const cb of Array.from(signalAliasesListeners)) cb(flat);
-}
-__name(setSignalAliases, "setSignalAliases");
-function onSignalAliasesChange(cb) {
-  signalAliasesListeners.add(cb);
-  return () => {
-    signalAliasesListeners.delete(cb);
-  };
-}
-__name(onSignalAliasesChange, "onSignalAliasesChange");
-var DEFAULT_BACKDROP_QUALITY = "half";
-var BACKDROP_QUALITY_STORAGE = "stave:backdropQuality";
-var backdropQualityListeners = /* @__PURE__ */ new Set();
-function readBackdropQuality() {
-  const ls = safeLocalStorage2();
-  const v = ls?.getItem(BACKDROP_QUALITY_STORAGE);
-  return v === "full" || v === "half" || v === "quarter" ? v : DEFAULT_BACKDROP_QUALITY;
-}
-__name(readBackdropQuality, "readBackdropQuality");
-function writeBackdropQuality(q) {
-  safeLocalStorage2()?.setItem(BACKDROP_QUALITY_STORAGE, q);
-}
-__name(writeBackdropQuality, "writeBackdropQuality");
-function getBackdropQuality() {
-  return readBackdropQuality();
-}
-__name(getBackdropQuality, "getBackdropQuality");
-function setBackdropQuality(q) {
-  writeBackdropQuality(q);
-  for (const cb of Array.from(backdropQualityListeners)) cb(q);
-}
-__name(setBackdropQuality, "setBackdropQuality");
-function onBackdropQualityChange(cb) {
-  backdropQualityListeners.add(cb);
-  return () => {
-    backdropQualityListeners.delete(cb);
-  };
-}
-__name(onBackdropQualityChange, "onBackdropQualityChange");
-function backdropQualityFactor(q) {
-  return q === "full" ? 1 : q === "quarter" ? 0.25 : 0.5;
-}
-__name(backdropQualityFactor, "backdropQualityFactor");
-function applyPersistedEditorOptions(editor) {
-  applyOptionsToEditor(editor);
-}
-__name(applyPersistedEditorOptions, "applyPersistedEditorOptions");
-var THEME_STORAGE = "stave:editorTheme";
-function readTheme() {
-  const ls = safeLocalStorage2();
-  const v = ls?.getItem(THEME_STORAGE);
-  return v === "light" || v === "system" ? v : v === "dark" ? "dark" : "dark";
-}
-__name(readTheme, "readTheme");
-function writeTheme(t) {
-  safeLocalStorage2()?.setItem(THEME_STORAGE, t);
-}
-__name(writeTheme, "writeTheme");
-function systemPrefersLight() {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  return window.matchMedia("(prefers-color-scheme: light)").matches;
-}
-__name(systemPrefersLight, "systemPrefersLight");
-function resolveTheme(t) {
-  if (t === "dark" || t === "light") return t;
-  return systemPrefersLight() ? "light" : "dark";
-}
-__name(resolveTheme, "resolveTheme");
-var themeListeners = /* @__PURE__ */ new Set();
-var systemMqlWired = false;
-var systemMql = null;
-function notifyThemeListeners(resolved) {
-  for (const fn of themeListeners) {
-    try {
-      fn(resolved);
-    } catch {
-    }
-  }
-}
-__name(notifyThemeListeners, "notifyThemeListeners");
-function wireSystemMqlOnce() {
-  if (systemMqlWired || typeof window === "undefined" || !window.matchMedia) return;
-  systemMqlWired = true;
-  systemMql = window.matchMedia("(prefers-color-scheme: light)");
-  const onChange = /* @__PURE__ */ __name(() => {
-    if (readTheme() !== "system") return;
-    applyResolvedTheme(resolveTheme("system"));
-  }, "onChange");
-  try {
-    systemMql.addEventListener("change", onChange);
-  } catch {
-    systemMql.addListener?.(onChange);
-  }
-}
-__name(wireSystemMqlOnce, "wireSystemMqlOnce");
-function applyResolvedTheme(resolved) {
-  if (monacoNs?.editor?.setTheme) {
-    monacoNs.editor.setTheme(resolved === "light" ? "stave-light" : "stave-dark");
-  }
-  if (typeof document !== "undefined") {
-    document.documentElement.setAttribute("data-stave-theme", resolved);
-  }
-  notifyThemeListeners(resolved);
-}
-__name(applyResolvedTheme, "applyResolvedTheme");
-function getEditorTheme() {
-  return readTheme();
-}
-__name(getEditorTheme, "getEditorTheme");
-function getResolvedTheme() {
-  return resolveTheme(readTheme());
-}
-__name(getResolvedTheme, "getResolvedTheme");
-function setEditorTheme(theme) {
-  writeTheme(theme);
-  wireSystemMqlOnce();
-  applyResolvedTheme(resolveTheme(theme));
-}
-__name(setEditorTheme, "setEditorTheme");
-function cycleEditorTheme() {
-  const next = readTheme() === "dark" ? "light" : readTheme() === "light" ? "system" : "dark";
-  setEditorTheme(next);
-  return next;
-}
-__name(cycleEditorTheme, "cycleEditorTheme");
-function onThemeChange(fn) {
-  themeListeners.add(fn);
-  return () => {
-    themeListeners.delete(fn);
-  };
-}
-__name(onThemeChange, "onThemeChange");
-function applyPersistedTheme() {
-  wireSystemMqlOnce();
-  setEditorTheme(readTheme());
-}
-__name(applyPersistedTheme, "applyPersistedTheme");
-var PERF_ENABLED_STORAGE = "stave:perfEnabled";
-var perfEnabledListeners = /* @__PURE__ */ new Set();
-function readPerfEnabled() {
-  try {
-    if (globalThis.__STAVE_PERF__ === true) {
-      return true;
-    }
-  } catch {
-  }
-  return safeLocalStorage2()?.getItem(PERF_ENABLED_STORAGE) === "1";
-}
-__name(readPerfEnabled, "readPerfEnabled");
-function getPerfEnabled() {
-  return readPerfEnabled();
-}
-__name(getPerfEnabled, "getPerfEnabled");
-function setPerfEnabled(on) {
-  try {
-    safeLocalStorage2()?.setItem(PERF_ENABLED_STORAGE, on ? "1" : "0");
-  } catch {
-  }
-  perf.setEnabled(on);
-  for (const cb of Array.from(perfEnabledListeners)) cb(on);
-}
-__name(setPerfEnabled, "setPerfEnabled");
-function togglePerfEnabled() {
-  const next = !readPerfEnabled();
-  setPerfEnabled(next);
-  return next;
-}
-__name(togglePerfEnabled, "togglePerfEnabled");
-function onPerfEnabledChange(cb) {
-  perfEnabledListeners.add(cb);
-  return () => {
-    perfEnabledListeners.delete(cb);
-  };
-}
-__name(onPerfEnabledChange, "onPerfEnabledChange");
-function applyPersistedPerfEnabled() {
-  perf.setEnabled(readPerfEnabled());
-}
-__name(applyPersistedPerfEnabled, "applyPersistedPerfEnabled");
-var ADAPTIVE_PERF_STORAGE = "stave.viz.governor";
-var adaptivePerfListeners = /* @__PURE__ */ new Set();
-function readAdaptivePerf() {
-  return safeLocalStorage2()?.getItem(ADAPTIVE_PERF_STORAGE) !== "0";
-}
-__name(readAdaptivePerf, "readAdaptivePerf");
-function getAdaptivePerfEnabled() {
-  return readAdaptivePerf();
-}
-__name(getAdaptivePerfEnabled, "getAdaptivePerfEnabled");
-function setAdaptivePerfEnabled(on) {
-  try {
-    safeLocalStorage2()?.setItem(ADAPTIVE_PERF_STORAGE, on ? "1" : "0");
-  } catch {
-  }
-  vizGovernor.setEnabled(on);
-  for (const cb of Array.from(adaptivePerfListeners)) cb(on);
-}
-__name(setAdaptivePerfEnabled, "setAdaptivePerfEnabled");
-function toggleAdaptivePerfEnabled() {
-  const next = !readAdaptivePerf();
-  setAdaptivePerfEnabled(next);
-  return next;
-}
-__name(toggleAdaptivePerfEnabled, "toggleAdaptivePerfEnabled");
-function onAdaptivePerfChange(cb) {
-  adaptivePerfListeners.add(cb);
-  return () => {
-    adaptivePerfListeners.delete(cb);
-  };
-}
-__name(onAdaptivePerfChange, "onAdaptivePerfChange");
-function applyPersistedAdaptivePerf() {
-  vizGovernor.setEnabled(readAdaptivePerf());
-}
-__name(applyPersistedAdaptivePerf, "applyPersistedAdaptivePerf");
-
-// src/codeView/writeback.ts
-var REEVAL_DEBOUNCE_MS = 120;
-function formatNumber(v, maxDecimals = 4) {
-  if (!Number.isFinite(v)) return "0";
-  if (Number.isInteger(v)) return String(v);
-  const fixed = v.toFixed(maxDecimals);
-  return fixed.replace(/\.?0+$/, "");
-}
-__name(formatNumber, "formatNumber");
-function normalizeEdits(edits) {
-  for (const e of edits) {
-    if (e.range[0] > e.range[1]) {
-      throw new Error(`writeback: inverted range [${e.range[0]}, ${e.range[1]}]`);
-    }
-  }
-  const sorted = [...edits].sort((a, b) => a.range[0] - b.range[0] || a.range[1] - b.range[1]);
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1].range;
-    const cur = sorted[i].range;
-    if (cur[0] < prev[1]) {
-      throw new Error(
-        `writeback: overlapping edits [${prev[0]}, ${prev[1]}] and [${cur[0]}, ${cur[1]}]`
-      );
-    }
-  }
-  return sorted;
-}
-__name(normalizeEdits, "normalizeEdits");
-function applyEdits(doc, edits) {
-  const sorted = normalizeEdits(edits);
-  let out = doc;
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const { range: range2, text } = sorted[i];
-    out = out.slice(0, range2[0]) + text + out.slice(range2[1]);
-  }
-  return out;
-}
-__name(applyEdits, "applyEdits");
-var _Writeback = class _Writeback {
-  constructor(editor, monaco) {
-    this.editor = editor;
-    this.monaco = monaco;
-    this.writingSource = null;
-    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
-    this.inGesture = false;
-    /** whether the in-flight gesture has applied any edit — gates the one re-eval
-     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
-    this.gestureDidEdit = false;
-    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
-    this.reevalTimer = null;
-  }
-  /**
-   * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
-   * step. Used for a continuous knob drag or a multi-cell sweep so the whole
-   * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
-   * the undo grouping is affected. Idempotent if already in a gesture.
-   */
-  beginGesture() {
-    if (this.inGesture) return;
-    const model = this.editor.getModel();
-    if (!model) return;
-    model.pushStackElement();
-    this.inGesture = true;
-    this.gestureDidEdit = false;
-  }
-  /** Close the gesture, sealing all its edits as one undo step — and, if the
-   * gesture changed anything, make it audible immediately (one re-eval on
-   * release, not per drag frame). */
-  endGesture() {
-    if (!this.inGesture) return;
-    this.inGesture = false;
-    this.editor.getModel()?.pushStackElement();
-    if (this.gestureDidEdit) {
-      this.gestureDidEdit = false;
-      this.requestLiveReeval();
-    }
-  }
-  /**
-   * The source of the edit currently being applied, or null. The host's
-   * `onDidChangeModelContent` listener reads this synchronously to attribute
-   * the change. It is non-null ONLY for the duration of `apply`.
-   */
-  get currentSource() {
-    return this.writingSource;
-  }
-  /** Replace a single offset range. One undo step. */
-  replaceRange(range2, text, source) {
-    this.apply([{ range: range2, text }], source);
-  }
-  /**
-   * Replace several non-overlapping ranges as ONE edit — one undo step. Used
-   * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
-   * the whole gesture).
-   */
-  replaceRanges(edits, source) {
-    this.apply(edits, source);
-  }
-  /** Insert text at an offset (zero-width edit). */
-  insertAt(offset, text, source) {
-    this.apply([{ range: [offset, offset], text }], source);
-  }
-  /** Delete an offset range. */
-  deleteRange(range2, source) {
-    this.apply([{ range: range2, text: "" }], source);
-  }
-  /**
-   * Freshness-guarded write. Re-reads the live model text and refuses the edit
-   * if the chunk's statement no longer matches what it was detected from
-   * (the doc changed under the panel). Returns true if applied, false if stale.
-   * Prefer this over the raw methods on any path that can race a typed edit.
-   */
-  applyFresh(chunk, edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return false;
-    if (!isChunkFresh(model.getValue(), chunk)) return false;
-    this.apply(edits, source);
-    return true;
-  }
-  apply(edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return;
-    const normalized = normalizeEdits(edits);
-    const ops = normalized.map((e) => {
-      const start = model.getPositionAt(e.range[0]);
-      const end = model.getPositionAt(e.range[1]);
-      return {
-        range: new this.monaco.Range(
-          start.lineNumber,
-          start.column,
-          end.lineNumber,
-          end.column
-        ),
-        text: e.text,
-        forceMoveMarkers: true
-      };
-    });
-    if (!this.inGesture) model.pushStackElement();
-    this.writingSource = source;
-    try {
-      model.pushEditOperations([], ops, () => null);
-    } finally {
-      this.writingSource = null;
-    }
-    if (!this.inGesture) model.pushStackElement();
-    if (this.inGesture) this.gestureDidEdit = true;
-    else this.requestLiveReeval();
-  }
-  /**
-   * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
-   * the moment it commits. Centralised here so every visual surface — sequencer,
-   * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
-   * re-evals only a PLAYING file, and only when live mode isn't already doing
-   * it, so this never auto-starts audio nor double-evaluates.
-   *
-   * Trailing-debounced: rapid successive commits (e.g. clearing several
-   * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
-   * which also lets the Monaco→file-store sync settle so the re-eval reads the
-   * final content rather than racing a not-yet-synced edit.
-   */
-  requestLiveReeval() {
-    if (this.reevalTimer) clearTimeout(this.reevalTimer);
-    this.reevalTimer = setTimeout(() => {
-      this.reevalTimer = null;
-      requestReeval(getFileIdForEditor(this.editor));
-    }, REEVAL_DEBOUNCE_MS);
-  }
-};
-__name(_Writeback, "Writeback");
-var Writeback = _Writeback;
-
 // src/visualEdit/mixer/gain.ts
-var GAIN_TOKEN = /^(\d+(?:\.\d+)?)(@\d+)?$/;
+var GAIN_TOKEN2 = /^(\d+(?:\.\d+)?)(@\d+)?$/;
 function parseManagedGain(raw) {
   const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === "`" ? raw[0] : "";
   if (!quote || raw[raw.length - 1] !== quote) return null;
@@ -9078,7 +14010,7 @@ function parseManagedGain(raw) {
   let ceiling = 0;
   for (const t of tokens) {
     if (t === "~") continue;
-    const m = GAIN_TOKEN.exec(t);
+    const m = GAIN_TOKEN2.exec(t);
     if (!m) return null;
     ceiling = Math.max(ceiling, parseFloat(m[1]));
   }
@@ -9089,7 +14021,7 @@ function scaleManagedGain(mg, value) {
   const factor = mg.ceiling > 0 ? value / mg.ceiling : null;
   const out = mg.tokens.map((t) => {
     if (t === "~") return "~";
-    const m = GAIN_TOKEN.exec(t);
+    const m = GAIN_TOKEN2.exec(t);
     const nv = factor === null ? value : parseFloat(m[1]) * factor;
     return formatNumber(Math.max(0, nv)) + (m[2] ?? "");
   });
@@ -29688,3471 +34620,6 @@ function useActiveChunk() {
 }
 __name(useActiveChunk, "useActiveChunk");
 
-// src/codeView/notation/pitch.ts
-var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
-var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
-var DEFAULT_OCTAVE = 3;
-function pitchToMidi(token) {
-  if (/^-?\d+$/.test(token)) return parseInt(token, 10);
-  const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)?$/);
-  if (!m) return null;
-  const [, letter, accidental, octave] = m;
-  let semitone = SEMITONE_OF[letter];
-  if (accidental === "s" || accidental === "#") semitone += 1;
-  else if (accidental === "b") semitone -= 1;
-  const oct = octave !== void 0 ? parseInt(octave, 10) : DEFAULT_OCTAVE;
-  return (oct + 1) * 12 + semitone;
-}
-__name(pitchToMidi, "pitchToMidi");
-function midiToPitch(midi) {
-  const octave = Math.floor(midi / 12) - 1;
-  return `${SHARP_NAMES[(midi % 12 + 12) % 12]}${octave}`;
-}
-__name(midiToPitch, "midiToPitch");
-function noteDisplayName(midi) {
-  const token = midiToPitch(midi);
-  return token.charAt(0).toUpperCase() + token.slice(1);
-}
-__name(noteDisplayName, "noteDisplayName");
-function isBlackKey(midi) {
-  return SHARP_NAMES[(midi % 12 + 12) % 12].includes("#");
-}
-__name(isBlackKey, "isBlackKey");
-function cLabel(midi) {
-  if ((midi % 12 + 12) % 12 !== 0) return null;
-  return `C${Math.floor(midi / 12) - 1}`;
-}
-__name(cLabel, "cLabel");
-
-// src/codeView/notation/model.ts
-var gridCellKey = /* @__PURE__ */ __name((c) => `${c.token} ${cellLengthKey(c.duration)}`, "gridCellKey");
-var cellLengthKey = /* @__PURE__ */ __name((duration) => duration.toFixed(6), "cellLengthKey");
-var cellOn = /* @__PURE__ */ __name((duration = 1) => ({ duration }), "cellOn");
-var isCellOn = /* @__PURE__ */ __name((cell) => typeof cell === "object" && cell !== null, "isCellOn");
-var scaleCell = /* @__PURE__ */ __name((cell, factor) => isCellOn(cell) ? cellOn(cell.duration * factor) : false, "scaleCell");
-function clampLane(cells, steps) {
-  const out = [...cells];
-  for (let c = 0; c < out.length; c++) {
-    const cell = out[c];
-    if (!isCellOn(cell)) continue;
-    let next = c + 1;
-    while (next < out.length && !isCellOn(out[next])) next++;
-    const room = Math.min(next, steps) - c;
-    if (cell.duration > room) out[c] = cellOn(room);
-  }
-  return out;
-}
-__name(clampLane, "clampLane");
-var COLUMN_EPS = 1e-9;
-function columnOverlap(begin, end, col) {
-  const lo = Math.max(begin, col);
-  const hi = Math.min(end, col + 1);
-  const extent = hi - lo;
-  if (extent <= COLUMN_EPS) return null;
-  return { offset: lo - col, extent };
-}
-__name(columnOverlap, "columnOverlap");
-function headColumn(n) {
-  return Math.floor(n.start + COLUMN_EPS);
-}
-__name(headColumn, "headColumn");
-function tailColumn(n) {
-  return Math.ceil(n.start + n.duration - COLUMN_EPS) - 1;
-}
-__name(tailColumn, "tailColumn");
-function columnCount(model) {
-  let cols = Math.floor(model.steps + COLUMN_EPS);
-  for (const n of model.notes ?? []) cols = Math.max(cols, tailColumn(n) + 1);
-  return Math.max(0, cols);
-}
-__name(columnCount, "columnCount");
-var DEFAULT_LO = 48;
-var DEFAULT_HI = 72;
-var MIN_SPAN = 12;
-function rollContentRange(model) {
-  const midis = model.notes.map((n) => pitchToMidi(n.pitch)).filter((m) => m !== null);
-  if (midis.length === 0) return { lo: DEFAULT_LO, hi: DEFAULT_HI };
-  const lo = Math.min(...midis) - 2;
-  return { lo, hi: Math.max(Math.max(...midis) + 2, lo + MIN_SPAN) };
-}
-__name(rollContentRange, "rollContentRange");
-function columnSplit(width) {
-  const whole = Math.floor(width + COLUMN_EPS);
-  const remainder = width - whole;
-  return { whole, remainder: remainder <= COLUMN_EPS ? 0 : remainder };
-}
-__name(columnSplit, "columnSplit");
-function laneCoverage(cells, steps) {
-  const out = new Array(cells.length).fill(void 0);
-  const gridEnd = Math.min(cells.length, steps);
-  for (let c = 0; c < cells.length; c++) {
-    const cell = cells[c];
-    if (!isCellOn(cell)) continue;
-    out[c] = { start: c, extent: Math.min(1, Math.max(0, cell.duration)) };
-    for (let k = 1; c + k < gridEnd; k++) {
-      if (isCellOn(cells[c + k])) break;
-      const ov = columnOverlap(c, c + cell.duration, c + k);
-      if (!ov) break;
-      out[c + k] = { start: c, extent: ov.extent };
-    }
-  }
-  return out;
-}
-__name(laneCoverage, "laneCoverage");
-function columnGroups(notes, col) {
-  const endByStart = /* @__PURE__ */ new Map();
-  for (const n of notes) {
-    const end = n.start + n.duration;
-    const prev = endByStart.get(n.start);
-    if (prev === void 0 || end > prev) endByStart.set(n.start, end);
-  }
-  const out = [];
-  for (const [start, end] of endByStart) {
-    const ov = columnOverlap(start, end, col);
-    if (ov) out.push({ start, ...ov });
-  }
-  return out.sort((a, b) => a.start - b.start);
-}
-__name(columnGroups, "columnGroups");
-function spansAreSequential(spans) {
-  const byOffset = [...spans].sort((a, b) => a.offset - b.offset);
-  for (let i = 1; i < byOffset.length; i++) {
-    const prevEnd = byOffset[i - 1].offset + byOffset[i - 1].extent;
-    if (byOffset[i].offset < prevEnd - COLUMN_EPS) return false;
-  }
-  return true;
-}
-__name(spansAreSequential, "spansAreSequential");
-function sequentialColumnGroups(notes, col) {
-  const groups = columnGroups(notes, col);
-  return groups.length > 1 && spansAreSequential(groups) ? groups : null;
-}
-__name(sequentialColumnGroups, "sequentialColumnGroups");
-function clampPartAtOnset(lanes, part, column) {
-  return lanes.map((lane) => {
-    if ((lane.part ?? 0) !== part) return lane;
-    let touched = false;
-    const cells = lane.cells.map((cell, c) => {
-      if (c >= column || !isCellOn(cell)) return cell;
-      if (!columnOverlap(c, c + cell.duration, column)) return cell;
-      touched = true;
-      return cellOn(column - c);
-    });
-    return touched ? { ...lane, cells } : lane;
-  });
-}
-__name(clampPartAtOnset, "clampPartAtOnset");
-
-// src/codeView/notation/perBar.ts
-var MAX_SHARED_STEPS = 4096;
-var EPS = 1e-9;
-function gcd(a, b) {
-  while (b) [a, b] = [b, a % b];
-  return a;
-}
-__name(gcd, "gcd");
-function lcmOf(ns) {
-  return ns.reduce((l, n) => l / gcd(l, n) * n, 1);
-}
-__name(lcmOf, "lcmOf");
-function perBarLayout(counts) {
-  if (counts.length < 2) return null;
-  if (counts.some((n) => !Number.isInteger(n) || n < 1)) return null;
-  const most = Math.max(...counts);
-  return counts.every((n) => most % n === 0) ? null : [...counts];
-}
-__name(perBarLayout, "perBarLayout");
-function tidy(x) {
-  const r = Math.round(x);
-  return Math.abs(x - r) < EPS ? r : x;
-}
-__name(tidy, "tidy");
-function barStarts(barSteps) {
-  const out = [0];
-  for (const s of barSteps) out.push(out[out.length - 1] + s);
-  return out;
-}
-__name(barStarts, "barStarts");
-function sharedAt(d, barSteps) {
-  const P = lcmOf(barSteps);
-  let at = 0;
-  for (let b = 0; b < barSteps.length; b++) {
-    const s = barSteps[b];
-    if (d <= at + s + EPS || b === barSteps.length - 1) return tidy(b * P + (d - at) * P / s);
-    at += s;
-  }
-  return barSteps.length * P;
-}
-__name(sharedAt, "sharedAt");
-function drawnAt(u, barSteps) {
-  const P = lcmOf(barSteps);
-  const b = Math.min(barSteps.length - 1, Math.max(0, Math.floor((u + EPS) / P)));
-  const starts = barStarts(barSteps);
-  return tidy(starts[b] + (u - b * P) * barSteps[b] / P);
-}
-__name(drawnAt, "drawnAt");
-function barOfDrawn(d, barSteps) {
-  const starts = barStarts(barSteps);
-  for (let b = barSteps.length - 1; b >= 0; b--) if (d + EPS >= starts[b]) return b;
-  return 0;
-}
-__name(barOfDrawn, "barOfDrawn");
-function mapNote(n, f) {
-  const start = f(n.start);
-  return { ...n, start, duration: tidy(f(n.start + n.duration) - start) };
-}
-__name(mapNote, "mapNote");
-function toDrawnRoll(model, barSteps) {
-  const bars = model.bars ?? 1;
-  if (bars !== barSteps.length || model.steps !== bars * lcmOf(barSteps)) return null;
-  const notes = model.notes.map((n) => mapNote(n, (u) => drawnAt(u, barSteps)));
-  if (notes.some((n) => !Number.isInteger(n.start))) return null;
-  return { ...model, steps: barSteps.reduce((a, b) => a + b, 0), barSteps, notes };
-}
-__name(toDrawnRoll, "toDrawnRoll");
-function toUniformRoll(model) {
-  const barSteps = model.barSteps;
-  if (!barSteps) return model;
-  const { barSteps: _drop, ...rest } = model;
-  return {
-    ...rest,
-    steps: barSteps.length * lcmOf(barSteps),
-    notes: model.notes.map((n) => mapNote(n, (d) => sharedAt(d, barSteps)))
-  };
-}
-__name(toUniformRoll, "toUniformRoll");
-function mapCells(cells, length, f) {
-  const out = Array.from({ length }, () => false);
-  for (let i = 0; i < cells.length; i++) {
-    const c = cells[i];
-    if (!c) continue;
-    const at = f(i);
-    if (!Number.isInteger(at) || at < 0 || at >= length) return null;
-    out[at] = { ...c, duration: tidy(f(i + c.duration) - at) };
-  }
-  return out;
-}
-__name(mapCells, "mapCells");
-function toDrawnGrid(model, barSteps) {
-  const bars = model.bars ?? 1;
-  if (bars !== barSteps.length || model.steps !== bars * lcmOf(barSteps) || model.gains) return null;
-  const steps = barSteps.reduce((a, b) => a + b, 0);
-  const lanes = [];
-  for (const lane of model.lanes) {
-    const cells = mapCells(lane.cells, steps, (u) => drawnAt(u, barSteps));
-    if (cells === null) return null;
-    lanes.push({ ...lane, cells });
-  }
-  return { ...model, steps, barSteps, lanes };
-}
-__name(toDrawnGrid, "toDrawnGrid");
-function toUniformGrid(model) {
-  const barSteps = model.barSteps;
-  if (!barSteps) return model;
-  const { barSteps: _drop, ...rest } = model;
-  const steps = barSteps.length * lcmOf(barSteps);
-  return {
-    ...rest,
-    steps,
-    // A drawn cell always lands on the shared grid (each shared bar is a multiple of
-    // every drawn one), so this cannot decline; the fallback is unreachable by design.
-    lanes: model.lanes.map((l) => ({ ...l, cells: mapCells(l.cells, steps, (d) => sharedAt(d, barSteps)) ?? l.cells }))
-  };
-}
-__name(toUniformGrid, "toUniformGrid");
-function drawnLayout(model, cols) {
-  const bs = model.barSteps;
-  if (bs) {
-    const most = Math.max(...bs);
-    const starts = barStarts(bs);
-    return {
-      weight: /* @__PURE__ */ __name((c) => most / bs[barOfDrawn(c, bs)], "weight"),
-      barStart: /* @__PURE__ */ __name((c) => c > 0 && starts.includes(c), "barStart"),
-      lastBarCols: bs[bs.length - 1]
-    };
-  }
-  const bars = model.bars ?? 1;
-  const perBar2 = bars > 1 && Number.isInteger(cols / bars) ? cols / bars : 0;
-  return {
-    weight: /* @__PURE__ */ __name(() => 1, "weight"),
-    barStart: /* @__PURE__ */ __name((c) => perBar2 > 0 && c > 0 && c % perBar2 === 0, "barStart"),
-    lastBarCols: perBar2 || cols
-  };
-}
-__name(drawnLayout, "drawnLayout");
-
-// src/codeView/notation/serialize.ts
-function altSourceFits(a, steps) {
-  return !!a && a.perBar * a.bars === steps;
-}
-__name(altSourceFits, "altSourceFits");
-function fmtGain(v) {
-  if (!Number.isFinite(v)) return "1";
-  if (Number.isInteger(v)) return String(v);
-  return v.toFixed(2).replace(/\.?0+$/, "");
-}
-__name(fmtGain, "fmtGain");
-function ifGridSpellable(input, next) {
-  if (next === input) return input;
-  return serializeStepGrid(next) === null ? input : next;
-}
-__name(ifGridSpellable, "ifGridSpellable");
-function ifRollSpellable(input, next) {
-  if (next === input) return input;
-  return serializePianoRoll(next) === null ? input : next;
-}
-__name(ifRollSpellable, "ifRollSpellable");
-function serializeStepGridWithExtent(drawn) {
-  const model = toUniformGrid(drawn);
-  const respell = drawn.barSteps;
-  const spans = model.leafSource ?? model.surgical?.spans();
-  if (spans) {
-    const surgical = spliceByLeaf(model, spans);
-    if (surgical !== null && !model.leafSource && perBarStack(model)) {
-      const bars = spliceGrid(model, respell);
-      if (typeof bars === "object" && bars.out !== surgical) {
-        return {
-          mini: bars.out,
-          extent: {
-            path: "splice",
-            regions: bars.regions,
-            regionsReemitted: bars.regionsReemitted,
-            rebuiltParts: bars.rebuiltParts
-          }
-        };
-      }
-    }
-    if (surgical !== null) return { mini: surgical, extent: { path: "leaf" } };
-    if (model.leafSource) return { mini: null, extent: { path: "leaf" } };
-  }
-  if (altSourceFits(model.altSource, model.steps))
-    return { mini: spliceAltGrid(model), extent: { path: "alt" } };
-  const spliced = spliceGrid(model, respell);
-  if (spliced === "decline") return { mini: null, extent: { path: "declined" } };
-  if (spliced !== "rebuild")
-    return {
-      mini: spliced.out,
-      extent: {
-        path: "splice",
-        regions: spliced.regions,
-        regionsReemitted: spliced.regionsReemitted,
-        rebuiltParts: spliced.rebuiltParts
-      }
-    };
-  return { mini: rebuildGrid(respell ? drawn : model), extent: { path: "rebuild" } };
-}
-__name(serializeStepGridWithExtent, "serializeStepGridWithExtent");
-function serializeStepGrid(model) {
-  return serializeStepGridWithExtent(model).mini;
-}
-__name(serializeStepGrid, "serializeStepGrid");
-function rebuildGrid(model) {
-  const bars = model.bars ?? 1;
-  if (bars > 1) return gridBars(model, barBounds(model));
-  const parts = [...new Set(model.lanes.map((l) => l.part ?? 0))].sort((a, b) => a - b);
-  if (parts.length <= 1) return gridColumns(model.lanes, model.steps)?.join(" ") ?? null;
-  const lines = parts.map(
-    (p) => gridColumns(
-      model.lanes.filter((l) => (l.part ?? 0) === p),
-      model.steps
-    )?.join(" ")
-  );
-  return lines.some((l) => l === void 0) ? null : lines.join(", ");
-}
-__name(rebuildGrid, "rebuildGrid");
-function spliceGrid(model, respell) {
-  const src = model.source;
-  if (!src || src.parts.length === 0) return "rebuild";
-  let regionsReemitted = 0;
-  const rebuiltParts = [];
-  const splicePart = /* @__PURE__ */ __name((p, lanes, steps) => {
-    const widths = [];
-    const own = partColumns(lanes, steps, p.factor);
-    if (own !== null) widths.push({ cols: own, growth: 1 });
-    else
-      for (let g = p.factor - 1; g >= 1; g--) {
-        if (p.factor % g !== 0) continue;
-        const finer = partColumns(lanes, steps, g);
-        if (finer !== null) widths.push({ cols: finer, growth: p.factor / g });
-      }
-    const last = p.regions[p.regions.length - 1];
-    const sole = src.parts.length === 1 && src.prefix === "" && p.regions.length === 1;
-    const spliceRegions = /* @__PURE__ */ __name((cols, growth) => {
-      const at = /* @__PURE__ */ __name((n) => n * growth, "at");
-      let body = "";
-      let reemitted = 0;
-      for (let ri = 0; ri < p.regions.length; ri++) {
-        const r = p.regions[ri];
-        const now2 = cols.slice(at(r.from), at(r.to));
-        if (sameCells(now2, growth === 1 ? r.content : stretchCells(r.content, growth))) {
-          body += r.raw;
-          continue;
-        }
-        reemitted++;
-        const div = sole ? 1 : p.div * growth;
-        const re = (respell && growth === 1 ? respellBar(now2, r, div, respell) : null) ?? reemitRegion(now2, div, model.viewScale !== void 0);
-        if (re !== null) {
-          body += r.leading + re + r.trailing;
-          continue;
-        }
-        const reach = noteReach(cols, at(r.from), at(r.to));
-        let end = ri;
-        while (end + 1 < p.regions.length && at(p.regions[end].to) < reach) {
-          const nxt = p.regions[end + 1];
-          const nxtNow = cols.slice(at(nxt.from), at(nxt.to));
-          const wasNxt = growth === 1 ? nxt.content : stretchCells(nxt.content, growth);
-          if (sameCells(nxtNow, wasNxt) && nxtNow.some((col) => col.length > 0)) break;
-          end++;
-        }
-        if (end === ri || at(p.regions[end].to) < reach) return "decline";
-        const last2 = p.regions[end];
-        const merged = reemitRegion(cols.slice(at(r.from), at(last2.to)), div, model.viewScale !== void 0);
-        if (merged === null) return "decline";
-        reemitted += end - ri;
-        body += r.leading + merged + last2.trailing;
-        ri = end;
-      }
-      return { body, reemitted };
-    }, "spliceRegions");
-    let spliced = null;
-    for (const w of widths) {
-      if (last === void 0 || last.to * w.growth !== w.cols.length) continue;
-      const attempt2 = spliceRegions(w.cols, w.growth);
-      if (attempt2 !== "decline") {
-        spliced = attempt2;
-        break;
-      }
-      if (w.growth === 1) return "decline";
-      if (p.regions.length < 2) break;
-    }
-    if (spliced === null) {
-      const partBars = p.bars ?? 1;
-      if (partBars > 1) {
-        const per = steps / partBars;
-        const groups = [];
-        for (let b = 0; b < partBars; b++) {
-          const bar2 = gridColumns(
-            lanes.map((l) => ({ ...l, cells: l.cells.slice(b * per, (b + 1) * per) })),
-            per
-          );
-          if (bar2 === null) return "decline";
-          groups.push(`[${bar2.join(" ")}]`);
-        }
-        return { body: groups.join(" "), reemitted: 0, rebuilt: p.regions.length };
-      }
-      const rebuilt = gridColumns(lanes, steps);
-      if (rebuilt === null) return "decline";
-      return { body: rebuilt.join(" "), reemitted: 0, rebuilt: p.regions.length };
-    }
-    return { body: spliced.body, reemitted: spliced.reemitted, rebuilt: null };
-  }, "splicePart");
-  let out = src.prefix;
-  const stackBars = model.bars ?? 1;
-  for (const p of src.parts) {
-    const lanes = model.lanes.filter((l) => (l.part ?? 0) === p.part);
-    const one = p.bars !== void 0 && stackBars > 1 ? spliceBars(p, lanes, model.steps, stackBars, splicePart) : splicePart(p, lanes, model.steps);
-    if (one === "decline") return "decline";
-    regionsReemitted += one.reemitted;
-    if (one.rebuilt !== null) rebuiltParts.push(one.rebuilt);
-    out += "text" in one ? one.text : p.before + one.body + p.after;
-  }
-  const regions = src.parts.reduce((n, p) => n + p.regions.length, 0);
-  return { out: out + src.suffix, regions, regionsReemitted, rebuiltParts };
-}
-__name(spliceGrid, "spliceGrid");
-function anchorsDescribe(model, anchoredWidth) {
-  return anchoredWidth === model.steps;
-}
-__name(anchorsDescribe, "anchorsDescribe");
-var anchorsAreFor = /* @__PURE__ */ __name((model, ls) => ls.attachedSteps === model.steps, "anchorsAreFor");
-function serializeByLeaf(src, edits) {
-  let out = src;
-  for (const e of [...edits].sort((a, b) => b.span.start - a.span.start)) {
-    out = out.slice(0, e.span.start) + e.text + out.slice(e.span.end);
-  }
-  return out;
-}
-__name(serializeByLeaf, "serializeByLeaf");
-function spliceByLeaf(model, ls) {
-  if (!ls || !anchorsAreFor(model, ls) || !anchorsDescribe(model, ls.cols.length)) return null;
-  const now2 = columnAtoms(model.lanes, model.steps);
-  for (let c = 0; c < model.steps; c++) {
-    const avail = ls.cols[c].map((a) => cellLengthKey(a.duration));
-    if (avail.length === 0) continue;
-    for (const n of now2[c]) {
-      const i = avail.indexOf(cellLengthKey(n.duration));
-      if (i < 0) return null;
-      avail.splice(i, 1);
-    }
-  }
-  const want = /* @__PURE__ */ new Map();
-  for (let c = 0; c < model.steps; c++) {
-    const anchors = ls.cols[c];
-    const before = anchors.map((a) => a.atom);
-    const after = [...new Set(now2[c].map((n) => n.token))];
-    const gone = before.filter((a) => !after.includes(a));
-    const added = after.filter((a) => !before.includes(a));
-    const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1;
-    if (added.length > 0 && !swap) {
-      const rest = ls.rests?.[c];
-      if (rest && anchors.length === 0 && added.length === 1 && after.length === 1) {
-        const key2 = `${rest.start}:${rest.end}`;
-        const prev = want.get(key2);
-        if (prev && prev.text !== added[0]) return null;
-        want.set(key2, { span: rest, text: added[0] });
-        continue;
-      }
-      return null;
-    }
-    for (const a of anchors) {
-      const text = swap ? added[0] : gone.includes(a.atom) ? "~" : a.atom;
-      const key2 = `${a.span.start}:${a.span.end}`;
-      const prev = want.get(key2);
-      if (prev && prev.text !== text) return null;
-      want.set(key2, { span: a.span, text });
-    }
-  }
-  const edits = [...want.values()].filter(
-    (e) => ls.src.slice(e.span.start, e.span.end) !== e.text
-  );
-  return serializeByLeaf(ls.src, edits);
-}
-__name(spliceByLeaf, "spliceByLeaf");
-function spliceRollByLeaf(model, ls) {
-  if (!ls || !anchorsAreFor(model, ls) || !anchorsDescribe(model, ls.steps)) return null;
-  const byStart = /* @__PURE__ */ new Map();
-  for (const a of ls.anchors) {
-    const here = byStart.get(a.start);
-    if (here) here.push(a);
-    else byStart.set(a.start, [a]);
-  }
-  for (const [start, anchors] of byStart) {
-    const avail = anchors.map((a) => a.duration);
-    for (const n of model.notes) {
-      if (n.start !== start) continue;
-      const i = avail.indexOf(n.duration);
-      if (i < 0) return null;
-      avail.splice(i, 1);
-    }
-  }
-  for (const n of model.notes) if (!byStart.has(n.start)) return null;
-  const want = /* @__PURE__ */ new Map();
-  for (const [start, anchors] of byStart) {
-    const before = anchors.map((a) => a.pitch);
-    const after = [...new Set(model.notes.filter((n) => n.start === start).map((n) => n.pitch))];
-    const gone = before.filter((p) => !after.includes(p));
-    const added = after.filter((p) => !before.includes(p));
-    const swap = added.length === 1 && anchors.length === 1 && after.length === 1 && gone.length === 1;
-    if (added.length > 0 && !swap) return null;
-    for (const a of anchors) {
-      const text = swap ? added[0] : gone.includes(a.pitch) ? "~" : ls.src.slice(a.span.start, a.span.end);
-      const key2 = `${a.span.start}:${a.span.end}`;
-      const prev = want.get(key2);
-      if (prev && prev.text !== text) return null;
-      want.set(key2, { span: a.span, text });
-    }
-  }
-  const edits = [...want.values()].filter(
-    (e) => ls.src.slice(e.span.start, e.span.end) !== e.text
-  );
-  return serializeByLeaf(ls.src, edits);
-}
-__name(spliceRollByLeaf, "spliceRollByLeaf");
-function spliceAltGrid(model) {
-  const a = model.altSource;
-  if (!a) return "";
-  const cols = columnAtoms(model.lanes, model.steps);
-  let out = "";
-  for (const r of a.regions) {
-    const now2 = [];
-    for (let b = 0; b < a.bars; b++) {
-      now2.push(
-        cols.slice(r.from + b * a.perBar, r.to + b * a.perBar).map((c) => [...new Map(c.map((n) => [gridCellKey(n), n])).values()])
-      );
-    }
-    if (now2.every((bar2, b) => sameCells(bar2, r.perBar[b]))) {
-      out += r.raw;
-      continue;
-    }
-    const re = reemitAltRegion(now2, a.div, model.viewScale !== void 0);
-    if (re === null) return null;
-    out += r.leading + re + r.trailing;
-  }
-  return out;
-}
-__name(spliceAltGrid, "spliceAltGrid");
-function reemitAltRegion(perBar2, div, refined = false) {
-  const barTokens = perBar2.map((bar2) => reemitRegion(bar2, div, refined));
-  if (barTokens.some((t) => t === null)) return null;
-  return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(" ")}>`;
-}
-__name(reemitAltRegion, "reemitAltRegion");
-var perBarStack = /* @__PURE__ */ __name((model) => (model.bars ?? 1) > 1 && !!model.source?.parts.some((p) => p.bars !== void 0), "perBarStack");
-function spliceBars(p, lanes, steps, stackBars, splicePart) {
-  const P = p.bars ?? 1;
-  const L = stackBars;
-  if (!Number.isInteger(L / P) || steps % L !== 0) return "decline";
-  const per = steps / L;
-  const window2 = /* @__PURE__ */ __name((from, n) => lanes.map((l) => ({ ...l, cells: l.cells.slice(from * per, (from + n) * per) })), "window");
-  const held2 = Array.from({ length: L }, (_, b) => columnAtoms(window2(b, 1), per));
-  const Q = repeatingRun(held2, L);
-  if (P % Q === 0) {
-    const whole = splicePart(p, window2(0, P), P * per);
-    if (whole === "decline") return "decline";
-    const unchanged = whole.reemitted === 0 && whole.rebuilt === null;
-    if (Q === P || unchanged) return { text: p.before + whole.body + p.after, ...whole };
-  }
-  const before = P > 1 ? p.before.replace(/<\s*$/, "") : p.before;
-  const after = P > 1 ? p.after.replace(/^\s*>/, "") : p.after;
-  if (P > 1 && (before === p.before || after === p.after)) return "decline";
-  const last = p.regions[p.regions.length - 1];
-  if (!last || last.to % P !== 0) return "decline";
-  const ownPer = last.to / P;
-  const texts = [];
-  let reemitted = 0;
-  let rebuilt = null;
-  for (let q = 0; q < Q; q++) {
-    const w = q % P;
-    const regions = p.regions.filter((r) => r.from >= w * ownPer && r.to <= (w + 1) * ownPer).map((r) => ({ ...r, from: r.from - w * ownPer, to: r.to - w * ownPer }));
-    if (regions.length === 0 || regions[0].from !== 0 || regions[regions.length - 1].to !== ownPer) return "decline";
-    if (regions.some((r, i) => i > 0 && r.from !== regions[i - 1].to)) return "decline";
-    const bar2 = splicePart({ ...p, regions, bars: void 0 }, window2(q, 1), per);
-    if (bar2 === "decline") return "decline";
-    reemitted += bar2.reemitted;
-    if (bar2.rebuilt !== null) rebuilt = (rebuilt ?? 0) + bar2.rebuilt;
-    const emptied = (bar2.reemitted > 0 || bar2.rebuilt !== null) && held2[q].every((c) => c.length === 0);
-    texts.push(emptied ? "~" : bar2.body.trim());
-  }
-  const body = Q === 1 ? unbracketed(texts[0]) : `<${texts.map(asEntry).join(" ")}>`;
-  return { text: before + body + after, reemitted, rebuilt };
-}
-__name(spliceBars, "spliceBars");
-function repeatingRun(held2, n) {
-  for (let q = 1; q < n; q++) {
-    if (n % q === 0 && held2.every((cells, b) => sameCells(cells, held2[b % q]))) return q;
-  }
-  return n;
-}
-__name(repeatingRun, "repeatingRun");
-function topLevel(text) {
-  const out = [];
-  let depth = 0;
-  let cur = "";
-  for (const ch of text) {
-    if ("[<{(".includes(ch)) depth++;
-    else if ("]>})".includes(ch)) depth--;
-    if (depth === 0 && /\s/.test(ch)) {
-      if (cur) out.push(cur);
-      cur = "";
-    } else cur += ch;
-  }
-  if (cur) out.push(cur);
-  return out;
-}
-__name(topLevel, "topLevel");
-function asEntry(text) {
-  const els = topLevel(text);
-  return els.length === 1 && !/[@!]/.test(outsideBrackets(els[0])) ? text : `[${text}]`;
-}
-__name(asEntry, "asEntry");
-function unbracketed(text) {
-  const els = topLevel(text);
-  if (els.length !== 1 || !text.startsWith("[") || !text.endsWith("]")) return text;
-  return outsideBrackets(text) === "[]" ? text.slice(1, -1).trim() : text;
-}
-__name(unbracketed, "unbracketed");
-function outsideBrackets(el) {
-  let depth = 0;
-  let out = "";
-  for (const ch of el) {
-    if ("[<{(".includes(ch)) {
-      if (depth === 0) out += ch;
-      depth++;
-    } else if ("]>})".includes(ch)) {
-      depth--;
-      if (depth === 0) out += ch;
-    } else if (depth === 0) out += ch;
-  }
-  return out;
-}
-__name(outsideBrackets, "outsideBrackets");
-function partColumns(lanes, steps, factor) {
-  if (factor < 1 || steps % factor !== 0) return null;
-  const all = columnAtoms(lanes, steps);
-  const cols = [];
-  for (let c = 0; c < steps; c++) {
-    if (c % factor === 0)
-      cols.push(all[c].map((n) => ({ token: n.token, duration: n.duration / factor })));
-    else if (all[c].length > 0) return null;
-  }
-  return cols;
-}
-__name(partColumns, "partColumns");
-function columnAtoms(lanes, steps) {
-  const cols = [];
-  for (let i = 0; i < steps; i++) {
-    const here = [];
-    for (const l of lanes) {
-      const cell = l.cells[i];
-      if (isCellOn(cell)) here.push({ token: l.sound, duration: cell.duration });
-    }
-    cols.push(here);
-  }
-  return cols;
-}
-__name(columnAtoms, "columnAtoms");
-var sameCell = /* @__PURE__ */ __name((a, b) => {
-  const keys = b.map(gridCellKey);
-  return a.length === b.length && a.every((x) => keys.includes(gridCellKey(x)));
-}, "sameCell");
-var sameCells = /* @__PURE__ */ __name((a, b) => a.length === b.length && a.every((c, i) => sameCell(c, b[i])), "sameCells");
-var stretchCells = /* @__PURE__ */ __name((cells, growth) => cells.flatMap((c) => [
-  c.map((n) => ({ token: n.token, duration: n.duration * growth })),
-  ...Array.from({ length: growth - 1 }, () => [])
-]), "stretchCells");
-function noteReach(cols, from, to) {
-  let reach = to;
-  for (let c = from; c < to; c++) {
-    for (const n of cols[c]) reach = Math.max(reach, c + Math.round(n.duration));
-  }
-  return reach;
-}
-__name(noteReach, "noteReach");
-function respellBar(cols, r, div, barSteps) {
-  const P = lcmOf(barSteps);
-  if (r.to - r.from !== P || r.from % P !== 0 || div !== P) return null;
-  const own = barSteps[r.from / P];
-  const k = P / own;
-  if (k <= 1) return null;
-  const packed = [];
-  for (let i = 0; i < cols.length; i++) {
-    if (i % k !== 0) {
-      if (cols[i].length) return null;
-      continue;
-    }
-    const col = [];
-    for (const c of cols[i]) {
-      const d = c.duration / k;
-      if (Math.abs(d - Math.round(d)) > 1e-9) return null;
-      col.push({ ...c, duration: Math.round(d) });
-    }
-    packed.push(col);
-  }
-  return reemitRegion(packed, own);
-}
-__name(respellBar, "respellBar");
-function reemitRegion(cols, div, refined = false) {
-  const spelled = sustainTokens(cols, div);
-  if (spelled === null) return refined ? stackedRegion(cols, div) : null;
-  const steps = [];
-  for (let i = 0; i < cols.length; i += div) steps.push(reemitStep(spelled.slice(i, i + div)));
-  return steps.join(" ");
-}
-__name(reemitRegion, "reemitRegion");
-function stackedRegion(cols, div) {
-  if (div < 2) return null;
-  const slots = cols.length / div;
-  if (!Number.isInteger(slots) || slots < 1) return null;
-  const sounds = [];
-  for (const col of cols) for (const n of col) if (!sounds.includes(n.token)) sounds.push(n.token);
-  if (sounds.length === 0) return null;
-  const parts = [];
-  for (const sound of sounds) {
-    const seq = new Array(cols.length).fill("~");
-    const covered = new Array(cols.length).fill(false);
-    for (let c = 0; c < cols.length; c++) {
-      for (const n of cols[c]) {
-        if (n.token !== sound) continue;
-        const d = Math.round(n.duration);
-        if (Math.abs(n.duration - d) > 1e-6 || d < 1) return null;
-        if (c + d > cols.length) return null;
-        if (seq[c] !== "~" || covered[c]) return null;
-        seq[c] = sound;
-        for (let k = 1; k < d; k++) {
-          if (seq[c + k] !== "~" || covered[c + k]) return null;
-          covered[c + k] = true;
-        }
-      }
-    }
-    for (let c = 0; c < cols.length; c++) if (covered[c]) seq[c] = "_";
-    parts.push(seq.join(" "));
-  }
-  return `[${parts.join(", ")}]` + (slots > 1 ? `@${slots}` : "");
-}
-__name(stackedRegion, "stackedRegion");
-function sustainTokens(cols, div) {
-  const out = new Array(cols.length).fill("");
-  const covered = new Array(cols.length).fill(false);
-  for (let c = 0; c < cols.length; c++) {
-    for (const n of cols[c]) {
-      const d = Math.round(n.duration);
-      if (Math.abs(n.duration - d) > 1e-6 || d < 1) return null;
-      if (c + d > cols.length) return null;
-      for (let k = 1; k < d; k++) {
-        if (cols[c + k].length > 0) return null;
-        covered[c + k] = true;
-      }
-    }
-  }
-  for (let c = 0; c < cols.length; c++) {
-    if (cols[c].length > 0) {
-      out[c] = cellToken(cols[c].map((n) => n.token));
-      continue;
-    }
-    if (!covered[c]) {
-      out[c] = "~";
-      continue;
-    }
-    if (c === 0 || div > 1 && c % div === 0) return null;
-    out[c] = "_";
-  }
-  return out;
-}
-__name(sustainTokens, "sustainTokens");
-function reemitStep(tokens) {
-  if (tokens.length === 1) return tokens[0];
-  if (tokens.every((t) => t === "~")) return "~";
-  return `[${tokens.join(" ")}]`;
-}
-__name(reemitStep, "reemitStep");
-var cellToken = /* @__PURE__ */ __name((atoms) => atoms.length === 0 ? "~" : atoms.length === 1 ? atoms[0] : `[${atoms.join(",")}]`, "cellToken");
-function gridColumns(lanes, steps) {
-  return sustainTokens(columnAtoms(lanes, steps), 1);
-}
-__name(gridColumns, "gridColumns");
-function serializeStepGain(model) {
-  if (model.gainForeign) return { kind: "skip" };
-  if (model.leafSource) return { kind: "skip" };
-  const bars = model.bars ?? 1;
-  const parts = new Set(model.lanes.map((l) => l.part ?? 0));
-  if (bars > 1 || parts.size > 1) return { kind: "skip" };
-  const gains = model.gains;
-  if (!gains || gains.length !== model.steps) return { kind: "clear" };
-  const cols = gridColumns(model.lanes, model.steps);
-  if (cols === null) return { kind: "skip" };
-  const active2 = gains.filter((_, i) => cols[i] !== "~");
-  if (active2.length === 0 || active2.every((g) => g === 1)) return { kind: "clear" };
-  if (active2.every((g) => g === active2[0])) {
-    return { kind: "write", value: fmtGain(active2[0]), quoted: false };
-  }
-  const mini = cols.map((tok, i) => tok === "~" ? "~" : fmtGain(gains[i])).join(" ");
-  return { kind: "write", value: mini, quoted: true };
-}
-__name(serializeStepGain, "serializeStepGain");
-function gridBars(model, bounds) {
-  const cols = gridColumns(model.lanes, model.steps);
-  if (cols === null) return null;
-  const slots = [];
-  for (let b = 0; b + 1 < bounds.length; b++) {
-    const bar2 = cols.slice(bounds[b], bounds[b + 1]);
-    if (bar2.every((c) => c === "~")) slots.push("~");
-    else if (bar2.length === 1) slots.push(bar2[0]);
-    else slots.push(`[${bar2.join(" ")}]`);
-  }
-  return `<${slots.join(" ")}>`;
-}
-__name(gridBars, "gridBars");
-function barBounds(model) {
-  if (model.barSteps) return barStarts(model.barSteps);
-  const bars = model.bars ?? 1;
-  const perBar2 = model.steps / bars;
-  return Array.from({ length: bars + 1 }, (_, b) => b * perBar2);
-}
-__name(barBounds, "barBounds");
-function heldBars(bounds, b, duration) {
-  for (let k = 1; b + k < bounds.length; k++) {
-    const span = bounds[b + k] - bounds[b];
-    if (Math.abs(span - duration) < 1e-9) return k;
-    if (span > duration) break;
-  }
-  return 0;
-}
-__name(heldBars, "heldBars");
-var groupBody = /* @__PURE__ */ __name((g) => g.pitches.length === 1 ? g.pitches[0] : `[${g.pitches.join(",")}]`, "groupBody");
-var weightToken = /* @__PURE__ */ __name((n) => String(Number(n.toPrecision(12))), "weightToken");
-var groupToken = /* @__PURE__ */ __name((g) => g.duration === 1 ? groupBody(g) : `${groupBody(g)}@${weightToken(g.duration)}`, "groupToken");
-function restTokens(width) {
-  const { whole, remainder } = columnSplit(width);
-  if (whole < 0) return null;
-  const out = new Array(whole).fill("~");
-  if (remainder > 0) out.push(`~@${weightToken(remainder)}`);
-  return out;
-}
-__name(restTokens, "restTokens");
-function buildGroups(model) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
-    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
-      return null;
-    }
-    const g = groups.get(note.start);
-    if (!g) groups.set(note.start, { pitches: [note.pitch], duration: note.duration });
-    else if (g.duration !== note.duration) return null;
-    else g.pitches.push(note.pitch);
-  }
-  return groups;
-}
-__name(buildGroups, "buildGroups");
-function serializePianoRollWithExtent(drawn) {
-  const model = toUniformRoll(drawn);
-  const respell = drawn.barSteps;
-  const spans = model.leafSource ?? model.surgical?.spans();
-  if (spans) {
-    const surgical = spliceRollByLeaf(model, spans);
-    if (surgical !== null) return { mini: surgical, extent: { path: "leaf" } };
-    if (model.leafSource) return { mini: null, extent: { path: "leaf" } };
-  }
-  if (altSourceFits(model.altSource, model.steps))
-    return { mini: spliceAltRoll(model), extent: { path: "alt" } };
-  const spliced = spliceRoll(model, respell);
-  if (spliced !== null) return { mini: spliced, extent: { path: "splice" } };
-  const bars = model.bars ?? 1;
-  if (bars > 1) {
-    const src = respell ? drawn : model;
-    const bounds = barBounds(src);
-    const groups = buildGroups(src);
-    const flat = groups === null ? null : rollBars(groups, bounds);
-    if (flat !== null) return { mini: flat, extent: { path: "rebuild" } };
-    return { mini: rollBarLanes(src, bounds), extent: { path: "rebuild" } };
-  }
-  return { mini: serializeRollLanes(model), extent: { path: "rebuild" } };
-}
-__name(serializePianoRollWithExtent, "serializePianoRollWithExtent");
-function serializePianoRoll(model) {
-  return serializePianoRollWithExtent(model).mini;
-}
-__name(serializePianoRoll, "serializePianoRoll");
-var noteKey = /* @__PURE__ */ __name((n) => `${n.pitch}:${n.start}:${n.duration}`, "noteKey");
-function assignNotes(model, src) {
-  if (src.parts.length === 1) return /* @__PURE__ */ new Map([[src.parts[0].part, model.notes]]);
-  const taken = /* @__PURE__ */ new Set();
-  const mine = /* @__PURE__ */ new Map();
-  const lost = [];
-  for (const p of src.parts) {
-    const kept = [];
-    let missing = false;
-    for (const was of p.regions.flatMap((r) => r.content)) {
-      const hit = model.notes.find((n) => !taken.has(n) && noteKey(n) === noteKey(was));
-      if (hit) {
-        taken.add(hit);
-        kept.push(hit);
-      } else missing = true;
-    }
-    if (missing) lost.push(p.part);
-    mine.set(p.part, kept);
-  }
-  const strays = model.notes.filter((n) => !taken.has(n));
-  if (strays.length === 0) return mine;
-  if (lost.length !== 1) return null;
-  mine.set(lost[0], [...mine.get(lost[0]) ?? [], ...strays]);
-  return mine;
-}
-__name(assignNotes, "assignNotes");
-function spliceRoll(model, respell) {
-  const src = model.source;
-  if (!src || src.parts.length === 0) return null;
-  const covers = src.parts.every((p) => {
-    const last = p.regions[p.regions.length - 1];
-    return last !== void 0 && last.to === model.steps;
-  });
-  if (!covers) return null;
-  const assigned = assignNotes(model, src);
-  if (assigned === null) return null;
-  const integral = model.notes.every(
-    (n) => Number.isInteger(n.start) && Number.isInteger(n.duration)
-  );
-  let out = src.prefix;
-  for (const p of src.parts) {
-    const notes = assigned.get(p.part) ?? [];
-    if (notes.some((n) => n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps)) {
-      return null;
-    }
-    out += p.before;
-    const last = p.regions[p.regions.length - 1];
-    let body = last === void 0 ? null : "";
-    for (const r of p.regions) {
-      if (body === null) break;
-      const now2 = notes.filter((n) => n.start >= r.from && n.start < r.to);
-      if (sameNotes(now2, r.content)) {
-        body += r.raw;
-        continue;
-      }
-      if (!integral) return null;
-      const re = (respell ? respellRollBar(now2, r, p.div, respell) : null) ?? reemitRollRegion(now2, r.from, r.to, p.div);
-      body = re === null ? null : body + r.leading + re + r.trailing;
-    }
-    if (body === null) {
-      const placed = toPlaced(notes);
-      const rebuilt = placed && laneString(placed, model.steps);
-      if (!rebuilt) return null;
-      out += rebuilt + p.after;
-      continue;
-    }
-    out += body + p.after;
-  }
-  return out + src.suffix;
-}
-__name(spliceRoll, "spliceRoll");
-function spliceAltRoll(model) {
-  const a = model.altSource;
-  if (!a) return null;
-  const gain = serializeRollGain(model);
-  if (gain.kind === "write" && gain.quoted) return null;
-  const integral = model.notes.every(
-    (n) => Number.isInteger(n.start) && Number.isInteger(n.duration)
-  );
-  let out = "";
-  for (const r of a.regions) {
-    const perBarNow = [];
-    for (let b = 0; b < a.bars; b++) {
-      const lo = r.from + b * a.perBar;
-      const hi = r.to + b * a.perBar;
-      perBarNow.push(
-        model.notes.filter((n) => n.start >= lo && n.start < hi).map((n) => ({ pitch: n.pitch, start: n.start - b * a.perBar, duration: n.duration }))
-      );
-    }
-    if (perBarNow.every((bar2, b) => sameNotes(bar2, r.perBar[b]))) {
-      out += r.raw;
-      continue;
-    }
-    if (!integral) return null;
-    const re = reemitAltRoll(perBarNow, r.from, r.to, a.div);
-    if (re === null) return null;
-    out += r.leading + re + r.trailing;
-  }
-  return out;
-}
-__name(spliceAltRoll, "spliceAltRoll");
-function reemitAltRoll(perBar2, from, to, div) {
-  const barTokens = [];
-  for (const notes of perBar2) {
-    const re = reemitRollRegion(notes, from, to, div);
-    if (re === null) return null;
-    barTokens.push(re);
-  }
-  return barTokens.every((t) => t === barTokens[0]) ? barTokens[0] : `<${barTokens.join(" ")}>`;
-}
-__name(reemitAltRoll, "reemitAltRoll");
-function sameNotes(a, b) {
-  if (a.length !== b.length) return false;
-  const left = a.map(noteKey).sort();
-  const right = b.map(noteKey).sort();
-  return left.every((k, i) => k === right[i]);
-}
-__name(sameNotes, "sameNotes");
-function toPlaced(notes) {
-  const byStart = /* @__PURE__ */ new Map();
-  for (const n of [...notes].sort((x, y) => x.start - y.start)) {
-    const g = byStart.get(n.start);
-    if (!g) byStart.set(n.start, { pitches: [n.pitch], start: n.start, duration: n.duration });
-    else if (g.duration !== n.duration) return null;
-    else g.pitches.push(n.pitch);
-  }
-  return [...byStart.values()];
-}
-__name(toPlaced, "toPlaced");
-function reemitRollRegionFlat(notes, from, to, div) {
-  const groups = toPlaced(notes);
-  if (groups === null) return null;
-  if (columnSplit((to - from) / div).remainder > 0) return null;
-  const at = new Map(groups.map((g) => [g.start, g]));
-  const starts = groups.map((g) => g.start).sort((a, b) => a - b);
-  const tokens = [];
-  let c = from;
-  let crossed = false;
-  while (c < to) {
-    const g = at.get(c);
-    if (g && g.duration % div === 0) {
-      const end2 = c + g.duration;
-      if (end2 > to) return null;
-      if (starts.some((s) => s > c && s < end2)) return null;
-      tokens.push(groupToken({ pitches: g.pitches, duration: g.duration / div }));
-      c = end2;
-      continue;
-    }
-    const end = c + div;
-    const slots = [];
-    let k = c;
-    while (k < end) {
-      const gg = at.get(k);
-      if (!gg) {
-        slots.push("~");
-        k++;
-        continue;
-      }
-      if (k + gg.duration > end) {
-        crossed = true;
-        break;
-      }
-      slots.push(groupToken({ pitches: gg.pitches, duration: gg.duration }));
-      k += gg.duration;
-    }
-    if (crossed) break;
-    tokens.push(
-      slots.every((s) => s === "~") ? "~" : slots.length === 1 ? slots[0] : `[${slots.join(" ")}]`
-    );
-    c = end;
-  }
-  if (crossed) return groupWrapRegion(at, starts, from, to, div);
-  return tokens.join(" ");
-}
-__name(reemitRollRegionFlat, "reemitRollRegionFlat");
-function respellRollBar(notes, r, div, barSteps) {
-  const P = lcmOf(barSteps);
-  if (r.to - r.from !== P || r.from % P !== 0 || div !== P) return null;
-  const own = barSteps[r.from / P];
-  const k = P / own;
-  if (k <= 1) return null;
-  const whole = /* @__PURE__ */ __name((x) => Math.abs(x - Math.round(x)) < 1e-9, "whole");
-  const packed = [];
-  for (const n of notes) {
-    const start = (n.start - r.from) / k;
-    const duration = n.duration / k;
-    if (!whole(start) || !whole(duration)) return null;
-    packed.push({ ...n, start: Math.round(start), duration: Math.round(duration) });
-  }
-  return reemitRollRegion(packed, 0, own, own);
-}
-__name(respellRollBar, "respellRollBar");
-function reemitRollRegion(notes, from, to, div) {
-  const flat = reemitRollRegionFlat(notes, from, to, div);
-  if (flat !== null) return flat;
-  return laneWrapRegion(notes, from, to, div);
-}
-__name(reemitRollRegion, "reemitRollRegion");
-function laneWrapRegion(notes, from, to, div) {
-  const width = to - from;
-  const steps = width / div;
-  if (!Number.isInteger(steps) || steps < 1) return null;
-  const byKey = /* @__PURE__ */ new Map();
-  for (const n of [...notes].sort((a, b) => a.start - b.start)) {
-    const start = n.start - from;
-    if (start < 0 || n.duration < 1 || start + n.duration > width) return null;
-    const key2 = `${start}:${n.duration}`;
-    const g = byKey.get(key2);
-    if (g) g.pitches.push(n.pitch);
-    else byKey.set(key2, { pitches: [n.pitch], start, duration: n.duration });
-  }
-  const lanes = packLanes([...byKey.values()]);
-  if (lanes.length < 2) return null;
-  const strings = [];
-  for (const lane of lanes) {
-    const s = laneString(lane, width);
-    if (s === null) return null;
-    strings.push(s);
-  }
-  const body = `[${strings.join(", ")}]`;
-  return steps === 1 ? body : `${body}@${steps}`;
-}
-__name(laneWrapRegion, "laneWrapRegion");
-function groupWrapRegion(at, starts, from, to, div) {
-  const inner = [];
-  let c = from;
-  while (c < to) {
-    const g = at.get(c);
-    if (!g) {
-      inner.push("~");
-      c++;
-      continue;
-    }
-    if (c + g.duration > to) return null;
-    if (starts.some((s) => s > c && s < c + g.duration)) return null;
-    inner.push(groupToken({ pitches: g.pitches, duration: g.duration }));
-    c += g.duration;
-  }
-  const steps = (to - from) / div;
-  const body = `[${inner.join(" ")}]`;
-  return steps === 1 ? body : `${body}@${steps}`;
-}
-__name(groupWrapRegion, "groupWrapRegion");
-function placedGroups(model) {
-  const byKey = /* @__PURE__ */ new Map();
-  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
-    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
-      return null;
-    }
-    const key2 = `${note.start}:${note.duration}`;
-    const g = byKey.get(key2);
-    if (g) g.pitches.push(note.pitch);
-    else byKey.set(key2, { pitches: [note.pitch], start: note.start, duration: note.duration });
-  }
-  return [...byKey.values()];
-}
-__name(placedGroups, "placedGroups");
-function packLanes(groups) {
-  const sorted = [...groups].sort((a, b) => a.start - b.start || a.duration - b.duration);
-  const lanes = [];
-  for (const g of sorted) {
-    const lane = lanes.find((l) => l.end <= g.start);
-    if (lane) {
-      lane.groups.push(g);
-      lane.end = g.start + g.duration;
-    } else {
-      lanes.push({ end: g.start + g.duration, groups: [g] });
-    }
-  }
-  return lanes.map((l) => l.groups);
-}
-__name(packLanes, "packLanes");
-function laneString(groups, steps) {
-  const cols = [];
-  let col = 0;
-  for (const g of [...groups].sort((a, b) => a.start - b.start)) {
-    const gap = restTokens(g.start - col);
-    if (gap === null) return null;
-    cols.push(...gap, groupToken({ pitches: g.pitches, duration: g.duration }));
-    col = g.start + g.duration;
-  }
-  const tail = restTokens(steps - col);
-  if (tail === null) return null;
-  cols.push(...tail);
-  return cols.join(" ");
-}
-__name(laneString, "laneString");
-function serializeRollLanes(model) {
-  const groups = placedGroups(model);
-  if (groups === null) return null;
-  const lanes = packLanes(groups);
-  if (lanes.length === 0) return laneString([], model.steps);
-  const strings = [];
-  for (const lane of lanes) {
-    const s = laneString(lane, model.steps);
-    if (s === null) return null;
-    strings.push(s);
-  }
-  return strings.join(", ");
-}
-__name(serializeRollLanes, "serializeRollLanes");
-function rollBars(groups, bounds) {
-  if (!bounds.every((x) => Number.isInteger(x))) return null;
-  const bars = bounds.length - 1;
-  const starts = [...groups.keys()].sort((a, b2) => a - b2);
-  const slots = [];
-  let b = 0;
-  while (b < bars) {
-    const barStart = bounds[b];
-    const barEnd = bounds[b + 1];
-    const perBar2 = barEnd - barStart;
-    const atStart = groups.get(barStart);
-    const k = atStart ? heldBars(bounds, b, atStart.duration) : 0;
-    if (atStart && k >= 1) {
-      const heldEnd = barStart + atStart.duration;
-      if (starts.some((s) => s > barStart && s < heldEnd)) return null;
-      slots.push(k === 1 ? groupBody(atStart) : `${groupBody(atStart)}@${k}`);
-      b += k;
-      continue;
-    }
-    if (perBar2 === 1) {
-      slots.push("~");
-      b++;
-      continue;
-    }
-    const tokens = [];
-    let c = barStart;
-    let consumed = 0;
-    while (c < barEnd) {
-      const g = groups.get(c);
-      if (!g) {
-        tokens.push("~");
-        c++;
-        continue;
-      }
-      if (c + g.duration > barEnd) return null;
-      tokens.push(groupToken(g));
-      c += g.duration;
-      consumed++;
-    }
-    if (consumed !== starts.filter((s) => s >= barStart && s < barEnd).length) return null;
-    slots.push(tokens.every((t) => t === "~") ? "~" : `[${tokens.join(" ")}]`);
-    b++;
-  }
-  return `<${slots.join(" ")}>`;
-}
-__name(rollBars, "rollBars");
-function rollBarLanes(model, bounds) {
-  if (!bounds.every((x) => Number.isInteger(x))) return null;
-  const bars = bounds.length - 1;
-  const E = 1e-9;
-  const notes = [...model.notes].sort((a, b2) => a.start - b2.start || a.duration - b2.duration);
-  for (const n of notes)
-    if (n.start < 0 || n.duration < 1 || n.start + n.duration > model.steps + E) return null;
-  const slots = [];
-  let b = 0;
-  while (b < bars) {
-    const barStart = bounds[b];
-    const barEnd = bounds[b + 1];
-    const perBar2 = barEnd - barStart;
-    const over = notes.filter((n) => n.start < barEnd - E && n.start + n.duration > barStart + E);
-    if (over.length === 0) {
-      slots.push("~");
-      b++;
-      continue;
-    }
-    if (over.every((n) => n.start > barStart - E && n.start + n.duration < barEnd + E)) {
-      const byKey = /* @__PURE__ */ new Map();
-      for (const n of over) {
-        const key2 = `${n.start - barStart}:${n.duration}`;
-        const g = byKey.get(key2);
-        if (g) g.pitches.push(n.pitch);
-        else byKey.set(key2, { pitches: [n.pitch], start: n.start - barStart, duration: n.duration });
-      }
-      const strings = [];
-      for (const lane of packLanes([...byKey.values()])) {
-        const str = laneString(lane, perBar2);
-        if (str === null) return null;
-        strings.push(str);
-      }
-      slots.push(`[${strings.join(", ")}]`);
-      b++;
-      continue;
-    }
-    const held2 = over.filter((n) => Math.abs(n.start - barStart) < E);
-    if (held2.length === 0 || held2.length !== over.length) return null;
-    const dur = held2[0].duration;
-    if (held2.some((n) => Math.abs(n.duration - dur) > E)) return null;
-    const k = heldBars(bounds, b, dur);
-    if (k < 1) return null;
-    if (notes.some((n) => n.start > barStart + E && n.start < barStart + dur - E)) return null;
-    const body = groupBody({ pitches: held2.map((n) => n.pitch), duration: dur });
-    slots.push(k === 1 ? body : `${body}@${k}`);
-    b += k;
-  }
-  return `<${slots.join(" ")}>`;
-}
-__name(rollBarLanes, "rollBarLanes");
-function serializeRollGain(model) {
-  if (model.gainForeign) return { kind: "skip" };
-  if (model.leafSource) return { kind: "skip" };
-  const bars = model.bars ?? 1;
-  if (bars > 1 && model.steps !== bars) return { kind: "skip" };
-  const placed = placedGroups(model);
-  if (placed !== null && packLanes(placed).length > 1) return { kind: "skip" };
-  const groups = /* @__PURE__ */ new Map();
-  for (const note of [...model.notes].sort((a, b) => a.start - b.start)) {
-    if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
-      return { kind: "skip" };
-    }
-    const gain = note.gain ?? 1;
-    const g = groups.get(note.start);
-    if (!g) groups.set(note.start, { duration: note.duration, gain });
-    else if (g.duration !== note.duration || g.gain !== gain) return { kind: "skip" };
-  }
-  const vals = [...groups.values()].map((g) => g.gain);
-  if (vals.length === 0 || vals.every((g) => g === 1)) return { kind: "clear" };
-  if (vals.every((g) => g === vals[0])) {
-    return { kind: "write", value: fmtGain(vals[0]), quoted: false };
-  }
-  const cols = [];
-  let col = 0;
-  for (const start of [...groups.keys()].sort((a, b) => a - b)) {
-    const gap = restTokens(start - col);
-    if (gap === null) return { kind: "skip" };
-    const g = groups.get(start);
-    cols.push(
-      ...gap,
-      g.duration === 1 ? fmtGain(g.gain) : `${fmtGain(g.gain)}@${weightToken(g.duration)}`
-    );
-    col = start + g.duration;
-  }
-  const tail = restTokens(model.steps - col);
-  if (tail === null) return { kind: "skip" };
-  cols.push(...tail);
-  const seq = cols.join(" ");
-  return { kind: "write", value: bars > 1 ? `<${seq}>` : seq, quoted: true };
-}
-__name(serializeRollGain, "serializeRollGain");
-
-// src/codeView/notation/viewResolution.ts
-var UNREFINED = 1;
-var MAX_VIEW_STEPS = 256;
-function isViewScale(k) {
-  return Number.isInteger(k) && k >= UNREFINED;
-}
-__name(isViewScale, "isViewScale");
-function documentSteps(model) {
-  return model.steps / (model.viewScale ?? UNREFINED);
-}
-__name(documentSteps, "documentSteps");
-function viewSteps(documentSteps2, scale) {
-  return documentSteps2 * scale;
-}
-__name(viewSteps, "viewSteps");
-function absorbViewScale(model) {
-  if (model.viewScale === void 0) return model;
-  const { viewScale: _absorbed, ...rest } = model;
-  return rest;
-}
-__name(absorbViewScale, "absorbViewScale");
-function viewScaleFits(perBar2, bars, scale) {
-  if (!isViewScale(scale)) return false;
-  return viewSteps(perBar2 * bars, scale) <= MAX_VIEW_STEPS;
-}
-__name(viewScaleFits, "viewScaleFits");
-
-// src/codeView/notation/parse.ts
-var NUMERIC = /^-?\d+$/;
-var isAtomToken = /* @__PURE__ */ __name((t, allowNumeric) => allowNumeric || !NUMERIC.test(t), "isAtomToken");
-var MAX_STEPS = 64;
-var ONSET_GRID = 2882880;
-var OVER_CAP = MAX_VIEW_STEPS + 1;
-var gcd2 = /* @__PURE__ */ __name((a, b) => {
-  while (b !== 0) {
-    const r = a % b;
-    a = b;
-    b = r;
-  }
-  return a;
-}, "gcd");
-var lcm = /* @__PURE__ */ __name((a, b) => {
-  if (a >= OVER_CAP || b >= OVER_CAP) return OVER_CAP;
-  const r = a / gcd2(a, b) * b;
-  return r >= OVER_CAP ? OVER_CAP : r;
-}, "lcm");
-var stepUnits = /* @__PURE__ */ __name((s) => s.sub ? s.sub.reduce((n, slot) => n + slot.units, 0) : 1, "stepUnits");
-var division = /* @__PURE__ */ __name((steps) => steps.reduce((d, s) => lcm(d, stepUnits(s)), 1), "division");
-function splitTopLevel(src) {
-  const out = [];
-  let depth = 0;
-  let from = 0;
-  for (let i = 0; i < src.length; i++) {
-    const c = src[i];
-    if (c === "[" || c === "(") depth++;
-    else if (c === "]" || c === ")") depth--;
-    else if (c === "," && depth === 0) {
-      out.push(src.slice(from, i));
-      from = i + 1;
-    }
-  }
-  out.push(src.slice(from));
-  return out;
-}
-__name(splitTopLevel, "splitTopLevel");
-function unwrapAlternation(mini) {
-  const t = mini.trim();
-  if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
-  let depth = 0;
-  for (let i = 0; i < t.length; i++) {
-    if (t[i] === "<") depth++;
-    else if (t[i] === ">" && --depth === 0 && i !== t.length - 1) return null;
-  }
-  return t.slice(1, -1);
-}
-__name(unwrapAlternation, "unwrapAlternation");
-var isAtom2 = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
-var isRestAtom2 = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
-var tokenOf = /* @__PURE__ */ __name((atom, ops) => {
-  let t = atom.source_;
-  for (const op of ops) {
-    if (op.type_ !== "tail") continue;
-    const node = op.arguments_?.element;
-    if (!node || node.type_ !== "atom" || typeof node.source_ !== "string") return null;
-    t += ":" + node.source_;
-  }
-  return t;
-}, "tokenOf");
-var numArg = /* @__PURE__ */ __name((node) => {
-  const n = node;
-  if (!n || typeof n !== "object") return null;
-  const inner = n.type_ === "element" ? n.source_ : n;
-  if (!inner || inner.type_ !== "atom") return null;
-  const v = Number(inner.source_);
-  return Number.isFinite(v) ? v : null;
-}, "numArg");
-function readOps(ops) {
-  let mult = 1;
-  let euclid = null;
-  for (const op of ops) {
-    switch (op.type_) {
-      case "tail":
-      case "replicate":
-        break;
-      case "stretch": {
-        const type = op.arguments_?.type;
-        if (type !== "fast") {
-          return { reason: `"${String(type)}" stretch is beyond the editable subset` };
-        }
-        const amount = numArg(op.arguments_?.amount);
-        if (amount === null || !Number.isInteger(amount) || amount < 1) {
-          return { reason: "invalid * multiplier" };
-        }
-        mult *= amount;
-        break;
-      }
-      case "bjorklund": {
-        const k = numArg(op.arguments_?.pulse);
-        const n = numArg(op.arguments_?.step);
-        const rot = op.arguments_?.rotation == null ? 0 : numArg(op.arguments_.rotation);
-        if (k === null || n === null || rot === null) {
-          return { reason: "invalid euclid (k,n) arguments" };
-        }
-        if (n < 1) return { reason: "invalid euclid step count" };
-        euclid = { k, n, rot };
-        break;
-      }
-      case "degradeBy":
-        return { reason: '"?" random degrade is beyond the editable subset' };
-      default:
-        return { reason: `"${op.type_}" is beyond the editable subset` };
-    }
-  }
-  return { mult, euclid };
-}
-__name(readOps, "readOps");
-function groupSlots(pat, allowNumeric) {
-  const slots = [];
-  for (const el of pat.source_) {
-    const opts = el.options_ ?? {};
-    const ops = opts.ops ?? [];
-    const units = opts.weight ?? 1;
-    if ((opts.reps ?? 1) > 1) {
-      return { reason: "! inside a group is beyond the editable subset" };
-    }
-    if (ops.some((o) => o.type_ !== "tail")) {
-      return { reason: "operators inside a group are beyond the editable subset" };
-    }
-    if (isAtom2(el.source_)) {
-      if (isRestAtom2(el.source_)) {
-        if (ops.length) return { reason: 'a ":" variant on a rest has nothing to name' };
-        slots.push({ atoms: [], units });
-        continue;
-      }
-      const token = tokenOf(el.source_, ops);
-      if (token === null) {
-        return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
-      }
-      if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
-      slots.push({ atoms: [token], units });
-      continue;
-    }
-    const chord = chordAtoms(el.source_, allowNumeric);
-    if (!Array.isArray(chord)) return chord;
-    slots.push({ atoms: chord, units });
-  }
-  if (slots.length === 0) return { reason: "empty group" };
-  return slots;
-}
-__name(groupSlots, "groupSlots");
-function chordAtoms(pat, allowNumeric) {
-  if (pat.arguments_?.alignment !== "stack") {
-    return { reason: "nested groups are beyond the editable subset" };
-  }
-  const atoms = [];
-  for (const voice of pat.source_) {
-    if (isAtom2(voice)) {
-      return { reason: "stacked sub-sequences are beyond the editable subset" };
-    }
-    const vp = voice;
-    if (vp.arguments_?.alignment !== "fastcat" || vp.source_.length !== 1) {
-      return { reason: "stacked sub-sequences are beyond the editable subset" };
-    }
-    const el = vp.source_[0];
-    const ops = el.options_?.ops ?? [];
-    if (!isAtom2(el.source_) || (el.options_?.reps ?? 1) > 1 || ops.some((o) => o.type_ !== "tail")) {
-      return { reason: "stacked sub-sequences are beyond the editable subset" };
-    }
-    const token = tokenOf(el.source_, ops);
-    if (token === null) {
-      return { reason: `a patterned ":" variant on "${el.source_.source_}" is beyond the editable subset` };
-    }
-    if (!isAtomToken(token, allowNumeric)) return { reason: `unsupported token "${token}"` };
-    atoms.push(token);
-  }
-  return atoms;
-}
-__name(chordAtoms, "chordAtoms");
-function elementToSteps(el, allowNumeric) {
-  const opts = el.options_ ?? {};
-  const ops = opts.ops ?? [];
-  const reps = opts.reps ?? 1;
-  const rawWeight = opts.weight ?? 1;
-  const read5 = readOps(ops);
-  if (!("mult" in read5)) return read5;
-  const { mult, euclid } = read5;
-  if (reps > 1 && rawWeight !== reps) {
-    return { reason: "! combined with * or @ is beyond the editable subset" };
-  }
-  if (reps < 1) return { reason: "a zero replicate has nothing to show" };
-  if (rawWeight <= 0) return { reason: "a zero-width step has nothing to show" };
-  const weight = reps > 1 ? 1 : rawWeight;
-  if (!isAtom2(el.source_)) {
-    const alignment = el.source_.arguments_?.alignment;
-    if (alignment === "stack") {
-      const chord = chordAtoms(el.source_, allowNumeric);
-      if (!Array.isArray(chord)) return chord;
-      if (euclid) return { reason: "euclid on a chord is beyond the editable subset" };
-      if (reps > 1) return { reason: "! on a chord is beyond the editable subset" };
-      if (mult > 1) {
-        if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
-        return [
-          {
-            atoms: [],
-            elongation: weight,
-            sub: Array.from({ length: mult }, () => ({ atoms: [...chord], units: 1 }))
-          }
-        ];
-      }
-      return [{ atoms: chord, elongation: weight, sub: null }];
-    }
-    if (alignment !== "fastcat") {
-      return { reason: `"${String(alignment)}" is beyond the editable subset` };
-    }
-    if (euclid) return { reason: "euclid on a group is beyond the editable subset" };
-    if (reps > 1) return { reason: "! on a group is beyond the editable subset" };
-    if (mult > 1 && weight > 1) {
-      return { reason: "* combined with @ is beyond the editable subset" };
-    }
-    const slots = groupSlots(el.source_, allowNumeric);
-    if (!Array.isArray(slots)) return slots;
-    if (mult > 1) {
-      const sub = [];
-      for (let r = 0; r < mult; r++) {
-        for (const s of slots) sub.push({ atoms: [...s.atoms], units: s.units });
-      }
-      return [{ atoms: [], elongation: weight, sub }];
-    }
-    if (slots.length === 1 && slots[0].units === 1) {
-      return [{ atoms: slots[0].atoms, elongation: weight, sub: null }];
-    }
-    return [{ atoms: [], elongation: weight, sub: slots }];
-  }
-  const atom = el.source_;
-  const rest = isRestAtom2(atom);
-  if (rest && ops.some((o) => o.type_ === "tail")) {
-    return { reason: 'a ":" variant on a rest has nothing to name' };
-  }
-  const token = rest ? "" : tokenOf(atom, ops);
-  if (token === null) {
-    return { reason: `a patterned ":" variant on "${atom.source_}" is beyond the editable subset` };
-  }
-  if (!rest && !isAtomToken(token, allowNumeric)) {
-    return { reason: `unsupported token "${token}"` };
-  }
-  const atoms = rest ? [] : [token];
-  if (euclid) {
-    if (mult > 1 || reps > 1 || weight > 1) {
-      return { reason: "euclid combined with * / ! / @ is beyond the editable subset" };
-    }
-    const hits = rotateEuclid(bjorklund(euclid.k, euclid.n), euclid.rot);
-    return [{ atoms: [], elongation: 1, sub: hits.map((on) => ({ atoms: on ? [...atoms] : [], units: 1 })) }];
-  }
-  if (reps > 1) {
-    if (mult > 1) return { reason: "! combined with * or @ is beyond the editable subset" };
-    return Array.from({ length: reps }, () => ({ atoms: [...atoms], elongation: 1, sub: null }));
-  }
-  if (mult > 1) {
-    if (weight > 1) return { reason: "* combined with @ is beyond the editable subset" };
-    return [
-      {
-        atoms: [],
-        elongation: 1,
-        sub: Array.from({ length: mult }, () => ({ atoms: [...atoms], units: 1 }))
-      }
-    ];
-  }
-  return [{ atoms, elongation: weight, sub: null }];
-}
-__name(elementToSteps, "elementToSteps");
-function tokenize(mini, allowNumeric = false) {
-  const src = mini.trim();
-  if (src === "") return { ok: true, steps: [], elements: [] };
-  let ast;
-  try {
-    ast = parse$1('"' + src + '"');
-  } catch {
-    return { ok: false, reason: "unsupported mini-notation syntax" };
-  }
-  if (!ast || ast.type_ !== "pattern" || !Array.isArray(ast.source_)) {
-    return { ok: false, reason: "unsupported mini-notation syntax" };
-  }
-  const alignment = ast.arguments_?.alignment;
-  if (alignment !== "fastcat") {
-    return {
-      ok: false,
-      reason: alignment === "stack" ? 'unsupported token ","' : `"${String(alignment)}" is beyond the editable subset`
-    };
-  }
-  const steps = [];
-  const elements = [];
-  for (const el of ast.source_) {
-    const mapped = elementToSteps(el, allowNumeric);
-    if (!Array.isArray(mapped)) return { ok: false, reason: mapped.reason };
-    const loc = el.location_;
-    if (loc) {
-      elements.push({
-        start: loc.start.offset - 1,
-        end: loc.end.offset - 1,
-        weight: mapped.reduce((w, s) => w + s.elongation, 0)
-      });
-    }
-    steps.push(...mapped);
-  }
-  const tiled = elements.length === ast.source_.length;
-  return { ok: true, steps, elements: tiled ? elements : [] };
-}
-__name(tokenize, "tokenize");
-var gridHasElongation = /* @__PURE__ */ __name((steps) => steps.some((s) => s.elongation !== 1 || (s.sub?.some((slot) => slot.units !== 1) ?? false)), "gridHasElongation");
-var tokensOf = /* @__PURE__ */ __name((cols) => cols.map((c) => c.map((n) => ({ ...n }))), "tokensOf");
-function toCells(steps, div) {
-  const cells = [];
-  for (const step of steps) {
-    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
-    const total = stepUnits(step);
-    for (const slot of slots) {
-      const span = div / total * slot.units;
-      cells.push(slot.atoms.map((token) => ({ token, duration: span })));
-      for (let j = 1; j < span; j++) cells.push([]);
-    }
-  }
-  return cells;
-}
-__name(toCells, "toCells");
-function lanesFromCells(cells, part) {
-  const order = [];
-  for (const cell of cells) {
-    for (const n of cell) if (!order.includes(n.token)) order.push(n.token);
-  }
-  return order.map((sound) => ({
-    sound,
-    ...part !== void 0 ? { part } : {},
-    cells: cells.map((cell) => {
-      const note = cell.find((n) => n.token === sound);
-      return note ? cellOn(note.duration) : false;
-    })
-  }));
-}
-__name(lanesFromCells, "lanesFromCells");
-function buildRegions(src, elements, div, total, content) {
-  if (elements.length === 0) return null;
-  const regions = [];
-  let col = 0;
-  for (const el of elements) {
-    const raw = src.slice(el.start, el.end);
-    const leading = /^\s*/.exec(raw)?.[0] ?? "";
-    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const to = col + el.weight * div;
-    regions.push({ raw, leading, trailing, from: col, to, weight: el.weight, content: content(col, to) });
-    col = to;
-  }
-  if (col !== total) return null;
-  if (regions.map((r) => r.raw).join("") !== src) return null;
-  return regions;
-}
-__name(buildRegions, "buildRegions");
-function columnsFromOnsets(perCycle, perBar2, bars) {
-  const cols = Array.from({ length: perBar2 * bars }, () => []);
-  for (let b = 0; b < bars; b++) {
-    for (const o of perCycle[b]) {
-      const c = Math.round(o.pos * perBar2);
-      if (c < 0 || c >= perBar2) return null;
-      cols[b * perBar2 + c] = o.atoms.map((token, i) => {
-        const dur = o.durs[i];
-        return { token, duration: dur === null ? 1 : dur * perBar2 };
-      });
-    }
-  }
-  return cols;
-}
-__name(columnsFromOnsets, "columnsFromOnsets");
-var gridContent = /* @__PURE__ */ __name((cells) => (from, to) => cells.slice(from, to).map((c) => [...new Map(c.map((n) => [gridCellKey(n), n])).values()]), "gridContent");
-var rollContent = /* @__PURE__ */ __name((notes) => (from, to) => notes.filter((n) => n.start >= from && n.start < to).map((n) => ({ pitch: n.pitch, start: n.start, duration: n.duration })), "rollContent");
-function singlePart(src, elements, div, total, content) {
-  const regions = buildRegions(src, elements, div, total, content);
-  return regions ? [{ part: 0, div, factor: 1, before: "", after: "", regions }] : null;
-}
-__name(singlePart, "singlePart");
-function altAlternatives(el) {
-  const p = el.source_;
-  if (isAtom2(p) || p.arguments_?.alignment !== "polymeter_slowcat") return null;
-  const o = el.options_;
-  if (o && ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0)) return null;
-  const inner = p.source_[0];
-  if (!inner || inner.type_ !== "pattern" || inner.arguments_?.alignment !== "fastcat") return null;
-  return inner.source_;
-}
-__name(altAlternatives, "altAlternatives");
-function expandAltElements(mini, allowNumeric) {
-  const src = mini.trim();
-  let ast;
-  try {
-    ast = parse$1('"' + src + '"');
-  } catch {
-    return null;
-  }
-  if (!ast || ast.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return null;
-  const topEls = ast.source_;
-  if (!topEls.some((el) => altAlternatives(el) !== null)) return null;
-  let bars = 1;
-  for (const el of topEls) {
-    const alts = altAlternatives(el);
-    if (alts) {
-      if (alts.length === 0) return { reason: "empty alternation" };
-      bars = lcm(bars, alts.length);
-    }
-  }
-  const perBarSteps = [];
-  const elemWeight = [];
-  for (let b = 0; b < bars; b++) {
-    const barSteps = [];
-    for (let i = 0; i < topEls.length; i++) {
-      const alts = altAlternatives(topEls[i]);
-      const node = alts ? alts[b % alts.length] : topEls[i];
-      const st = elementToSteps(node, allowNumeric);
-      if (!Array.isArray(st)) return { reason: st.reason };
-      const w = st.reduce((s, step) => s + step.elongation, 0);
-      if (b === 0) elemWeight[i] = w;
-      else if (w !== elemWeight[i]) {
-        return { reason: "alternation branches of different lengths are beyond the editable subset" };
-      }
-      barSteps.push(...st);
-    }
-    perBarSteps.push(barSteps);
-  }
-  if (topEls.some((el) => !el.location_)) return { reason: "unsupported mini-notation syntax" };
-  if (elemWeight.some((w) => w > 1)) {
-    return { reason: "an elongated element in an alternation pattern is beyond the editable subset" };
-  }
-  const div = perBarSteps.reduce((d, steps) => lcm(d, division(steps)), 1);
-  const perBarCols = elemWeight.reduce((n, c) => n + c, 0) * div;
-  if (perBarCols * bars > MAX_STEPS) {
-    return { reason: `the alternation expands past ${MAX_STEPS} steps` };
-  }
-  const elemSpans = topEls.map((el, i) => ({
-    start: el.location_.start.offset - 1,
-    end: el.location_.end.offset - 1,
-    weight: elemWeight[i]
-  }));
-  return { bars, div, perBarCols, perBarSteps, elemSpans };
-}
-__name(expandAltElements, "expandAltElements");
-function buildAltRegions(src, elemSpans, div, perBarCols, content) {
-  const regions = [];
-  let col = 0;
-  for (const es of elemSpans) {
-    const raw = src.slice(es.start, es.end);
-    const leading = /^\s*/.exec(raw)?.[0] ?? "";
-    const trailing = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const to = col + es.weight * div;
-    regions.push({ raw, leading, trailing, from: col, to, perBar: content(col, to) });
-    col = to;
-  }
-  if (col !== perBarCols) return null;
-  if (regions.map((r) => r.raw).join("") !== src) return null;
-  return regions;
-}
-__name(buildAltRegions, "buildAltRegions");
-function gridFromAltElements(mini, viewScale = UNREFINED) {
-  const exp = expandAltElements(mini, false);
-  if (exp === null) return null;
-  if ("reason" in exp) return { ok: false, reason: exp.reason };
-  const { bars, div: documentDiv, perBarCols: documentPerBarCols, perBarSteps, elemSpans } = exp;
-  if (perBarSteps.some(gridHasElongation)) {
-    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
-  }
-  if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
-    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
-  }
-  const div = documentDiv * viewScale;
-  const perBarCols = documentPerBarCols * viewScale;
-  const cells = [];
-  for (const steps of perBarSteps) cells.push(...toCells(steps, div));
-  const lanes = lanesFromCells(cells);
-  const src = mini.trim();
-  const regions = buildAltRegions(src, elemSpans, div, perBarCols, (from, to) => {
-    const perBar2 = [];
-    for (let b = 0; b < bars; b++) {
-      perBar2.push(
-        tokensOf(cells.slice(from + b * perBarCols, to + b * perBarCols)).map((c) => [
-          ...new Set(c)
-        ])
-      );
-    }
-    return perBar2;
-  });
-  if (!regions) return { ok: false, reason: "unsupported mini-notation syntax" };
-  return {
-    ok: true,
-    // ⚠ RECORDING THE SCALE IS NOT OPTIONAL ([[P417]]). The entry check reads this
-    // self-report, so a path that multiplies correctly and stays silent is refused —
-    // and refusal is the safe direction, so nothing looks broken while the reach
-    // quietly disappears. Whoever multiplies by the scale also declares it.
-    model: {
-      steps: cells.length,
-      bars,
-      ...viewScale === UNREFINED ? {} : { viewScale },
-      lanes,
-      altSource: { perBar: perBarCols, bars, div, regions }
-    }
-  };
-}
-__name(gridFromAltElements, "gridFromAltElements");
-function denom(x, cap = MAX_STEPS) {
-  for (let d = 1; d <= cap; d++) if (Math.abs(x * d - Math.round(x * d)) < 1e-9) return d;
-  return 0;
-}
-__name(denom, "denom");
-var PERIOD_PROBE = 24;
-var MAX_PROJECT_BARS = 4;
-var LEAF_PROJECT_BARS = { grid: 12, roll: 4 };
-var no = /* @__PURE__ */ __name((gate) => ({ ok: false, gate }), "no");
-function gateReason(gate, surface) {
-  switch (gate) {
-    case "wrong-surface":
-      return surface === "grid" ? "the pattern plays numbers, which the piano roll shows, not the step grid" : "the pattern plays sound names, which the step grid shows, not the piano roll";
-    case "no-note-content":
-      return "the pattern plays no placeable notes";
-    case "unstable-period":
-      return `the pattern does not repeat within ${LEAF_PROJECT_BARS[surface]} bars`;
-    case "mixed-pitch-domain":
-      return "the pattern mixes numeric and note-name pitches";
-    case "irrational-onset":
-      return "an onset does not land on any step column";
-    case "resolution":
-      return `the pattern needs more than ${MAX_STEPS} steps`;
-    case "view-resolution":
-      return `showing this pattern that finely needs more than ${MAX_VIEW_STEPS} columns`;
-    case "element-tiling":
-      return "the source elements do not line up with the columns the pattern plays";
-    case "no-leaf-anchor":
-      return "a played note has no source token of its own to edit";
-    case "note-crosses-bar":
-      return "a played note does not fit inside the bar it starts in";
-    case "edit-unsafe":
-      return "an edit here would not write back the pattern as shown";
-    case "view-unusable":
-      return "nothing in this view could be edited on its own";
-    case "no-finer-view":
-      return "this pattern does not offer a finer view yet";
-    case "escaped-source":
-      return "the source spells this content with a backslash escape, which mini-notation has no syntax for";
-    case "not-a-pattern":
-      return "unsupported mini-notation syntax";
-  }
-}
-__name(gateReason, "gateReason");
-function refused(surface, core, gate, src) {
-  if (gate === "not-a-pattern") {
-    if (src.includes("\\")) {
-      return { ok: false, reason: gateReason("escaped-source", surface), gate: "escaped-source" };
-    }
-    return core;
-  }
-  return { ok: false, reason: gateReason(gate, surface), gate };
-}
-__name(refused, "refused");
-function detectPeriod2(keys, cap) {
-  for (let p = 1; p <= cap; p++) {
-    let ok = true;
-    for (let c = p; c < keys.length; c++) {
-      if (keys[c] !== keys[c % p]) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok) return p;
-  }
-  return 0;
-}
-__name(detectPeriod2, "detectPeriod");
-function isWholeAlternation(src) {
-  let ast;
-  try {
-    ast = parse$1('"' + src + '"');
-  } catch {
-    return false;
-  }
-  if (ast?.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return false;
-  if (ast.source_.length !== 1) return false;
-  const inner = ast.source_[0]?.source_;
-  return inner?.type_ === "pattern" && inner.arguments_?.alignment === "polymeter_slowcat";
-}
-__name(isWholeAlternation, "isWholeAlternation");
-function topLevelSpans(src) {
-  let ast;
-  try {
-    ast = parse$1('"' + src + '"');
-  } catch {
-    return null;
-  }
-  if (!ast || ast.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return null;
-  const out = [];
-  for (const el of ast.source_) {
-    const loc = el.location_;
-    if (!loc) return null;
-    const reps = el.options_?.reps ?? 1;
-    const weight = reps > 1 ? reps : el.options_?.weight ?? 1;
-    if (!Number.isInteger(weight) || weight < 1) return null;
-    out.push({ start: loc.start.offset - 1, end: loc.end.offset - 1, weight });
-  }
-  return out;
-}
-__name(topLevelSpans, "topLevelSpans");
-function leafLoc(h) {
-  const l = h.context?.locations?.[0];
-  if (!l || typeof l.start !== "number" || typeof l.end !== "number") return null;
-  return { start: l.start - 1, end: l.end - 1 };
-}
-__name(leafLoc, "leafLoc");
-function tailToken(v) {
-  if (v.length < 2) return null;
-  if (!v.every((p) => typeof p === "string" || typeof p === "number")) return null;
-  return v.join(":");
-}
-__name(tailToken, "tailToken");
-function deriveColumn(occ) {
-  const atoms = [];
-  const spans = [];
-  const durs = [];
-  for (const o of occ) {
-    if (atoms.includes(o.token)) continue;
-    atoms.push(o.token);
-    spans.push(o.span);
-    durs.push(o.dur);
-  }
-  return { atoms, spans, durs };
-}
-__name(deriveColumn, "deriveColumn");
-function gridOnsets(pat, cyc) {
-  const r = readGridOnsets(pat, cyc);
-  return r.ok ? r.onsets : null;
-}
-__name(gridOnsets, "gridOnsets");
-function readGridOnsets(pat, cyc) {
-  let haps;
-  try {
-    haps = pat.queryArc(cyc, cyc + 1);
-  } catch {
-    return no("no-note-content");
-  }
-  const byCol = /* @__PURE__ */ new Map();
-  for (const h of haps) {
-    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
-    const v = h.value;
-    let token;
-    if (typeof v === "string") token = v;
-    else if (typeof v === "number") return no("wrong-surface");
-    else if (Array.isArray(v)) {
-      const t = tailToken(v);
-      if (t === null) return no("no-note-content");
-      token = t;
-    } else if (v && typeof v === "object" && typeof v.s === "string") {
-      token = v.s + (v.n != null ? ":" + String(v.n) : "");
-    } else return no("no-note-content");
-    if (NUMERIC.test(token)) return no("wrong-surface");
-    const pos = h.whole.begin.valueOf() - cyc;
-    const key2 = Math.round(pos * ONSET_GRID);
-    const cell = byCol.get(key2) ?? [];
-    cell.push({
-      token,
-      span: leafLoc(h),
-      dur: h.whole.end.valueOf() - h.whole.begin.valueOf()
-    });
-    byCol.set(key2, cell);
-  }
-  return {
-    ok: true,
-    onsets: [...byCol.entries()].map(([k, occ]) => ({
-      pos: k / ONSET_GRID,
-      occ,
-      ...deriveColumn(occ)
-    }))
-  };
-}
-__name(readGridOnsets, "readGridOnsets");
-var onsetKey = /* @__PURE__ */ __name((o) => JSON.stringify(o.map((x) => [Math.round(x.pos * ONSET_GRID), [...x.atoms].sort()]).sort()), "onsetKey");
-function projectStepGrid(src0, viewScale = UNREFINED) {
-  const src = src0.trim();
-  if (src === "") return no("not-a-pattern");
-  let pat;
-  try {
-    pat = mini(src);
-  } catch {
-    return no("not-a-pattern");
-  }
-  const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null;
-  if (isWholeAlternation(src) && whole === null) return no("element-tiling");
-  const cycles = [];
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readGridOnsets(pat, c);
-    if (!cc.ok) return cc;
-    cycles.push(cc.onsets);
-  }
-  const bars = detectPeriod2(cycles.map(onsetKey), MAX_PROJECT_BARS);
-  if (bars === 0) return no("unstable-period");
-  const perCycle = cycles.slice(0, bars);
-  if (perCycle.every((c) => c.length === 0)) return no("no-note-content");
-  if (whole !== null) {
-    return bars > 1 ? projectAltBars(src, whole, perCycle, bars, viewScale) : no("element-tiling");
-  }
-  const spans = topLevelSpans(src);
-  if (!spans) return no("element-tiling");
-  const totalWeight = spans.reduce((s, e) => s + e.weight, 0);
-  const bounds = [];
-  let accW = 0;
-  for (const e of spans) {
-    bounds.push(accW / totalWeight);
-    accW += e.weight;
-  }
-  let documentPerBar = 1;
-  for (const x of [...perCycle.flat().map((o) => o.pos), ...bounds]) {
-    const d = denom(x);
-    if (d === 0) return no("irrational-onset");
-    documentPerBar = lcm(documentPerBar, d);
-  }
-  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
-  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
-  const perBar2 = documentPerBar * viewScale;
-  if (perBar2 % totalWeight !== 0) return no("element-tiling");
-  const divPerUnit = perBar2 / totalWeight;
-  const cells = columnsFromOnsets(perCycle, perBar2, bars);
-  if (cells === null) return no("irrational-onset");
-  const lanes = lanesFromCells(cells);
-  if (bars === 1) {
-    const parts = singlePart(src, spans, divPerUnit, perBar2, gridContent(tokensOf(cells)));
-    if (!parts) return no("element-tiling");
-    const model2 = {
-      steps: perBar2,
-      ...viewScale === UNREFINED ? {} : { viewScale },
-      lanes,
-      source: { prefix: "", suffix: "", parts }
-    };
-    const cols0 = parts[0].regions.map((r) => r.from);
-    if (!projectionEditSafe(model2, perBar2, 1, perCycle, cols0)) return no("edit-unsafe");
-    return { ok: true, model: model2 };
-  }
-  const regions = buildAltRegions(
-    src,
-    spans,
-    divPerUnit,
-    perBar2,
-    (from, to) => Array.from(
-      { length: bars },
-      (_, b) => tokensOf(cells.slice(from + b * perBar2, to + b * perBar2)).map((c) => [...new Set(c)])
-    )
-  );
-  if (!regions) return no("element-tiling");
-  const model = {
-    steps: perBar2 * bars,
-    bars,
-    ...viewScale === UNREFINED ? {} : { viewScale },
-    lanes,
-    altSource: { perBar: perBar2, bars, div: divPerUnit, regions }
-  };
-  const cols = regions.flatMap(
-    (r) => Array.from({ length: bars }, (_, b) => b * perBar2 + r.from)
-  );
-  if (!projectionEditSafe(model, perBar2, bars, perCycle, cols)) return no("edit-unsafe");
-  return { ok: true, model };
-}
-__name(projectStepGrid, "projectStepGrid");
-function projectAltBars(src, inner, perCycle, bars, viewScale = UNREFINED) {
-  const innerSrc = inner.trim();
-  const spans = topLevelSpans(innerSrc);
-  if (!spans) return no("element-tiling");
-  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no("element-tiling");
-  let documentPerBar = 1;
-  for (const o of perCycle.flat()) {
-    const d = denom(o.pos);
-    if (d === 0) return no("irrational-onset");
-    documentPerBar = lcm(documentPerBar, d);
-  }
-  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
-  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
-  const perBar2 = documentPerBar * viewScale;
-  const cells = columnsFromOnsets(perCycle, perBar2, bars);
-  if (cells === null) return no("irrational-onset");
-  const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, gridContent(tokensOf(cells)));
-  if (!parts) return no("element-tiling");
-  const model = {
-    steps: perBar2 * bars,
-    bars,
-    ...viewScale === UNREFINED ? {} : { viewScale },
-    lanes: lanesFromCells(cells),
-    source: {
-      parts,
-      prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
-      suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
-    }
-  };
-  const cols = parts[0].regions.map((r) => r.from);
-  if (!projectionEditSafe(model, perBar2, bars, perCycle, cols)) return no("edit-unsafe");
-  if (serializeStepGrid(model) !== src.trim()) return no("edit-unsafe");
-  return { ok: true, model };
-}
-__name(projectAltBars, "projectAltBars");
-var PROBE_SOUND = "zzstaveprobezz";
-function projectionEditSafe(model, perBar2, bars, base, probeCols) {
-  for (const col of probeCols) {
-    const b = Math.floor(col / perBar2);
-    const t = col % perBar2 / perBar2;
-    const lanes = model.lanes.map((l) => ({ ...l, cells: [...l.cells] }));
-    let probe = lanes.find((l) => l.sound === PROBE_SOUND);
-    if (!probe) {
-      probe = { sound: PROBE_SOUND, cells: Array(perBar2 * bars).fill(false) };
-      lanes.push(probe);
-    }
-    probe.cells[col] = cellOn();
-    const out = serializeStepGrid({ ...model, lanes });
-    if (out == null) return false;
-    let edited;
-    try {
-      edited = mini(out);
-    } catch {
-      return false;
-    }
-    const expectedFor = /* @__PURE__ */ __name((bb) => {
-      const want = base[bb];
-      if (bb !== b) return want;
-      const hit = want.find((o) => Math.abs(o.pos - t) < 1e-9);
-      const probeOcc = { token: PROBE_SOUND, span: null, dur: null };
-      const out2 = want.map(
-        (o) => o === hit ? {
-          pos: o.pos,
-          occ: [...o.occ, probeOcc],
-          atoms: [...o.atoms, PROBE_SOUND],
-          spans: [...o.spans, null],
-          durs: [...o.durs, null]
-        } : o
-      );
-      if (!hit) {
-        out2.push({ pos: t, occ: [probeOcc], atoms: [PROBE_SOUND], spans: [null], durs: [null] });
-      }
-      return out2;
-    }, "expectedFor");
-    for (let bb = 0; bb < bars; bb++) {
-      const got = gridOnsets(edited, bb);
-      if (got === null) return false;
-      if (onsetKey(got) !== onsetKey(expectedFor(bb))) return false;
-    }
-    const wrap = gridOnsets(edited, bars);
-    if (wrap === null) return false;
-    if (onsetKey(wrap) !== onsetKey(expectedFor(0))) return false;
-  }
-  return true;
-}
-__name(projectionEditSafe, "projectionEditSafe");
-function restSpansByColumn(src, perBar2, bars) {
-  let ast;
-  try {
-    ast = parse$1('"' + src + '"');
-  } catch {
-    return null;
-  }
-  const spans = [];
-  const walk5 = /* @__PURE__ */ __name((node) => {
-    if (!node || typeof node !== "object") return;
-    if (node.type_ === "pattern") {
-      for (const el of node.source_ ?? []) walk5(el);
-      return;
-    }
-    if (node.type_ === "element") {
-      const el = node;
-      const inner = el.source_;
-      if (inner && inner.type_ === "atom") {
-        const atom = inner;
-        const loc = el.location_;
-        if (isRestAtom2(atom) && loc) {
-          let s = loc.start.offset - 1;
-          while (s < src.length && /\s/.test(src[s])) s++;
-          if (src.slice(s, s + atom.source_.length) === atom.source_)
-            spans.push({ start: s, end: s + atom.source_.length });
-        }
-      } else walk5(inner);
-      return;
-    }
-  }, "walk");
-  walk5(ast);
-  if (spans.length === 0) return null;
-  const SENTINEL = /* @__PURE__ */ __name((i) => `qzrest${i}`, "SENTINEL");
-  let probeSrc = src;
-  const ordered = [...spans].sort((a, b) => b.start - a.start);
-  for (let i = 0; i < ordered.length; i++) {
-    const s = ordered[i];
-    probeSrc = probeSrc.slice(0, s.start) + SENTINEL(i) + probeSrc.slice(s.end);
-  }
-  let probePat;
-  try {
-    probePat = mini(probeSrc);
-  } catch {
-    return null;
-  }
-  const size = perBar2 * bars;
-  const claims = Array.from({ length: size }, () => /* @__PURE__ */ new Set());
-  const located = /* @__PURE__ */ new Set();
-  for (let b = 0; b < bars; b++) {
-    const read5 = readGridOnsets(probePat, b);
-    if (!read5.ok) return null;
-    for (const o of read5.onsets) {
-      const c = b * perBar2 + Math.round(o.pos * perBar2);
-      if (c < 0 || c >= size) continue;
-      for (const atom of o.atoms) {
-        const m = /^qzrest(\d+)$/.exec(atom);
-        if (!m) continue;
-        const idx = Number(m[1]);
-        if (idx >= ordered.length) continue;
-        claims[c].add(idx);
-        located.add(idx);
-      }
-    }
-  }
-  if (located.size !== ordered.length) return null;
-  return claims.map((s) => s.size === 1 ? ordered[[...s][0]] : null);
-}
-__name(restSpansByColumn, "restSpansByColumn");
-function projectStepGridByLeaf(src0) {
-  const src = src0.trim();
-  if (src === "") return no("not-a-pattern");
-  let pat;
-  try {
-    pat = mini(src);
-  } catch {
-    return no("not-a-pattern");
-  }
-  const cycles = [];
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readGridOnsets(pat, c);
-    if (!cc.ok) return cc;
-    cycles.push(cc.onsets);
-  }
-  const bars = detectPeriod2(cycles.map(onsetKey), LEAF_PROJECT_BARS.grid);
-  if (bars === 0) return no("unstable-period");
-  const perCycle = cycles.slice(0, bars);
-  if (perCycle.every((c) => c.length === 0)) return no("no-note-content");
-  let perBar2 = 1;
-  for (const o of perCycle.flat()) {
-    const d = denom(o.pos);
-    if (d === 0) return no("irrational-onset");
-    perBar2 = lcm(perBar2, d);
-  }
-  if (perBar2 * bars > MAX_STEPS) return no("resolution");
-  const anchored = leafAnchors(src, perCycle, perBar2, bars);
-  if (!anchored.ok) return anchored;
-  const played = columnsFromOnsets(perCycle, perBar2, bars);
-  if (played === null) return no("irrational-onset");
-  const cols = anchored.cols.map(
-    (col, i) => col.map((a) => ({
-      ...a,
-      duration: played[i].find((n) => n.token === a.atom)?.duration ?? 1
-    }))
-  );
-  const rests = restSpansByColumn(src, perBar2, bars);
-  const model = {
-    steps: perBar2 * bars,
-    ...bars > 1 ? { bars } : {},
-    lanes: lanesFromCells(
-      cols.map((col) => col.map((a) => ({ token: a.atom, duration: a.duration })))
-    ),
-    leafSource: { src, cols, attachedSteps: perBar2 * bars, ...rests ? { rests } : {} }
-  };
-  if (!leafEditSafe(model, perBar2, bars)) return no("edit-unsafe");
-  if (!leafViewUsable(model)) return no("view-unusable");
-  return { ok: true, model };
-}
-__name(projectStepGridByLeaf, "projectStepGridByLeaf");
-function leafViewUsable(model) {
-  for (let c = 0; c < model.steps; c++) {
-    const on = model.lanes.find((l) => isCellOn(l.cells[c]));
-    if (!on) continue;
-    const lanes = model.lanes.map(
-      (l) => l === on ? { ...l, cells: l.cells.map((v, j) => j === c ? false : v) } : l
-    );
-    if (serializeStepGrid({ ...model, lanes }) !== null) return true;
-  }
-  return false;
-}
-__name(leafViewUsable, "leafViewUsable");
-function claimLeafSpan(src, span, token, seen, fold2 = false) {
-  const no2 = { ok: false, gate: "no-leaf-anchor" };
-  if (!span) return no2;
-  const bytes = src.slice(span.start, span.end);
-  const isOwn = fold2 ? bytes.toLowerCase() === token.toLowerCase() : bytes === token;
-  if (!isOwn) return no2;
-  for (const s of seen) {
-    const identical = s.start === span.start && s.end === span.end;
-    if (!identical && s.end > span.start && span.end > s.start) return no2;
-  }
-  seen.push(span);
-  return { ok: true, span };
-}
-__name(claimLeafSpan, "claimLeafSpan");
-function leafAnchors(src, perCycle, perBar2, bars) {
-  const cols = Array.from({ length: perBar2 * bars }, () => []);
-  const seen = [];
-  for (let b = 0; b < bars; b++) {
-    for (const o of perCycle[b]) {
-      const c = b * perBar2 + Math.round(o.pos * perBar2);
-      if (c < 0 || c >= perBar2 * bars) return { ok: false, gate: "note-crosses-bar" };
-      for (let i = 0; i < o.atoms.length; i++) {
-        const claim = claimLeafSpan(src, o.spans[i], o.atoms[i], seen);
-        if (!claim.ok) return claim;
-        cols[c].push({ atom: o.atoms[i], span: claim.span });
-      }
-    }
-  }
-  return { ok: true, cols };
-}
-__name(leafAnchors, "leafAnchors");
-function leafEditSafe(model, perBar2, bars) {
-  const ls = model.leafSource;
-  if (!ls) return false;
-  const probes = /* @__PURE__ */ new Map();
-  for (const col of ls.cols) {
-    for (const a of col) probes.set(`${a.span.start}:${a.span.end}`, a);
-  }
-  for (const anchor of probes.values()) {
-    for (const text of [PROBE_SOUND, "~"]) {
-      const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }]);
-      let edited;
-      try {
-        edited = mini(out);
-      } catch {
-        return false;
-      }
-      const want = leafExpected(ls.cols, perBar2, bars, anchor.span, text === "~" ? null : text);
-      for (let b = 0; b < bars; b++) {
-        const got = gridOnsets(edited, b);
-        if (got === null || onsetKey(got) !== onsetKey(want[b])) return false;
-      }
-      const wrap = gridOnsets(edited, bars);
-      if (wrap === null || onsetKey(wrap) !== onsetKey(want[0])) return false;
-    }
-  }
-  return true;
-}
-__name(leafEditSafe, "leafEditSafe");
-function leafExpected(cols, perBar2, bars, span, text) {
-  const out = [];
-  for (let b = 0; b < bars; b++) {
-    const bar2 = [];
-    for (let i = 0; i < perBar2; i++) {
-      const atoms = /* @__PURE__ */ new Set();
-      for (const a of cols[b * perBar2 + i]) {
-        const hit = a.span.start === span.start && a.span.end === span.end;
-        if (hit && text === null) continue;
-        atoms.add(hit ? text : a.atom);
-      }
-      if (atoms.size > 0) {
-        const occ = [...atoms].map((a) => ({ token: a, span: null, dur: null }));
-        bar2.push({ pos: i / perBar2, occ, ...deriveColumn(occ) });
-      }
-    }
-    out.push(bar2);
-  }
-  return out;
-}
-__name(leafExpected, "leafExpected");
-function overlayWidth(model) {
-  return model.barSteps ? model.barSteps.length * lcmOf(model.barSteps) : documentSteps(model);
-}
-__name(overlayWidth, "overlayWidth");
-function withSurgery(mini, r) {
-  if (!r.ok) return r;
-  return {
-    ok: true,
-    model: { ...r.model, surgical: lazyGridLeaf(mini, overlayWidth(r.model)) }
-  };
-}
-__name(withSurgery, "withSurgery");
-function lazyGridLeaf(mini, attachedSteps) {
-  let computed = false;
-  let spans;
-  return {
-    attachedSteps,
-    spans: /* @__PURE__ */ __name(() => {
-      if (!computed) {
-        computed = true;
-        const leaf = projectStepGridByLeaf(mini);
-        spans = leaf.ok && leaf.model.leafSource ? { ...leaf.model.leafSource, attachedSteps } : void 0;
-      }
-      return spans;
-    }, "spans")
-  };
-}
-__name(lazyGridLeaf, "lazyGridLeaf");
-function vacuousLocality(a) {
-  if (!a || a.bars <= 1 || a.regions.length !== 1) return false;
-  return a.regions[0].from === 0 && a.regions[0].to === a.perBar;
-}
-__name(vacuousLocality, "vacuousLocality");
-function projectStepGridDerived(mini, fallbackReason, viewScale = UNREFINED) {
-  const owner = projectStepGrid(mini);
-  const asOwner = /* @__PURE__ */ __name((ok) => {
-    if (viewScale === UNREFINED) return ok;
-    const scaled2 = projectStepGrid(mini, viewScale);
-    return scaled2.ok ? scaled2 : refused("grid", fallbackReason, scaled2.gate, mini);
-  }, "asOwner");
-  if (owner.ok && !vacuousLocality(owner.model.altSource)) return withSurgery(mini, asOwner(owner));
-  const leaf = projectStepGridByLeaf(mini);
-  if (leaf.ok) return leaf;
-  if (owner.ok) return asOwner(owner);
-  return refused("grid", fallbackReason, leaf.gate, mini);
-}
-__name(projectStepGridDerived, "projectStepGridDerived");
-function parseStepGrid(mini, viewScale = UNREFINED) {
-  const owner = parseStepGridCore(mini);
-  if (viewScale === UNREFINED) {
-    return owner.ok ? withSurgery(mini, owner) : projectStepGridDerived(mini, owner, UNREFINED);
-  }
-  const result = owner.ok ? withSurgery(mini, parseStepGridCore(mini, viewScale)) : projectStepGridDerived(mini, owner, viewScale);
-  return honoursViewScale(result, viewScale, "grid");
-}
-__name(parseStepGrid, "parseStepGrid");
-function honoursViewScale(result, viewScale, surface) {
-  if (!result.ok || viewScale === UNREFINED) return result;
-  if ((result.model.viewScale ?? UNREFINED) === viewScale) return result;
-  return { ok: false, reason: gateReason("no-finer-view", surface), gate: "no-finer-view" };
-}
-__name(honoursViewScale, "honoursViewScale");
-function parseStepGridCore(mini, viewScale = UNREFINED) {
-  const alt = unwrapAlternation(mini);
-  if (alt !== null) return gridFromAlternation(alt, viewScale);
-  const parts = splitTopLevel(mini);
-  if (parts.length > 1) return gridFromStack(parts, viewScale);
-  const altEl = gridFromAltElements(mini, viewScale);
-  if (altEl !== null) return altEl;
-  const tok = tokenize(mini);
-  if (!tok.ok) return tok;
-  if (gridHasElongation(tok.steps)) {
-    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
-  }
-  const documentDiv = division(tok.steps);
-  const documentCols = tok.steps.length * documentDiv;
-  if (documentCols > MAX_STEPS) {
-    return { ok: false, reason: `sub-sequences expand the grid past ${MAX_STEPS} steps` };
-  }
-  if (!viewScaleFits(documentCols, 1, viewScale)) {
-    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
-  }
-  const div = documentDiv * viewScale;
-  const cells = toCells(tok.steps, div);
-  const src = mini.trim();
-  const sourceParts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)));
-  return {
-    ok: true,
-    model: {
-      steps: cells.length,
-      ...viewScale === UNREFINED ? {} : { viewScale },
-      lanes: lanesFromCells(cells),
-      ...sourceParts ? { source: { prefix: "", suffix: "", parts: sourceParts } } : {}
-    }
-  };
-}
-__name(parseStepGridCore, "parseStepGridCore");
-function gridFromAlternation(inner, viewScale = UNREFINED) {
-  const tok = tokenize(inner);
-  if (!tok.ok) return tok;
-  if (tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
-  if (gridHasElongation(tok.steps)) {
-    return { ok: false, reason: "elongation is beyond the drum-grid subset" };
-  }
-  const documentDiv = division(tok.steps);
-  const perBar2 = perBarLayout(tok.steps.map(stepUnits));
-  const layout = viewScale === UNREFINED ? perBar2 : null;
-  const tooWide = layout ? layout.some((n) => n > MAX_STEPS) || tok.steps.length * documentDiv > MAX_SHARED_STEPS : tok.steps.length * documentDiv > MAX_STEPS;
-  if (tooWide) {
-    if (perBar2 && !layout) {
-      return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
-    }
-    return { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` };
-  }
-  if (!layout && !viewScaleFits(documentDiv, tok.steps.length, viewScale)) {
-    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
-  }
-  const div = documentDiv * viewScale;
-  const cells = toCells(tok.steps, div);
-  const src = inner.trim();
-  const parts = singlePart(src, tok.elements, div, cells.length, gridContent(tokensOf(cells)));
-  const model = {
-    steps: cells.length,
-    bars: tok.steps.length,
-    ...viewScale === UNREFINED ? {} : { viewScale },
-    lanes: lanesFromCells(cells),
-    ...parts ? {
-      source: {
-        parts,
-        prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
-        suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
-      }
-    } : {}
-  };
-  if (!layout) return { ok: true, model };
-  const drawn = toDrawnGrid(model, layout);
-  if (drawn) return { ok: true, model: drawn };
-  return cells.length > MAX_STEPS ? { ok: false, reason: `the alternation expands the grid past ${MAX_STEPS} steps` } : { ok: true, model };
-}
-__name(gridFromAlternation, "gridFromAlternation");
-function gridFromStack(parts, viewScale = UNREFINED) {
-  const partCells = [];
-  const divs = [];
-  const elements = [];
-  const given = [];
-  const partBars = [];
-  const wraps = [];
-  let documentTotal = 1;
-  for (const part of parts) {
-    if (part.trim() === "") return { ok: false, reason: "empty stack part" };
-    const tok = tokenize(part);
-    const flatRefusal = !tok.ok ? tok : gridHasElongation(tok.steps) ? { ok: false, reason: "elongation is beyond the drum-grid subset" } : null;
-    if (flatRefusal || !tok.ok) {
-      const lone = loneGridPart(part.trim(), viewScale);
-      if (!lone) {
-        if (viewScale !== UNREFINED && loneGridPart(part.trim(), UNREFINED)) {
-          return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
-        }
-        return flatRefusal ?? { ok: false, reason: "unsupported mini-notation syntax" };
-      }
-      documentTotal = lcm(documentTotal, lone.steps / viewScale);
-      divs.push(lone.div);
-      elements.push([]);
-      partCells.push(lone.cells);
-      given.push(lone.regions);
-      partBars.push(lone.bars);
-      wraps.push({ prefix: lone.prefix, suffix: lone.suffix });
-      continue;
-    }
-    given.push(null);
-    partBars.push(1);
-    wraps.push({ prefix: "", suffix: "" });
-    const documentDiv = division(tok.steps);
-    documentTotal = lcm(documentTotal, tok.steps.length * documentDiv || 1);
-    const div = documentDiv * viewScale;
-    divs.push(div);
-    elements.push(tok.elements);
-    partCells.push(toCells(tok.steps, div));
-  }
-  if (partBars.some((b) => b > 1)) {
-    return gridFromBarStack(parts, viewScale, { partCells, partBars, divs, elements, given, wraps });
-  }
-  if (documentTotal > MAX_STEPS) {
-    return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` };
-  }
-  if (!viewScaleFits(documentTotal, 1, viewScale)) {
-    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
-  }
-  const total = partCells.reduce((l, cells) => lcm(l, cells.length || 1), 1);
-  const lanes = [];
-  partCells.forEach((cells, part) => {
-    const factor = total / (cells.length || 1);
-    const stretched = Array.from(
-      { length: total },
-      (_, c) => c % factor === 0 ? (cells[c / factor] ?? []).map((n) => ({ ...n, duration: n.duration * factor })) : []
-    );
-    lanes.push(...lanesFromCells(stretched, part));
-  });
-  return {
-    ok: true,
-    model: {
-      steps: total,
-      ...viewScale === UNREFINED ? {} : { viewScale },
-      lanes,
-      ...stackSource(parts, divs, elements, partCells, total, given) ?? {}
-    }
-  };
-}
-__name(gridFromStack, "gridFromStack");
-function gridFromBarStack(parts, viewScale, read5) {
-  const { partCells, partBars, divs, elements, given, wraps } = read5;
-  const bars = partBars.reduce((l, b) => lcm(l, b), 1);
-  if (bars > MAX_PROJECT_BARS) {
-    return { ok: false, reason: `the stack does not repeat within ${MAX_PROJECT_BARS} bars` };
-  }
-  const perBar2 = partCells.map((cells, i) => cells.length / partBars[i]);
-  if (perBar2.some((n) => !Number.isInteger(n) || n < 1)) {
-    return { ok: false, reason: "a part does not split into whole bars" };
-  }
-  const width = perBar2.reduce((l, n) => lcm(l, n), 1);
-  const total = bars * width;
-  if (total / viewScale > MAX_STEPS) {
-    return { ok: false, reason: `the stack expands the grid past ${MAX_STEPS} steps` };
-  }
-  if (!viewScaleFits(width / viewScale, bars, viewScale)) {
-    return { ok: false, reason: gateReason("view-resolution", "grid"), gate: "view-resolution" };
-  }
-  const lanes = [];
-  const factors = perBar2.map((n) => width / n);
-  partCells.forEach((cells, part) => {
-    const factor = factors[part];
-    const shown = Array.from({ length: total }, (_, c) => {
-      const within2 = c % width;
-      if (within2 % factor !== 0) return [];
-      const own = Math.floor(c / width) % partBars[part] * perBar2[part] + within2 / factor;
-      return (cells[own] ?? []).map((n) => ({ ...n, duration: n.duration * factor }));
-    });
-    lanes.push(...lanesFromCells(shown, part));
-  });
-  const out = [];
-  for (let i = 0; i < parts.length; i++) {
-    const raw = parts[i];
-    const leading = /^\s*/.exec(raw)?.[0] ?? "";
-    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const regions = given[i] ?? buildRegions(raw.trim(), elements[i], divs[i], partCells[i].length, gridContent(tokensOf(partCells[i])));
-    if (!regions) return { ok: false, reason: "a stack part could not be tiled" };
-    out.push({
-      part: i,
-      div: divs[i],
-      factor: factors[i],
-      bars: partBars[i],
-      before: (i > 0 ? "," : "") + leading + wraps[i].prefix,
-      after: wraps[i].suffix + after,
-      regions
-    });
-  }
-  const model = {
-    steps: total,
-    bars,
-    ...viewScale === UNREFINED ? {} : { viewScale },
-    lanes
-  };
-  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
-  if (rebuilt !== parts.join(",")) return { ok: false, reason: "a stack part could not be tiled" };
-  return { ok: true, model: { ...model, source: { prefix: "", suffix: "", parts: out } } };
-}
-__name(gridFromBarStack, "gridFromBarStack");
-function loneGridPart(part, viewScale) {
-  const r = parseStepGrid(part, viewScale);
-  if (!r.ok) return null;
-  const m = r.model;
-  const src = m.source;
-  if (!src || src.parts.length !== 1) return null;
-  if (m.altSource || m.barSteps || (m.viewScale ?? UNREFINED) !== viewScale) return null;
-  const bars = m.bars ?? 1;
-  const wrapped = bars > 1 && src.prefix.startsWith("<") && src.suffix.endsWith(">");
-  if (!wrapped && (bars !== 1 || src.prefix !== "" || src.suffix !== "")) return null;
-  if (m.steps % bars !== 0) return null;
-  const cells = Array.from(
-    { length: m.steps },
-    (_, c) => m.lanes.flatMap((l) => {
-      const cell = l.cells[c];
-      return isCellOn(cell) ? [{ token: l.sound, duration: cell.duration }] : [];
-    })
-  );
-  return {
-    steps: m.steps,
-    div: src.parts[0].div,
-    cells,
-    regions: src.parts[0].regions,
-    bars,
-    prefix: src.prefix,
-    suffix: src.suffix
-  };
-}
-__name(loneGridPart, "loneGridPart");
-function stackSource(parts, divs, elements, partCells, total, given = []) {
-  const out = [];
-  for (let i = 0; i < parts.length; i++) {
-    const raw = parts[i];
-    const leading = /^\s*/.exec(raw)?.[0] ?? "";
-    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const regions = given[i] ?? buildRegions(
-      raw.trim(),
-      elements[i],
-      divs[i],
-      partCells[i].length,
-      gridContent(tokensOf(partCells[i]))
-    );
-    if (!regions) return null;
-    out.push({
-      part: i,
-      div: divs[i],
-      factor: total / (partCells[i].length || 1),
-      before: (i > 0 ? "," : "") + leading,
-      after,
-      regions
-    });
-  }
-  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
-  if (rebuilt !== parts.join(",")) return null;
-  return { source: { prefix: "", suffix: "", parts: out } };
-}
-__name(stackSource, "stackSource");
-var GAIN_TOKEN2 = /^\d+(\.\d+)?$/;
-function parseGainMini(mini, count) {
-  const tokens = mini.trim().split(/\s+/).filter((t) => t !== "");
-  if (tokens.length !== count) return null;
-  const out = [];
-  for (const t of tokens) {
-    if (t === "~") {
-      out.push(1);
-      continue;
-    }
-    if (!GAIN_TOKEN2.test(t)) return null;
-    out.push(parseFloat(t));
-  }
-  return out;
-}
-__name(parseGainMini, "parseGainMini");
-function applyStepGain(model, gain) {
-  if (gain.foreign) return { ...model, gainForeign: true };
-  if (gain.numeric !== null) {
-    return gain.numeric === 1 ? model : { ...model, gains: Array(model.steps).fill(gain.numeric) };
-  }
-  if (gain.mini === null) return model;
-  const docSteps = documentSteps(model);
-  const docGains = parseGainMini(gain.mini, docSteps);
-  if (docGains === null) return { ...model, gainForeign: true };
-  const k = model.steps / docSteps;
-  const gains = k === 1 ? docGains : docGains.flatMap((g) => [g, ...Array(k - 1).fill(1)]);
-  return { ...model, gains };
-}
-__name(applyStepGain, "applyStepGain");
-function applyRollGain(model, gain) {
-  if (gain.foreign) return { ...model, gainForeign: true };
-  if (gain.numeric !== null) {
-    return gain.numeric === 1 ? model : { ...model, notes: model.notes.map((n) => ({ ...n, gain: gain.numeric })) };
-  }
-  if (gain.mini === null) return model;
-  let mini = gain.mini;
-  if (model.bars != null) {
-    const inner = model.steps === model.bars ? unwrapAlternation(mini) : null;
-    if (inner === null) return { ...model, gainForeign: true };
-    mini = inner;
-  }
-  const byStart = /* @__PURE__ */ new Map();
-  const k = model.steps / documentSteps(model);
-  let col = 0;
-  for (const t of mini.trim().split(/\s+/).filter((s) => s !== "")) {
-    if (t === "~") {
-      col += k;
-      continue;
-    }
-    const m = t.match(/^(\d+(?:\.\d+)?)(?:@(\d+))?$/);
-    if (!m) return { ...model, gainForeign: true };
-    byStart.set(col, parseFloat(m[1]));
-    col += (m[2] ? parseInt(m[2], 10) : 1) * k;
-  }
-  if (col !== model.steps) return { ...model, gainForeign: true };
-  const noteStarts = new Set(model.notes.map((n) => n.start));
-  for (const [c, v] of byStart) {
-    if (v !== 1 && !noteStarts.has(c)) return { ...model, gainForeign: true };
-  }
-  return {
-    ...model,
-    notes: model.notes.map((n) => {
-      const v = byStart.get(n.start);
-      return v != null && v !== 1 ? { ...n, gain: v } : n;
-    })
-  };
-}
-__name(applyRollGain, "applyRollGain");
-function rollFromAltElements(mini, viewScale = UNREFINED) {
-  const exp = expandAltElements(mini, true);
-  if (exp === null) return null;
-  if ("reason" in exp) return { ok: false, reason: exp.reason };
-  const { bars, div: documentDiv, perBarCols: documentPerBarCols, perBarSteps, elemSpans } = exp;
-  if (!viewScaleFits(documentPerBarCols, bars, viewScale)) {
-    return { ok: false, reason: gateReason("view-resolution", "roll"), gate: "view-resolution" };
-  }
-  const div = documentDiv * viewScale;
-  const perBarCols = documentPerBarCols * viewScale;
-  const notes = [];
-  let col = 0;
-  let sawNumeric = false;
-  let sawNamed = false;
-  for (const barSteps of perBarSteps) {
-    for (const step of barSteps) {
-      const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
-      const total = stepUnits(step);
-      for (const slot of slots) {
-        const span = step.elongation * div * slot.units / total;
-        for (const token of slot.atoms) {
-          const isNum = /^-?\d+$/.test(token);
-          if (!isNum && pitchToMidi(token) === null) {
-            return { ok: false, reason: `"${token}" is not a note name` };
-          }
-          if (isNum) sawNumeric = true;
-          else sawNamed = true;
-          notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span });
-        }
-        col += span;
-      }
-    }
-  }
-  if (sawNumeric && sawNamed) {
-    return { ok: false, reason: "mixed numeric and note-name tokens are beyond the editable subset" };
-  }
-  const src = mini.trim();
-  const regions = buildAltRegions(src, elemSpans, div, perBarCols, (from, to) => {
-    const perBar2 = [];
-    for (let b = 0; b < bars; b++) {
-      const lo = from + b * perBarCols;
-      const hi = to + b * perBarCols;
-      perBar2.push(
-        notes.filter((n) => n.start >= lo && n.start < hi).map((n) => ({ pitch: n.pitch, start: n.start - b * perBarCols, duration: n.duration }))
-      );
-    }
-    return perBar2;
-  });
-  if (!regions) return { ok: false, reason: "unsupported mini-notation syntax" };
-  return {
-    ok: true,
-    model: {
-      steps: col,
-      bars,
-      notes,
-      ...sawNumeric ? { numeric: true } : {},
-      ...viewScale === UNREFINED ? {} : { viewScale },
-      altSource: { perBar: perBarCols, bars, div, regions }
-    }
-  };
-}
-__name(rollFromAltElements, "rollFromAltElements");
-function rollOnsets(pat, cyc) {
-  const r = readRollOnsets(pat, cyc);
-  return r.ok ? r.onsets : null;
-}
-__name(rollOnsets, "rollOnsets");
-function readRollOnsets(pat, cyc) {
-  let haps;
-  try {
-    haps = pat.queryArc(cyc, cyc + 1);
-  } catch {
-    return no("no-note-content");
-  }
-  const out = [];
-  for (const h of haps) {
-    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
-    const v = h.value;
-    let pitch;
-    let numeric;
-    if (typeof v === "number" && Number.isFinite(v)) {
-      pitch = String(v);
-      numeric = true;
-    } else {
-      const s = typeof v === "string" ? v : Array.isArray(v) ? tailToken(v) : null;
-      if (s === null) return no("no-note-content");
-      if (NUMERIC.test(s)) {
-        pitch = s;
-        numeric = true;
-      } else if (pitchToMidi(s.toLowerCase()) !== null) {
-        pitch = s.toLowerCase();
-        numeric = false;
-      } else return no("wrong-surface");
-    }
-    const pos = h.whole.begin.valueOf() - cyc;
-    const dur = h.whole.end.valueOf() - h.whole.begin.valueOf();
-    if (dur <= 0) return no("no-note-content");
-    out.push({ pos, dur, pitch, numeric, loc: leafLoc(h) });
-  }
-  return { ok: true, onsets: out };
-}
-__name(readRollOnsets, "readRollOnsets");
-var rollKey = /* @__PURE__ */ __name((o) => JSON.stringify(
-  o.map((x) => [Math.round(x.pos * ONSET_GRID), Math.round(x.dur * ONSET_GRID), x.pitch]).sort()
-), "rollKey");
-var PROBE_NOTE = "c9";
-var PROBE_NUM = "999";
-function projectionRollEditSafe(model, perBar2, bars, numeric, probes) {
-  const probePitch = numeric ? PROBE_NUM : PROBE_NOTE;
-  for (const { from, to } of probes) {
-    const idx = model.notes.findIndex((n) => n.start >= from && n.start < to);
-    if (idx < 0) continue;
-    const edited = {
-      ...model,
-      notes: model.notes.map((n, i) => i === idx ? { ...n, pitch: probePitch } : n)
-    };
-    const out = serializePianoRoll(edited);
-    if (out == null) return false;
-    let pat;
-    try {
-      pat = mini(out);
-    } catch {
-      return false;
-    }
-    for (let bb = 0; bb < bars; bb++) {
-      const got = rollOnsets(pat, bb);
-      if (got === null) return false;
-      const expected = edited.notes.filter((n) => n.start >= bb * perBar2 && n.start < (bb + 1) * perBar2).map((n) => ({
-        pos: (n.start - bb * perBar2) / perBar2,
-        dur: n.duration / perBar2,
-        pitch: n.pitch
-      }));
-      if (rollKey(got) !== rollKey(expected)) return false;
-    }
-    const wrap = rollOnsets(pat, bars);
-    if (wrap === null) return false;
-    const wrap0 = edited.notes.filter((n) => n.start < perBar2).map((n) => ({ pos: n.start / perBar2, dur: n.duration / perBar2, pitch: n.pitch }));
-    if (rollKey(wrap) !== rollKey(wrap0)) return false;
-  }
-  return true;
-}
-__name(projectionRollEditSafe, "projectionRollEditSafe");
-function projectPianoRoll(src0, viewScale = UNREFINED) {
-  const src = src0.trim();
-  if (src === "") return no("not-a-pattern");
-  let pat;
-  try {
-    pat = mini(src);
-  } catch {
-    return no("not-a-pattern");
-  }
-  const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null;
-  if (isWholeAlternation(src) && whole === null) return no("element-tiling");
-  const cycles = [];
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readRollOnsets(pat, c);
-    if (!cc.ok) return cc;
-    cycles.push(cc.onsets);
-  }
-  const bars = detectPeriod2(cycles.map(rollKey), MAX_PROJECT_BARS);
-  if (bars === 0) return no("unstable-period");
-  const perCycle = cycles.slice(0, bars);
-  const all = perCycle.flat();
-  if (all.length === 0) return no("no-note-content");
-  const numeric = all.some((o) => o.numeric);
-  if (numeric && all.some((o) => !o.numeric)) return no("mixed-pitch-domain");
-  if (whole !== null) {
-    return bars > 1 ? projectAltRollBars(src, whole, perCycle, numeric, viewScale) : no("element-tiling");
-  }
-  const spans = topLevelSpans(src);
-  if (!spans) return no("element-tiling");
-  const totalWeight = spans.reduce((s, e) => s + e.weight, 0);
-  const bounds = [];
-  let accW = 0;
-  for (const e of spans) {
-    bounds.push(accW / totalWeight);
-    accW += e.weight;
-  }
-  let documentPerBar = 1;
-  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur), ...bounds]) {
-    const d = denom(x);
-    if (d === 0) return no("irrational-onset");
-    documentPerBar = lcm(documentPerBar, d);
-  }
-  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
-  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
-  const perBar2 = documentPerBar * viewScale;
-  if (perBar2 % totalWeight !== 0) return no("element-tiling");
-  const divPerUnit = perBar2 / totalWeight;
-  const notes = barNotes(perCycle, perBar2);
-  if (notes === null) return no("element-tiling");
-  if (bars === 1) {
-    const parts = singlePart(src, spans, divPerUnit, perBar2, rollContent(notes));
-    if (!parts) return no("element-tiling");
-    const model2 = {
-      steps: perBar2,
-      ...viewScale === UNREFINED ? {} : { viewScale },
-      notes,
-      ...numeric ? { numeric: true } : {},
-      source: { prefix: "", suffix: "", parts }
-    };
-    const probes0 = parts[0].regions.map((r) => ({ from: r.from, to: r.to }));
-    if (!projectionRollEditSafe(model2, perBar2, 1, numeric, probes0)) return no("edit-unsafe");
-    return { ok: true, model: model2 };
-  }
-  const regions = buildAltRegions(
-    src,
-    spans,
-    divPerUnit,
-    perBar2,
-    (from, to) => Array.from(
-      { length: bars },
-      (_, b) => notes.filter((n) => n.start >= from + b * perBar2 && n.start < to + b * perBar2).map((n) => ({ pitch: n.pitch, start: n.start - b * perBar2, duration: n.duration }))
-    )
-  );
-  if (!regions) return no("element-tiling");
-  const model = {
-    steps: perBar2 * bars,
-    bars,
-    ...viewScale === UNREFINED ? {} : { viewScale },
-    notes,
-    ...numeric ? { numeric: true } : {},
-    altSource: { perBar: perBar2, bars, div: divPerUnit, regions }
-  };
-  const probes = regions.flatMap(
-    (r) => Array.from({ length: bars }, (_, b) => ({
-      from: b * perBar2 + r.from,
-      to: b * perBar2 + r.to
-    }))
-  );
-  if (!projectionRollEditSafe(model, perBar2, bars, numeric, probes)) return no("edit-unsafe");
-  return { ok: true, model };
-}
-__name(projectPianoRoll, "projectPianoRoll");
-function barNotes(perCycle, perBar2) {
-  const notes = [];
-  for (let b = 0; b < perCycle.length; b++) {
-    for (const o of perCycle[b]) {
-      const start = Math.round(o.pos * perBar2);
-      const duration = Math.round(o.dur * perBar2);
-      if (start < 0 || duration < 1 || start + duration > perBar2) return null;
-      notes.push({ pitch: o.pitch, start: b * perBar2 + start, duration });
-    }
-  }
-  return notes;
-}
-__name(barNotes, "barNotes");
-function projectAltRollBars(src, inner, perCycle, numeric, viewScale = UNREFINED) {
-  const bars = perCycle.length;
-  const innerSrc = inner.trim();
-  const spans = topLevelSpans(innerSrc);
-  if (!spans) return no("element-tiling");
-  if (spans.reduce((s, e) => s + e.weight, 0) !== bars) return no("element-tiling");
-  const all = perCycle.flat();
-  let documentPerBar = 1;
-  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
-    const d = denom(x);
-    if (d === 0) return no("irrational-onset");
-    documentPerBar = lcm(documentPerBar, d);
-  }
-  if (documentPerBar * bars > MAX_STEPS) return no("resolution");
-  if (!viewScaleFits(documentPerBar, bars, viewScale)) return no("view-resolution");
-  const perBar2 = documentPerBar * viewScale;
-  const notes = barNotes(perCycle, perBar2);
-  if (notes === null) return no("element-tiling");
-  const parts = singlePart(innerSrc, spans, perBar2, perBar2 * bars, rollContent(notes));
-  if (!parts) return no("element-tiling");
-  const model = {
-    steps: perBar2 * bars,
-    bars,
-    notes,
-    ...numeric ? { numeric: true } : {},
-    ...viewScale === UNREFINED ? {} : { viewScale },
-    source: {
-      parts,
-      prefix: "<" + (/^\s*/.exec(inner)?.[0] ?? ""),
-      suffix: (/\s*$/.exec(inner)?.[0] ?? "") + ">"
-    }
-  };
-  const probes = parts[0].regions.map((r) => ({ from: r.from, to: r.to }));
-  if (!projectionRollEditSafe(model, perBar2, bars, numeric, probes)) return no("edit-unsafe");
-  if (serializePianoRoll(model) !== src.trim()) return no("edit-unsafe");
-  return { ok: true, model };
-}
-__name(projectAltRollBars, "projectAltRollBars");
-function projectPianoRollByLeaf(src0) {
-  const src = src0.trim();
-  if (src === "") return no("not-a-pattern");
-  let pat;
-  try {
-    pat = mini(src);
-  } catch {
-    return no("not-a-pattern");
-  }
-  const cycles = [];
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readRollOnsets(pat, c);
-    if (!cc.ok) return cc;
-    cycles.push(cc.onsets);
-  }
-  const bars = detectPeriod2(cycles.map(rollKey), LEAF_PROJECT_BARS.roll);
-  if (bars === 0) return no("unstable-period");
-  const perCycle = cycles.slice(0, bars);
-  const all = perCycle.flat();
-  if (all.length === 0) return no("no-note-content");
-  const numeric = all.some((o) => o.numeric);
-  if (numeric && all.some((o) => !o.numeric)) return no("mixed-pitch-domain");
-  let perBar2 = 1;
-  for (const x of [...all.map((o) => o.pos), ...all.map((o) => o.dur)]) {
-    const d = denom(x);
-    if (d === 0) return no("irrational-onset");
-    perBar2 = lcm(perBar2, d);
-  }
-  if (perBar2 * bars > MAX_STEPS) return no("resolution");
-  const anchored = rollAnchors(src, perCycle, perBar2, bars);
-  if (!anchored.ok) return anchored;
-  const anchors = anchored.anchors;
-  const model = {
-    steps: perBar2 * bars,
-    ...bars > 1 ? { bars } : {},
-    // the notes ARE the anchors — one source of truth, so the view and the spans
-    // that write it back can never describe different music
-    notes: anchors.map((a) => ({ pitch: a.pitch, start: a.start, duration: a.duration })),
-    ...numeric ? { numeric: true } : {},
-    leafSource: { src, anchors, steps: perBar2 * bars, attachedSteps: perBar2 * bars }
-  };
-  if (!leafRollEditSafe(model, perBar2, bars, numeric)) return no("edit-unsafe");
-  if (!leafRollViewUsable(model)) return no("view-unusable");
-  return { ok: true, model };
-}
-__name(projectPianoRollByLeaf, "projectPianoRollByLeaf");
-function rollAnchors(src, perCycle, perBar2, bars) {
-  const out = [];
-  const seen = [];
-  for (let b = 0; b < bars; b++) {
-    for (const o of perCycle[b]) {
-      const start = Math.round(o.pos * perBar2);
-      const duration = Math.round(o.dur * perBar2);
-      if (start < 0 || duration < 1 || start + duration > perBar2) {
-        return { ok: false, gate: "note-crosses-bar" };
-      }
-      const claim = claimLeafSpan(src, o.loc, o.pitch, seen, true);
-      if (!claim.ok) return claim;
-      out.push({ pitch: o.pitch, start: b * perBar2 + start, duration, span: claim.span });
-    }
-  }
-  return { ok: true, anchors: out };
-}
-__name(rollAnchors, "rollAnchors");
-function leafRollEditSafe(model, perBar2, bars, numeric) {
-  const ls = model.leafSource;
-  if (!ls) return false;
-  const probePitch = numeric ? PROBE_NUM : PROBE_NOTE;
-  const probes = /* @__PURE__ */ new Map();
-  for (const a of ls.anchors) probes.set(`${a.span.start}:${a.span.end}`, a);
-  for (const anchor of probes.values()) {
-    for (const text of [probePitch, "~"]) {
-      const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }]);
-      let edited;
-      try {
-        edited = mini(out);
-      } catch {
-        return false;
-      }
-      const want = leafRollExpected(
-        ls.anchors,
-        perBar2,
-        bars,
-        anchor.span,
-        text === "~" ? null : text
-      );
-      for (let b = 0; b < bars; b++) {
-        const got = rollOnsets(edited, b);
-        if (got === null || rollKey(got) !== rollKey(want[b])) return false;
-      }
-      const wrap = rollOnsets(edited, bars);
-      if (wrap === null || rollKey(wrap) !== rollKey(want[0])) return false;
-    }
-  }
-  return true;
-}
-__name(leafRollEditSafe, "leafRollEditSafe");
-function leafRollExpected(anchors, perBar2, bars, span, text) {
-  const out = [];
-  for (let b = 0; b < bars; b++) out.push([]);
-  for (const a of anchors) {
-    const hit = a.span.start === span.start && a.span.end === span.end;
-    const pitch = hit ? text : a.pitch;
-    if (pitch === null) continue;
-    const b = Math.floor(a.start / perBar2);
-    if (b < 0 || b >= bars) continue;
-    out[b].push({
-      pos: (a.start - b * perBar2) / perBar2,
-      dur: a.duration / perBar2,
-      pitch
-    });
-  }
-  return out;
-}
-__name(leafRollExpected, "leafRollExpected");
-function leafRollViewUsable(model) {
-  for (const n of model.notes) {
-    if (serializePianoRoll({ ...model, notes: model.notes.filter((x) => x !== n) }) !== null) {
-      return true;
-    }
-  }
-  return false;
-}
-__name(leafRollViewUsable, "leafRollViewUsable");
-function withRollSurgery(mini, r) {
-  if (!r.ok) return r;
-  return {
-    ok: true,
-    model: { ...r.model, surgical: lazyRollLeaf(mini, overlayWidth(r.model)) }
-  };
-}
-__name(withRollSurgery, "withRollSurgery");
-function lazyRollLeaf(mini, attachedSteps) {
-  let computed = false;
-  let spans;
-  return {
-    attachedSteps,
-    spans: /* @__PURE__ */ __name(() => {
-      if (!computed) {
-        computed = true;
-        const leaf = projectPianoRollByLeaf(mini);
-        spans = leaf.ok && leaf.model.leafSource ? { ...leaf.model.leafSource, attachedSteps } : void 0;
-      }
-      return spans;
-    }, "spans")
-  };
-}
-__name(lazyRollLeaf, "lazyRollLeaf");
-function projectPianoRollDerived(mini, fallbackReason, viewScale = UNREFINED) {
-  const owner = projectPianoRoll(mini);
-  const asOwner = /* @__PURE__ */ __name((ok) => {
-    if (viewScale === UNREFINED) return ok;
-    const scaled2 = projectPianoRoll(mini, viewScale);
-    return scaled2.ok ? scaled2 : refused("roll", fallbackReason, scaled2.gate, mini);
-  }, "asOwner");
-  if (owner.ok) return withRollSurgery(mini, asOwner(owner));
-  const leaf = projectPianoRollByLeaf(mini);
-  if (leaf.ok) return leaf;
-  return refused("roll", fallbackReason, leaf.gate, mini);
-}
-__name(projectPianoRollDerived, "projectPianoRollDerived");
-function parsePianoRoll(mini, viewScale = UNREFINED) {
-  const owner = parsePianoRollCore(mini);
-  if (viewScale === UNREFINED) {
-    return owner.ok ? withRollSurgery(mini, owner) : projectPianoRollDerived(mini, owner, UNREFINED);
-  }
-  const result = owner.ok ? withRollSurgery(mini, parsePianoRollCore(mini, viewScale)) : projectPianoRollDerived(mini, owner, viewScale);
-  return honoursViewScale(result, viewScale, "roll");
-}
-__name(parsePianoRoll, "parsePianoRoll");
-function parsePianoRollCore(mini, viewScale = UNREFINED) {
-  const alt = unwrapAlternation(mini);
-  if (alt === null) {
-    const parts2 = splitTopLevel(mini);
-    if (parts2.length > 1) return parseRollLanes(parts2, viewScale);
-    const altEl = rollFromAltElements(mini, viewScale);
-    if (altEl !== null) return altEl;
-  }
-  const tok = tokenize(
-    alt ?? mini,
-    /* allowNumeric */
-    true
-  );
-  if (!tok.ok) return tok;
-  if (alt !== null && tok.steps.length === 0) return { ok: false, reason: "empty alternation" };
-  const documentDiv = division(tok.steps);
-  const bars = tok.steps.reduce((b, s) => b + s.elongation, 0);
-  const perBar2 = alt !== null && tok.steps.every((st) => st.elongation === 1) ? perBarLayout(tok.steps.map(stepUnits)) : null;
-  const layout = viewScale === UNREFINED ? perBar2 : null;
-  const tooWide = layout ? layout.some((n) => n > MAX_STEPS) || bars * documentDiv > MAX_SHARED_STEPS : (documentDiv > 1 || alt !== null) && bars * documentDiv > MAX_STEPS;
-  if (tooWide) {
-    if (perBar2 && !layout) {
-      return { ok: false, reason: gateReason("view-resolution", "roll"), gate: "view-resolution" };
-    }
-    return { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` };
-  }
-  if (!layout && !viewScaleFits(documentDiv, bars, viewScale)) {
-    return { ok: false, reason: gateReason("view-resolution", "roll"), gate: "view-resolution" };
-  }
-  const div = documentDiv * viewScale;
-  const notes = [];
-  let col = 0;
-  let sawNumeric = false;
-  let sawNamed = false;
-  for (const step of tok.steps) {
-    const slots = step.sub ?? [{ atoms: step.atoms, units: 1 }];
-    const total = stepUnits(step);
-    for (const slot of slots) {
-      const span = step.elongation * div * slot.units / total;
-      for (const token of slot.atoms) {
-        const isNum = /^-?\d+$/.test(token);
-        if (!isNum && pitchToMidi(token) === null) {
-          return { ok: false, reason: `"${token}" is not a note name` };
-        }
-        if (isNum) sawNumeric = true;
-        else sawNamed = true;
-        notes.push({ pitch: isNum ? token : token.toLowerCase(), start: col, duration: span });
-      }
-      col += span;
-    }
-  }
-  if (sawNumeric && sawNamed) {
-    return { ok: false, reason: "mixed numeric and note-name tokens are beyond the editable subset" };
-  }
-  const src = (alt ?? mini).trim();
-  const parts = singlePart(src, tok.elements, div, col, rollContent(notes));
-  const model = {
-    steps: col,
-    ...alt !== null ? { bars } : {},
-    ...viewScale === UNREFINED ? {} : { viewScale },
-    notes,
-    ...sawNumeric ? { numeric: true } : {},
-    ...parts ? {
-      source: {
-        parts,
-        prefix: alt !== null ? "<" + (/^\s*/.exec(alt)?.[0] ?? "") : "",
-        suffix: alt !== null ? (/\s*$/.exec(alt)?.[0] ?? "") + ">" : ""
-      }
-    } : {}
-  };
-  if (!layout) return { ok: true, model };
-  const drawn = toDrawnRoll(model, layout);
-  if (drawn) return { ok: true, model: drawn };
-  return col > MAX_STEPS ? { ok: false, reason: `sub-sequences expand the roll past ${MAX_STEPS} steps` } : { ok: true, model };
-}
-__name(parsePianoRollCore, "parsePianoRollCore");
-function parseRollLanes(parts, viewScale = UNREFINED) {
-  let models = [];
-  for (const part of parts) {
-    let r = parsePianoRollCore(part.trim(), viewScale);
-    if (!r.ok) {
-      const lone = parsePianoRoll(part.trim(), viewScale);
-      const src = lone.ok ? lone.model.source : void 0;
-      const flat = lone.ok && !!src && src.parts.length === 1 && src.prefix === "" && src.suffix === "" && !lone.model.altSource && lone.model.bars == null && (lone.model.viewScale ?? UNREFINED) === viewScale;
-      if (!flat) return r;
-      r = lone;
-    }
-    if (r.model.bars != null) {
-      return { ok: false, reason: "multi-bar parallel note lanes are beyond the editable subset" };
-    }
-    models.push(r.model);
-  }
-  const widths = models.map((m) => m.steps / viewScale);
-  if (!widths.every((w) => w === widths[0])) {
-    if (!widths.every((w) => Number.isInteger(w))) {
-      return { ok: false, reason: "parallel note lanes must share a step grid" };
-    }
-    const documentTotal = widths.reduce((l, w) => lcm(l, Math.max(1, w)), 1);
-    if (documentTotal > MAX_STEPS) {
-      return { ok: false, reason: `the stack expands the roll past ${MAX_STEPS} steps` };
-    }
-    const shared = documentTotal * viewScale;
-    models = models.map((m) => scaleRoll(m, shared / m.steps));
-  }
-  const steps = models[0].steps;
-  const numeric = models.some((m) => m.numeric);
-  if (numeric && models.some((m) => !m.numeric && m.notes.length > 0)) {
-    return { ok: false, reason: "mixed numeric and note-name lanes are beyond the editable subset" };
-  }
-  const notes = models.flatMap((m) => m.notes);
-  return {
-    ok: true,
-    model: {
-      steps,
-      ...viewScale === UNREFINED ? {} : { viewScale },
-      notes,
-      ...numeric ? { numeric: true } : {},
-      ...rollStackSource(parts, models) ?? {}
-    }
-  };
-}
-__name(parseRollLanes, "parseRollLanes");
-function scaleRoll(m, f) {
-  if (f === 1) return m;
-  const note = /* @__PURE__ */ __name((n) => ({ ...n, start: n.start * f, duration: n.duration * f }), "note");
-  return {
-    ...m,
-    steps: m.steps * f,
-    notes: m.notes.map(note),
-    ...m.source ? {
-      source: {
-        ...m.source,
-        parts: m.source.parts.map((p) => ({
-          ...p,
-          div: p.div * f,
-          regions: p.regions.map((r) => ({ ...r, from: r.from * f, to: r.to * f, content: r.content.map(note) }))
-        }))
-      }
-    } : {}
-  };
-}
-__name(scaleRoll, "scaleRoll");
-function rollStackSource(parts, models) {
-  const out = [];
-  for (let i = 0; i < parts.length; i++) {
-    const raw = parts[i];
-    const leading = /^\s*/.exec(raw)?.[0] ?? "";
-    const after = /\s*$/.exec(raw.slice(leading.length))?.[0] ?? "";
-    const own = models[i].source;
-    if (!own || own.parts.length !== 1 || own.prefix !== "" || own.suffix !== "") return null;
-    out.push({
-      part: i,
-      div: own.parts[0].div,
-      factor: 1,
-      before: (i > 0 ? "," : "") + leading,
-      after,
-      regions: own.parts[0].regions
-    });
-  }
-  const rebuilt = out.map((p) => p.before + p.regions.map((r) => r.raw).join("") + p.after).join("");
-  if (rebuilt !== parts.join(",")) return null;
-  return { source: { prefix: "", suffix: "", parts: out } };
-}
-__name(rollStackSource, "rollStackSource");
-
 // src/visualEdit/panels/drumVoices.ts
 var VOICE_FALLBACK_COLOR = "#9ca3af";
 var VOICE_MAP = {
@@ -33469,282 +34936,6 @@ function usePlayingStep(steps, bars, cols, barSteps) {
 }
 __name(usePlayingStep, "usePlayingStep");
 
-// src/codeView/notation/lane.ts
-function addLane(model, sound) {
-  const token = sound.trim();
-  if (token === "" || model.lanes.some((l) => l.sound === token)) return model;
-  const lane = {
-    sound: token,
-    part: model.lanes[0]?.part,
-    cells: Array(model.steps).fill(false)
-  };
-  return { ...model, lanes: [...model.lanes, lane] };
-}
-__name(addLane, "addLane");
-function removeLane(model, sound) {
-  if (!model.lanes.some((l) => l.sound === sound)) return model;
-  return { ...model, lanes: model.lanes.filter((l) => l.sound !== sound) };
-}
-__name(removeLane, "removeLane");
-
-// src/codeView/notation/place.ts
-function viewPlacesNotes(model) {
-  let asked = 0;
-  if ("lanes" in model) {
-    for (let lane = 0; lane < model.lanes.length; lane++)
-      for (let col = 0; col < model.steps; col++) {
-        if (isCellOn(model.lanes[lane].cells[col])) continue;
-        asked++;
-        if (canToggleCell(model, lane, col, true)) return true;
-      }
-    return asked === 0;
-  }
-  const pitches = new Set(model.notes.map((n) => n.pitch));
-  if (model.notes.some((n) => pitchToMidi(n.pitch) !== null)) {
-    const below = rollContentRange(model).lo;
-    pitches.add(model.numeric ? String(below) : midiToPitch(below));
-  }
-  for (const pitch of pitches)
-    for (let step = 0; step < model.steps; step++) {
-      if (model.notes.some((n) => n.pitch === pitch && n.start === step)) continue;
-      asked++;
-      if (canPlaceNote(model, pitch, step, 1)) return true;
-    }
-  return asked === 0;
-}
-__name(viewPlacesNotes, "viewPlacesNotes");
-var paint = /* @__PURE__ */ __name((value, length = 1) => value ? cellOn(length) : false, "paint");
-function toggleCell(model, laneIndex, stepIndex, value, length = 1) {
-  const painted = model.lanes.map(
-    (lane, i) => i === laneIndex ? {
-      ...lane,
-      // CLAMPED, because a promise about lengths is a promise about ROOM
-      // (#1010 P4b/P4c). Painting a hit into a column an earlier note was
-      // still sounding through shortens that note — the room it had is gone.
-      // Without this the model keeps a length that reaches past the new hit,
-      // which is notation nothing can spell, and the writer rightly declines
-      // an edit the user plainly made. The resize and quantize ops already
-      // clamp for exactly this reason; paint is the third op that moves
-      // onsets closer together, and it was the one still missing it.
-      cells: clampLane(
-        lane.cells.map((c, j) => j === stepIndex ? paint(value, length) : c),
-        model.steps
-      )
-    } : lane
-  );
-  const lanes = value ? clampPartAtOnset(painted, model.lanes[laneIndex]?.part ?? 0, stepIndex) : painted;
-  return ifGridSpellable(model, { ...model, lanes });
-}
-__name(toggleCell, "toggleCell");
-function placeNote(model, pitch, start, duration, opts = {}) {
-  const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
-  const at = model.notes.filter((n) => n.start === start);
-  const shared = at.length > 0 && at.every((n) => n.duration === at[0].duration) ? at[0].duration : null;
-  if (shared !== null) {
-    return accept({
-      ...model,
-      notes: [...model.notes, { pitch, start, duration: shared }]
-    });
-  }
-  const capAt = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
-    ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
-    model.steps
-  ), "capAt");
-  const nextStart = capAt(false);
-  const notes = model.notes.map(
-    (n) => (
-      // "does this note reach into this column?" is `columnOverlap`'s question, and this file
-      // had been answering it with an inline twin. `model.ts` records what happened the last
-      // time that predicate lived in two places: two thresholds a hundred lines apart. The
-      // `n.start < start` conjunct stays because it asks something DIFFERENT — a note
-      // starting exactly here is the chord-join case handled above, not something to trim.
-      // What the shared rule adds is the sliver threshold, so a length that merely ENDS at
-      // the onset is no longer counted as sounding through it. Measured across every ask in
-      // the corpus: this moves NOTHING, which is the only kind of consolidation worth making
-      // quietly — and it is the same result the grid's own consolidation measured.
-      n.pitch === pitch && n.start < start && columnOverlap(n.start, n.start + n.duration, start) !== null ? { ...n, duration: start - n.start } : n
-    )
-  );
-  const withCap = /* @__PURE__ */ __name((cap) => ({
-    ...model,
-    notes: [...notes, { pitch, start, duration: Math.max(1, Math.min(duration, cap - start)) }]
-  }), "withCap");
-  const wideCap = capAt(true);
-  if (wideCap === nextStart) return accept(withCap(nextStart));
-  const wide = withCap(wideCap);
-  const narrow = withCap(nextStart);
-  const wideOut = serializePianoRollWithExtent(wide);
-  if (wideOut.mini !== null) {
-    const local = !degradesLocality(
-      wideOut.extent,
-      serializePianoRollWithExtent(narrow).extent
-    );
-    if (local && (!opts.readback || rollReadsBack(wide))) return wide;
-  }
-  return accept(narrow);
-}
-__name(placeNote, "placeNote");
-function degradesLocality(next, floor) {
-  const rank = /* @__PURE__ */ __name((p) => p === "leaf" ? 0 : p === "rebuild" ? 2 : 1, "rank");
-  return rank(next.path) > rank(floor.path);
-}
-__name(degradesLocality, "degradesLocality");
-function pasteNote(model, pitch, start, duration, opts = {}) {
-  const cleared = {
-    ...model,
-    notes: model.notes.filter((n) => !(n.start === start && n.pitch === pitch))
-  };
-  const placed = placeNote(cleared, pitch, start, duration, opts);
-  return placed === cleared ? model : placed;
-}
-__name(pasteNote, "pasteNote");
-var canToggleCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, value, length = 1) => toggleCell(model, laneIndex, stepIndex, value, length) !== model, "canToggleCell");
-var canPlaceNote = /* @__PURE__ */ __name((model, pitch, start, duration) => placeNote(model, pitch, start, duration) !== model, "canPlaceNote");
-function partRoom(model, laneIndex, stepIndex) {
-  const part = model.lanes[laneIndex]?.part ?? 0;
-  let next = model.steps;
-  for (const lane of model.lanes) {
-    if ((lane.part ?? 0) !== part) continue;
-    for (let j = stepIndex + 1; j < lane.cells.length && j < next; j++) {
-      if (isCellOn(lane.cells[j])) {
-        next = j;
-        break;
-      }
-    }
-  }
-  return next - stepIndex;
-}
-__name(partRoom, "partRoom");
-function resizeCell(model, laneIndex, stepIndex, duration) {
-  const cell = model.lanes[laneIndex]?.cells[stepIndex];
-  if (!isCellOn(cell)) return model;
-  const capped = Math.max(1, Math.min(duration, partRoom(model, laneIndex, stepIndex)));
-  const lanes = model.lanes.map(
-    (lane, i) => i === laneIndex ? {
-      ...lane,
-      cells: clampLane(
-        lane.cells.map((c, j) => j === stepIndex ? cellOn(capped) : c),
-        model.steps
-      )
-    } : lane
-  );
-  const next = lanes[laneIndex].cells[stepIndex];
-  if (isCellOn(next) && next.duration === cell.duration) return model;
-  const written = serializeStepGrid({ ...model, lanes });
-  if (written === null) return model;
-  if (written === serializeStepGrid(model)) return model;
-  return { ...model, lanes };
-}
-__name(resizeCell, "resizeCell");
-var canResizeCell = /* @__PURE__ */ __name((model, laneIndex, stepIndex, duration) => resizeCell(model, laneIndex, stepIndex, duration) !== model, "canResizeCell");
-var resizableNotes = /* @__PURE__ */ __name((model) => {
-  const out = /* @__PURE__ */ new Set();
-  const now2 = serializePianoRoll(model);
-  if (now2 === null) return out;
-  for (const n of model.notes) {
-    const writes2 = /* @__PURE__ */ __name((duration) => {
-      const next = resizeNote(model, n.start, n.pitch, duration);
-      if (next === model) return false;
-      const s = serializePianoRoll(next);
-      return s !== null && s !== now2;
-    }, "writes");
-    if (writes2(n.duration + 1) || writes2(Math.max(1, n.duration - 1))) out.add(n);
-  }
-  return out;
-}, "resizableNotes");
-var rollReadsBack = /* @__PURE__ */ __name((next) => {
-  const out = serializePianoRoll(next);
-  if (out === null) return false;
-  let back = parsePianoRoll(out);
-  if (!back.ok) return false;
-  const k = next.steps / back.model.steps;
-  if (next.viewScale !== void 0 && k > 1 && Number.isInteger(k)) {
-    back = parsePianoRoll(out, k);
-    if (!back.ok) return false;
-  }
-  if (back.model.steps !== next.steps) return false;
-  if (back.model.notes.length !== next.notes.length) return false;
-  const key2 = /* @__PURE__ */ __name((n) => `${n.pitch}@${n.start}+${n.duration}`, "key");
-  const meant = next.notes.map(key2).sort();
-  const got = back.model.notes.map(key2).sort();
-  return meant.every((s, i) => s === got[i]);
-}, "rollReadsBack");
-function resizeNote(model, start, pitch, duration, opts = {}) {
-  const accept = /* @__PURE__ */ __name((next) => opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next), "accept");
-  if ((model.bars ?? 1) > 1) {
-    const capTo = /* @__PURE__ */ __name((samePitchOnly) => Math.min(
-      ...model.notes.filter((n) => (!samePitchOnly || n.pitch === pitch) && n.start > start).map((n) => n.start),
-      model.steps
-    ), "capTo");
-    const build = /* @__PURE__ */ __name((cap, scoped) => {
-      const capped2 = Math.max(1, Math.min(duration, cap - start));
-      return {
-        ...model,
-        notes: model.notes.map(
-          (n) => n.start === start && (!scoped || n.pitch === pitch) ? { ...n, duration: capped2 } : n
-        )
-      };
-    }, "build");
-    const anyCap = capTo(false);
-    const sameCap = capTo(true);
-    const legacy = build(anyCap, false);
-    if (sameCap === anyCap && model.notes.filter((n) => n.start === start).length < 2)
-      return accept(legacy);
-    const floor = serializePianoRollWithExtent(legacy);
-    for (const rung of [build(sameCap, true), build(anyCap, true)]) {
-      const out = serializePianoRollWithExtent(rung);
-      if (out.mini === null) continue;
-      if (degradesLocality(out.extent, floor.extent)) continue;
-      if (opts.readback && !rollReadsBack(rung)) continue;
-      return rung;
-    }
-    const movesOthers = legacy.notes.some(
-      (n, i) => n.duration !== model.notes[i].duration && !(n.start === start && n.pitch === pitch)
-    );
-    return movesOthers ? model : accept(legacy);
-  }
-  const capped = Math.max(1, Math.min(duration, model.steps - start));
-  return accept({
-    ...model,
-    notes: model.notes.map(
-      (n) => n.start === start && n.pitch === pitch ? { ...n, duration: capped } : n
-    )
-  });
-}
-__name(resizeNote, "resizeNote");
-function removeNote(model, start, pitch, opts = {}) {
-  const notes = model.notes.filter((n) => !(n.pitch === pitch && n.start === start));
-  if (notes.length === model.notes.length) return model;
-  const next = { ...model, notes };
-  return opts.readback ? rollReadsBack(next) ? next : model : ifRollSpellable(model, next);
-}
-__name(removeNote, "removeNote");
-function moveNote(base, fromPitch, fromStart, toPitch, toStart, opts = {}) {
-  const idx = base.notes.findIndex((n) => n.pitch === fromPitch && n.start === fromStart);
-  if (idx < 0) return base;
-  const grabbed = base.notes[idx];
-  const start = Math.max(0, Math.min(toStart, base.steps - 1));
-  const rest = base.notes.filter((_, i) => i !== idx);
-  const landed = {
-    ...grabbed,
-    pitch: toPitch,
-    start,
-    duration: Math.max(1, Math.min(grabbed.duration, base.steps - start))
-  };
-  const notes = [...rest, landed];
-  const rebuilt = {
-    steps: base.steps,
-    ...base.bars != null ? { bars: base.bars } : {},
-    // Not a source: the RULER the notes are measured in. A roll drawn per bar (#1827)
-    // holds drawn columns, and without its counts the writer reads them as shared ones.
-    ...base.barSteps ? { barSteps: base.barSteps } : {},
-    ...base.numeric ? { numeric: true } : {},
-    notes
-  };
-  return opts.readback ? rollReadsBack(rebuilt) ? rebuilt : base : ifRollSpellable(base, rebuilt);
-}
-__name(moveNote, "moveNote");
-
 // src/visualEdit/panels/soundCatalog.ts
 var INSTRUMENTS = [
   {
@@ -33938,320 +35129,6 @@ function subscribeNoteColorMode(listener) {
   return subscribe3(listener);
 }
 __name(subscribeNoteColorMode, "subscribeNoteColorMode");
-
-// src/codeView/notation/resolution.ts
-var MAX_RESOLUTION_STEPS = 256;
-function perBar(steps, bars) {
-  return bars && bars > 0 ? steps / bars : steps;
-}
-__name(perBar, "perBar");
-function structurallyCanDouble(model) {
-  return model.steps >= 1 && model.steps * 2 <= MAX_RESOLUTION_STEPS;
-}
-__name(structurallyCanDouble, "structurallyCanDouble");
-function structurallyCanHalve(model) {
-  if (model.steps < 2 || model.steps % 2 !== 0) return false;
-  if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false;
-  const oddCellEmpty = model.lanes.every(
-    (lane) => lane.cells.every((cell, i) => i % 2 === 0 || !isCellOn(cell))
-  );
-  if (!oddCellEmpty) return false;
-  if (model.gains) {
-    if (!model.gains.every((g, i) => i % 2 === 0 || g === 1)) return false;
-  }
-  return true;
-}
-__name(structurallyCanHalve, "structurallyCanHalve");
-function scaleStepGrid(model, dir) {
-  if (dir === "double") {
-    if (!structurallyCanDouble(model)) return model;
-    return ifGridSpellable(model, {
-      ...model,
-      steps: model.steps * 2,
-      lanes: model.lanes.map((lane) => ({
-        ...lane,
-        cells: lane.cells.flatMap((cell) => [scaleCell(cell, 2), false])
-      })),
-      ...model.gains ? { gains: model.gains.flatMap((g) => [g, 1]) } : {}
-    });
-  }
-  if (!structurallyCanHalve(model)) return model;
-  return ifGridSpellable(model, {
-    ...model,
-    steps: model.steps / 2,
-    lanes: model.lanes.map((lane) => ({
-      ...lane,
-      cells: lane.cells.filter((_, i) => i % 2 === 0).map((cell) => scaleCell(cell, 0.5))
-    })),
-    ...model.gains ? { gains: model.gains.filter((_, i) => i % 2 === 0) } : {}
-  });
-}
-__name(scaleStepGrid, "scaleStepGrid");
-function structurallyCanDoubleRoll(model) {
-  return model.steps >= 1 && model.steps * 2 <= MAX_RESOLUTION_STEPS;
-}
-__name(structurallyCanDoubleRoll, "structurallyCanDoubleRoll");
-function structurallyCanHalveRoll(model) {
-  if (model.steps < 2 || model.steps % 2 !== 0) return false;
-  if ((model.bars ?? 1) > 1 && perBar(model.steps, model.bars) % 2 !== 0) return false;
-  return model.notes.every((n) => n.start % 2 === 0 && n.duration % 2 === 0);
-}
-__name(structurallyCanHalveRoll, "structurallyCanHalveRoll");
-function scalePianoRoll(model, dir) {
-  if (dir === "double") {
-    if (!structurallyCanDoubleRoll(model)) return model;
-    return ifRollSpellable(model, {
-      ...model,
-      steps: model.steps * 2,
-      notes: model.notes.map((n) => ({ ...n, start: n.start * 2, duration: n.duration * 2 }))
-    });
-  }
-  if (!structurallyCanHalveRoll(model)) return model;
-  return ifRollSpellable(model, {
-    ...model,
-    steps: model.steps / 2,
-    notes: model.notes.map((n) => ({ ...n, start: n.start / 2, duration: n.duration / 2 }))
-  });
-}
-__name(scalePianoRoll, "scalePianoRoll");
-var RESOLUTION_PRESETS = [4, 8, 16, 32, 64];
-function isPow2(n) {
-  return n >= 1 && Number.isInteger(n) && (n & n - 1) === 0;
-}
-__name(isPow2, "isPow2");
-function scaleTo(model, target, scale) {
-  if (target < 1 || target === model.steps) return model;
-  const up = target > model.steps;
-  const ratio = up ? target / model.steps : model.steps / target;
-  if (!isPow2(ratio)) return model;
-  let cur = model;
-  while (cur.steps !== target) {
-    const next = scale(cur, up ? "double" : "halve");
-    if (next === cur) return model;
-    cur = next;
-  }
-  return cur;
-}
-__name(scaleTo, "scaleTo");
-function scaleStepGridTo(model, target) {
-  return scaleTo(model, target, scaleStepGrid);
-}
-__name(scaleStepGridTo, "scaleStepGridTo");
-function scalePianoRollTo(model, target) {
-  return scaleTo(model, target, scalePianoRoll);
-}
-__name(scalePianoRollTo, "scalePianoRollTo");
-function canScaleStepGridTo(model, target) {
-  return target !== model.steps && scaleStepGridTo(model, target) !== model;
-}
-__name(canScaleStepGridTo, "canScaleStepGridTo");
-function canScalePianoRollTo(model, target) {
-  return target !== model.steps && scalePianoRollTo(model, target) !== model;
-}
-__name(canScalePianoRollTo, "canScalePianoRollTo");
-var clampInt = /* @__PURE__ */ __name((v, lo, hi) => Math.max(lo, Math.min(hi, v)), "clampInt");
-var bucket = /* @__PURE__ */ __name((c, from, to) => clampInt(Math.round(c * to / from), 0, to - 1), "bucket");
-var NO_EFFECT = { lengthened: 0, snapped: 0, merged: 0 };
-var COARSEN_FLOOR = 1;
-function quantizeStepGridToWithEffect(model, target) {
-  const unchanged = { model, effect: NO_EFFECT };
-  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return unchanged;
-  if ((model.bars ?? 1) > 1) {
-    const scaled2 = scaleStepGridTo(model, target);
-    return scaled2 === model ? unchanged : { model: scaled2, effect: NO_EFFECT };
-  }
-  const from = model.steps;
-  const addingSlots = target > from;
-  let lengthened = 0;
-  let snapped = 0;
-  let merged = 0;
-  const lanes = model.lanes.map((lane) => {
-    const cells = Array(target).fill(false);
-    lane.cells.forEach((cell, c) => {
-      if (!isCellOn(cell)) return;
-      const b = bucket(c, from, target);
-      if (b !== c * target / from) snapped++;
-      const exact = addingSlots ? cell.duration : cell.duration * (target / from);
-      const scaled2 = addingSlots ? exact : Math.max(COARSEN_FLOOR, exact);
-      if (scaled2 !== exact) lengthened++;
-      const prev = cells[b];
-      if (isCellOn(prev)) merged++;
-      cells[b] = cellOn(isCellOn(prev) ? Math.min(prev.duration, scaled2) : scaled2);
-    });
-    return { ...lane, cells: clampLane(cells, target) };
-  });
-  let gains;
-  if (model.gains) {
-    gains = Array(target).fill(1);
-    const filled = /* @__PURE__ */ new Set();
-    for (let c = 0; c < from; c++) {
-      if (!model.lanes.some((l) => isCellOn(l.cells[c]))) continue;
-      const b = bucket(c, from, target);
-      const g = model.gains[c] ?? 1;
-      gains[b] = filled.has(b) ? Math.max(gains[b], g) : g;
-      filled.add(b);
-    }
-  }
-  const next = ifGridSpellable(model, {
-    ...model,
-    steps: target,
-    lanes,
-    ...gains ? { gains } : {}
-  });
-  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged } };
-}
-__name(quantizeStepGridToWithEffect, "quantizeStepGridToWithEffect");
-function quantizeStepGridTo(model, target) {
-  return quantizeStepGridToWithEffect(model, target).model;
-}
-__name(quantizeStepGridTo, "quantizeStepGridTo");
-function stepResolutionEffect(model, target) {
-  return quantizeStepGridToWithEffect(model, target).effect;
-}
-__name(stepResolutionEffect, "stepResolutionEffect");
-function quantizePianoRollTo(model, target) {
-  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model;
-  if ((model.bars ?? 1) > 1) {
-    if (target <= model.steps) return scalePianoRollTo(model, target);
-    if (!isPow2(target / model.steps)) return model;
-    let cur = model;
-    while (cur.steps < target) {
-      cur = { ...cur, steps: cur.steps * 2, notes: cur.notes.map((n) => ({ ...n, start: n.start * 2 })) };
-    }
-    return ifRollSpellable(model, cur);
-  }
-  const from = model.steps;
-  const addingSlots = target > from;
-  const q = model.notes.map((n) => ({
-    pitch: n.pitch,
-    start: bucket(n.start, from, target),
-    duration: addingSlots ? Math.max(1, n.duration) : Math.max(1, Math.round(n.duration * target / from)),
-    gain: n.gain ?? 1
-  })).sort((a, b) => a.start - b.start);
-  const byCol = /* @__PURE__ */ new Map();
-  for (const n of q) {
-    const grp = byCol.get(n.start) ?? [];
-    if (grp.some((m) => m.pitch === n.pitch)) continue;
-    grp.push({ pitch: n.pitch, duration: n.duration, gain: n.gain });
-    byCol.set(n.start, grp);
-  }
-  const starts = [...byCol.keys()].sort((a, b) => a - b);
-  const notes = [];
-  starts.forEach((start, i) => {
-    const limit = (i + 1 < starts.length ? starts[i + 1] : target) - start;
-    const grp = byCol.get(start);
-    const duration = clampInt(Math.min(...grp.map((m) => m.duration)), 1, limit);
-    const gain = Math.max(...grp.map((m) => m.gain));
-    for (const m of grp) notes.push({ pitch: m.pitch, start, duration, gain });
-  });
-  return ifRollSpellable(model, { ...model, steps: target, notes });
-}
-__name(quantizePianoRollTo, "quantizePianoRollTo");
-function freeZoneScale(docSteps, target) {
-  if (!Number.isInteger(docSteps) || docSteps < 1) return null;
-  if (target < docSteps || target % docSteps !== 0) return null;
-  if (target > MAX_VIEW_STEPS) return null;
-  return target / docSteps;
-}
-__name(freeZoneScale, "freeZoneScale");
-function collapseStepGridToDocument(model) {
-  if (model.viewScale === void 0) return model;
-  const docSteps = documentSteps(model);
-  if (docSteps === model.steps) return absorbViewScale(model);
-  if (!canScaleStepGridTo(model, docSteps)) return null;
-  return absorbViewScale(
-    descaleSource(scaleStepGridTo(model, docSteps), model.viewScale, descaleGridCells)
-  );
-}
-__name(collapseStepGridToDocument, "collapseStepGridToDocument");
-function collapsePianoRollToDocument(model) {
-  if (model.viewScale === void 0) return model;
-  const docSteps = documentSteps(model);
-  if (docSteps === model.steps) return absorbViewScale(model);
-  if (!canScalePianoRollTo(model, docSteps)) return null;
-  return absorbViewScale(
-    descaleSource(scalePianoRollTo(model, docSteps), model.viewScale, descaleRollNotes)
-  );
-}
-__name(collapsePianoRollToDocument, "collapsePianoRollToDocument");
-function descaleSource(model, k, content) {
-  if (k === UNREFINED) return model;
-  if (model.altSource) {
-    const a = model.altSource;
-    return {
-      ...model,
-      altSource: {
-        ...a,
-        perBar: a.perBar / k,
-        div: a.div / k,
-        regions: a.regions.map((r) => ({
-          ...r,
-          from: r.from / k,
-          to: r.to / k,
-          perBar: r.perBar.map((c) => content(c, k))
-        }))
-      }
-    };
-  }
-  if (model.source) {
-    const s = model.source;
-    return {
-      ...model,
-      source: {
-        ...s,
-        parts: s.parts.map((p) => ({
-          ...p,
-          div: p.div / k,
-          regions: p.regions.map((r) => ({
-            ...r,
-            from: r.from / k,
-            to: r.to / k,
-            content: content(r.content, k)
-          }))
-        }))
-      }
-    };
-  }
-  return model;
-}
-__name(descaleSource, "descaleSource");
-var descaleGridCells = /* @__PURE__ */ __name((cells, k) => cells.filter((_, i) => i % k === 0).map((column) => column.map((cell) => ({ ...cell, duration: cell.duration / k }))), "descaleGridCells");
-var descaleRollNotes = /* @__PURE__ */ __name((notes, k) => notes.map((n) => ({ ...n, start: n.start / k, duration: n.duration / k })), "descaleRollNotes");
-function slotState(steps, docSteps, bars, lossless, applies, target, canDrawView) {
-  if (target === steps) return "active";
-  if (canDrawView) {
-    const scale = freeZoneScale(docSteps, target);
-    if (scale !== null && canDrawView(scale)) return "view";
-  }
-  if (lossless) return "lossless";
-  if ((bars ?? 1) > 1) return "disabled";
-  return applies ? "quantize" : "disabled";
-}
-__name(slotState, "slotState");
-function stepSlotState(model, target, canDrawView) {
-  return slotState(
-    model.steps,
-    documentSteps(model),
-    model.bars,
-    canScaleStepGridTo(model, target),
-    quantizeStepGridTo(model, target) !== model,
-    target,
-    canDrawView
-  );
-}
-__name(stepSlotState, "stepSlotState");
-function rollSlotState(model, target, canDrawView) {
-  return slotState(
-    model.steps,
-    documentSteps(model),
-    model.bars,
-    canScalePianoRollTo(model, target),
-    quantizePianoRollTo(model, target) !== model,
-    target,
-    canDrawView
-  );
-}
-__name(rollSlotState, "rollSlotState");
 function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
   const slotStateRef = React21.useRef(slotState2);
   slotStateRef.current = slotState2;
@@ -35772,119 +36649,6 @@ function setGridMode(mode) {
   listeners11.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
-function unwrapAlternation2(mini) {
-  const t = mini.trim();
-  if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
-  let depth = 0;
-  for (let i = 0; i < t.length; i++) {
-    if (t[i] === "<") depth++;
-    else if (t[i] === ">" && --depth === 0 && i !== t.length - 1) return null;
-  }
-  return t.slice(1, -1);
-}
-__name(unwrapAlternation2, "unwrapAlternation");
-function entriesOf(mini) {
-  const alt = unwrapAlternation2(mini);
-  return alt !== null ? alt.trim() : `[${mini.trim()}]`;
-}
-__name(entriesOf, "entriesOf");
-function splitEntries(inner) {
-  const out = [];
-  let depth = 0;
-  let cur = "";
-  for (const ch of inner) {
-    if ("[<{(".includes(ch)) depth++;
-    else if ("]>})".includes(ch)) depth--;
-    if (depth === 0 && ",|".includes(ch)) return null;
-    if (depth === 0 && /\s/.test(ch)) {
-      if (cur) out.push(cur);
-      cur = "";
-    } else cur += ch;
-  }
-  if (cur) out.push(cur);
-  return out.some((e) => e === "." || e === "!" || e === "_") ? null : out;
-}
-__name(splitEntries, "splitEntries");
-function fromBar(t, bar2) {
-  const d = t.sub?.(bar2);
-  return d?.toFraction ? d.toFraction() : String(+t - bar2);
-}
-__name(fromBar, "fromBar");
-function barKey(pat, bar2) {
-  let haps;
-  try {
-    haps = pat.queryArc(bar2, bar2 + 1);
-  } catch {
-    return null;
-  }
-  return haps.filter((h) => (h.hasOnset?.() ?? false) && h.whole).map((h) => `${JSON.stringify(h.value)}|${fromBar(h.whole.begin, bar2)}|${fromBar(h.whole.end, bar2)}`).sort().join(" ");
-}
-__name(barKey, "barKey");
-function reify(mini$1) {
-  try {
-    return mini(mini$1);
-  } catch {
-    return null;
-  }
-}
-__name(reify, "reify");
-var CHANGES_PER_CYCLE = "this pattern plays differently from one cycle to the next, and repeating it as bars would change what it plays";
-function oldBars(oldMini, bars) {
-  const before = reify(oldMini);
-  if (before === null) return { reason: "Strudel can't read the pattern" };
-  const old = [];
-  for (let b = 0; b < bars; b++) {
-    const k = barKey(before, b);
-    if (k === null || barKey(before, b + bars) !== k) return { reason: CHANGES_PER_CYCLE };
-    old.push(k);
-  }
-  return old;
-}
-__name(oldBars, "oldBars");
-function playsAsIntended(old, newMini, newBars, expect) {
-  const after = reify(newMini);
-  if (after === null) return "Strudel can't read the result";
-  for (let b = 0; b < 2 * newBars; b++) {
-    const want = expect(b % newBars);
-    const got = barKey(after, b);
-    if (got === null) return "Strudel can't read the result";
-    if (got !== (want === null ? "" : old[want])) return CHANGES_PER_CYCLE;
-  }
-  return null;
-}
-__name(playsAsIntended, "playsAsIntended");
-function shortestRun(old) {
-  for (let p = 1; p < old.length; p++) {
-    if (old.every((k, i) => i < p || k === old[i - p])) return p;
-  }
-  return old.length;
-}
-__name(shortestRun, "shortestRun");
-var WHICH_BAR = "its text can't be split into one entry per bar";
-function duplicateBar(mini, bars) {
-  const old = oldBars(mini, bars);
-  if (!Array.isArray(old)) return { ok: false, reason: old.reason };
-  const inner = unwrapAlternation2(mini);
-  if (inner === null && bars !== 1) return { ok: false, reason: CHANGES_PER_CYCLE };
-  const entries3 = inner !== null ? splitEntries(inner) : [`[${mini.trim()}]`];
-  if (entries3 === null || entries3.length !== bars) return { ok: false, reason: WHICH_BAR };
-  const source = bars % shortestRun(old);
-  const next = `<${entriesOf(mini)} ${entries3[source]}>`;
-  const why = playsAsIntended(old, next, bars + 1, (b) => b < bars ? b : source);
-  return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
-}
-__name(duplicateBar, "duplicateBar");
-function appendEmptyBars(mini, bars, add) {
-  if (!Number.isInteger(add) || add < 1) return { ok: false, reason: "nothing to add" };
-  const old = oldBars(mini, bars);
-  if (!Array.isArray(old)) return { ok: false, reason: old.reason };
-  const next = `<${entriesOf(mini)}${" ~".repeat(add)}>`;
-  const why = playsAsIntended(old, next, bars + add, (b) => b < bars ? b : null);
-  return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
-}
-__name(appendEmptyBars, "appendEmptyBars");
-
-// src/visualEdit/panels/usePatternLength.ts
 var VELOCITY_STRING = "its velocities are written per column, and the velocity lane can't follow a longer pattern yet";
 var GRID_CANT_SHOW = "the grid couldn't show the longer pattern";
 function hasVelocityString(chunk) {
@@ -50350,772 +51114,6 @@ function emitFromGlobal(err, _kind) {
   });
 }
 __name(emitFromGlobal, "emitFromGlobal");
-var COMBINATORS = /* @__PURE__ */ new Set(["arrange", "cat", "slowcat"]);
-function parseProgram(doc) {
-  try {
-    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
-  } catch {
-    return null;
-  }
-}
-__name(parseProgram, "parseProgram");
-function isCombinatorCall(node) {
-  return node && node.type === "CallExpression" && node.callee?.type === "Identifier" && COMBINATORS.has(node.callee.name);
-}
-__name(isCombinatorCall, "isCombinatorCall");
-function walk2(node, visit) {
-  if (!node || typeof node !== "object") return;
-  if (typeof node.type === "string" && typeof node.start === "number") visit(node);
-  for (const key2 of Object.keys(node)) {
-    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
-    const child = node[key2];
-    if (Array.isArray(child)) {
-      for (const c of child) walk2(c, visit);
-    } else if (child && typeof child === "object") {
-      walk2(child, visit);
-    }
-  }
-}
-__name(walk2, "walk");
-function armFromArg(mode, arg) {
-  if (mode === "arrange") {
-    if (arg.type !== "ArrayExpression" || arg.elements.length < 2) return null;
-    const weight = arg.elements[0];
-    const pat = arg.elements[1];
-    if (!weight || !pat) return null;
-    return {
-      weightRange: [weight.start, weight.end],
-      patternRange: [pat.start, pat.end],
-      armRange: [arg.start, arg.end]
-    };
-  }
-  return {
-    weightRange: null,
-    patternRange: [arg.start, arg.end],
-    armRange: [arg.start, arg.end]
-  };
-}
-__name(armFromArg, "armFromArg");
-function buildCall(doc, node) {
-  const mode = node.callee.name;
-  if (node.arguments.length === 0) return null;
-  const arms = [];
-  for (const arg of node.arguments) {
-    const arm = armFromArg(mode, arg);
-    if (!arm) return null;
-    arms.push(arm);
-  }
-  const open = doc.indexOf("(", node.callee.end);
-  if (open < 0) return null;
-  return {
-    mode,
-    callRange: [node.start, node.end],
-    calleeRange: [node.callee.start, node.callee.end],
-    argsRange: [open + 1, node.end - 1],
-    arms
-  };
-}
-__name(buildCall, "buildCall");
-function detectArrangeAt(doc, pos) {
-  const program = parseProgram(doc);
-  if (!program) return null;
-  let best = null;
-  walk2(program, (n) => {
-    if (!isCombinatorCall(n)) return;
-    if (pos < n.start || pos > n.end) return;
-    if (!best || n.start > best.start) best = n;
-  });
-  return best ? buildCall(doc, best) : null;
-}
-__name(detectArrangeAt, "detectArrangeAt");
-function detectAllArrangeCalls(doc) {
-  const program = parseProgram(doc);
-  if (!program) return [];
-  const nodes = [];
-  walk2(program, (n) => {
-    if (isCombinatorCall(n)) nodes.push(n);
-  });
-  nodes.sort((a, b) => a.start - b.start);
-  return nodes.map((n) => buildCall(doc, n)).filter((c) => c !== null);
-}
-__name(detectAllArrangeCalls, "detectAllArrangeCalls");
-function detectBarePattern(doc, pos) {
-  const program = parseProgram(doc);
-  if (!program?.body) return null;
-  for (const stmt of program.body) {
-    const exprStmt = stmt?.type === "LabeledStatement" ? stmt.body : stmt;
-    if (exprStmt?.type !== "ExpressionStatement") continue;
-    const expr = exprStmt.expression;
-    if (!expr || pos < expr.start || pos > expr.end) continue;
-    let hasCombinator = false;
-    walk2(expr, (n) => {
-      if (isCombinatorCall(n)) hasCombinator = true;
-    });
-    if (hasCombinator) return null;
-    let pat = expr;
-    while (pat?.type === "CallExpression" && pat.callee?.type === "MemberExpression" && !pat.callee.computed && pat.callee.property?.name === "viz") {
-      pat = pat.callee.object;
-    }
-    if (!pat) return null;
-    return { patternRange: [pat.start, pat.end] };
-  }
-  return null;
-}
-__name(detectBarePattern, "detectBarePattern");
-
-// src/codeView/arrange/serialize.ts
-function asWeight(n) {
-  return Math.max(1, Math.round(n));
-}
-__name(asWeight, "asWeight");
-function armText(doc, call, i) {
-  return doc.slice(call.arms[i].armRange[0], call.arms[i].armRange[1]);
-}
-__name(armText, "armText");
-function patternText(doc, call, i) {
-  return doc.slice(call.arms[i].patternRange[0], call.arms[i].patternRange[1]);
-}
-__name(patternText, "patternText");
-function setWeight(doc, call, i, weight) {
-  const w = asWeight(weight);
-  const arm = call.arms[i];
-  if (!arm) return [];
-  if (call.mode === "arrange") {
-    if (!arm.weightRange) return [];
-    return [{ range: arm.weightRange, text: String(w) }];
-  }
-  if (w === 1) return [];
-  const edits = [{ range: call.calleeRange, text: "arrange" }];
-  for (let j = 0; j < call.arms.length; j++) {
-    const aw = j === i ? w : 1;
-    const pat = call.arms[j];
-    edits.push({ range: [pat.armRange[0], pat.armRange[0]], text: `[${aw}, ` });
-    edits.push({ range: [pat.armRange[1], pat.armRange[1]], text: `]` });
-  }
-  return edits;
-}
-__name(setWeight, "setWeight");
-function reorderArm(doc, call, from, to) {
-  const n = call.arms.length;
-  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return [];
-  const order = Array.from({ length: n }, (_, k) => k);
-  order.splice(to, 0, order.splice(from, 1)[0]);
-  const text = order.map((k) => armText(doc, call, k)).join(", ");
-  return [{ range: call.argsRange, text }];
-}
-__name(reorderArm, "reorderArm");
-function insertArm(doc, call, at, armSource) {
-  const n = call.arms.length;
-  const idx = Math.max(0, Math.min(at, n));
-  if (n === 0) return [{ range: [call.argsRange[0], call.argsRange[1]], text: armSource }];
-  if (idx === n) {
-    const end = call.arms[n - 1].armRange[1];
-    return [{ range: [end, end], text: `, ${armSource}` }];
-  }
-  const start = call.arms[idx].armRange[0];
-  return [{ range: [start, start], text: `${armSource}, ` }];
-}
-__name(insertArm, "insertArm");
-function insertSilenceArm(doc, call, i) {
-  const arm = call.arms[i];
-  if (!arm) return [];
-  if (call.mode !== "arrange") {
-    return insertArm(doc, call, i + 1, "silence");
-  }
-  if (!arm.weightRange) return [];
-  const weightText = doc.slice(arm.weightRange[0], arm.weightRange[1]);
-  return insertArm(doc, call, i + 1, `[${weightText}, silence]`);
-}
-__name(insertSilenceArm, "insertSilenceArm");
-function removeArm(doc, call, i) {
-  const n = call.arms.length;
-  if (i < 0 || i >= n || n <= 1) return [];
-  if (i < n - 1) {
-    return [{ range: [call.arms[i].armRange[0], call.arms[i + 1].armRange[0]], text: "" }];
-  }
-  return [{ range: [call.arms[i - 1].armRange[1], call.arms[i].armRange[1]], text: "" }];
-}
-__name(removeArm, "removeArm");
-function silenceArm(doc, call, i) {
-  const arm = call.arms[i];
-  if (!arm) return [];
-  if (doc.slice(arm.patternRange[0], arm.patternRange[1]) === "silence") return [];
-  return [{ range: arm.patternRange, text: "silence" }];
-}
-__name(silenceArm, "silenceArm");
-function setArmPattern(doc, call, i, source) {
-  const arm = call.arms[i];
-  if (!arm) return [];
-  const next = source.trim();
-  if (next === "") return [];
-  if (patternText(doc, call, i).trim() === next) return [];
-  return [{ range: arm.patternRange, text: next }];
-}
-__name(setArmPattern, "setArmPattern");
-function wrapBare(patternRange, leadingWeight, patternWeight) {
-  const lead = asWeight(leadingWeight);
-  const pw = asWeight(patternWeight);
-  return [
-    { range: [patternRange[0], patternRange[0]], text: `arrange([${lead}, silence], [${pw}, ` },
-    { range: [patternRange[1], patternRange[1]], text: `])` }
-  ];
-}
-__name(wrapBare, "wrapBare");
-function materializeBareDelete(doc, patternRange, barIndex, span) {
-  const total = asWeight(span);
-  const i = Math.max(0, Math.min(Math.round(barIndex), total - 1));
-  const lead = i;
-  const rest = total - i - 1;
-  if (lead === 0 && rest === 0) return [];
-  const pat = doc.slice(patternRange[0], patternRange[1]);
-  const arms = [];
-  if (lead > 0) arms.push(`[${lead}, ${pat}]`);
-  arms.push(`[1, silence]`);
-  if (rest > 0) arms.push(`[${rest}, ${pat}]`);
-  return [{ range: patternRange, text: `arrange(${arms.join(", ")})` }];
-}
-__name(materializeBareDelete, "materializeBareDelete");
-function materializeBareSplit(doc, patternRange, barIndex, span) {
-  const total = asWeight(span);
-  if (total < 2) return [];
-  const k = Math.max(1, Math.min(Math.round(barIndex), total - 1));
-  const pat = doc.slice(patternRange[0], patternRange[1]);
-  return [{ range: patternRange, text: `arrange([${k}, ${pat}], [${total - k}, ${pat}])` }];
-}
-__name(materializeBareSplit, "materializeBareSplit");
-function splitArm(doc, call, i, firstWeight) {
-  const arm = call.arms[i];
-  if (!arm || !arm.weightRange) return [];
-  const n = parseInt(doc.slice(arm.weightRange[0], arm.weightRange[1]), 10);
-  if (!Number.isFinite(n) || n < 2) return [];
-  const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
-  const n2 = n - n1;
-  const pat = doc.slice(arm.patternRange[0], arm.patternRange[1]);
-  return [{ range: arm.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
-}
-__name(splitArm, "splitArm");
-var IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-var NOT_A_NAME = "__proto__";
-function walk3(node, parent, key2, visit) {
-  if (!node || typeof node !== "object") return;
-  if (typeof node.type === "string" && typeof node.start === "number") visit(node, parent, key2);
-  for (const k of Object.keys(node)) {
-    if (k === "type" || k === "start" || k === "end") continue;
-    const child = node[k];
-    if (Array.isArray(child)) {
-      for (const c of child) walk3(c, node, k, visit);
-    } else if (child && typeof child === "object") {
-      walk3(child, node, k, visit);
-    }
-  }
-}
-__name(walk3, "walk");
-function parseProgram2(doc) {
-  try {
-    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
-  } catch {
-    return null;
-  }
-}
-__name(parseProgram2, "parseProgram");
-function isNonReference(node, parent, key2) {
-  if (!parent) return false;
-  if (parent.type === "Property" && key2 === "key" && !parent.computed) return true;
-  if (parent.type === "MemberExpression" && key2 === "property" && !parent.computed) return true;
-  if (parent.type === "LabeledStatement" && key2 === "label") return true;
-  if (parent.type === "BreakStatement" || parent.type === "ContinueStatement") return true;
-  if ((parent.type === "MethodDefinition" || parent.type === "PropertyDefinition") && key2 === "key" && !parent.computed) {
-    return true;
-  }
-  return false;
-}
-__name(isNonReference, "isNonReference");
-function isBindingIntroduction(parent, key2) {
-  if (!parent) return false;
-  if (parent.type === "VariableDeclarator" && key2 === "id") return true;
-  if ((parent.type === "FunctionDeclaration" || parent.type === "FunctionExpression" || parent.type === "ClassDeclaration") && key2 === "id") {
-    return true;
-  }
-  if (key2 === "params") return true;
-  if (parent.type === "ArrowFunctionExpression" && key2 === "params") return true;
-  return false;
-}
-__name(isBindingIntroduction, "isBindingIntroduction");
-function armIdentifier(doc, call, i) {
-  const arm = call.arms[i];
-  if (!arm) return null;
-  const text = doc.slice(arm.patternRange[0], arm.patternRange[1]).trim();
-  return IDENTIFIER.test(text) ? text : null;
-}
-__name(armIdentifier, "armIdentifier");
-function countSectionArms(doc, call, i) {
-  const name = armIdentifier(doc, call, i);
-  if (name == null) return 0;
-  if (analyze(doc, name, null) == null) return 0;
-  return call.arms.filter((_, k) => armIdentifier(doc, call, k) === name).length;
-}
-__name(countSectionArms, "countSectionArms");
-function renameSection(doc, call, i, newName) {
-  if (!IDENTIFIER.test(newName) || newName === NOT_A_NAME) return [];
-  const oldName = armIdentifier(doc, call, i);
-  if (oldName == null || oldName === newName) return [];
-  const references = analyze(doc, oldName, newName);
-  if (references == null) return [];
-  return references.map((r) => ({
-    range: r.range,
-    // `{verse}` keeps its key and moves only its value → `{verse: intro}`.
-    text: r.shorthand ? `${oldName}: ${newName}` : newName
-  }));
-}
-__name(renameSection, "renameSection");
-function analyze(doc, oldName, newName) {
-  const program = parseProgram2(doc);
-  if (!program) return null;
-  const references = [];
-  let declarations = 0;
-  let introductions = 0;
-  let newNameSeen = false;
-  walk3(program, null, null, (node, parent, key2) => {
-    if (node.type !== "Identifier") return;
-    if (newName != null && node.name === newName) {
-      newNameSeen = true;
-      return;
-    }
-    if (node.name !== oldName) return;
-    if (isNonReference(node, parent, key2)) return;
-    const shorthand = parent?.type === "Property" && parent.shorthand === true;
-    if (isBindingIntroduction(parent, key2)) {
-      introductions++;
-      const isTopLevelVar = parent.type === "VariableDeclarator" && program.body.some(
-        (st) => st.type === "VariableDeclaration" && st.declarations.some((d) => d === parent)
-      );
-      const isTopLevelFn = (parent.type === "FunctionDeclaration" || parent.type === "ClassDeclaration") && program.body.includes(parent);
-      if (isTopLevelVar || isTopLevelFn) declarations++;
-    }
-    references.push({ range: [node.start, node.end], shorthand });
-  });
-  if (newNameSeen) return null;
-  if (declarations !== 1) return null;
-  if (introductions !== declarations) return null;
-  if (references.length === 0) return null;
-  return references;
-}
-__name(analyze, "analyze");
-function parseProgram3(doc) {
-  try {
-    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
-  } catch {
-    return null;
-  }
-}
-__name(parseProgram3, "parseProgram");
-function isArrangeable(init) {
-  if (!init) return false;
-  if (init.type === "Literal" && typeof init.value === "number") return false;
-  if (init.type === "FunctionExpression" || init.type === "ArrowFunctionExpression") return false;
-  return true;
-}
-__name(isArrangeable, "isArrangeable");
-function listSectionParts(doc, call) {
-  const program = parseProgram3(doc);
-  if (!program) return [];
-  const [callStart, callEnd] = call.callRange;
-  const names = [];
-  for (const stmt of program.body ?? []) {
-    if (stmt.type !== "VariableDeclaration") continue;
-    for (const decl of stmt.declarations ?? []) {
-      if (decl.id?.type !== "Identifier") continue;
-      if (!isArrangeable(decl.init)) continue;
-      if (decl.start <= callStart && decl.end >= callEnd) continue;
-      if (decl.start > callStart) continue;
-      if (!names.includes(decl.id.name)) names.push(decl.id.name);
-    }
-  }
-  return names;
-}
-__name(listSectionParts, "listSectionParts");
-var PICK_METHODS2 = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
-function parseProgram4(doc) {
-  try {
-    return parse(doc, { ecmaVersion: "latest", allowAwaitOutsideFunction: true });
-  } catch {
-    return null;
-  }
-}
-__name(parseProgram4, "parseProgram");
-function isPickCall(node) {
-  return node && node.type === "CallExpression" && node.callee?.type === "MemberExpression" && node.callee.property?.type === "Identifier" && PICK_METHODS2.has(node.callee.property.name) && node.callee.object?.type === "Literal" && typeof node.callee.object.value === "string";
-}
-__name(isPickCall, "isPickCall");
-function walk4(node, visit) {
-  if (!node || typeof node !== "object") return;
-  if (typeof node.type === "string" && typeof node.start === "number") visit(node);
-  for (const key2 of Object.keys(node)) {
-    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
-    const child = node[key2];
-    if (Array.isArray(child)) for (const c of child) walk4(c, visit);
-    else if (child && typeof child === "object") walk4(child, visit);
-  }
-}
-__name(walk4, "walk");
-function scanControlArms(raw, litStart) {
-  const open = raw.indexOf("<");
-  if (open < 0) return null;
-  let depth = 0;
-  let close = -1;
-  for (let i2 = open; i2 < raw.length; i2++) {
-    if (raw[i2] === "<") depth++;
-    else if (raw[i2] === ">") {
-      depth--;
-      if (depth === 0) {
-        close = i2;
-        break;
-      }
-    }
-  }
-  if (close < 0) return null;
-  const inner = raw.slice(open + 1, close);
-  const innerBase = litStart + open + 1;
-  const arms = [];
-  let i = 0;
-  const n = inner.length;
-  while (i < n) {
-    while (i < n && /\s/.test(inner[i])) i++;
-    if (i >= n) break;
-    const armStart = i;
-    let d = 0;
-    let atRel = -1;
-    while (i < n) {
-      const c = inner[i];
-      if (c === "[" || c === "<" || c === "{" || c === "(") d++;
-      else if (c === "]" || c === ">" || c === "}" || c === ")") d--;
-      else if (d === 0 && c === "@") {
-        atRel = i;
-        break;
-      } else if (d === 0 && /\s/.test(c)) break;
-      i++;
-    }
-    const headEnd = atRel >= 0 ? atRel : i;
-    let weightRange = null;
-    let weight = 1;
-    if (atRel >= 0) {
-      i = atRel + 1;
-      const digitsStart = i;
-      while (i < n && /[0-9.]/.test(inner[i])) i++;
-      if (i > digitsStart) {
-        weightRange = [innerBase + digitsStart, innerBase + i];
-        weight = parseFloat(inner.slice(digitsStart, i)) || 1;
-      }
-      let dd = 0;
-      while (i < n) {
-        const c = inner[i];
-        if (c === "[" || c === "<" || c === "{" || c === "(") dd++;
-        else if (c === "]" || c === ">" || c === "}" || c === ")") dd--;
-        else if (dd === 0 && /\s/.test(c)) break;
-        i++;
-      }
-    }
-    arms.push({
-      armRange: [innerBase + armStart, innerBase + i],
-      headRange: [innerBase + armStart, innerBase + headEnd],
-      weightRange,
-      weight
-    });
-  }
-  if (arms.length === 0) return null;
-  return { arms, innerRange: [innerBase, innerBase + inner.length] };
-}
-__name(scanControlArms, "scanControlArms");
-function collectSectionEntries(node) {
-  const arg = node.arguments?.[0];
-  if (!arg || arg.type !== "ObjectExpression") return [];
-  const entries3 = [];
-  for (const prop of arg.properties ?? []) {
-    if (prop.type !== "Property" || prop.kind !== "init" || prop.computed) continue;
-    const key2 = prop.key;
-    let name = null;
-    if (key2?.type === "Identifier") name = key2.name;
-    else if (key2?.type === "Literal" && typeof key2.value === "string") name = key2.value;
-    else if (key2?.type === "Literal" && typeof key2.value === "number") name = String(key2.value);
-    if (name == null) continue;
-    entries3.push({
-      key: name,
-      keyRange: [key2.start, key2.end],
-      shorthand: prop.shorthand === true
-    });
-  }
-  return entries3;
-}
-__name(collectSectionEntries, "collectSectionEntries");
-function buildControl(doc, node) {
-  const lit = node.callee.object;
-  const raw = doc.slice(lit.start, lit.end);
-  const scanned = scanControlArms(raw, lit.start);
-  if (!scanned) return null;
-  return {
-    method: node.callee.property.name,
-    callRange: [node.start, node.end],
-    stringRange: [lit.start, lit.end],
-    innerRange: scanned.innerRange,
-    arms: scanned.arms,
-    entries: collectSectionEntries(node)
-  };
-}
-__name(buildControl, "buildControl");
-function detectPickControlAt(doc, pos) {
-  const program = parseProgram4(doc);
-  if (!program) return null;
-  let best = null;
-  walk4(program, (n) => {
-    if (!isPickCall(n)) return;
-    if (pos < n.start || pos > n.end) return;
-    if (!best || n.start > best.start) best = n;
-  });
-  return best ? buildControl(doc, best) : null;
-}
-__name(detectPickControlAt, "detectPickControlAt");
-function detectAllPickControls(doc) {
-  const program = parseProgram4(doc);
-  if (!program) return [];
-  const nodes = [];
-  walk4(program, (n) => {
-    if (isPickCall(n)) nodes.push(n);
-  });
-  nodes.sort((a, b) => a.start - b.start);
-  return nodes.map((n) => buildControl(doc, n)).filter((c) => c !== null);
-}
-__name(detectAllPickControls, "detectAllPickControls");
-
-// src/codeView/pickControl/serialize.ts
-function asWeight2(n) {
-  return Math.max(1, Math.round(n));
-}
-__name(asWeight2, "asWeight");
-function armText2(doc, control, i) {
-  return doc.slice(control.arms[i].armRange[0], control.arms[i].armRange[1]);
-}
-__name(armText2, "armText");
-function headText(doc, control, i) {
-  return doc.slice(control.arms[i].headRange[0], control.arms[i].headRange[1]);
-}
-__name(headText, "headText");
-function setWeight2(doc, control, i, weight) {
-  const w = asWeight2(weight);
-  const arm = control.arms[i];
-  if (!arm) return [];
-  if (arm.weightRange) return [{ range: arm.weightRange, text: String(w) }];
-  if (w === 1) return [];
-  return [{ range: [arm.headRange[1], arm.headRange[1]], text: `@${w}` }];
-}
-__name(setWeight2, "setWeight");
-function splitArm2(doc, control, i, firstWeight) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  const n = asWeight2(arm.weight);
-  if (n < 2) return [];
-  const n1 = Math.max(1, Math.min(Math.round(firstWeight), n - 1));
-  const n2 = n - n1;
-  const head = headText(doc, control, i);
-  return [{ range: arm.armRange, text: `${head}@${n1} ${head}@${n2}` }];
-}
-__name(splitArm2, "splitArm");
-function silenceArm2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  if (headText(doc, control, i) === "~") return [];
-  return [{ range: arm.headRange, text: "~" }];
-}
-__name(silenceArm2, "silenceArm");
-var SELECTOR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-function setArmHead(doc, control, i, key2) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  const next = key2.trim();
-  if (!SELECTOR_NAME.test(next)) return [];
-  if (!control.entries.some((e) => e.key === next)) return [];
-  if (headText(doc, control, i) === next) return [];
-  return [{ range: arm.headRange, text: next }];
-}
-__name(setArmHead, "setArmHead");
-function listSectionParts2(control) {
-  const names = [];
-  for (const entry of control.entries) {
-    if (!SELECTOR_NAME.test(entry.key)) continue;
-    if (!names.includes(entry.key)) names.push(entry.key);
-  }
-  return names;
-}
-__name(listSectionParts2, "listSectionParts");
-function insertSilenceArm2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  const armSource = arm.weightRange ? `~@${doc.slice(arm.weightRange[0], arm.weightRange[1])}` : "~";
-  return insertArm2(doc, control, i + 1, armSource);
-}
-__name(insertSilenceArm2, "insertSilenceArm");
-function removeArm2(doc, control, i) {
-  const n = control.arms.length;
-  if (i < 0 || i >= n || n <= 1) return [];
-  if (i < n - 1) {
-    return [{ range: [control.arms[i].armRange[0], control.arms[i + 1].armRange[0]], text: "" }];
-  }
-  return [{ range: [control.arms[i - 1].armRange[1], control.arms[i].armRange[1]], text: "" }];
-}
-__name(removeArm2, "removeArm");
-function reorderArm2(doc, control, from, to) {
-  const n = control.arms.length;
-  if (from < 0 || from >= n || to < 0 || to >= n || from === to) return [];
-  const order = Array.from({ length: n }, (_, k) => k);
-  order.splice(to, 0, order.splice(from, 1)[0]);
-  const text = order.map((k) => armText2(doc, control, k)).join(" ");
-  return [{ range: control.innerRange, text }];
-}
-__name(reorderArm2, "reorderArm");
-function insertArm2(doc, control, at, armSource) {
-  const n = control.arms.length;
-  const idx = Math.max(0, Math.min(at, n));
-  if (n === 0) return [{ range: control.innerRange, text: armSource }];
-  if (idx === n) {
-    const end = control.arms[n - 1].armRange[1];
-    return [{ range: [end, end], text: ` ${armSource}` }];
-  }
-  const start = control.arms[idx].armRange[0];
-  return [{ range: [start, start], text: `${armSource} ` }];
-}
-__name(insertArm2, "insertArm");
-function duplicateArm(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  return insertArm2(doc, control, i + 1, armText2(doc, control, i));
-}
-__name(duplicateArm, "duplicateArm");
-var SECTION_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-var NOT_A_KEY = "__proto__";
-function escapeRe(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-__name(escapeRe, "escapeRe");
-function everyOccurrenceIsAnArmHead(doc, control, name) {
-  const [from, to] = control.innerRange;
-  const inner = doc.slice(from, to);
-  const re = new RegExp(`(^|[^A-Za-z0-9_$])(${escapeRe(name)})(?![A-Za-z0-9_$])`, "g");
-  let m;
-  while ((m = re.exec(inner)) !== null) {
-    const at = from + m.index + m[1].length;
-    const covered = control.arms.some(
-      (a) => a.headRange[0] === at && a.headRange[1] === at + name.length
-    );
-    if (!covered) return false;
-    re.lastIndex = m.index + m[1].length + name.length;
-  }
-  return true;
-}
-__name(everyOccurrenceIsAnArmHead, "everyOccurrenceIsAnArmHead");
-function countSectionArms2(doc, control, i) {
-  const arm = control.arms[i];
-  if (!arm) return 0;
-  const name = headText(doc, control, i);
-  if (control.entries.filter((e) => e.key === name).length !== 1) return 0;
-  if (!everyOccurrenceIsAnArmHead(doc, control, name)) return 0;
-  return control.arms.filter((_, k) => headText(doc, control, k) === name).length;
-}
-__name(countSectionArms2, "countSectionArms");
-function renameSection2(doc, control, i, newName) {
-  const arm = control.arms[i];
-  if (!arm) return [];
-  if (!SECTION_NAME.test(newName) || newName === NOT_A_KEY) return [];
-  const oldName = headText(doc, control, i);
-  if (newName === oldName) return [];
-  const entry = control.entries.find((e) => e.key === oldName);
-  if (!entry) return [];
-  if (control.entries.filter((e) => e.key === oldName).length !== 1) return [];
-  if (control.entries.some((e) => e.key === newName)) return [];
-  if (!everyOccurrenceIsAnArmHead(doc, control, oldName)) return [];
-  const keyText = entry.shorthand ? `${newName}: ${oldName}` : quoteLike(doc.slice(entry.keyRange[0], entry.keyRange[1]), newName);
-  const edits = [{ range: entry.keyRange, text: keyText }];
-  for (const a of control.arms) {
-    if (doc.slice(a.headRange[0], a.headRange[1]) === oldName) {
-      edits.push({ range: a.headRange, text: newName });
-    }
-  }
-  return edits;
-}
-__name(renameSection2, "renameSection");
-function quoteLike(oldToken, name) {
-  const q = oldToken[0];
-  return q === '"' || q === "'" ? `${q}${name}${q}` : name;
-}
-__name(quoteLike, "quoteLike");
-
-// src/codeView/notation/resize.ts
-var restructured = /* @__PURE__ */ __name(({ source: _drop, ...rest }) => rest, "restructured");
-function resizeGrid(model, nextSteps, mode) {
-  if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
-  if (mode === "pad" || model.steps === 0) {
-    return ifGridSpellable(model, {
-      ...restructured(model),
-      steps: nextSteps,
-      lanes: model.lanes.map((l) => ({
-        ...l,
-        cells: clampLane(padCells(l.cells, nextSteps), nextSteps)
-      }))
-    });
-  }
-  const from = model.steps;
-  const factor = nextSteps / from;
-  return ifGridSpellable(model, {
-    ...restructured(model),
-    steps: nextSteps,
-    lanes: model.lanes.map((l) => {
-      const cells = Array.from({ length: nextSteps }, (_, j) => {
-        if (nextSteps >= from) {
-          if (j * from % nextSteps !== 0) return false;
-          return scaleCell(l.cells[j * from / nextSteps] ?? false, factor);
-        }
-        const lo = Math.ceil(j * from / nextSteps);
-        const hi = Math.ceil((j + 1) * from / nextSteps);
-        const hits = l.cells.slice(lo, hi).filter(isCellOn);
-        return hits.length === 0 ? false : cellOn(Math.min(...hits.map((h) => h.duration)) * factor);
-      });
-      return { ...l, cells: clampLane(cells, nextSteps) };
-    })
-  });
-}
-__name(resizeGrid, "resizeGrid");
-function resizeRoll(model, nextSteps, mode) {
-  if (nextSteps === model.steps || (model.bars ?? 1) > 1) return model;
-  if (mode === "pad" || model.steps === 0) {
-    return ifRollSpellable(model, {
-      ...model,
-      steps: nextSteps,
-      notes: model.notes.filter((n) => n.start < nextSteps).map((n) => ({ ...n, duration: Math.min(n.duration, nextSteps - n.start) }))
-    });
-  }
-  const factor = nextSteps / model.steps;
-  const scaled2 = model.notes.map((n) => {
-    const start = Math.floor(n.start * factor);
-    const end = Math.max(start + 1, Math.round((n.start + n.duration) * factor));
-    return { ...n, start, duration: Math.min(end, nextSteps) - start };
-  }).filter((n) => n.start < nextSteps && n.duration >= 1);
-  const seen = /* @__PURE__ */ new Set();
-  return ifRollSpellable(model, {
-    ...model,
-    steps: nextSteps,
-    notes: scaled2.filter((n) => {
-      const key2 = `${n.pitch}@${n.start}`;
-      if (seen.has(key2)) return false;
-      seen.add(key2);
-      return true;
-    })
-  });
-}
-__name(resizeRoll, "resizeRoll");
-function padCells(cells, steps) {
-  if (cells.length === steps) return [...cells];
-  if (cells.length > steps) return cells.slice(0, steps);
-  return [...cells, ...new Array(steps - cells.length).fill(false)];
-}
-__name(padCells, "padCells");
 
 // src/visualEdit/regionTrim.ts
 var REGION_DEFAULT = { begin: 0, end: 1 };

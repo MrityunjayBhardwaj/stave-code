@@ -11,10 +11,10 @@
  * Surgical & conservative (V-mixer-1, P194): only the targeted literal changes;
  * a signal/expression value disables the control rather than corrupting it.
  */
-import type { ChunkInfo } from '../../codeView/chunkDetect'
-import { formatNumber } from '../../codeView/writeback'
+import type { ChunkInfo } from '../../codeView'
+import { formatNumber } from '../../codeView'
 import { readGainState, scaleManagedGain } from './gain'
-import { splitMuteMarker } from '../../codeView/ir/trackId'
+import { splitMuteMarker } from '../../codeView'
 
 /** a single surgical edit: replace `range` with `text` (insert = zero-width range). */
 export interface StripEdit {

@@ -18,10 +18,10 @@
  */
 import * as React from 'react'
 
-import { parsePianoRoll, applyRollGain } from '../../codeView/notation/parse'
-import { serializePianoRoll, serializeRollGain } from '../../codeView/notation/serialize'
-import type { PianoRollModel, RollNote, ColumnOverlap } from '../../codeView/notation/model'
-import { drawnLayout } from '../../codeView/notation/perBar'
+import { parsePianoRoll, applyRollGain } from '../../codeView'
+import { serializePianoRoll, serializeRollGain } from '../../codeView'
+import type { PianoRollModel, RollNote, ColumnOverlap } from '../../codeView'
+import { drawnLayout } from '../../codeView'
 import {
   columnCount,
   columnOverlap,
@@ -29,8 +29,8 @@ import {
   rollContentRange,
   sequentialColumnGroups,
   tailColumn,
-} from '../../codeView/notation/model'
-import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../../codeView/notation/pitch'
+} from '../../codeView'
+import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../../codeView'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
 import { opensPianoRoll } from './surfaceRoute'
@@ -46,7 +46,7 @@ import {
   resizableNotes,
   resizeNote,
   viewPlacesNotes,
-} from '../../codeView/notation/place'
+} from '../../codeView'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
@@ -55,8 +55,8 @@ import {
   quantizePianoRollTo,
   freeZoneScale,
   collapsePianoRollToDocument,
-} from '../../codeView/notation/resolution'
-import { UNREFINED, documentSteps, type ViewScale } from '../../codeView/notation/viewResolution'
+} from '../../codeView'
+import { UNREFINED, documentSteps, type ViewScale } from '../../codeView'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'

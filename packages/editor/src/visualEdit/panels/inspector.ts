@@ -17,7 +17,7 @@
  * HERE so the grid drag writes the SAME `.gain` transform everywhere — one path,
  * no dual-representation drift (PV129).
  */
-import type { PianoRollModel, StepGridModel } from '../../codeView/notation/model'
+import type { PianoRollModel, StepGridModel } from '../../codeView'
 
 /** The cell a grid has selected, keyed by stable musical identity. */
 export type SelectedNote =

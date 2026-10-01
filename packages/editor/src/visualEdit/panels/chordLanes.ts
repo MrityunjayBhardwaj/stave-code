@@ -60,7 +60,7 @@
  */
 import { get as getChord } from '@tonaljs/chord'
 import { isKnownDrumVoice } from './drumVoices'
-import { pitchToMidi } from '../../codeView/notation/pitch'
+import { pitchToMidi } from '../../codeView'
 
 /**
  * Is one lane token a chord symbol?

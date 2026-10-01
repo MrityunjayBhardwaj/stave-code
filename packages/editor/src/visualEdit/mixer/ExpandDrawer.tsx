@@ -19,8 +19,8 @@
  */
 import * as React from 'react'
 
-import type { ChunkInfo } from '../../codeView/chunkDetect'
-import type { Writeback } from '../../codeView/writeback'
+import type { ChunkInfo } from '../../codeView'
+import type { Writeback } from '../../codeView'
 import { MixerBody } from '../panels/MixerBody'
 
 interface ExpandDrawerProps {
