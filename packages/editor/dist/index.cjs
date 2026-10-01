@@ -11961,6 +11961,69 @@ function planVizAssignment(doc, offset, name) {
 }
 __name(planVizAssignment, "planVizAssignment");
 
+// src/codeView/automation/captionEdit.ts
+function rateEditable(a) {
+  if (a.lanePeriodCycles === null) return false;
+  if (a.spans.rate !== null) return true;
+  return a.periodCycles === 1 && a.spans.chainEnd !== null;
+}
+__name(rateEditable, "rateEditable");
+function captionEdit(a, field, nextText) {
+  if (field === "param") return null;
+  if (field === "rate") return rateEdit(a, nextText);
+  if (!a.boundsAsWritten) return null;
+  const raw = nextText.trim();
+  if (raw.length === 0) return null;
+  const next = Number(raw);
+  if (!Number.isFinite(next)) return null;
+  const lo = field === "lo" ? next : a.lo;
+  const hi = field === "hi" ? next : a.hi;
+  if (lo === a.lo && hi === a.hi) return null;
+  if (hi === lo) return null;
+  if (a.hi !== a.lo && hi > lo !== a.hi > a.lo) return null;
+  const call = `.range(${String(lo)},${String(hi)})`;
+  const span = a.spans.range;
+  if (span) return { range: [span.start, span.end], text: call };
+  const at = a.spans.chainEnd;
+  if (at === null) return null;
+  return { range: [at, at], text: call };
+}
+__name(captionEdit, "captionEdit");
+function shapeOptions(a) {
+  return a.spans.shape === null ? [] : [...shapeAlternatives(a.kind), ...crossClassShapes(a.kind)];
+}
+__name(shapeOptions, "shapeOptions");
+function shapeEdit(a, next, source) {
+  const span = a.spans.shape;
+  if (span === null) return null;
+  if (!shapeOptions(a).some((k) => k === next)) return null;
+  if (source.slice(span.start, span.end) !== a.kind) return null;
+  return { range: [span.start, span.end], text: next };
+}
+__name(shapeEdit, "shapeEdit");
+var RATE_DIGITS = 6;
+function rateEdit(a, nextText) {
+  const shown = a.lanePeriodCycles;
+  if (shown === null || !rateEditable(a)) return null;
+  const raw = nextText.trim();
+  if (raw.length === 0) return null;
+  const bars = Number(raw);
+  if (!Number.isFinite(bars) || bars <= 0 || bars === shown) return null;
+  const scale = shown / a.periodCycles;
+  const own = bars / scale;
+  const speedUp = own < 1 && Number.isInteger(1 / own);
+  const n = speedUp ? 1 / own : own;
+  if (Number(n.toPrecision(RATE_DIGITS)) !== n) return null;
+  if ((speedUp ? 1 / n : n) * scale !== bars) return null;
+  const call = speedUp ? `.fast(${String(n)})` : `.slow(${String(n)})`;
+  const span = a.spans.rate;
+  if (span) return { range: [span.start, span.end], text: call };
+  const at = a.spans.chainEnd;
+  if (at === null) return null;
+  return { range: [at, at], text: call };
+}
+__name(rateEdit, "rateEdit");
+
 // src/codeView/notation/place.ts
 function viewPlacesNotes(model) {
   let asked = 0;
@@ -51607,6 +51670,7 @@ exports.bundledPresetId = bundledPresetId;
 exports.canOpenAudioFrame = canOpenAudioFrame;
 exports.canRedo = canRedo;
 exports.canUndo = canUndo;
+exports.captionEdit = captionEdit;
 exports.captureSnapshot = captureSnapshot;
 exports.chunkSurface = chunkSurface;
 exports.classifyChunk = classifyChunk;
@@ -51867,6 +51931,7 @@ exports.pruneZoneOverrides = pruneZoneOverrides;
 exports.publishIRSnapshot = publishIRSnapshot;
 exports.purgeLegacyMasterGain = purgeLegacyMasterGain;
 exports.putAsset = putAsset;
+exports.rateEditable = rateEditable;
 exports.readCurrentCycle = readCurrentCycle;
 exports.readMasterGain = readMasterGain;
 exports.readMasterMute = readMasterMute;
@@ -51972,6 +52037,8 @@ exports.setZoneCropOverride = setZoneCropOverride;
 exports.setZoneHeightOverride = setZoneHeightOverride;
 exports.sha256Hex = sha256Hex;
 exports.shapeAlternatives = shapeAlternatives;
+exports.shapeEdit = shapeEdit;
+exports.shapeOptions = shapeOptions;
 exports.shellStateKeyFor = shellStateKeyFor;
 exports.signalAutomations = signalAutomations;
 exports.signalCarryingParamKeys = signalCarryingParamKeys;

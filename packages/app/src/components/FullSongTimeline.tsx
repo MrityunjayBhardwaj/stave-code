@@ -30,10 +30,7 @@ import type { SongAnalysis, PatternIR, HapStream, IREvent, OffsetEdit, SampleRef
 import {
   captionRows,
   captionHit,
-  captionEdit,
-  shapeEdit,
   shapeMenuOptions,
-  shapeOptions,
   AUTOMATION_LABEL_FONT,
   AUTOMATION_MIN_BAND_H,
   AUTOMATION_PAD_Y,
@@ -103,7 +100,7 @@ import {
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
-import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf, shapeAlternatives, crossClassShapes } from '@stave/editor'
+import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf, shapeAlternatives, crossClassShapes, captionEdit, shapeEdit, shapeOptions, rateEditable } from '@stave/editor'
 import type { FixedParameter, TrackDisplay } from '@stave/editor'
 import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepTravel, stepY, travelledPx, withFineDrag, withStepValue, type StepBand, type StepHit, type StepTravel } from './musicalTimeline/steppedLane'
 import { stepCountOptions, type StepCountGroup } from './musicalTimeline/stepCountMenu'
@@ -1894,7 +1891,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const box = layoutRef.current.boxes.find((b) => b.laneKey === laneKey)
       const lane = sceneRef.current.lanes.find((l) => l.laneKey === laneKey)
       if (!box || !lane) return null
-      const rows = captionRows(lane.automations.map((e) => e.automation), box.top, box.height, box.expanded)
+      const rows = captionRows(lane.automations.map((e) => e.automation), box.top, box.height, box.expanded, rateEditable)
       return captionHit(rows, clientX - rect.left, contentY, measureCaption)
     },
     [onEditAutomation],
@@ -1956,7 +1953,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
     (clientX: number, clientY: number): CaptionHit | null => {
       const hit = captionAt(clientX, clientY)
       if (!hit || hit.field.kind !== 'param') return null
-      return shapeOptions(hit.row.automation, shapeDeps()).length > 0 ? hit : null
+      return shapeOptions(hit.row.automation).length > 0 ? hit : null
     },
     [captionAt],
   )
@@ -1972,7 +1969,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       // select cannot pick a disabled option; this holds the rule for any other path.
       const offered = shapeMenuOptions(a, shapeDeps(), open.preview, null).find((o) => o.kind === value)
       if (!offered || offered.disabled) return
-      const edit = shapeEdit(a, value, current, shapeDeps())
+      const edit = shapeEdit(a, value, current)
       if (edit) onEditAutomation(edit, `automation ${a.paramKey} shape ${value}`)
     },
     [choosingShape, onEditAutomation],
@@ -1998,7 +1995,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const hit = editingCaption
       setEditingCaption(null)
       if (!hit || !onEditAutomation) return
-      const edit = captionEdit(hit, value)
+      const edit = captionEdit(hit.row.automation, hit.field.kind, value)
       if (!edit) return
       onEditAutomation(edit, `automation ${hit.row.automation.paramKey} ${hit.field.kind}`)
     },
