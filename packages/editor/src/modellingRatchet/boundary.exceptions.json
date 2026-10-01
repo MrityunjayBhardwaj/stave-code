@@ -1,0 +1,287 @@
+{
+  "about": "The code↔view boundary (#1879). \"enforced\": every reach across the boundary that exists today, exact per file — one more is a failure, one fewer is stale. \"declared\": files that convert between code and views in ways no structural rule can see; named and counted, not enforced. Both lists only shrink: a new reach or file needs \"added\": \"#<issue> <why>\". See boundary.ts.",
+  "enforced": [
+    {
+      "file": "packages/editor/src/engine/StrudelEngine.ts",
+      "reaches": [
+        "codeView/ir/nodeIdentity#buildNodeLocIndex",
+        "codeView/ir/parseStrudel#parseStrudel"
+      ],
+      "why": "Runs our reader on every evaluate (StrudelEngine.ts:1651) and stamps irNodeId on each hap from its index (:1620, :2524, :2611, and onTrigger via HapStream.ts:135). Breakpoints, the gutter and the IR inspector read that stamp. The id is a hash of the hap's own span, so the engine can compute it without our IR.",
+      "issue": "#1877"
+    },
+    {
+      "file": "packages/app/src/components/MusicalTimeline.tsx",
+      "reaches": [
+        "door#applyOffsetEditsToFile"
+      ],
+      "why": "Applies edits to a file through applyOffsetEditsToFile with text assembled on the timeline side.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/app/src/components/StrudelEditorClient.tsx",
+      "reaches": [
+        "door#applyOffsetEditsToFile"
+      ],
+      "why": "Applies edits to a file through applyOffsetEditsToFile with text assembled on the timeline side.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/app/src/components/musicalTimeline/trackLabel.ts",
+      "reaches": [
+        "codeView/ir/trackId#splitMuteMarker"
+      ],
+      "why": "Imports the package subpath @stave/editor/trackId, a bundle entry built straight from codeView/ir/trackId.ts so the timeline can read a label without the barrel.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/engine/bareCapture.ts",
+      "reaches": [
+        "codeView/chunkDetect#detectAllChunks"
+      ],
+      "why": "The engine reads the document to decide which track a bare statement's pattern belongs to. It sits in the engine's runtime import graph (StrudelEngine → bareCapture → mixer/stripModel → mixer/gain), where importing the entry loads the mini-notation parser ahead of the engine test's mock and the suite dies at load.",
+      "issue": "#1882"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/LocalMixerStrip.tsx",
+      "reaches": [
+        "door#Writeback.replaceRange"
+      ],
+      "why": "Calls the writer directly on a Writeback handed to it, with ranges and text decided here.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/MixerStrips.tsx",
+      "reaches": [
+        "door#Writeback.replaceRange"
+      ],
+      "why": "Calls the writer directly on a Writeback handed to it, with ranges and text decided here.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/gain.ts",
+      "reaches": [
+        "codeView/writeback#formatNumber"
+      ],
+      "why": "Needs one number formatter from the writer module. It sits in the engine's runtime import graph (StrudelEngine → bareCapture → mixer/stripModel → mixer/gain), where importing the entry loads the mini-notation parser ahead of the engine test's mock and the suite dies at load.",
+      "issue": "#1882"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/soloMuteSync.ts",
+      "reaches": [
+        "door#Writeback.replaceRanges",
+        "door#new Writeback"
+      ],
+      "why": "Constructs the writer and drives it directly instead of committing an op through codeView/.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/stripModel.ts",
+      "reaches": [
+        "codeView/chunkDetect#detectAllChunks",
+        "codeView/ir/parseStrudel#parseStrudel",
+        "codeView/ir/statementHeads#NON_TRACK_HEADS",
+        "codeView/ir/trackId#isMutedLabel",
+        "codeView/ir/trackId#splitMuteMarker",
+        "codeView/ir/trackId#trackIdsFromLabels"
+      ],
+      "why": "Numbers the document's tracks for the mixer, and the engine asks it for the same ids. It sits in the engine's runtime import graph (StrudelEngine → bareCapture → mixer/stripModel → mixer/gain), where importing the entry loads the mini-notation parser ahead of the engine test's mock and the suite dies at load.",
+      "issue": "#1882"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/useMixerModel.ts",
+      "reaches": [
+        "door#Writeback.beginGesture",
+        "door#Writeback.endGesture",
+        "door#Writeback.insertAt",
+        "door#new Writeback"
+      ],
+      "why": "Constructs the writer and drives it directly instead of committing an op through codeView/.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/MixerBody.tsx",
+      "reaches": [
+        "door#Writeback.deleteRange",
+        "door#Writeback.insertAt",
+        "door#Writeback.replaceRange"
+      ],
+      "why": "Calls the writer directly on a Writeback handed to it, with ranges and text decided here.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/PatternTrackChip.tsx",
+      "reaches": [
+        "door#Writeback.replaceRange"
+      ],
+      "why": "Calls the writer directly on a Writeback handed to it, with ranges and text decided here.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/useActiveChunk.ts",
+      "reaches": [
+        "door#Writeback.beginGesture",
+        "door#Writeback.currentSource",
+        "door#Writeback.endGesture",
+        "door#new Writeback"
+      ],
+      "why": "Constructs the writer and drives it directly instead of committing an op through codeView/.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/useGridModel.ts",
+      "reaches": [
+        "door#Writeback.replaceRanges"
+      ],
+      "why": "Calls the writer directly on a Writeback handed to it, with ranges and text decided here.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/workspace/WorkspaceShell.tsx",
+      "reaches": [
+        "door#Writeback.insertAt",
+        "door#Writeback.replaceRange",
+        "door#new Writeback"
+      ],
+      "why": "Constructs the writer and drives it directly instead of committing an op through codeView/.",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/workspace/editorRegistry.ts",
+      "reaches": [
+        "codeView/writeback#Writeback",
+        "door#Writeback.replaceRanges",
+        "door#new Writeback"
+      ],
+      "why": "Defines applyOffsetEditsToFile, the app-facing write door, on top of Writeback. writeback.ts imports this file back, so it cannot import the entry without a cycle through the engine's graph. The door belongs inside codeView/.",
+      "issue": "#1880"
+    }
+  ],
+  "declared": [
+    {
+      "file": "packages/editor/src/StrudelEditor.tsx",
+      "what": "reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/gain.ts",
+      "what": "reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/masterEdit.ts",
+      "what": "builds replacement text for the document; drives parse / serialize itself (through the entry, so no rule sees it); reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/soloMuteSync.ts",
+      "what": "decides and batches edits",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/stripModel.ts",
+      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/useMixerModel.ts",
+      "what": "builds replacement text for the document",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/mixer/writeStrip.ts",
+      "what": "builds replacement text for the document; reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/MixerBody.tsx",
+      "what": "builds replacement text for the document; drives parse / serialize itself (through the entry, so no rule sees it)",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/PianoRollGrid.tsx",
+      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/SequencerGrid.tsx",
+      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/drumVoices.ts",
+      "what": "reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/surfaceRoute.ts",
+      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/useGridModel.ts",
+      "what": "builds replacement text for the document; reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/usePatternLength.ts",
+      "what": "drives parse / serialize itself (through the entry, so no rule sees it); reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/writtenSteps.ts",
+      "what": "drives parse / serialize itself (through the entry, so no rule sees it); reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/soundAssign.ts",
+      "what": "builds replacement text for the document",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/vizAssign.ts",
+      "what": "builds replacement text for the document",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/workspace/runtime/LiveCodingRuntime.ts",
+      "what": "reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/app/src/components/StrudelEditorClient.tsx",
+      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/app/src/components/irProjection.ts",
+      "what": "reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/app/src/components/musicalTimeline/automationCaption.ts",
+      "what": "builds replacement text for the document",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/app/src/components/musicalTimeline/pitch.ts",
+      "what": "reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/app/src/components/musicalTimeline/sectionLabel.ts",
+      "what": "reads syntax from user code by hand",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/app/src/components/musicalTimeline/steppedLane.ts",
+      "what": "decides and batches edits",
+      "issue": "#1880"
+    },
+    {
+      "file": "packages/app/src/components/musicalTimeline/trackLabel.ts",
+      "what": "reads syntax from user code by hand",
+      "issue": "#1880"
+    }
+  ]
+}

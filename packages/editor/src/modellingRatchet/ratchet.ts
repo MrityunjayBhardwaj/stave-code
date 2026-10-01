@@ -112,16 +112,27 @@ export type MainLedger = { kind: 'present'; ledger: Ledger } | { kind: 'absent' 
  * never read as "nothing was rewritten".
  */
 export function ledgerOnMain(file: string = LEDGER_PATH): MainLedger {
+  const text = textOnMain(file)
+  if (text === null) return { kind: 'absent' }
+  return { kind: 'present', ledger: JSON.parse(text).counts as Ledger }
+}
+
+/**
+ * A file's contents as `origin/main` has it, or null when main has no such file. Any other
+ * git failure THROWS. Shared with the code↔view boundary's exception list (#1879), which is
+ * shrink-only against main the way the ledger is append-only against it.
+ */
+export function textOnMain(file: string): string | null {
   const dir = path.dirname(file)
   const git = (...args: string[]): string =>
     execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   const top = git('rev-parse', '--show-toplevel').trim()
   const rel = path.relative(top, file)
-  if (rel.startsWith('..')) throw new Error(`ledger ${file} is outside the repository at ${top}`)
+  if (rel.startsWith('..')) throw new Error(`${file} is outside the repository at ${top}`)
   git('rev-parse', '--verify', 'origin/main') // throws when there is no origin/main to compare against
   const listed = git('ls-tree', '--full-tree', '--name-only', 'origin/main', '--', rel).trim()
-  if (listed === '') return { kind: 'absent' }
-  return { kind: 'present', ledger: JSON.parse(git('show', `origin/main:${rel}`)).counts as Ledger }
+  if (listed === '') return null
+  return git('show', `origin/main:${rel}`)
 }
 
 /**

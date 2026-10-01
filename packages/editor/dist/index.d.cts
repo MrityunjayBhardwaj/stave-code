@@ -12828,23 +12828,6 @@ interface AuditionHandle {
 declare function startAudition(sound: string, note?: string): AuditionHandle;
 
 /**
- * stripModel.ts — the channel-strip Mixer's read-model.
- *
- * A `StripModel` is one editable, addressable track projected from one detected
- * chunk: its name, source, gain, pan, sends — everything a strip shows. The
- * whole array is a PURE function of the document (`detectAllChunks` →
- * `buildStripModels`), with no React and no audio, so it unit-tests directly and
- * the strips are a trustworthy projection: close the Mixer, reopen it,
- * re-derive from text → identical (invariant V-mixer-1).
- *
- * S0 is read-only — the model carries the ranges every control will later write
- * to (S1 fader/pan, S3 mute, …), but builds nothing that needs a live engine.
- * The `captureId` join to the analyser map is a CANDIDATE here (the documented
- * numbering rule); it is verified against the engine in S2 (grounding gate GR1)
- * before any meter trusts it.
- */
-
-/**
  * Char offset of the top-level statement whose instrument (`.sound`/`.s`/
  * `.bank`) is `source`, or null when none matches. Used to LOCATE a per-hap
  * runtime error (e.g. a soundfont out-of-range note) back to its owning track's
