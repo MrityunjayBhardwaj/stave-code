@@ -1,5 +1,5 @@
 /**
- * reconcileSoloMutes — the whole solo-as-code-mutes policy (#735).
+ * reconcileSoloMutes / soloMuteEdits — the whole solo-as-code-mutes policy (#735, #1909).
  *
  * These lock the behaviours a user relies on: soloing mutes every OTHER muteable
  * track and un-mutes the soloed one; the snapshot captures the pre-solo mutes on
@@ -9,7 +9,8 @@
  */
 import { describe, it, expect } from 'vitest'
 
-import { reconcileSoloMutes, type SoloStripFacts } from '../soloMuteSync'
+import { reconcileSoloMutes, soloMuteEdits, type SoloStripFacts } from '../writeStrip'
+import { applyEdits } from '../../writeback'
 
 // d1/d2/d3 named tracks (muteable); `bare` = a bare-expression strip (not muteable).
 const base: SoloStripFacts[] = [
@@ -66,5 +67,50 @@ describe('reconcileSoloMutes', () => {
     const { targetMuted } = reconcileSoloMutes(strips, new Set(['d1']), null)
     expect(targetMuted.has('#3')).toBe(false) // can't carry `_` → left alone
     expect(targetMuted).toEqual(new Set(['d2', 'd3']))
+  })
+})
+
+// #1909 — the same policy as the edits it makes to a real document.
+describe('soloMuteEdits', () => {
+  const doc = 'd1: s("bd*4")\nd2: s("hh*8")\n_d3: s("~ sd")\ns("cp")\n'
+  const run = (d: string, solo: string[], snap: ReadonlySet<string> | null) => {
+    const r = soloMuteEdits(d, new Set(solo), snap)
+    return { ...r, text: applyEdits(d, r.edits) }
+  }
+
+  it('soloing d1 mutes the other named tracks, leaves a muted one alone, never touches the bare one', () => {
+    const r = run(doc, ['d1'], null)
+    expect(r.text).toBe('d1: s("bd*4")\n_d2: s("hh*8")\n_d3: s("~ sd")\ns("cp")\n')
+    expect(r.edits).toHaveLength(1)
+    expect([...(r.nextSnapshot ?? [])]).toEqual(['d3'])
+  })
+
+  it('soloing a muted track un-mutes it', () => {
+    const r = run(doc, ['d3'], null)
+    expect(r.text).toBe('_d1: s("bd*4")\n_d2: s("hh*8")\nd3: s("~ sd")\ns("cp")\n')
+  })
+
+  it('un-soloing restores the hand-set mutes from the snapshot, and drops it', () => {
+    const soloed = run(doc, ['d1'], null)
+    const cleared = run(soloed.text, [], soloed.nextSnapshot)
+    expect(cleared.text).toBe(doc)
+    expect(cleared.nextSnapshot).toBeNull()
+  })
+
+  it('nothing to write still carries the snapshot forward', () => {
+    const soloed = run(doc, ['d1'], null)
+    const again = run(soloed.text, ['d1'], soloed.nextSnapshot)
+    expect(again.edits).toEqual([])
+    expect(again.nextSnapshot).toBe(soloed.nextSnapshot)
+  })
+})
+
+// A config line first: a strip's place in the strip list is NOT its statement's
+// place in the document (#559). The edits must land on the strip's own statement.
+describe('soloMuteEdits with a config line first', () => {
+  it('mutes the right statements, never the config line', () => {
+    const doc = 'setcps(0.5)\nd1: s("bd*4")\nd2: s("hh*8")\n'
+    const r = soloMuteEdits(doc, new Set(['d1']), null)
+    expect(applyEdits(doc, r.edits)).toBe('setcps(0.5)\nd1: s("bd*4")\n_d2: s("hh*8")\n')
   })
 })

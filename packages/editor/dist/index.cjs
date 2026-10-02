@@ -6,7 +6,7 @@ var krillParser_js = require('@strudel/mini/krill-parser.js');
 var euclid_mjs = require('@strudel/core/euclid.mjs');
 var controls_mjs = require('@strudel/core/controls.mjs');
 var mini_mjs = require('@strudel/mini/mini.mjs');
-var React21 = require('react');
+var React22 = require('react');
 var p5 = require('p5');
 var jsxRuntime = require('react/jsx-runtime');
 var MonacoEditorRaw = require('@monaco-editor/react');
@@ -35,7 +35,7 @@ function _interopNamespace(e) {
   return Object.freeze(n);
 }
 
-var React21__namespace = /*#__PURE__*/_interopNamespace(React21);
+var React22__namespace = /*#__PURE__*/_interopNamespace(React22);
 var p5__default = /*#__PURE__*/_interopDefault(p5);
 var MonacoEditorRaw__default = /*#__PURE__*/_interopDefault(MonacoEditorRaw);
 var Y3__namespace = /*#__PURE__*/_interopNamespace(Y3);
@@ -7139,11 +7139,28 @@ function commit(writer, edit, source) {
 }
 __name(commit, "commit");
 function commitToEditor(editor, edit, source) {
-  const monaco = getMonacoNamespace();
-  if (!monaco) return "no-document";
-  return commit(new Writeback(editor, monaco), edit, source);
+  const writer = createWriter(editor);
+  if (!writer) return "no-document";
+  return commit(writer, edit, source);
 }
 __name(commitToEditor, "commitToEditor");
+function createWriter(editor) {
+  const monaco = getMonacoNamespace();
+  return monaco ? new Writeback(editor, monaco) : null;
+}
+__name(createWriter, "createWriter");
+function openGesture(writer) {
+  writer?.beginGesture();
+}
+__name(openGesture, "openGesture");
+function closeGesture(writer) {
+  writer?.endGesture();
+}
+__name(closeGesture, "closeGesture");
+function isCommitting(writer) {
+  return writer?.currentSource != null;
+}
+__name(isCommitting, "isCommitting");
 function commitToFile(fileId, edit, source, expectedDoc) {
   return applyOffsetEditsToFile(fileId, editList(edit), source, expectedDoc);
 }
@@ -7872,6 +7889,36 @@ function renameEdit(fresh, newLabel, takenNames) {
   return { range: [start, end], text: newLabel };
 }
 __name(renameEdit, "renameEdit");
+function reconcileSoloMutes(strips, newSolo, prevSnapshot) {
+  if (newSolo.size > 0) {
+    const snapshot = prevSnapshot ?? new Set(strips.filter((s) => s.muted).map((s) => s.id));
+    const targetMuted = new Set(
+      strips.filter((s) => s.muteable && !newSolo.has(s.id)).map((s) => s.id)
+    );
+    return { targetMuted, nextSnapshot: snapshot };
+  }
+  return { targetMuted: new Set(prevSnapshot ?? []), nextSnapshot: null };
+}
+__name(reconcileSoloMutes, "reconcileSoloMutes");
+function soloMuteEdits(doc, newSolo, prevSnapshot) {
+  const chunks = detectAllChunks(doc);
+  const strips = buildStripModels(chunks, doc);
+  const { targetMuted, nextSnapshot } = reconcileSoloMutes(
+    strips.map((s) => ({ id: s.id, muted: s.muted, muteable: s.muteable })),
+    newSolo,
+    prevSnapshot
+  );
+  const edits = [];
+  for (const s of strips) {
+    if (!s.muteable) continue;
+    const want = targetMuted.has(s.id);
+    if (want === s.muted) continue;
+    const e = muteEdit(chunks[s.index], want);
+    if (e) edits.push(e);
+  }
+  return { edits, nextSnapshot };
+}
+__name(soloMuteEdits, "soloMuteEdits");
 
 // src/codeView/notation/pitch.ts
 var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
@@ -24110,14 +24157,14 @@ function SplitPane({
   initialSizes,
   minSize = 100
 }) {
-  const count = React21__namespace.default.Children.count(children);
-  const childArray = React21__namespace.default.Children.toArray(children);
+  const count = React22__namespace.default.Children.count(children);
+  const childArray = React22__namespace.default.Children.toArray(children);
   const defaultSizes = initialSizes ?? Array(count).fill(100 / count);
-  const [sizes, setSizes] = React21.useState(defaultSizes);
-  const containerRef = React21.useRef(null);
-  const draggingRef = React21.useRef(null);
+  const [sizes, setSizes] = React22.useState(defaultSizes);
+  const containerRef = React22.useRef(null);
+  const draggingRef = React22.useRef(null);
   const isHorizontal = direction === "horizontal";
-  const handleMouseDown = React21.useCallback((dividerIndex, e) => {
+  const handleMouseDown = React22.useCallback((dividerIndex, e) => {
     e.preventDefault();
     draggingRef.current = dividerIndex;
     const startPos = isHorizontal ? e.clientX : e.clientY;
@@ -24156,7 +24203,7 @@ function SplitPane({
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
   }, [sizes, isHorizontal, minSize]);
-  React21__namespace.default.useEffect(() => {
+  React22__namespace.default.useEffect(() => {
     if (sizes.length !== count) {
       setSizes(Array(count).fill(100 / count));
     }
@@ -24172,7 +24219,7 @@ function SplitPane({
         height: "100%",
         overflow: "hidden"
       },
-      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React21__namespace.default.Fragment, { children: [
+      children: childArray.map((child, i) => /* @__PURE__ */ jsxRuntime.jsxs(React22__namespace.default.Fragment, { children: [
         /* @__PURE__ */ jsxRuntime.jsx(
           "div",
           {
@@ -25335,13 +25382,13 @@ __name(resetFileStore, "resetFileStore");
 
 // src/workspace/useWorkspaceFile.ts
 function useWorkspaceFile(id) {
-  const subscribe8 = React21.useCallback(
+  const subscribe8 = React22.useCallback(
     (onStoreChange) => subscribe(id, onStoreChange),
     [id]
   );
-  const getSnapshot = React21.useCallback(() => getFile(id), [id]);
-  const file = React21.useSyncExternalStore(subscribe8, getSnapshot, getSnapshot);
-  const setContent2 = React21.useCallback(
+  const getSnapshot = React22.useCallback(() => getFile(id), [id]);
+  const file = React22.useSyncExternalStore(subscribe8, getSnapshot, getSnapshot);
+  const setContent2 = React22.useCallback(
     (content) => setContent(id, content),
     [id]
   );
@@ -28886,7 +28933,7 @@ function ensureStrudelLintCodeActionProvider(monaco, languageId) {
 __name(ensureStrudelLintCodeActionProvider, "ensureStrudelLintCodeActionProvider");
 var EMPTY_META_MAP = /* @__PURE__ */ new Map();
 function useTrackMetaMap(fileId) {
-  const subscribe8 = React21.useCallback(
+  const subscribe8 = React22.useCallback(
     (onStoreChange) => {
       if (!fileId) return () => {
       };
@@ -28894,11 +28941,11 @@ function useTrackMetaMap(fileId) {
     },
     [fileId]
   );
-  const getSnapshot = React21.useCallback(() => {
+  const getSnapshot = React22.useCallback(() => {
     if (!fileId) return EMPTY_META_MAP;
     return getTrackMetaMapSnapshot(fileId);
   }, [fileId]);
-  return React21.useSyncExternalStore(subscribe8, getSnapshot, getSnapshot);
+  return React22.useSyncExternalStore(subscribe8, getSnapshot, getSnapshot);
 }
 __name(useTrackMetaMap, "useTrackMetaMap");
 
@@ -28920,11 +28967,11 @@ __name(trackBarSegments, "trackBarSegments");
 var BAR_WIDTH_PX = 3;
 function useTrackColourBars(editor, fileId) {
   const trackMeta = useTrackMetaMap(fileId);
-  const trackMetaRef = React21.useRef(trackMeta);
+  const trackMetaRef = React22.useRef(trackMeta);
   trackMetaRef.current = trackMeta;
-  const [enabled, setEnabled] = React21.useState(getTrackColourBarsEnabled);
-  React21.useEffect(() => onTrackColourBarsChange(setEnabled), []);
-  React21.useEffect(() => {
+  const [enabled, setEnabled] = React22.useState(getTrackColourBarsEnabled);
+  React22.useEffect(() => onTrackColourBarsChange(setEnabled), []);
+  React22.useEffect(() => {
     if (!editor || !enabled) return;
     const host = editor.getDomNode?.();
     if (!host) return;
@@ -30948,23 +30995,23 @@ function teardown(timeoutIds, collections) {
 }
 __name(teardown, "teardown");
 function useHighlighting(editor, hapStream) {
-  const timeoutIdsRef = React21.useRef([]);
-  const hapCollectionsRef = React21.useRef(/* @__PURE__ */ new Map());
-  const hapCounterRef = React21.useRef(0);
-  const anchorsRef = React21.useRef(/* @__PURE__ */ new Map());
-  const epochRef = React21.useRef(void 0);
-  const editsRef = React21.useRef(
+  const timeoutIdsRef = React22.useRef([]);
+  const hapCollectionsRef = React22.useRef(/* @__PURE__ */ new Map());
+  const hapCounterRef = React22.useRef(0);
+  const anchorsRef = React22.useRef(/* @__PURE__ */ new Map());
+  const epochRef = React22.useRef(void 0);
+  const editsRef = React22.useRef(
     []
   );
-  const clearAnchors = React21.useCallback(() => {
+  const clearAnchors = React22.useCallback(() => {
     for (const a of anchorsRef.current.values()) a.clear();
     anchorsRef.current.clear();
   }, []);
-  const clearAll = React21.useCallback(() => {
+  const clearAll = React22.useCallback(() => {
     teardown(timeoutIdsRef.current, hapCollectionsRef.current);
     clearAnchors();
   }, [clearAnchors]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!editor || !hapStream) return;
     ensureBaseHighlightStyle();
     epochRef.current = void 0;
@@ -31225,12 +31272,12 @@ function ensureBaseBreakpointStyle() {
 }
 __name(ensureBaseBreakpointStyle, "ensureBaseBreakpointStyle");
 function useBreakpoints(editor, store, onResume) {
-  const collectionRef = React21.useRef(null);
-  const clearAll = React21.useCallback(() => {
+  const collectionRef = React22.useRef(null);
+  const clearAll = React22.useCallback(() => {
     collectionRef.current?.clear();
     collectionRef.current = null;
   }, []);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!editor || !onResume) return;
     const action = editor.addAction({
       id: "stave.debugger.resume",
@@ -31245,7 +31292,7 @@ function useBreakpoints(editor, store, onResume) {
       action.dispose();
     };
   }, [editor, onResume]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!editor || !store) return;
     ensureBaseBreakpointStyle();
     let currentSnapshot = getIRSnapshot();
@@ -33219,30 +33266,30 @@ function EditorView({
   onCropViz
 }) {
   const { file, setContent: setContent2 } = useWorkspaceFile(fileId);
-  const containerRef = React21.useRef(null);
-  const [, forceViewTick] = React21.useState(0);
-  React21.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
+  const containerRef = React22.useRef(null);
+  const [, forceViewTick] = React22.useState(0);
+  React22.useEffect(() => subscribeToRuntimeView(() => forceViewTick((n) => n + 1)), []);
   const viewedContent = getViewedContent(fileId);
   const viewing = viewedContent !== null;
   const viewedCommit = getViewedCommit();
-  const editorRef = React21.useRef(null);
-  const monacoRef = React21.useRef(null);
-  const viewZoneHandleRef = React21.useRef(null);
-  const lastPayloadRef = React21.useRef(null);
-  const [hapStream, setHapStream] = React21.useState(null);
-  const [breakpointStore, setBreakpointStore] = React21.useState(null);
-  const [onResume, setOnResume] = React21.useState(null);
-  const [editorReady, setEditorReady] = React21.useState(false);
-  React21.useEffect(() => {
+  const editorRef = React22.useRef(null);
+  const monacoRef = React22.useRef(null);
+  const viewZoneHandleRef = React22.useRef(null);
+  const lastPayloadRef = React22.useRef(null);
+  const [hapStream, setHapStream] = React22.useState(null);
+  const [breakpointStore, setBreakpointStore] = React22.useState(null);
+  const [onResume, setOnResume] = React22.useState(null);
+  const [editorReady, setEditorReady] = React22.useState(false);
+  React22.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     const monaco = monacoRef.current;
     if (!monaco?.editor?.setTheme) return;
     monaco.editor.setTheme(monacoThemeNameFor(theme));
   }, [theme]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!fileId) return;
     const unsub = workspaceAudioBus.subscribe(
       { kind: "file", fileId },
@@ -33273,7 +33320,7 @@ function EditorView({
       viewZoneHandleRef.current = null;
     };
   }, [fileId, editorReady]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!fileId) return;
     const remount = /* @__PURE__ */ __name(() => {
       const payload = lastPayloadRef.current;
@@ -33298,12 +33345,12 @@ function EditorView({
   useHighlighting(editorRef.current, hapStream);
   useBreakpoints(editorRef.current, breakpointStore, onResume ?? void 0);
   useTrackColourBars(editorRef.current, fileId);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     return () => {
       if (editorRef.current) unregisterEditor(fileId, editorRef.current);
     };
   }, [fileId]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     if (!editor || !monaco) return;
@@ -33315,9 +33362,9 @@ function EditorView({
       clearEvalErrors(monaco, model);
     }
   }, [error]);
-  const onPlayRef = React21.useRef(onPlay);
+  const onPlayRef = React22.useRef(onPlay);
   onPlayRef.current = onPlay;
-  const onStopRef = React21.useRef(onStop);
+  const onStopRef = React22.useRef(onStop);
   onStopRef.current = onStop;
   const handleMonacoBeforeMount = /* @__PURE__ */ __name((monaco) => {
     if (monaco.editor?.defineTheme) defineStrudelMonacoTheme(monaco);
@@ -33495,7 +33542,7 @@ function EditorView({
   );
 }
 __name(EditorView, "EditorView");
-var _ErrorBoundary = class _ErrorBoundary extends React21__namespace.default.Component {
+var _ErrorBoundary = class _ErrorBoundary extends React22__namespace.default.Component {
   constructor() {
     super(...arguments);
     this.state = { error: null };
@@ -33642,34 +33689,34 @@ function PreviewView({
   paused = false
 }) {
   const { file } = useWorkspaceFile(fileId);
-  const containerRef = React21.useRef(null);
-  const [audioPayload, setAudioPayload] = React21.useState(null);
-  const [reloadTick, setReloadTick] = React21.useState(0);
-  const [, forceSourcesRerender] = React21.useState(0);
-  const catchUpNeededRef = React21.useRef(false);
-  const [liveOn, setLiveOn] = React21.useState(() => getVizLive(fileId));
-  React21.useEffect(() => {
+  const containerRef = React22.useRef(null);
+  const [audioPayload, setAudioPayload] = React22.useState(null);
+  const [reloadTick, setReloadTick] = React22.useState(0);
+  const [, forceSourcesRerender] = React22.useState(0);
+  const catchUpNeededRef = React22.useRef(false);
+  const [liveOn, setLiveOn] = React22.useState(() => getVizLive(fileId));
+  React22.useEffect(() => {
     setLiveOn(getVizLive(fileId));
     return onVizLiveChange(fileId, setLiveOn);
   }, [fileId]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!containerRef.current) return;
     applyTheme(containerRef.current, theme);
   }, [theme]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     const unsubscribe = workspaceAudioBus.subscribe(sourceRef, (payload) => {
       setAudioPayload(payload);
     });
     return unsubscribe;
   }, [sourceRef]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     const unsubscribe = workspaceAudioBus.onSourcesChanged(() => {
       forceSourcesRerender((n) => n + 1);
     });
     return unsubscribe;
   }, []);
   const effectivelyHidden = hidden && !provider.keepRunningWhenHidden;
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!file) return;
     if (provider.reload === "manual") return;
     if (!liveOn) {
@@ -33699,8 +33746,8 @@ function PreviewView({
     liveOn,
     file
   ]);
-  const prevEffectivelyHiddenRef = React21.useRef(effectivelyHidden);
-  React21.useEffect(() => {
+  const prevEffectivelyHiddenRef = React22.useRef(effectivelyHidden);
+  React22.useEffect(() => {
     const wasHidden = prevEffectivelyHiddenRef.current;
     prevEffectivelyHiddenRef.current = effectivelyHidden;
     if (wasHidden && !effectivelyHidden && catchUpNeededRef.current) {
@@ -33708,8 +33755,8 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [effectivelyHidden]);
-  const prevLiveOnRef = React21.useRef(liveOn);
-  React21.useEffect(() => {
+  const prevLiveOnRef = React22.useRef(liveOn);
+  React22.useEffect(() => {
     const wasOff = !prevLiveOnRef.current;
     prevLiveOnRef.current = liveOn;
     if (wasOff && liveOn && catchUpNeededRef.current) {
@@ -33717,7 +33764,7 @@ function PreviewView({
       setReloadTick((n) => n + 1);
     }
   }, [liveOn]);
-  const providerNode = React21__namespace.default.useMemo(() => {
+  const providerNode = React22__namespace.default.useMemo(() => {
     if (!file) return null;
     return provider.render({
       file,
@@ -33896,9 +33943,9 @@ var CHORD_MAP = {
   w: "workspace.openPreviewInWindow"
 };
 function useKeyboardCommands(opts) {
-  const optsRef = React21.useRef(opts);
+  const optsRef = React22.useRef(opts);
   optsRef.current = opts;
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     let chordPending = false;
     let chordTimer = null;
     function clearChord() {
@@ -34010,25 +34057,25 @@ function HistoryDiffOverlay({
   pickerFileIds,
   onClose
 }) {
-  const changedIds = React21__namespace.useMemo(
+  const changedIds = React22__namespace.useMemo(
     () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit2.files),
     [commit2, pickerFileIds]
   );
-  const [mode, setMode2] = React21__namespace.useState(defaultMode);
-  React21__namespace.useEffect(() => {
+  const [mode, setMode2] = React22__namespace.useState(defaultMode);
+  React22__namespace.useEffect(() => {
     setMode2(defaultMode);
   }, [defaultMode]);
-  const [fileId, setFileId] = React21__namespace.useState(
+  const [fileId, setFileId] = React22__namespace.useState(
     () => initialFileId && changedIds.includes(initialFileId) ? initialFileId : changedIds[0] ?? ""
   );
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (!changedIds.includes(fileId)) setFileId(changedIds[0] ?? "");
   }, [changedIds, fileId]);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (initialFileId && changedIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, changedIds]);
-  const diffEditorRef = React21__namespace.useRef(null);
-  const handleMount = React21__namespace.useCallback(
+  const diffEditorRef = React22__namespace.useRef(null);
+  const handleMount = React22__namespace.useCallback(
     (editor, monaco) => {
       diffEditorRef.current = editor;
       defineStrudelMonacoTheme(monaco);
@@ -34038,7 +34085,7 @@ function HistoryDiffOverlay({
     },
     []
   );
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     return () => {
       try {
         diffEditorRef.current?.setModel(null);
@@ -34163,18 +34210,18 @@ function HistoryViewOverlay({
   initialFileId,
   onClose
 }) {
-  const snapshot = React21__namespace.useMemo(() => snapshotAt(history2, commit2.id), [history2, commit2]);
-  const fileIds = React21__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
-  const [fileId, setFileId] = React21__namespace.useState(
+  const snapshot = React22__namespace.useMemo(() => snapshotAt(history2, commit2.id), [history2, commit2]);
+  const fileIds = React22__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
+  const [fileId, setFileId] = React22__namespace.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
   );
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (!fileIds.includes(fileId)) setFileId(fileIds[0] ?? "");
   }, [fileIds, fileId]);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (initialFileId && fileIds.includes(initialFileId)) setFileId(initialFileId);
   }, [initialFileId, fileIds]);
-  const handleMount = React21__namespace.useCallback(
+  const handleMount = React22__namespace.useCallback(
     (_editor, monaco) => {
       defineStrudelMonacoTheme(monaco);
       registerStrudelLanguage(monaco);
@@ -35065,7 +35112,7 @@ function writePersistedActiveTabId(value) {
 }
 __name(writePersistedActiveTabId, "writePersistedActiveTabId");
 function EmptyTimelineStub() {
-  return React21__namespace.createElement(
+  return React22__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": "musical-timeline-empty",
@@ -35083,7 +35130,7 @@ __name(EmptyTimelineStub, "EmptyTimelineStub");
 registerBottomPanelTab({
   id: "musical-timeline",
   title: "Timeline",
-  content: React21__namespace.createElement(EmptyTimelineStub)
+  content: React22__namespace.createElement(EmptyTimelineStub)
 });
 
 // src/workspace/codeUndo.ts
@@ -35106,23 +35153,29 @@ function codeUndoForFocus(el, which) {
   return true;
 }
 __name(codeUndoForFocus, "codeUndoForFocus");
-function useActiveChunk() {
-  const [editor, setEditor] = React21__namespace.useState(() => getActiveEditor());
-  const [chunk, setChunk] = React21__namespace.useState(null);
-  const writebackRef = React21__namespace.useRef(null);
-  const editorRef = React21__namespace.useRef(null);
-  const anchorRef = React21__namespace.useRef(null);
-  anchorRef.current = chunk ? chunk.statementRange[0] : null;
-  React21__namespace.useEffect(() => {
+function useActiveWriter() {
+  const [editor, setEditor] = React22__namespace.useState(() => getActiveEditor());
+  const editorRef = React22__namespace.useRef(null);
+  const writerRef = React22__namespace.useRef(null);
+  React22__namespace.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     editorRef.current = editor;
-    const monaco = getMonacoNamespace();
-    writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
+    writerRef.current = editor ? createWriter(editor) : null;
   }, [editor]);
-  React21__namespace.useEffect(() => {
+  return { editor, editorRef, writerRef };
+}
+__name(useActiveWriter, "useActiveWriter");
+
+// src/visualEdit/panels/useActiveChunk.ts
+function useActiveChunk() {
+  const { editor, editorRef, writerRef } = useActiveWriter();
+  const [chunk, setChunk] = React22__namespace.useState(null);
+  const anchorRef = React22__namespace.useRef(null);
+  anchorRef.current = chunk ? chunk.statementRange[0] : null;
+  React22__namespace.useEffect(() => {
     if (!editor) {
       setChunk(null);
       return;
@@ -35141,7 +35194,7 @@ function useActiveChunk() {
     const subs = [
       editor.onDidChangeCursorPosition?.(redetect),
       model?.onDidChangeContent?.(() => {
-        if (writebackRef.current?.currentSource != null) return;
+        if (isCommitting(writerRef.current)) return;
         redetect();
       })
     ];
@@ -35149,10 +35202,10 @@ function useActiveChunk() {
       for (const s of subs) s?.dispose?.();
     };
   }, [editor]);
-  const applyEdit = React21__namespace.useCallback(
+  const applyEdit = React22__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
-      const wb = writebackRef.current;
+      const wb = writerRef.current;
       const anchor = anchorRef.current;
       if (!ed || !wb || anchor == null) return;
       const model = ed.getModel?.();
@@ -35162,10 +35215,10 @@ function useActiveChunk() {
       mutate(fresh, wb);
       setChunk(detectChunk(model.getValue(), anchor));
     },
-    []
+    [editorRef, writerRef]
   );
-  const beginGesture = React21__namespace.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React21__namespace.useCallback(() => writebackRef.current?.endGesture(), []);
+  const beginGesture = React22__namespace.useCallback(() => openGesture(writerRef.current), [writerRef]);
+  const endGesture = React22__namespace.useCallback(() => closeGesture(writerRef.current), [writerRef]);
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
@@ -35268,7 +35321,7 @@ function VisualEditStandby({
   hint,
   icon
 }) {
-  return React21__namespace.createElement(
+  return React22__namespace.createElement(
     "div",
     {
       "data-bottom-panel-tab": `${panel}-standby`,
@@ -35287,12 +35340,12 @@ function VisualEditStandby({
         fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif'
       }
     },
-    icon ? React21__namespace.createElement("span", {
+    icon ? React22__namespace.createElement("span", {
       className: `codicon codicon-${icon}`,
       "aria-hidden": true,
       style: { fontSize: 22, opacity: 0.6 }
     }) : null,
-    React21__namespace.createElement("span", null, hint)
+    React22__namespace.createElement("span", null, hint)
   );
 }
 __name(VisualEditStandby, "VisualEditStandby");
@@ -35319,17 +35372,17 @@ var VISUAL_EDIT_TABS = [
 ];
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
-  const [model, setModel] = React21__namespace.useState(null);
-  const [read5, setRead] = React21__namespace.useState(null);
-  const modelRef = React21__namespace.useRef(null);
-  React21__namespace.useEffect(() => {
+  const [model, setModel] = React22__namespace.useState(null);
+  const [read5, setRead] = React22__namespace.useState(null);
+  const modelRef = React22__namespace.useRef(null);
+  React22__namespace.useEffect(() => {
     modelRef.current = model;
   }, [model]);
-  const optsRef = React21__namespace.useRef(opts);
+  const optsRef = React22__namespace.useRef(opts);
   optsRef.current = opts;
   const viewScale = opts.viewScale ?? UNREFINED;
-  const modelScaleRef = React21__namespace.useRef(UNREFINED);
-  React21__namespace.useEffect(() => {
+  const modelScaleRef = React22__namespace.useRef(UNREFINED);
+  React22__namespace.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
       modelRef.current = null;
@@ -35357,7 +35410,7 @@ function useGridModel(opts) {
     modelRef.current = next;
     setModel(next);
   }, [chunk, viewScale]);
-  const writeModel = React21__namespace.useCallback(
+  const writeModel = React22__namespace.useCallback(
     (next) => {
       const o = optsRef.current;
       const atDocument = o.collapseToDocument ? o.collapseToDocument(next) : null;
@@ -35372,12 +35425,12 @@ function useGridModel(opts) {
       if (spellsRefinement) o.onViewScaleConsumed?.();
       applyEdit((fresh, wb) => {
         const edits = gridWriteEdits(fresh, mini, o.serializeGain ? o.serializeGain(toWrite) : null);
-        if (edits) wb.replaceRanges(edits, o.source);
+        commit(wb, edits, o.source);
       });
     },
     [applyEdit]
   );
-  const mutate = React21__namespace.useCallback(
+  const mutate = React22__namespace.useCallback(
     (fn) => {
       const prev = modelRef.current;
       if (prev == null) return;
@@ -35387,12 +35440,11 @@ function useGridModel(opts) {
     },
     [writeModel]
   );
-  const settle = React21__namespace.useCallback((next) => writeModel(next), [writeModel]);
-  const writeMini = React21__namespace.useCallback(
+  const settle = React22__namespace.useCallback((next) => writeModel(next), [writeModel]);
+  const writeMini = React22__namespace.useCallback(
     (mini) => {
       applyEdit((fresh, wb) => {
-        const edits = gridWriteEdits(fresh, mini, null);
-        if (edits) wb.replaceRanges(edits, optsRef.current.source);
+        commit(wb, gridWriteEdits(fresh, mini, null), optsRef.current.source);
       });
     },
     [applyEdit]
@@ -35433,9 +35485,9 @@ function cycleToStep(cycle, steps, bars, cols, barSteps) {
 }
 __name(cycleToStep, "cycleToStep");
 function usePlayingStep(steps, bars, cols, barSteps) {
-  const [step, setStep] = React21__namespace.useState(null);
+  const [step, setStep] = React22__namespace.useState(null);
   const layoutKey = barSteps?.join(",") ?? "";
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     let raf = 0;
     const counts = layoutKey ? layoutKey.split(",").map(Number) : void 0;
     const tick = /* @__PURE__ */ __name(() => {
@@ -35627,7 +35679,7 @@ function subscribe3(listener) {
 }
 __name(subscribe3, "subscribe");
 function useNoteColorMode() {
-  const mode = React21__namespace.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
+  const mode = React22__namespace.useSyncExternalStore(subscribe3, () => current3, () => DEFAULT_MODE);
   return [mode, setMode];
 }
 __name(useNoteColorMode, "useNoteColorMode");
@@ -35644,20 +35696,20 @@ function subscribeNoteColorMode(listener) {
 }
 __name(subscribeNoteColorMode, "subscribeNoteColorMode");
 function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
-  const slotStateRef = React21__namespace.useRef(slotState2);
+  const slotStateRef = React22__namespace.useRef(slotState2);
   slotStateRef.current = slotState2;
-  const onScaleToRef = React21__namespace.useRef(onScaleTo);
+  const onScaleToRef = React22__namespace.useRef(onScaleTo);
   onScaleToRef.current = onScaleTo;
-  const effectRef = React21__namespace.useRef(effect);
+  const effectRef = React22__namespace.useRef(effect);
   effectRef.current = effect;
-  const stableSlotState = React21__namespace.useCallback((t) => slotStateRef.current(t), []);
-  const stableScaleTo = React21__namespace.useCallback((t) => onScaleToRef.current(t), []);
+  const stableSlotState = React22__namespace.useCallback((t) => slotStateRef.current(t), []);
+  const stableScaleTo = React22__namespace.useCallback((t) => onScaleToRef.current(t), []);
   const hasEffect = effect !== void 0;
-  const stableEffect = React21__namespace.useCallback(
+  const stableEffect = React22__namespace.useCallback(
     (t) => effectRef.current?.(t) ?? { lengthened: 0, snapped: 0, merged: 0 },
     []
   );
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (!onResolution) return;
     onResolution(
       steps == null ? null : {
@@ -35668,20 +35720,20 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
       }
     );
   }, [steps, onResolution, stableSlotState, stableScaleTo, hasEffect, stableEffect]);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     return () => onResolution?.(null);
   }, [onResolution]);
 }
 __name(useLiftResolution, "useLiftResolution");
 function useViewProver(mini, parse6) {
-  const cacheRef = React21__namespace.useRef({
+  const cacheRef = React22__namespace.useRef({
     mini: null,
     answers: /* @__PURE__ */ new Map()
   });
-  const parseRef = React21__namespace.useRef(parse6);
+  const parseRef = React22__namespace.useRef(parse6);
   parseRef.current = parse6;
   const key2 = mini ?? null;
-  return React21__namespace.useCallback(
+  return React22__namespace.useCallback(
     (scale) => {
       if (key2 == null) return false;
       const c = cacheRef.current;
@@ -35737,9 +35789,9 @@ function ResolutionControl({
   onScaleTo,
   effect
 }) {
-  const [open, setOpen] = React21__namespace.useState(false);
-  const rootRef = React21__namespace.useRef(null);
-  React21__namespace.useEffect(() => {
+  const [open, setOpen] = React22__namespace.useState(false);
+  const rootRef = React22__namespace.useRef(null);
+  React22__namespace.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       if (!rootRef.current?.contains(e.target)) setOpen(false);
@@ -35955,22 +36007,13 @@ function jumpCursorToTrack(editor, model, trackOffset, lastJumpRef) {
 }
 __name(jumpCursorToTrack, "jumpCursorToTrack");
 function useMixerModel() {
-  const [editor, setEditor] = React21__namespace.useState(() => getActiveEditor());
-  const [derived, setDerived] = React21__namespace.useState(EMPTY_DERIVED);
-  const editorRef = React21__namespace.useRef(null);
-  const writebackRef = React21__namespace.useRef(null);
-  const lastJumpRef = React21__namespace.useRef(null);
-  React21__namespace.useEffect(() => {
-    setEditor(getActiveEditor());
-    return onActiveEditorChange(() => setEditor(getActiveEditor()));
-  }, []);
-  React21__namespace.useEffect(() => {
-    editorRef.current = editor;
-    const monaco = getMonacoNamespace();
-    writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null;
+  const { editor, editorRef, writerRef: writebackRef } = useActiveWriter();
+  const [derived, setDerived] = React22__namespace.useState(EMPTY_DERIVED);
+  const lastJumpRef = React22__namespace.useRef(null);
+  React22__namespace.useEffect(() => {
     lastJumpRef.current = null;
   }, [editor]);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (!editor) {
       setDerived(EMPTY_DERIVED);
       return;
@@ -35997,7 +36040,7 @@ function useMixerModel() {
     const sub = model?.onDidChangeContent?.(rederive);
     return () => sub?.dispose?.();
   }, [editor]);
-  const applyToStrip = React21__namespace.useCallback(
+  const applyToStrip = React22__namespace.useCallback(
     (id, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -36015,7 +36058,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToStripAt = React21__namespace.useCallback(
+  const applyToStripAt = React22__namespace.useCallback(
     (anchor, mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -36030,7 +36073,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToMaster = React21__namespace.useCallback(
+  const applyToMaster = React22__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -36041,7 +36084,7 @@ function useMixerModel() {
     },
     []
   );
-  const applyToMasterChunk = React21__namespace.useCallback(
+  const applyToMasterChunk = React22__namespace.useCallback(
     (mutate) => {
       const ed = editorRef.current;
       const wb = writebackRef.current;
@@ -36056,21 +36099,21 @@ function useMixerModel() {
       }
       const base = masterAudioLineEdit(doc);
       if (!base) return;
-      wb.beginGesture();
-      wb.insertAt(base.range[0], base.text, "mixer");
+      openGesture(wb);
+      commit(wb, base, "mixer");
       const next = model.getValue();
       const fresh = detectMasterAudioAll(next);
       if (fresh) mutate(adaptMasterChunk(next, fresh), wb);
-      wb.endGesture();
+      closeGesture(wb);
     },
     []
   );
-  const beginGesture = React21__namespace.useCallback(() => writebackRef.current?.beginGesture(), []);
-  const endGesture = React21__namespace.useCallback(() => writebackRef.current?.endGesture(), []);
-  const [selectedId, setSelectedId] = React21__namespace.useState(null);
-  const stripsRef = React21__namespace.useRef(EMPTY_DERIVED.strips);
+  const beginGesture = React22__namespace.useCallback(() => openGesture(writebackRef.current), [writebackRef]);
+  const endGesture = React22__namespace.useCallback(() => closeGesture(writebackRef.current), [writebackRef]);
+  const [selectedId, setSelectedId] = React22__namespace.useState(null);
+  const stripsRef = React22__namespace.useRef(EMPTY_DERIVED.strips);
   stripsRef.current = derived.strips;
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (!editor) {
       setSelectedId(null);
       return;
@@ -36099,7 +36142,7 @@ function useMixerModel() {
     const sub = editor.onDidChangeCursorPosition?.(recompute);
     return () => sub?.dispose?.();
   }, [editor, derived.strips]);
-  const selectTrack = React21__namespace.useCallback((id) => {
+  const selectTrack = React22__namespace.useCallback((id) => {
     const ed = editorRef.current;
     if (!ed) return;
     const model = ed.getModel?.();
@@ -36132,8 +36175,8 @@ function StripColorPopover({
   onReset,
   onClose
 }) {
-  const ref = React21__namespace.useRef(null);
-  React21__namespace.useEffect(() => {
+  const ref = React22__namespace.useRef(null);
+  React22__namespace.useEffect(() => {
     const onDown = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) onClose();
     }, "onDown");
@@ -36279,12 +36322,12 @@ __name(StripColorPopover, "StripColorPopover");
 function PatternTrackChip() {
   const { chunk } = useActiveChunk();
   const { strips, applyToStripAt } = useMixerModel();
-  const [fileId, setFileId] = React21__namespace.useState(() => getActiveFileId());
-  React21__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React22__namespace.useState(() => getActiveFileId());
+  React22__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
-  const [colorAnchor, setColorAnchor] = React21__namespace.useState(null);
-  const [renaming, setRenaming] = React21__namespace.useState(false);
-  const settledRef = React21__namespace.useRef(false);
+  const [colorAnchor, setColorAnchor] = React22__namespace.useState(null);
+  const [renaming, setRenaming] = React22__namespace.useState(false);
+  const settledRef = React22__namespace.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -36451,13 +36494,13 @@ function setColumnGain(model, stepIndex, gain) {
 __name(setColumnGain, "setColumnGain");
 var CLICK_SLOP_PX = 4;
 function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
-  const selfRef = React21__namespace.useRef(null);
-  const [frame, setFrame] = React21__namespace.useState(null);
-  const [added, setAdded] = React21__namespace.useState(0);
-  const [engaged, setEngaged] = React21__namespace.useState(false);
-  const dragRef = React21__namespace.useRef(null);
-  const swallowClick = React21__namespace.useRef(false);
-  const measure = React21__namespace.useCallback(() => {
+  const selfRef = React22__namespace.useRef(null);
+  const [frame, setFrame] = React22__namespace.useState(null);
+  const [added, setAdded] = React22__namespace.useState(0);
+  const [engaged, setEngaged] = React22__namespace.useState(false);
+  const dragRef = React22__namespace.useRef(null);
+  const swallowClick = React22__namespace.useRef(false);
+  const measure = React22__namespace.useCallback(() => {
     const grid = gridRef.current;
     const parent = selfRef.current?.offsetParent;
     if (!grid || !parent || cols < 1) return;
@@ -36480,8 +36523,8 @@ function ExtendHandle({ length, gridRef, cellAttr, cols, lastBarCols }) {
       (f) => f && f.left === next.left && f.top === next.top && f.height === next.height && f.pitch === next.pitch && f.maxRight === next.maxRight ? f : next
     );
   }, [gridRef, cellAttr, cols]);
-  React21__namespace.useLayoutEffect(measure);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useLayoutEffect(measure);
+  React22__namespace.useEffect(() => {
     const grid = gridRef.current;
     if (!grid || typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(() => measure());
@@ -36780,7 +36823,7 @@ function fitLabels(boxes) {
 }
 __name(fitLabels, "fitLabels");
 function useRulerFit(rulerRef, labelAttr) {
-  const fit = React21__namespace.useCallback(() => {
+  const fit = React22__namespace.useCallback(() => {
     const root = rulerRef.current;
     if (!root) return;
     const els = [...root.querySelectorAll(`[${labelAttr}]`)];
@@ -36797,10 +36840,10 @@ function useRulerFit(rulerRef, labelAttr) {
 }
 __name(useRulerFit, "useRulerFit");
 function useLayoutFollow(ref, run) {
-  const runRef = React21__namespace.useRef(run);
+  const runRef = React22__namespace.useRef(run);
   runRef.current = run;
-  const observed = React21__namespace.useRef(null);
-  React21__namespace.useLayoutEffect(() => {
+  const observed = React22__namespace.useRef(null);
+  React22__namespace.useLayoutEffect(() => {
     runRef.current();
     const el = ref.current;
     if (observed.current?.el === el) return;
@@ -36811,7 +36854,7 @@ function useLayoutFollow(ref, run) {
     ro.observe(el);
     observed.current = { el, ro };
   });
-  React21__namespace.useEffect(() => () => observed.current?.ro.disconnect(), []);
+  React22__namespace.useEffect(() => () => observed.current?.ro.disconnect(), []);
 }
 __name(useLayoutFollow, "useLayoutFollow");
 var GRID_MODE_KEY = "stave:visualEdit.gridMode";
@@ -36834,7 +36877,7 @@ function subscribe4(listener) {
 }
 __name(subscribe4, "subscribe");
 function useGridMode() {
-  return React21__namespace.useSyncExternalStore(subscribe4, () => current4, () => DEFAULT_MODE2);
+  return React22__namespace.useSyncExternalStore(subscribe4, () => current4, () => DEFAULT_MODE2);
 }
 __name(useGridMode, "useGridMode");
 function getGridMode() {
@@ -36862,7 +36905,7 @@ function usePatternLength(chunk, model, parse6, writeMini) {
   const mini = model ? chunk?.miniString ?? null : null;
   const bars = model?.bars ?? 1;
   const velocity = chunk ? hasVelocityString(chunk) : false;
-  const parseRef = React21__namespace.useRef(parse6);
+  const parseRef = React22__namespace.useRef(parse6);
   parseRef.current = parse6;
   const check = /* @__PURE__ */ __name((r, wantBars) => {
     if (!r.ok) return r;
@@ -36870,7 +36913,7 @@ function usePatternLength(chunk, model, parse6, writeMini) {
     const read5 = parseRef.current(r.mini, UNREFINED);
     return read5.ok && (read5.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
   }, "check");
-  const cache3 = React21__namespace.useRef(null);
+  const cache3 = React22__namespace.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null) return null;
     const key2 = `${bars}|${velocity}|${mini}`;
@@ -37258,7 +37301,7 @@ function reportRefusal(attempted) {
 }
 __name(reportRefusal, "reportRefusal");
 function SequencerGrid({ onResolution } = {}) {
-  const [viewScale, setViewScale] = React21__namespace.useState(UNREFINED);
+  const [viewScale, setViewScale] = React22__namespace.useState(UNREFINED);
   const { chunk, model, read: read5, mutate, writeMini, beginGesture, endGesture } = useGridModel({
     source: "seq",
     eligible: opensStepGrid,
@@ -37272,7 +37315,7 @@ function SequencerGrid({ onResolution } = {}) {
   });
   const length = usePatternLength(chunk, model, parseStepGrid, writeMini);
   const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     setViewScale(UNREFINED);
   }, [chunkKey]);
   const playingStep = usePlayingStep(
@@ -37283,43 +37326,43 @@ function SequencerGrid({ onResolution } = {}) {
   );
   const [colorMode] = useNoteColorMode();
   const gridMode = useGridMode();
-  const gestureRef = React21__namespace.useRef(null);
-  const gainScoped = React21__namespace.useMemo(() => model ? serializeStepGain(model).kind !== "skip" : false, [model]);
+  const gestureRef = React22__namespace.useRef(null);
+  const gainScoped = React22__namespace.useMemo(() => model ? serializeStepGain(model).kind !== "skip" : false, [model]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
-  const isChordChart = React21__namespace.useMemo(
+  const isChordChart = React22__namespace.useMemo(
     () => chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
     [laneKey]
   );
-  const boxes = React21__namespace.useMemo(() => {
+  const boxes = React22__namespace.useMemo(() => {
     if (!model) return null;
     const widths = gridMode === "exact" ? ownStepWidths(linesModel(model, read5)) : /* @__PURE__ */ new Map();
     return model.lanes.map((lane) => rowBoxes(lane.cells, model.steps, widths.get(lane.part ?? 0), isCellOn));
   }, [model, read5, gridMode]);
-  const boxesRef = React21__namespace.useRef(boxes);
+  const boxesRef = React22__namespace.useRef(boxes);
   boxesRef.current = boxes;
   const boxWidth = /* @__PURE__ */ __name((laneIndex) => boxesRef.current?.[laneIndex]?.[0]?.width ?? 1, "boxWidth");
-  const toggleable = React21__namespace.useMemo(
+  const toggleable = React22__namespace.useMemo(
     () => model ? model.lanes.map((lane, li) => {
       const w = boxes?.[li]?.[0]?.width ?? 1;
       return lane.cells.map((c, si) => si % w === 0 && canToggleCell(model, li, si, !isCellOn(c), w));
     }) : null,
     [model, boxes]
   );
-  const placesNotes = React21__namespace.useMemo(
+  const placesNotes = React22__namespace.useMemo(
     () => model && boxes && toggleable ? boxesPlaceNotes(model.lanes, boxes, isCellOn, toggleable) : false,
     [model, boxes, toggleable]
   );
-  const coverage = React21__namespace.useMemo(
+  const coverage = React22__namespace.useMemo(
     () => model ? model.lanes.map((lane) => laneCoverage(lane.cells, model.steps)) : null,
     [model]
   );
-  const stepStarts = React21__namespace.useMemo(() => {
+  const stepStarts = React22__namespace.useMemo(() => {
     if (!model) return null;
     const out = /* @__PURE__ */ new Map();
     for (const [part, cols] of writtenStepStarts(linesModel(model, read5))) out.set(part, new Set(cols));
     return out;
   }, [model, read5]);
-  const resizable = React21__namespace.useMemo(() => {
+  const resizable = React22__namespace.useMemo(() => {
     if (!model) return null;
     return model.lanes.map((lane, li) => {
       const out = /* @__PURE__ */ new Set();
@@ -37332,7 +37375,7 @@ function SequencerGrid({ onResolution } = {}) {
       return out;
     });
   }, [model, boxes]);
-  const paintCell = React21__namespace.useCallback(
+  const paintCell = React22__namespace.useCallback(
     (laneIndex, stepIndex, value) => {
       let refused2 = false;
       const length2 = boxWidth(laneIndex);
@@ -37349,7 +37392,7 @@ function SequencerGrid({ onResolution } = {}) {
     },
     [mutate]
   );
-  const paintOne = React21__namespace.useCallback(
+  const paintOne = React22__namespace.useCallback(
     (laneIndex, stepIndex, value) => {
       if (paintCell(laneIndex, stepIndex, value)) {
         reportRefusal(value ? "Couldn't add that hit" : "Couldn't remove that hit");
@@ -37357,20 +37400,20 @@ function SequencerGrid({ onResolution } = {}) {
     },
     [paintCell]
   );
-  const addVoice = React21__namespace.useCallback(
+  const addVoice = React22__namespace.useCallback(
     (sound) => {
       mutate((prev) => addLane(prev, sound));
     },
     [mutate]
   );
-  const removeVoice = React21__namespace.useCallback(
+  const removeVoice = React22__namespace.useCallback(
     (sound) => {
       mutate((prev) => removeLane(prev, sound));
     },
     [mutate]
   );
   const canDrawView = useViewProver(chunk?.miniString, parseStepGrid);
-  const scaleToSlots = React21__namespace.useCallback(
+  const scaleToSlots = React22__namespace.useCallback(
     (target) => {
       if (!model) return;
       if (stepSlotState(model, target, canDrawView) === "view") {
@@ -37393,7 +37436,7 @@ function SequencerGrid({ onResolution } = {}) {
     // looking closer costs nothing.
     (t) => model && stepSlotState(model, t, canDrawView) !== "view" ? stepResolutionEffect(model, t) : { lengthened: 0, snapped: 0, merged: 0 }
   );
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const g = gestureRef.current;
       if (!g) return;
@@ -37476,23 +37519,23 @@ function SequencerGrid({ onResolution } = {}) {
     if (g.mode !== "paint") return;
     paintCell(laneIndex, stepIndex, g.paintValue);
   }, "onCellEnter");
-  const [cursor, setCursor] = React21__namespace.useState(null);
+  const [cursor, setCursor] = React22__namespace.useState(null);
   const rowsN = model?.lanes.length ?? 0;
   const colsN = model?.steps ?? 0;
   const liveCursor = cursor && cursor.row < rowsN && cursor.col < colsN ? cursor : null;
-  const cursorRef = React21__namespace.useRef(liveCursor);
+  const cursorRef = React22__namespace.useRef(liveCursor);
   cursorRef.current = liveCursor;
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React21__namespace.useRef(stmtId);
-  React21__namespace.useEffect(() => {
+  const stmtRef = React22__namespace.useRef(stmtId);
+  React22__namespace.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setCursor(null);
     }
   }, [stmtId]);
-  const focusCursorRef = React21__namespace.useRef(false);
-  const gridRef = React21__namespace.useRef(null);
-  React21__namespace.useEffect(() => {
+  const focusCursorRef = React22__namespace.useRef(false);
+  const gridRef = React22__namespace.useRef(null);
+  React22__namespace.useEffect(() => {
     if (!focusCursorRef.current) return;
     focusCursorRef.current = false;
     gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-seq-cell]')?.focus();
@@ -37564,16 +37607,16 @@ function SequencerGrid({ onResolution } = {}) {
         return false;
     }
   }, "runGesture");
-  const runGestureRef = React21__namespace.useRef(runGesture);
+  const runGestureRef = React22__namespace.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React21__namespace.useEffect(
+  React22__namespace.useEffect(
     () => mountGridGestures(GRID_SCOPE.sequencer, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React21__namespace.useRef(null);
+  const rulerRef = React22__namespace.useRef(null);
   useRulerFit(rulerRef, "data-seq-ruler-label");
   if (!model) {
-    return React21__namespace.createElement(VisualEditStandby, {
+    return React22__namespace.createElement(VisualEditStandby, {
       panel: SEQUENCER_TAB_ID,
       hint: chunk && opensStepGrid(chunk) ? "This pattern isn't grid-editable \u2014 edit it as code." : SEQ_HINT,
       icon: "symbol-array"
@@ -38092,8 +38135,8 @@ function PianoRollGrid({
   division: division2 = DEFAULT_DIVISION,
   onResolution
 } = {}) {
-  const [viewScale, setViewScale] = React21__namespace.useState(UNREFINED);
-  const [declinedCell, setDeclinedCell] = React21__namespace.useState(null);
+  const [viewScale, setViewScale] = React22__namespace.useState(UNREFINED);
+  const [declinedCell, setDeclinedCell] = React22__namespace.useState(null);
   const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel({
     source: "roll",
     eligible: opensPianoRoll,
@@ -38107,11 +38150,11 @@ function PianoRollGrid({
   });
   const length = usePatternLength(chunk, model, parsePianoRoll, writeMini);
   const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     setViewScale(UNREFINED);
   }, [chunkKey]);
-  const dragRef = React21__namespace.useRef(null);
-  const velRef = React21__namespace.useRef(null);
+  const dragRef = React22__namespace.useRef(null);
+  const velRef = React22__namespace.useRef(null);
   const playingStep = usePlayingStep(
     model?.steps ?? 0,
     model?.bars ?? 1,
@@ -38119,21 +38162,21 @@ function PianoRollGrid({
     model?.barSteps
   );
   const [colorMode] = useNoteColorMode();
-  const [hoveredMidi, setHoveredMidi] = React21__namespace.useState(null);
-  const holdMidiRef = React21__namespace.useRef(null);
-  const holdTimerRef = React21__namespace.useRef(null);
-  const onSelectRef = React21__namespace.useRef(onSelect);
+  const [hoveredMidi, setHoveredMidi] = React22__namespace.useState(null);
+  const holdMidiRef = React22__namespace.useRef(null);
+  const holdTimerRef = React22__namespace.useRef(null);
+  const onSelectRef = React22__namespace.useRef(onSelect);
   onSelectRef.current = onSelect;
-  const selectedRef = React21__namespace.useRef(selected);
+  const selectedRef = React22__namespace.useRef(selected);
   selectedRef.current = selected;
   const select = /* @__PURE__ */ __name((sel) => onSelectRef.current?.(sel), "select");
-  const [range2, setRange] = React21__namespace.useState(
+  const [range2, setRange] = React22__namespace.useState(
     () => rollContentRange({ notes: [] })
   );
-  const stmtIdRef = React21__namespace.useRef(null);
-  const scrollRef = React21__namespace.useRef(null);
-  const openScrollRef = React21__namespace.useRef(false);
-  React21__namespace.useEffect(() => {
+  const stmtIdRef = React22__namespace.useRef(null);
+  const scrollRef = React22__namespace.useRef(null);
+  const openScrollRef = React22__namespace.useRef(false);
+  React22__namespace.useEffect(() => {
     if (!model) return;
     if (dragRef.current) return;
     const content = rollContentRange(model);
@@ -38169,14 +38212,14 @@ function PianoRollGrid({
     const room = sc.clientHeight - 2 * pad;
     sc.scrollTop = y1 - y0 <= room ? (y0 + y1) / 2 - sc.clientHeight / 2 : y1 + pad - sc.clientHeight;
   });
-  const placesNotes = React21__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
-  const resizable = React21__namespace.useMemo(() => model ? resizableNotes(model) : null, [model]);
+  const placesNotes = React22__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
+  const resizable = React22__namespace.useMemo(() => model ? resizableNotes(model) : null, [model]);
   const cols = model ? columnCount(model) : 0;
-  const gainWritable = React21__namespace.useMemo(
+  const gainWritable = React22__namespace.useMemo(
     () => model ? serializeRollGain(model).kind !== "skip" : false,
     [model]
   );
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     const onUp = /* @__PURE__ */ __name(() => {
       const d = dragRef.current;
       if (!d) return;
@@ -38225,7 +38268,7 @@ function PianoRollGrid({
     window.addEventListener("pointerup", onUp);
     return () => window.removeEventListener("pointerup", onUp);
   }, [mutate, endGesture]);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
       const v = velRef.current;
       if (!v) return;
@@ -38280,7 +38323,7 @@ function PianoRollGrid({
       holdTimerRef.current = null;
     }
   }, "stopHold");
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     window.addEventListener("pointerup", stopHold);
     window.addEventListener("pointercancel", stopHold);
     return () => {
@@ -38438,9 +38481,9 @@ function PianoRollGrid({
     }
     return best ?? { row: 0, col: 0 };
   }, "defaultCell");
-  const focusCursorRef = React21__namespace.useRef(false);
-  const gridRef = React21__namespace.useRef(null);
-  React21__namespace.useEffect(() => {
+  const focusCursorRef = React22__namespace.useRef(false);
+  const gridRef = React22__namespace.useRef(null);
+  React22__namespace.useEffect(() => {
     if (!focusCursorRef.current) return;
     const cell = gridRef.current?.querySelector('[role="gridcell"][aria-selected="true"] > [data-roll-cell]');
     if (!cell) return;
@@ -38544,16 +38587,16 @@ function PianoRollGrid({
         return true;
     }
   }, "runGesture");
-  const runGestureRef = React21__namespace.useRef(runGesture);
+  const runGestureRef = React22__namespace.useRef(runGesture);
   runGestureRef.current = runGesture;
-  React21__namespace.useEffect(
+  React22__namespace.useEffect(
     () => mountGridGestures(GRID_SCOPE.pianoRoll, (action, dryRun) => runGestureRef.current(action, dryRun)),
     []
   );
-  const rulerRef = React21__namespace.useRef(null);
+  const rulerRef = React22__namespace.useRef(null);
   useRulerFit(rulerRef, "data-roll-ruler-label");
   if (!model) {
-    return React21__namespace.createElement(VisualEditStandby, {
+    return React22__namespace.createElement(VisualEditStandby, {
       panel: PIANO_ROLL_TAB_ID,
       hint: chunk && opensPianoRoll(chunk) ? "This melody isn't grid-editable \u2014 edit it as code." : ROLL_HINT,
       icon: "music"
@@ -39129,13 +39172,13 @@ function Knob({
   onGestureStart,
   onGestureEnd
 }) {
-  const dragRef = React21__namespace.useRef(null);
-  const [editing, setEditing] = React21__namespace.useState(false);
-  const [draftMin, setDraftMin] = React21__namespace.useState("");
-  const [draftMax, setDraftMax] = React21__namespace.useState("");
-  const [popupPos, setPopupPos] = React21__namespace.useState(null);
-  const sliderRef = React21__namespace.useRef(null);
-  const popupRef = React21__namespace.useRef(null);
+  const dragRef = React22__namespace.useRef(null);
+  const [editing, setEditing] = React22__namespace.useState(false);
+  const [draftMin, setDraftMin] = React22__namespace.useState("");
+  const [draftMax, setDraftMax] = React22__namespace.useState("");
+  const [popupPos, setPopupPos] = React22__namespace.useState(null);
+  const sliderRef = React22__namespace.useRef(null);
+  const popupRef = React22__namespace.useRef(null);
   const POPUP_W = 132;
   const openRangeEditor = /* @__PURE__ */ __name(() => {
     if (!onRangeChange) return;
@@ -39151,7 +39194,7 @@ function Knob({
     }
     setEditing(false);
   }, "commitRange");
-  React21__namespace.useLayoutEffect(() => {
+  React22__namespace.useLayoutEffect(() => {
     if (!editing) return;
     const r = sliderRef.current?.getBoundingClientRect();
     if (!r) return;
@@ -39166,7 +39209,7 @@ function Knob({
       )
     });
   }, [editing]);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (!editing) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -40019,12 +40062,12 @@ function AddEffectMenu({
   present,
   onToggle
 }) {
-  const [open, setOpen] = React21__namespace.useState(false);
-  const [query, setQuery] = React21__namespace.useState("");
-  const [pos, setPos] = React21__namespace.useState(null);
-  const btnRef = React21__namespace.useRef(null);
-  const menuRef = React21__namespace.useRef(null);
-  const place = React21__namespace.useCallback(() => {
+  const [open, setOpen] = React22__namespace.useState(false);
+  const [query, setQuery] = React22__namespace.useState("");
+  const [pos, setPos] = React22__namespace.useState(null);
+  const btnRef = React22__namespace.useRef(null);
+  const menuRef = React22__namespace.useRef(null);
+  const place = React22__namespace.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -40038,10 +40081,10 @@ function AddEffectMenu({
       maxHeight
     });
   }, []);
-  React21__namespace.useLayoutEffect(() => {
+  React22__namespace.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -40256,15 +40299,15 @@ function SoundPickerMenu({
   onChange,
   onAudition
 }) {
-  const [open, setOpen] = React21__namespace.useState(false);
-  const [query, setQuery] = React21__namespace.useState("");
-  const [category, setCategory] = React21__namespace.useState(null);
-  const [pos, setPos] = React21__namespace.useState(null);
-  const btnRef = React21__namespace.useRef(null);
-  const menuRef = React21__namespace.useRef(null);
+  const [open, setOpen] = React22__namespace.useState(false);
+  const [query, setQuery] = React22__namespace.useState("");
+  const [category, setCategory] = React22__namespace.useState(null);
+  const [pos, setPos] = React22__namespace.useState(null);
+  const btnRef = React22__namespace.useRef(null);
+  const menuRef = React22__namespace.useRef(null);
   const lc = label.toLowerCase();
   const currentLabel = groups.flatMap((g) => g.options).find((o) => o.value === value)?.label || value || placeholder;
-  const place = React21__namespace.useCallback(() => {
+  const place = React22__namespace.useCallback(() => {
     const b = btnRef.current?.getBoundingClientRect();
     if (!b) return;
     const margin = 8;
@@ -40278,17 +40321,17 @@ function SoundPickerMenu({
       maxHeight
     });
   }, []);
-  React21__namespace.useLayoutEffect(() => {
+  React22__namespace.useLayoutEffect(() => {
     if (open) place();
   }, [open, place]);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (open) {
       ensureCatScrollStyle();
       setQuery("");
       setCategory(null);
     }
   }, [open]);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (!open) return;
     const onDown = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -40825,7 +40868,7 @@ function createCatalogStore() {
     listeners15.add(listener);
     return () => listeners15.delete(listener);
   }, "subscribe");
-  const useCatalog = /* @__PURE__ */ __name(() => React21__namespace.useSyncExternalStore(subscribe8, read5, () => null), "useCatalog");
+  const useCatalog = /* @__PURE__ */ __name(() => React22__namespace.useSyncExternalStore(subscribe8, read5, () => null), "useCatalog");
   return { setAccessor, notify: notify6, read: read5, useCatalog };
 }
 __name(createCatalogStore, "createCatalogStore");
@@ -40940,37 +40983,37 @@ function MixerBody({
   const liveInstruments = useSoundCatalog();
   const liveKits = useDrumKitCatalog();
   const knobs = knobsFromChunk(chunk, showGain);
-  const writeKnob = React21__namespace.useCallback(
+  const writeKnob = React22__namespace.useCallback(
     (entry, value) => {
       applyEdit((fresh, wb) => commit(wb, knobEdit(fresh, entry, value), "knob"));
     },
     [applyEdit]
   );
-  const writeRange = React21__namespace.useCallback(
+  const writeRange = React22__namespace.useCallback(
     (entry, min, max) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeEdit(fresh, entry, min, max), "knob"));
     },
     [applyEdit]
   );
-  const resetRange = React21__namespace.useCallback(
+  const resetRange = React22__namespace.useCallback(
     (entry) => {
       applyEdit((fresh, wb) => commit(wb, knobRangeResetEdit(fresh, entry), "knob"));
     },
     [applyEdit]
   );
-  const toggleEffect = React21__namespace.useCallback(
+  const toggleEffect = React22__namespace.useCallback(
     (e) => {
       applyEdit((fresh, wb) => commit(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def), "knob"));
     },
     [applyEdit]
   );
-  const removeMethod = React21__namespace.useCallback(
+  const removeMethod = React22__namespace.useCallback(
     (method) => {
       applyEdit((fresh, wb) => commit(wb, removeNamedCall(fresh, method), "knob"));
     },
     [applyEdit]
   );
-  const writeChainMethod = React21__namespace.useCallback(
+  const writeChainMethod = React22__namespace.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
       applyEdit((fresh, wb) => commit(wb, setStringCall(fresh, names, canonical, value), "knob"));
@@ -41149,7 +41192,7 @@ var MIXER_HINT = "Click a pattern to adjust its sound with knobs.";
 function Mixer({ division: division2, onDivisionChange, resolution } = {}) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   if (!chunk || chunk.chain.length === 0) {
-    return React21__namespace.createElement(VisualEditStandby, {
+    return React22__namespace.createElement(VisualEditStandby, {
       panel: MIXER_TAB_ID,
       hint: MIXER_HINT,
       icon: "settings"
@@ -41271,24 +41314,24 @@ __name(levelColor, "levelColor");
 var MIN_FRAME_MS = 1e3 / 60;
 var QUERY_WINDOW_CYCLES = 0.01;
 function useTrackMeters() {
-  const elsRef = React21__namespace.useRef(/* @__PURE__ */ new Map());
-  const stateRef = React21__namespace.useRef(/* @__PURE__ */ new Map());
-  const schedulersRef = React21__namespace.useRef(null);
-  const rafRef = React21__namespace.useRef(null);
-  const lastTsRef = React21__namespace.useRef(0);
-  const [fileId, setFileId] = React21__namespace.useState(() => getActiveFileId());
-  React21__namespace.useEffect(() => {
+  const elsRef = React22__namespace.useRef(/* @__PURE__ */ new Map());
+  const stateRef = React22__namespace.useRef(/* @__PURE__ */ new Map());
+  const schedulersRef = React22__namespace.useRef(null);
+  const rafRef = React22__namespace.useRef(null);
+  const lastTsRef = React22__namespace.useRef(0);
+  const [fileId, setFileId] = React22__namespace.useState(() => getActiveFileId());
+  React22__namespace.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React21__namespace.useCallback((captureId, els) => {
+  const register = React22__namespace.useCallback((captureId, els) => {
     if (els) elsRef.current.set(captureId, els);
     else {
       elsRef.current.delete(captureId);
       stateRef.current.delete(captureId);
     }
   }, []);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       schedulersRef.current = schedulersOf(payload);
     }) : (() => {
@@ -41379,7 +41422,7 @@ function useTrackMeters() {
       stateRef.current.clear();
     };
   }, [fileId]);
-  return React21__namespace.useMemo(() => ({ register }), [register]);
+  return React22__namespace.useMemo(() => ({ register }), [register]);
 }
 __name(useTrackMeters, "useTrackMeters");
 var EMPTY = /* @__PURE__ */ new Set();
@@ -41419,8 +41462,8 @@ function subscribe5(listener) {
 }
 __name(subscribe5, "subscribe");
 function useActiveFileId() {
-  const [id, setId] = React21__namespace.useState(() => getActiveFileId());
-  React21__namespace.useEffect(() => {
+  const [id, setId] = React22__namespace.useState(() => getActiveFileId());
+  React22__namespace.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -41429,7 +41472,7 @@ function useActiveFileId() {
 __name(useActiveFileId, "useActiveFileId");
 function useSoloedIds() {
   const fileId = useActiveFileId();
-  return React21__namespace.useSyncExternalStore(
+  return React22__namespace.useSyncExternalStore(
     subscribe5,
     () => read2(fileId),
     () => EMPTY
@@ -41439,7 +41482,7 @@ __name(useSoloedIds, "useSoloedIds");
 function useSoloStrips() {
   const fileId = useActiveFileId();
   const soloed = useSoloedIds();
-  const toggle = React21__namespace.useCallback(
+  const toggle = React22__namespace.useCallback(
     (id) => {
       if (fileId) toggleSolo(fileId, id);
     },
@@ -41450,49 +41493,21 @@ function useSoloStrips() {
 __name(useSoloStrips, "useSoloStrips");
 
 // src/visualEdit/mixer/soloMuteSync.ts
-function reconcileSoloMutes(strips, newSolo, prevSnapshot) {
-  if (newSolo.size > 0) {
-    const snapshot = prevSnapshot ?? new Set(strips.filter((s) => s.muted).map((s) => s.id));
-    const targetMuted = new Set(
-      strips.filter((s) => s.muteable && !newSolo.has(s.id)).map((s) => s.id)
-    );
-    return { targetMuted, nextSnapshot: snapshot };
-  }
-  return { targetMuted: new Set(prevSnapshot ?? []), nextSnapshot: null };
-}
-__name(reconcileSoloMutes, "reconcileSoloMutes");
 function useSoloMuteSync() {
   const { soloed, toggle: toggleSet } = useSoloStrips();
-  const toggle = React21__namespace.useCallback(
+  const toggle = React22__namespace.useCallback(
     (id) => {
       const fileId = getActiveFileId();
       const editor = getActiveEditor();
       const model = editor?.getModel?.();
-      const monaco = getMonacoNamespace();
       const newSolo = new Set(soloed);
       if (newSolo.has(id)) newSolo.delete(id);
       else newSolo.add(id);
-      if (editor && model && monaco) {
-        const doc = model.getValue();
-        const chunks = detectAllChunks(doc);
-        const strips = buildStripModels(chunks, doc);
-        const { targetMuted, nextSnapshot } = reconcileSoloMutes(
-          strips.map((s) => ({ id: s.id, muted: s.muted, muteable: s.muteable })),
-          newSolo,
-          getPreSoloMutes(fileId)
-        );
-        const edits = [];
-        strips.forEach((s) => {
-          if (!s.muteable) return;
-          const want = targetMuted.has(s.id);
-          if (want === s.muted) return;
-          const e = muteEdit(chunks[s.index], want);
-          if (e) edits.push({ range: e.range, text: e.text });
-        });
-        if (edits.length > 0) {
-          new Writeback(editor, monaco).replaceRanges(edits, "mixer");
+      if (editor && model) {
+        const { edits, nextSnapshot } = soloMuteEdits(model.getValue(), newSolo, getPreSoloMutes(fileId));
+        if (commitToEditor(editor, edits, "mixer") !== "no-document") {
+          setPreSoloMutes(fileId, nextSnapshot);
         }
-        setPreSoloMutes(fileId, nextSnapshot);
       }
       toggleSet(id);
     },
@@ -41508,9 +41523,9 @@ function StripMeter({
   controller,
   horizontal = false
 }) {
-  const fillRef = React21__namespace.useRef(null);
-  const peakRef = React21__namespace.useRef(null);
-  React21__namespace.useEffect(() => {
+  const fillRef = React22__namespace.useRef(null);
+  const peakRef = React22__namespace.useRef(null);
+  React22__namespace.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -41616,14 +41631,14 @@ function ChannelStrip({
   orientation = "vertical"
 }) {
   const horizontal = orientation === "horizontal";
-  const [colorAnchor, setColorAnchor] = React21__namespace.useState(null);
+  const [colorAnchor, setColorAnchor] = React22__namespace.useState(null);
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
-  const [renaming, setRenaming] = React21__namespace.useState(false);
+  const [renaming, setRenaming] = React22__namespace.useState(false);
   const bareLabel2 = strip.label ?? "";
   const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
   const renameEnabled = onRename !== void 0;
-  const settledRef = React21__namespace.useRef(false);
+  const settledRef = React22__namespace.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {
     settledRef.current = false;
     setRenaming(true);
@@ -41644,8 +41659,8 @@ function ChannelStrip({
   const faderEnabled = gain !== null && onGainChange !== void 0;
   const panEnabled = !strip.panForeign && onPanChange !== void 0;
   const panValue = strip.pan ?? 0.5;
-  const faderDrag = React21__namespace.useRef(null);
-  const panDrag = React21__namespace.useRef(null);
+  const faderDrag = React22__namespace.useRef(null);
+  const panDrag = React22__namespace.useRef(null);
   const onFaderDown = /* @__PURE__ */ __name((e) => {
     if (!faderEnabled) return;
     e.preventDefault();
@@ -42234,17 +42249,17 @@ var MIXER_WIDTH = 220;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = chunkSurface(chunk);
-  const [selected, setSelected] = React21__namespace.useState(null);
+  const [selected, setSelected] = React22__namespace.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
-  const stmtRef = React21__namespace.useRef(stmtId);
-  React21__namespace.useEffect(() => {
+  const stmtRef = React22__namespace.useRef(stmtId);
+  React22__namespace.useEffect(() => {
     if (stmtRef.current !== stmtId) {
       stmtRef.current = stmtId;
       setSelected(null);
     }
   }, [stmtId]);
-  const [division2, setDivision] = React21__namespace.useState(DEFAULT_DIVISION);
-  const [resolution, setResolution] = React21__namespace.useState(null);
+  const [division2, setDivision] = React22__namespace.useState(DEFAULT_DIVISION);
+  const [resolution, setResolution] = React22__namespace.useState(null);
   const grid = kind === "step" ? /* @__PURE__ */ jsxRuntime.jsx(SequencerGrid, { onResolution: setResolution }) : kind === "roll" ? /* @__PURE__ */ jsxRuntime.jsx(PianoRollGrid, { selected, onSelect: setSelected, division: division2, onResolution: setResolution }) : /* @__PURE__ */ jsxRuntime.jsx(
     VisualEditStandby,
     {
@@ -42354,8 +42369,8 @@ function subscribe6(listener) {
 }
 __name(subscribe6, "subscribe");
 function useActiveFileId2() {
-  const [id, setId] = React21__namespace.useState(() => getActiveFileId());
-  React21__namespace.useEffect(() => {
+  const [id, setId] = React22__namespace.useState(() => getActiveFileId());
+  React22__namespace.useEffect(() => {
     setId(getActiveFileId());
     return onActiveEditorChange(() => setId(getActiveFileId()));
   }, []);
@@ -42364,12 +42379,12 @@ function useActiveFileId2() {
 __name(useActiveFileId2, "useActiveFileId");
 function useExpandedStrips() {
   const fileId = useActiveFileId2();
-  const expanded = React21__namespace.useSyncExternalStore(
+  const expanded = React22__namespace.useSyncExternalStore(
     subscribe6,
     () => read3(fileId),
     () => EMPTY2
   );
-  const toggle = React21__namespace.useCallback(
+  const toggle = React22__namespace.useCallback(
     (id) => {
       if (fileId) toggleExpanded(fileId, id);
     },
@@ -42448,12 +42463,12 @@ function subscribe7(listener) {
 }
 __name(subscribe7, "subscribe");
 function useMixerZoom() {
-  const zoom = React21__namespace.useSyncExternalStore(subscribe7, read4, () => MIXER_ZOOM_DEFAULT);
+  const zoom = React22__namespace.useSyncExternalStore(subscribe7, read4, () => MIXER_ZOOM_DEFAULT);
   return {
     zoom,
     percent: Math.round(zoom * 100),
-    zoomIn: React21__namespace.useCallback(() => nudgeMixerZoom(1), []),
-    zoomOut: React21__namespace.useCallback(() => nudgeMixerZoom(-1), []),
+    zoomIn: React22__namespace.useCallback(() => nudgeMixerZoom(1), []),
+    zoomOut: React22__namespace.useCallback(() => nudgeMixerZoom(-1), []),
     canZoomIn: zoom < MIXER_ZOOM_MAX,
     canZoomOut: zoom > MIXER_ZOOM_MIN
   };
@@ -42527,22 +42542,22 @@ function levelColor2(frac) {
 }
 __name(levelColor2, "levelColor");
 function useMasterMeter() {
-  const elsRef = React21__namespace.useRef(null);
-  const stateRef = React21__namespace.useRef(ZERO_METER);
-  const analyserRef = React21__namespace.useRef(null);
-  const bufRef = React21__namespace.useRef(null);
-  const rafRef = React21__namespace.useRef(null);
-  const lastTsRef = React21__namespace.useRef(0);
-  const [fileId, setFileId] = React21__namespace.useState(() => getActiveFileId());
-  React21__namespace.useEffect(() => {
+  const elsRef = React22__namespace.useRef(null);
+  const stateRef = React22__namespace.useRef(ZERO_METER);
+  const analyserRef = React22__namespace.useRef(null);
+  const bufRef = React22__namespace.useRef(null);
+  const rafRef = React22__namespace.useRef(null);
+  const lastTsRef = React22__namespace.useRef(0);
+  const [fileId, setFileId] = React22__namespace.useState(() => getActiveFileId());
+  React22__namespace.useEffect(() => {
     setFileId(getActiveFileId());
     return onActiveEditorChange(() => setFileId(getActiveFileId()));
   }, []);
-  const register = React21__namespace.useCallback((els) => {
+  const register = React22__namespace.useCallback((els) => {
     elsRef.current = els;
     if (!els) stateRef.current = ZERO_METER;
   }, []);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     const unsub = fileId ? workspaceAudioBus.subscribe({ kind: "file", fileId }, (payload) => {
       analyserRef.current = analyserOf(payload);
     }) : (() => {
@@ -42616,7 +42631,7 @@ function useMasterMeter() {
       stateRef.current = ZERO_METER;
     };
   }, [fileId]);
-  return React21__namespace.useMemo(() => ({ register }), [register]);
+  return React22__namespace.useMemo(() => ({ register }), [register]);
 }
 __name(useMasterMeter, "useMasterMeter");
 var FADER_HEIGHT2 = 80;
@@ -42635,9 +42650,9 @@ function MasterStrip({
   onGestureEnd
 }) {
   const meter = useMasterMeter();
-  const fillRef = React21__namespace.useRef(null);
-  const peakRef = React21__namespace.useRef(null);
-  React21__namespace.useEffect(() => {
+  const fillRef = React22__namespace.useRef(null);
+  const peakRef = React22__namespace.useRef(null);
+  React22__namespace.useEffect(() => {
     const fill = fillRef.current;
     const peak = peakRef.current;
     if (!fill || !peak) return;
@@ -42645,7 +42660,7 @@ function MasterStrip({
     return () => meter.register(null);
   }, [meter]);
   const pos = gainToFaderPos(gain);
-  const drag = React21__namespace.useRef(null);
+  const drag = React22__namespace.useRef(null);
   const onDown = /* @__PURE__ */ __name((e) => {
     if (foreign) return;
     e.preventDefault();
@@ -42917,8 +42932,8 @@ function MixerStrips({
     selectTrack
   } = useMixerModel();
   const meters = useTrackMeters();
-  const [fileId, setFileId] = React21__namespace.useState(() => getActiveFileId());
-  React21__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
+  const [fileId, setFileId] = React22__namespace.useState(() => getActiveFileId());
+  React22__namespace.useEffect(() => onActiveEditorChange(() => setFileId(getActiveFileId())), []);
   const trackMeta = useTrackMetaMap(fileId ?? void 0);
   const { expanded, toggle } = useExpandedStrips();
   const masterExpanded = expanded.has(MASTER_EXPAND_ID);
@@ -43211,7 +43226,7 @@ function seedVisualEditTabs() {
       id: tab.id,
       title: tab.title,
       icon: tab.icon,
-      content: React21__namespace.createElement(Panel)
+      content: React22__namespace.createElement(Panel)
     });
   }
 }
@@ -43225,24 +43240,24 @@ function computeNewHeight(startY, currentY, startHeight) {
 }
 __name(computeNewHeight, "computeNewHeight");
 function useDragResize(opts) {
-  const [value, setValueState] = React21__namespace.useState(opts.initial);
-  const [dragging, setDragging] = React21__namespace.useState(false);
-  const startYRef = React21__namespace.useRef(0);
-  const startValueRef = React21__namespace.useRef(opts.initial);
-  const pointerIdRef = React21__namespace.useRef(null);
-  const draggingRef = React21__namespace.useRef(false);
-  const minRef = React21__namespace.useRef(opts.min);
-  const maxRef = React21__namespace.useRef(opts.max);
-  React21__namespace.useEffect(() => {
+  const [value, setValueState] = React22__namespace.useState(opts.initial);
+  const [dragging, setDragging] = React22__namespace.useState(false);
+  const startYRef = React22__namespace.useRef(0);
+  const startValueRef = React22__namespace.useRef(opts.initial);
+  const pointerIdRef = React22__namespace.useRef(null);
+  const draggingRef = React22__namespace.useRef(false);
+  const minRef = React22__namespace.useRef(opts.min);
+  const maxRef = React22__namespace.useRef(opts.max);
+  React22__namespace.useEffect(() => {
     minRef.current = opts.min;
     maxRef.current = opts.max;
   }, [opts.min, opts.max]);
-  const setValue = React21__namespace.useCallback((v) => {
+  const setValue = React22__namespace.useCallback((v) => {
     const clamped = clampHeight(v);
     startValueRef.current = clamped;
     setValueState(clamped);
   }, []);
-  const onPointerDown = React21__namespace.useCallback(
+  const onPointerDown = React22__namespace.useCallback(
     (e) => {
       e.preventDefault();
       pointerIdRef.current = e.pointerId;
@@ -43257,7 +43272,7 @@ function useDragResize(opts) {
     },
     [value]
   );
-  const endDrag = React21__namespace.useCallback(
+  const endDrag = React22__namespace.useCallback(
     (e, commit2) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
@@ -43272,7 +43287,7 @@ function useDragResize(opts) {
     },
     [opts, value]
   );
-  const onPointerMove = React21__namespace.useCallback(
+  const onPointerMove = React22__namespace.useCallback(
     (e) => {
       if (!draggingRef.current) return;
       const next = computeNewHeight(
@@ -43288,13 +43303,13 @@ function useDragResize(opts) {
     },
     []
   );
-  const onPointerUp = React21__namespace.useCallback(
+  const onPointerUp = React22__namespace.useCallback(
     (e) => {
       endDrag(e, true);
     },
     [endDrag]
   );
-  const onPointerCancel = React21__namespace.useCallback(
+  const onPointerCancel = React22__namespace.useCallback(
     (e) => {
       endDrag(e, false);
     },
@@ -43322,15 +43337,15 @@ function pickInitialActiveTabId(tabs2) {
 }
 __name(pickInitialActiveTabId, "pickInitialActiveTabId");
 function BottomPanel() {
-  const [tabs2, setTabs] = React21__namespace.useState(
+  const [tabs2, setTabs] = React22__namespace.useState(
     () => listBottomPanelTabs()
   );
-  const [open, setOpen] = React21__namespace.useState(readPersistedOpen);
-  const [height, setHeight] = React21__namespace.useState(readPersistedHeight);
-  const [activeTabId, setActiveTabId] = React21__namespace.useState(
+  const [open, setOpen] = React22__namespace.useState(readPersistedOpen);
+  const [height, setHeight] = React22__namespace.useState(readPersistedHeight);
+  const [activeTabId, setActiveTabId] = React22__namespace.useState(
     () => pickInitialActiveTabId(listBottomPanelTabs())
   );
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     return subscribeToBottomPanelTabs(() => {
       const next = listBottomPanelTabs();
       setTabs(next);
@@ -43340,10 +43355,10 @@ function BottomPanel() {
       });
     });
   }, []);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     writePersistedOpen(open);
   }, [open]);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     writePersistedActiveTabId(activeTabId);
   }, [activeTabId]);
   const drag = useDragResize({
@@ -43355,25 +43370,25 @@ function BottomPanel() {
       writePersistedHeight(v);
     }, "onCommit")
   });
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     const flush = /* @__PURE__ */ __name(() => writePersistedHeight(height), "flush");
     window.addEventListener("pagehide", flush);
     return () => window.removeEventListener("pagehide", flush);
   }, [height]);
-  const wasOpenOnTabPressRef = React21__namespace.useRef(open);
-  const tabButtonRefs = React21__namespace.useRef(/* @__PURE__ */ new Map());
-  const setTabButtonRef = React21__namespace.useCallback(
+  const wasOpenOnTabPressRef = React22__namespace.useRef(open);
+  const tabButtonRefs = React22__namespace.useRef(/* @__PURE__ */ new Map());
+  const setTabButtonRef = React22__namespace.useCallback(
     (id) => (el) => {
       if (el) tabButtonRefs.current.set(id, el);
       else tabButtonRefs.current.delete(id);
     },
     []
   );
-  const focusTab = React21__namespace.useCallback((id) => {
+  const focusTab = React22__namespace.useCallback((id) => {
     const el = tabButtonRefs.current.get(id);
     if (el) el.focus();
   }, []);
-  const onTabsKeyDown = React21__namespace.useCallback(
+  const onTabsKeyDown = React22__namespace.useCallback(
     (e) => {
       if (tabs2.length === 0) return;
       const idx = tabs2.findIndex((t) => t.id === activeTabId);
@@ -43639,16 +43654,16 @@ function GroupTabBar({
   onSplitDown,
   onCloseGroup
 }) {
-  const scrollRef = React21.useRef(null);
-  const activeTabElRef = React21.useRef(null);
-  const menuBtnRef = React21.useRef(null);
-  const menuRef = React21.useRef(null);
-  const [overflow, setOverflow] = React21.useState({
+  const scrollRef = React22.useRef(null);
+  const activeTabElRef = React22.useRef(null);
+  const menuBtnRef = React22.useRef(null);
+  const menuRef = React22.useRef(null);
+  const [overflow, setOverflow] = React22.useState({
     left: false,
     right: false
   });
-  const [menuOpen, setMenuOpen] = React21.useState(false);
-  React21.useEffect(() => {
+  const [menuOpen, setMenuOpen] = React22.useState(false);
+  React22.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const update = /* @__PURE__ */ __name(() => {
@@ -43667,12 +43682,12 @@ function GroupTabBar({
       ro?.disconnect();
     };
   }, [group.tabs.length]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     const el = activeTabElRef.current;
     if (!el || typeof el.scrollIntoView !== "function") return;
     el.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [group.activeTabId]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!menuOpen) return;
     const onDoc = /* @__PURE__ */ __name((e) => {
       const t = e.target;
@@ -44010,7 +44025,7 @@ function GroupTabBar({
   );
 }
 __name(GroupTabBar, "GroupTabBar");
-var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
+var WorkspaceShell = React22.forwardRef(/* @__PURE__ */ __name(function WorkspaceShell2({
   initialTabs = [],
   initialGroups,
   initialLayout,
@@ -44035,28 +44050,28 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
   onCropBackdrop,
   onRevealBackdrop
 }, forwardedRef) {
-  const shellRootRef = React21.useRef(null);
-  const initialState = React21.useRef(
+  const shellRootRef = React22.useRef(null);
+  const initialState = React22.useRef(
     initialGroups !== void 0 && initialLayout !== void 0 && initialLayout.length > 0 && initialActiveGroupId !== void 0 ? {
       groups: new Map(initialGroups),
       layout: initialLayout,
       activeGroupId: initialActiveGroupId
     } : createInitialGroupState(initialTabs)
   );
-  const [groups, setGroups] = React21.useState(
+  const [groups, setGroups] = React22.useState(
     () => initialState.current.groups
   );
-  const [layout, setLayout] = React21.useState(
+  const [layout, setLayout] = React22.useState(
     () => initialState.current.layout
   );
-  const [activeGroupId, setActiveGroupId] = React21.useState(
+  const [activeGroupId, setActiveGroupId] = React22.useState(
     () => initialState.current.activeGroupId
   );
-  const [bgOverrides, setBgOverrides] = React21.useState(
+  const [bgOverrides, setBgOverrides] = React22.useState(
     () => /* @__PURE__ */ new Map()
   );
-  const lastActiveBackdropRef = React21.useRef(null);
-  React21.useEffect(() => {
+  const lastActiveBackdropRef = React22.useRef(null);
+  React22.useEffect(() => {
     const g = groups.get(activeGroupId);
     const resolved = resolveBackdropFileId(g?.backgroundFileId, bgOverrides.get(activeGroupId)) ?? null;
     if (resolved !== lastActiveBackdropRef.current) {
@@ -44064,71 +44079,71 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
       onActiveBackdropChange?.(resolved);
     }
   }, [groups, bgOverrides, activeGroupId, onActiveBackdropChange]);
-  const didMountRef = React21.useRef(false);
-  React21.useEffect(() => {
+  const didMountRef = React22.useRef(false);
+  React22.useEffect(() => {
     if (!didMountRef.current) {
       didMountRef.current = true;
       return;
     }
     onGroupsChange?.({ groups, layout, activeGroupId });
   }, [groups, layout, activeGroupId, onGroupsChange]);
-  const [dragOverTarget, setDragOverTarget] = React21.useState(null);
-  const [dragOverEdge, setDragOverEdge] = React21.useState(
+  const [dragOverTarget, setDragOverTarget] = React22.useState(null);
+  const [dragOverEdge, setDragOverEdge] = React22.useState(
     null
   );
-  const [tabDragInProgress, setTabDragInProgress] = React21.useState(false);
-  const [pausedPreviews, setPausedPreviews] = React21.useState(
+  const [tabDragInProgress, setTabDragInProgress] = React22.useState(false);
+  const [pausedPreviews, setPausedPreviews] = React22.useState(
     () => /* @__PURE__ */ new Set()
   );
-  const [backdropQuality, setBackdropQualityState] = React21.useState(
+  const [backdropQuality, setBackdropQualityState] = React22.useState(
     () => getBackdropQuality()
   );
-  React21.useEffect(
+  React22.useEffect(
     () => onBackdropQualityChange(setBackdropQualityState),
     []
   );
-  const [backdropOpacity, setBackdropOpacityState] = React21.useState(
+  const [backdropOpacity, setBackdropOpacityState] = React22.useState(
     () => getBackdropOpacity()
   );
-  React21.useEffect(
+  React22.useEffect(
     () => onBackdropOpacityChange(setBackdropOpacityState),
     []
   );
-  const [playVizOnHover, setPlayVizOnHoverState] = React21.useState(
+  const [playVizOnHover, setPlayVizOnHoverState] = React22.useState(
     () => getPlayVizOnHoverEnabled()
   );
-  React21.useEffect(
+  React22.useEffect(
     () => onPlayVizOnHoverChange(setPlayVizOnHoverState),
     []
   );
-  const [hoveredGroupId, setHoveredGroupId] = React21.useState(null);
-  const [backdropVizSpan, setBackdropVizSpanState] = React21.useState(
+  const [hoveredGroupId, setHoveredGroupId] = React22.useState(null);
+  const [backdropVizSpan, setBackdropVizSpanState] = React22.useState(
     () => getBackdropVizSpan()
   );
-  React21.useEffect(
+  React22.useEffect(
     () => onBackdropVizSpanChange(setBackdropVizSpanState),
     []
   );
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!shellRootRef.current) return;
     applyTheme(shellRootRef.current, theme);
   }, [theme]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     ensureTabbarScrollStyle();
   }, []);
-  const activeTab = React21.useMemo(() => {
+  const activeTab = React22.useMemo(() => {
     const group = groups.get(activeGroupId);
     if (!group || group.activeTabId === null) return null;
     return group.tabs.find((t) => t.id === group.activeTabId) ?? null;
   }, [groups, activeGroupId]);
-  const prevActiveTabRef = React21.useRef(void 0);
-  React21.useEffect(() => {
+  const prevActiveTabRef = React22.useRef(void 0);
+  React22.useEffect(() => {
     if (prevActiveTabRef.current !== activeTab) {
       prevActiveTabRef.current = activeTab;
       onActiveTabChange?.(activeTab);
     }
   }, [activeTab, onActiveTabChange]);
-  const updateGroup = React21.useCallback(
+  const updateGroup = React22.useCallback(
     (groupId, patch) => {
       setGroups((prev) => {
         const existing = prev.get(groupId);
@@ -44140,22 +44155,22 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabClick = React21.useCallback(
+  const handleTabClick = React22.useCallback(
     (groupId, tabId) => {
       updateGroup(groupId, (g) => ({ ...g, activeTabId: tabId }));
       setActiveGroupId(groupId);
     },
     [updateGroup]
   );
-  const backdropSourceByFile = React21.useRef(/* @__PURE__ */ new Map());
-  const stopBackdropSource = React21.useCallback((fileId) => {
+  const backdropSourceByFile = React22.useRef(/* @__PURE__ */ new Map());
+  const stopBackdropSource = React22.useCallback((fileId) => {
     const ref = backdropSourceByFile.current.get(fileId);
     if (ref?.kind === "file") {
       findBuiltinExampleSource(ref.fileId)?.stopIfRunning();
     }
     backdropSourceByFile.current.delete(fileId);
   }, []);
-  const stopDisplacedBackdrop = React21.useCallback(
+  const stopDisplacedBackdrop = React22.useCallback(
     (sourceGroupId, tabId, targetGroupId) => {
       if (sourceGroupId === targetGroupId) return;
       const src = groups.get(sourceGroupId);
@@ -44169,7 +44184,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, stopBackdropSource]
   );
-  const handleTabClose = React21.useCallback(
+  const handleTabClose = React22.useCallback(
     (groupId, tabId) => {
       let closedTab = null;
       const existing = groups.get(groupId);
@@ -44248,7 +44263,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, onTabClose, stopBackdropSource]
   );
-  const handleSplit = React21.useCallback(
+  const handleSplit = React22.useCallback(
     (groupId, direction = "east") => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -44260,7 +44275,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const findNeighborGroupId = React21.useCallback(
+  const findNeighborGroupId = React22.useCallback(
     (closingId) => {
       for (const id of allGroupIds(layout)) {
         if (id !== closingId) return id;
@@ -44269,7 +44284,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [layout]
   );
-  const handleCloseGroup = React21.useCallback(
+  const handleCloseGroup = React22.useCallback(
     (groupId) => {
       const neighborId = findNeighborGroupId(groupId);
       if (!neighborId) return;
@@ -44296,7 +44311,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [findNeighborGroupId, activeGroupId]
   );
-  const splitGroupWithTab = React21.useCallback(
+  const splitGroupWithTab = React22.useCallback(
     (originGroupId, _direction, newTab) => {
       const newId2 = generateGroupId();
       setGroups((prev) => {
@@ -44312,7 +44327,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const moveTabToNewQuadrant = React21.useCallback(
+  const moveTabToNewQuadrant = React22.useCallback(
     (sourceGroupId, tabId, targetGroupId, direction) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -44353,7 +44368,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout]
   );
-  const moveTabToNewEdgeGroup = React21.useCallback(
+  const moveTabToNewEdgeGroup = React22.useCallback(
     (sourceGroupId, tabId, position) => {
       const source = groups.get(sourceGroupId);
       if (!source) return;
@@ -44389,7 +44404,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const updateGroupBackground = React21.useCallback(
+  const updateGroupBackground = React22.useCallback(
     (groupId, backgroundFileId) => {
       const prev = groups.get(groupId)?.backgroundFileId ?? null;
       if (prev === backgroundFileId) return;
@@ -44402,7 +44417,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup, onBackgroundFileChange, stopBackdropSource]
   );
-  const updateGroupOverride = React21.useCallback(
+  const updateGroupOverride = React22.useCallback(
     (groupId, overrideFileId) => {
       setBgOverrides((prev) => {
         const cur = prev.get(groupId) ?? null;
@@ -44415,7 +44430,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const updateGroupBackdropOpacity = React21.useCallback(
+  const updateGroupBackdropOpacity = React22.useCallback(
     (groupId, opacity) => {
       const prev = groups.get(groupId)?.backdropOpacity;
       const nextVal = opacity == null ? void 0 : Math.min(1, Math.max(0, opacity));
@@ -44424,7 +44439,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const updateGroupBackdropQuality = React21.useCallback(
+  const updateGroupBackdropQuality = React22.useCallback(
     (groupId, quality) => {
       const prev = groups.get(groupId)?.backdropQuality;
       const nextVal = quality ?? void 0;
@@ -44433,7 +44448,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, updateGroup]
   );
-  const closeTabById = React21.useCallback(
+  const closeTabById = React22.useCallback(
     (tabId) => {
       let ownerGroupId = null;
       for (const [gid, g] of groups.entries()) {
@@ -44466,7 +44481,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups, layout, handleTabClose]
   );
-  const findTabByFileId = React21.useCallback(
+  const findTabByFileId = React22.useCallback(
     (fileId, kind) => {
       for (const [gid, g] of groups.entries()) {
         for (const t of g.tabs) {
@@ -44479,14 +44494,14 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [groups]
   );
-  const findGroupWithAnyPreview = React21.useCallback(() => {
+  const findGroupWithAnyPreview = React22.useCallback(() => {
     for (const [gid, g] of groups.entries()) {
       if (g.tabs.some((t) => t.kind === "preview")) return gid;
     }
     return null;
   }, [groups]);
-  const shellActionsRef = React21.useRef(null);
-  const shellActions = React21.useMemo(
+  const shellActionsRef = React22.useRef(null);
+  const shellActions = React22.useMemo(
     () => ({
       addTab: /* @__PURE__ */ __name((groupId, tab) => {
         updateGroup(groupId, (g) => ({
@@ -44507,12 +44522,12 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     [splitGroupWithTab, updateGroupBackground, updateGroup, closeTabById, findTabByFileId, onOpenPopoutPreview]
   );
   shellActionsRef.current = shellActions;
-  const getActiveTab = React21.useCallback(() => activeTab, [activeTab]);
-  const getActiveGroupId = React21.useCallback(() => activeGroupId, [activeGroupId]);
-  const getActiveGroup = React21.useCallback(() => {
+  const getActiveTab = React22.useCallback(() => activeTab, [activeTab]);
+  const getActiveGroupId = React22.useCallback(() => activeGroupId, [activeGroupId]);
+  const getActiveGroup = React22.useCallback(() => {
     return groups.get(activeGroupId) ?? null;
   }, [groups, activeGroupId]);
-  const getPreviewProviderForCommand = React21.useCallback(
+  const getPreviewProviderForCommand = React22.useCallback(
     (language) => {
       const fromRegistry = getPreviewProviderForLanguage(language);
       if (fromRegistry) return fromRegistry;
@@ -44537,7 +44552,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     shellActions,
     getPreviewProvider: getPreviewProviderForCommand
   });
-  const handleEdgeDrop = React21.useCallback(
+  const handleEdgeDrop = React22.useCallback(
     (e, position) => {
       e.preventDefault();
       e.stopPropagation();
@@ -44554,7 +44569,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [moveTabToNewEdgeGroup]
   );
-  const handleEdgeDragOver = React21.useCallback(
+  const handleEdgeDragOver = React22.useCallback(
     (e, position) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -44563,12 +44578,12 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [dragOverEdge]
   );
-  const handleEdgeDragLeave = React21.useCallback(() => {
+  const handleEdgeDragLeave = React22.useCallback(() => {
     setDragOverEdge(null);
   }, []);
-  const onSaveFileRef = React21.useRef(onSaveFile);
+  const onSaveFileRef = React22.useRef(onSaveFile);
   onSaveFileRef.current = onSaveFile;
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     const handler = /* @__PURE__ */ __name((e) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key !== "s" && e.key !== "S") return;
@@ -44582,7 +44597,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeTab]);
-  const handleTabDragStart = React21.useCallback(
+  const handleTabDragStart = React22.useCallback(
     (e, groupId, tab) => {
       const payload = { sourceGroupId: groupId, tabId: tab.id };
       e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
@@ -44591,7 +44606,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     const onDragEnd = /* @__PURE__ */ __name(() => {
       setTabDragInProgress(false);
       setDragOverEdge(null);
@@ -44604,7 +44619,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
       window.removeEventListener("drop", onDragEnd);
     };
   }, []);
-  const computeQuadrant = React21.useCallback(
+  const computeQuadrant = React22.useCallback(
     (e, el) => {
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return "center";
@@ -44629,7 +44644,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     []
   );
-  const handleTabBarDrop = React21.useCallback(
+  const handleTabBarDrop = React22.useCallback(
     (e, targetGroupId) => {
       if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
       e.preventDefault();
@@ -44703,7 +44718,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [stopDisplacedBackdrop]
   );
-  const handleDropOnGroup = React21.useCallback(
+  const handleDropOnGroup = React22.useCallback(
     (e, targetGroupId) => {
       e.preventDefault();
       e.stopPropagation();
@@ -44774,7 +44789,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [computeQuadrant, groups, moveTabToNewQuadrant, stopDisplacedBackdrop]
   );
-  const renderTabContent = React21.useCallback(
+  const renderTabContent = React22.useCallback(
     (tab, groupId, isActive) => {
       switch (tab.kind) {
         case "editor": {
@@ -45076,7 +45091,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
       onRevealBackdrop
     ]
   );
-  const workspaceSpanBackdrop = React21.useMemo(() => {
+  const workspaceSpanBackdrop = React22.useMemo(() => {
     if (backdropVizSpan !== "workspace") return null;
     for (const gid of allGroupIds(layout)) {
       const g = groups.get(gid);
@@ -45094,7 +45109,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     return null;
   }, [backdropVizSpan, layout, groups, bgOverrides, backdropQuality, backdropOpacity]);
   const workspaceSpanActive = workspaceSpanBackdrop != null;
-  const renderBackdropLayer = React21.useCallback(
+  const renderBackdropLayer = React22.useCallback(
     (params) => {
       const { bgFileId, dataGroupId, quality, opacity, crop, paused } = params;
       const bgProvider = previewProviderFor?.({
@@ -45158,7 +45173,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     },
     [previewProviderFor, theme]
   );
-  const renderGroup = React21.useCallback(
+  const renderGroup = React22.useCallback(
     (group) => {
       const activeTabObj = group.tabs.find((t) => t.id === group.activeTabId);
       const isShellActiveGroup = activeGroupId === group.id;
@@ -45349,11 +45364,11 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
       pausedPreviews
     ]
   );
-  const totalGroupCount = React21.useMemo(
+  const totalGroupCount = React22.useMemo(
     () => allGroupIds(layout).length,
     [layout]
   );
-  const previewTabIds = React21.useMemo(() => {
+  const previewTabIds = React22.useMemo(() => {
     const out = [];
     for (const g of groups.values()) {
       for (const t of g.tabs) {
@@ -45364,7 +45379,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
     }
     return out;
   }, [groups]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     const unsubs = previewTabIds.map(
       ({ tabId, fileId }) => subscribe(fileId, () => {
         setGroups((prev) => {
@@ -45387,7 +45402,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
       for (const u of unsubs) u();
     };
   }, [previewTabIds]);
-  React21.useImperativeHandle(
+  React22.useImperativeHandle(
     forwardedRef,
     () => ({
       openOrFocusFile: /* @__PURE__ */ __name((fileId, options) => {
@@ -45747,7 +45762,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
                   })() : /* @__PURE__ */ jsxRuntime.jsx(SplitPane, { direction: "horizontal", children: layout.map((column, colIdx) => {
                     if (column.length === 1) {
                       const g = groups.get(column[0]);
-                      return /* @__PURE__ */ jsxRuntime.jsx(React21__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
+                      return /* @__PURE__ */ jsxRuntime.jsx(React22__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, `col-${colIdx}-${column[0]}`);
                     }
                     return /* @__PURE__ */ jsxRuntime.jsx(
                       SplitPane,
@@ -45755,7 +45770,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
                         direction: "vertical",
                         children: column.map((gid) => {
                           const g = groups.get(gid);
-                          return /* @__PURE__ */ jsxRuntime.jsx(React21__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
+                          return /* @__PURE__ */ jsxRuntime.jsx(React22__namespace.default.Fragment, { children: g ? renderGroup(g) : null }, gid);
                         })
                       },
                       `col-${colIdx}-${column.join("+")}`
@@ -46941,14 +46956,14 @@ function LiveCodingEditor({
 }) {
   const isControlled = controlledCode !== void 0;
   const initialCode = controlledCode ?? defaultCode ?? DEFAULT_CODE;
-  const runtimeRef = React21.useRef(null);
-  const [isPlaying, setIsPlaying] = React21.useState(false);
-  const [error, setError] = React21.useState(null);
-  const [bpm, setBpm] = React21.useState(bpmProp);
-  const [autoRefresh, setAutoRefresh] = React21.useState(false);
-  const fileIdRef = React21.useRef(FILE_ID);
-  const [seeded, setSeeded] = React21.useState(false);
-  React21.useEffect(() => {
+  const runtimeRef = React22.useRef(null);
+  const [isPlaying, setIsPlaying] = React22.useState(false);
+  const [error, setError] = React22.useState(null);
+  const [bpm, setBpm] = React22.useState(bpmProp);
+  const [autoRefresh, setAutoRefresh] = React22.useState(false);
+  const fileIdRef = React22.useRef(FILE_ID);
+  const [seeded, setSeeded] = React22.useState(false);
+  React22.useEffect(() => {
     seedWorkspaceFile(
       fileIdRef.current,
       "pattern.strudel",
@@ -46957,7 +46972,7 @@ function LiveCodingEditor({
     );
     setSeeded(true);
   }, []);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!seeded) return;
     const rt = new LiveCodingRuntime(
       fileIdRef.current,
@@ -46993,41 +47008,41 @@ function LiveCodingEditor({
       runtimeRef.current = null;
     };
   }, [seeded, engine]);
-  const autoPlayedRef = React21.useRef(false);
-  React21.useEffect(() => {
+  const autoPlayedRef = React22.useRef(false);
+  React22.useEffect(() => {
     if (!autoPlay || !runtimeRef.current || autoPlayedRef.current) return;
     autoPlayedRef.current = true;
     runtimeRef.current.play();
   }, [autoPlay, seeded]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!isControlled || !seeded) return;
     const file = getFile(fileIdRef.current);
     if (file && controlledCode !== file.content) {
       setContent(fileIdRef.current, controlledCode);
     }
   }, [controlledCode, isControlled, seeded]);
-  const onChangeRef = React21.useRef(onChange);
+  const onChangeRef = React22.useRef(onChange);
   onChangeRef.current = onChange;
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!seeded) return;
     return subscribe(fileIdRef.current, () => {
       const file = getFile(fileIdRef.current);
       if (file) onChangeRef.current?.(file.content);
     });
   }, [seeded]);
-  const handlePlay = React21.useCallback(() => {
+  const handlePlay = React22.useCallback(() => {
     setError(null);
     runtimeRef.current?.play();
   }, []);
-  const handleStop = React21.useCallback(() => {
+  const handleStop = React22.useCallback(() => {
     runtimeRef.current?.stop();
   }, []);
-  const handleToggleAutoRefresh = React21.useCallback(() => {
+  const handleToggleAutoRefresh = React22.useCallback(() => {
     const rt = runtimeRef.current;
     if (!rt) return;
     rt.setAutoRefresh(!rt.isAutoRefreshEnabled());
   }, []);
-  const chromeForTab = React21.useCallback(
+  const chromeForTab = React22.useCallback(
     (tab) => {
       if (tab.kind !== "editor") return void 0;
       const rt = runtimeRef.current;
@@ -47050,7 +47065,7 @@ function LiveCodingEditor({
     },
     [isPlaying, error, bpm, bpmProp, handlePlay, handleStop, toolbarExtra, autoRefresh, handleToggleAutoRefresh]
   );
-  const editorExtrasForTab = React21.useCallback(
+  const editorExtrasForTab = React22.useCallback(
     () => ({
       onPlay: handlePlay,
       onStop: handleStop,
@@ -47098,10 +47113,10 @@ function StrudelEditor({
   onExport,
   engineRef: engineRefProp
 }) {
-  const engineRef = React21.useRef(null);
-  const [bpm, setBpm] = React21.useState(120);
-  const [soundNames, setSoundNames] = React21.useState([]);
-  const [isExporting, setIsExporting] = React21.useState(false);
+  const engineRef = React22.useRef(null);
+  const [bpm, setBpm] = React22.useState(120);
+  const [soundNames, setSoundNames] = React22.useState([]);
+  const [isExporting, setIsExporting] = React22.useState(false);
   function getEngine() {
     if (!engineRef.current) {
       engineRef.current = new StrudelEngine();
@@ -47110,19 +47125,19 @@ function StrudelEditor({
     return engineRef.current;
   }
   __name(getEngine, "getEngine");
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (engineRefProp) {
       engineRefProp.current = engineRef.current;
     }
   });
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     return () => {
       engineRef.current?.dispose();
     };
   }, []);
-  const codeRef = React21.useRef(controlledCode ?? defaultCode);
+  const codeRef = React22.useRef(controlledCode ?? defaultCode);
   codeRef.current = controlledCode ?? defaultCode;
-  const handlePostEvaluate = React21.useCallback((engine2) => {
+  const handlePostEvaluate = React22.useCallback((engine2) => {
     const code = codeRef.current;
     const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/);
     if (cpsMatch) {
@@ -47135,7 +47150,7 @@ function StrudelEditor({
       setSoundNames(strudelEngine.getSoundNames());
     }
   }, [soundNames]);
-  const handleExport = React21.useCallback(async () => {
+  const handleExport = React22.useCallback(async () => {
     if (isExporting) return;
     setIsExporting(true);
     try {
@@ -47718,7 +47733,7 @@ __name(mountVizRenderer, "mountVizRenderer");
 
 // src/visualizers/useVizRenderer.ts
 function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
-  const rendererRef = React21.useRef(null);
+  const rendererRef = React22.useRef(null);
   const components = {};
   if (hapStream) {
     components.streaming = { hapStream };
@@ -47732,7 +47747,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
   if (rendererRef.current) {
     rendererRef.current.update(components);
   }
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!containerRef.current) return;
     const size = {
       w: containerRef.current.clientWidth || 400,
@@ -47755,7 +47770,7 @@ function useVizRenderer(containerRef, source, hapStream, analyser, scheduler) {
 }
 __name(useVizRenderer, "useVizRenderer");
 function VizPanel({ vizHeight = 200, hapStream, analyser, scheduler, source }) {
-  const containerRef = React21.useRef(null);
+  const containerRef = React22.useRef(null);
   useVizRenderer(containerRef, source, hapStream, analyser, scheduler);
   return /* @__PURE__ */ jsxRuntime.jsx(
     "div",
@@ -47913,9 +47928,9 @@ function VizDropdown({
   onNewViz,
   availableComponents
 }) {
-  const [open, setOpen] = React21.useState(false);
-  const ref = React21.useRef(null);
-  React21.useEffect(() => {
+  const [open, setOpen] = React22.useState(false);
+  const ref = React22.useRef(null);
+  React22.useEffect(() => {
     if (!open) return;
     const handler = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) {
@@ -48186,12 +48201,12 @@ function VizEditor({
   previewHeight: _previewHeight = 200,
   theme = "dark"
 }) {
-  const containerRef = React21.useRef(null);
-  const [initialTabs, setInitialTabs] = React21.useState(null);
-  React21.useEffect(() => {
+  const containerRef = React22.useRef(null);
+  const [initialTabs, setInitialTabs] = React22.useState(null);
+  React22.useEffect(() => {
     if (containerRef.current) applyTheme(containerRef.current, theme);
   }, [theme]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     VizPresetStore.getAll().then((presets) => {
       const tabs2 = [];
       for (const preset of presets) {
@@ -48211,7 +48226,7 @@ function VizEditor({
       setInitialTabs(tabs2.length > 0 ? tabs2 : []);
     });
   }, []);
-  const handleSaveFile = React21.useCallback(
+  const handleSaveFile = React22.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return;
@@ -48225,7 +48240,7 @@ function VizEditor({
     },
     [onPresetSaved]
   );
-  const previewProviderFor = React21.useCallback(
+  const previewProviderFor = React22.useCallback(
     (tab) => {
       const file = getFile(tab.fileId);
       if (!file) return void 0;
@@ -48439,10 +48454,10 @@ function usePopoutPreview({
   onClose,
   theme = "dark"
 }) {
-  const windowRef = React21.useRef(null);
-  const rendererRef = React21.useRef(null);
-  const rafRef = React21.useRef(null);
-  const cleanup = React21.useCallback(() => {
+  const windowRef = React22.useRef(null);
+  const rendererRef = React22.useRef(null);
+  const rafRef = React22.useRef(null);
+  const cleanup = React22.useCallback(() => {
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -48454,7 +48469,7 @@ function usePopoutPreview({
     }
     windowRef.current = null;
   }, []);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!descriptor) {
       cleanup();
       return;
@@ -48513,7 +48528,7 @@ function usePopoutPreview({
       cleanup();
     };
   }, [descriptor?.id]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!rendererRef.current) return;
     const components = {};
     if (hapStream) components.streaming = { hapStream };
@@ -49421,10 +49436,10 @@ function GraphGutter({
 }
 __name(GraphGutter, "GraphGutter");
 function HistoryPanel({ onOpenHistoryTab } = {}) {
-  const [, force] = React21__namespace.useReducer((x) => x + 1, 0);
-  React21__namespace.useEffect(() => subscribeToHistory(force), []);
-  React21__namespace.useEffect(() => subscribeToRuntimeView(force), []);
-  React21__namespace.useEffect(() => {
+  const [, force] = React22__namespace.useReducer((x) => x + 1, 0);
+  React22__namespace.useEffect(() => subscribeToHistory(force), []);
+  React22__namespace.useEffect(() => subscribeToRuntimeView(force), []);
+  React22__namespace.useEffect(() => {
     let t = null;
     const off = subscribeToDocUpdate(
       () => {
@@ -49441,17 +49456,17 @@ function HistoryPanel({ onOpenHistoryTab } = {}) {
   const viewedCommit = getViewedCommit();
   const viewing = viewedCommit !== null;
   const lockMsg = "Exit time-travel to edit";
-  const [forking, setForking] = React21__namespace.useState(null);
-  const [forkName, setForkName] = React21__namespace.useState("");
-  const [committing, setCommitting] = React21__namespace.useState(false);
-  const [commitLabel, setCommitLabel] = React21__namespace.useState("");
-  const [expanded, setExpanded] = React21__namespace.useState(null);
-  const [hovered, setHovered] = React21__namespace.useState(null);
-  const [nudgeDismissed, setNudgeDismissed] = React21__namespace.useState(false);
-  const [uncommittedCollapsed, setUncommittedCollapsed] = React21__namespace.useState(false);
-  const [uncheckedFiles, setUncheckedFiles] = React21__namespace.useState(/* @__PURE__ */ new Set());
+  const [forking, setForking] = React22__namespace.useState(null);
+  const [forkName, setForkName] = React22__namespace.useState("");
+  const [committing, setCommitting] = React22__namespace.useState(false);
+  const [commitLabel, setCommitLabel] = React22__namespace.useState("");
+  const [expanded, setExpanded] = React22__namespace.useState(null);
+  const [hovered, setHovered] = React22__namespace.useState(null);
+  const [nudgeDismissed, setNudgeDismissed] = React22__namespace.useState(false);
+  const [uncommittedCollapsed, setUncommittedCollapsed] = React22__namespace.useState(false);
+  const [uncheckedFiles, setUncheckedFiles] = React22__namespace.useState(/* @__PURE__ */ new Set());
   const dirtyPruneKey = getFileHistoryTarget() ? "" : [...getModifiedFileIdsSinceHead()].sort().join(",");
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     setUncheckedFiles((prev) => {
       if (prev.size === 0) return prev;
       const live = new Set(dirtyPruneKey ? dirtyPruneKey.split(",") : []);
@@ -50140,17 +50155,17 @@ function barString(v, cells = 8) {
 }
 __name(barString, "barString");
 function StaveInputsPanel({ kind }) {
-  const [open, setOpen] = React21.useState(false);
-  const [liveEnabled, setLiveEnabled] = React21.useState(true);
-  React21.useEffect(() => vizSignalProbe.acquire(), []);
-  React21.useEffect(() => {
+  const [open, setOpen] = React22.useState(false);
+  const [liveEnabled, setLiveEnabled] = React22.useState(true);
+  React22.useEffect(() => vizSignalProbe.acquire(), []);
+  React22.useEffect(() => {
     setLiveEnabled(getVizInputsLiveValuesEnabled());
     return onVizInputsLiveValuesChange(setLiveEnabled);
   }, []);
-  const rows = React21.useMemo(() => buildVizInputRows(kind), [kind]);
-  const liveRows = React21.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
-  const valueRefs = React21.useRef([]);
-  React21.useEffect(() => {
+  const rows = React22.useMemo(() => buildVizInputRows(kind), [kind]);
+  const liveRows = React22.useMemo(() => rows.filter((r) => r.type === "live"), [rows]);
+  const valueRefs = React22.useRef([]);
+  React22.useEffect(() => {
     if (!open || !liveEnabled) return;
     if (typeof requestAnimationFrame !== "function") return;
     let raf = 0;
@@ -50336,8 +50351,8 @@ var MODES = [
   { key: "backdrop", label: "backdrop" }
 ];
 function VizSettingsPopover(props) {
-  const ref = React21.useRef(null);
-  React21.useEffect(() => {
+  const ref = React22.useRef(null);
+  React22.useEffect(() => {
     const onDown = /* @__PURE__ */ __name((e) => {
       if (ref.current && !ref.current.contains(e.target)) props.onClose();
     }, "onDown");
@@ -50352,8 +50367,8 @@ function VizSettingsPopover(props) {
       document.removeEventListener("keydown", onKey);
     };
   }, [props]);
-  const [, forceSourcesRerender] = React21.useState(0);
-  React21.useEffect(
+  const [, forceSourcesRerender] = React22.useState(0);
+  React22.useEffect(
     () => workspaceAudioBus.onSourcesChanged(
       () => forceSourcesRerender((n) => n + 1)
     ),
@@ -50647,16 +50662,16 @@ function VizEditorChrome({
   onCropBackdrop,
   onRevealBackdrop
 }) {
-  const [settingsAnchor, setSettingsAnchor] = React21.useState(null);
-  const [liveOn, setLiveOn] = React21.useState(() => getVizLive(file.id));
-  React21.useEffect(() => {
+  const [settingsAnchor, setSettingsAnchor] = React22.useState(null);
+  const [liveOn, setLiveOn] = React22.useState(() => getVizLive(file.id));
+  React22.useEffect(() => {
     setLiveOn(getVizLive(file.id));
     return onVizLiveChange(file.id, setLiveOn);
   }, [file.id]);
-  const [selectedSource, setSelectedSource] = React21.useState({
+  const [selectedSource, setSelectedSource] = React22.useState({
     kind: "default"
   });
-  const handleSourceChange = React21.useCallback(
+  const handleSourceChange = React22.useCallback(
     (e) => {
       const next = stringToRef(e.target.value);
       const prevBuiltin = selectedSource.kind === "file" ? findBuiltinExampleSource(selectedSource.fileId) : void 0;
@@ -50687,21 +50702,21 @@ function VizEditorChrome({
       selectedSource
     ]
   );
-  const startSelectedBuiltin = React21.useCallback(() => {
+  const startSelectedBuiltin = React22.useCallback(() => {
     if (selectedSource.kind === "file") {
       const builtin = findBuiltinExampleSource(selectedSource.fileId);
       if (builtin) builtin.startIfIdle();
     }
   }, [selectedSource]);
-  const openSidePreview = React21.useCallback(() => {
+  const openSidePreview = React22.useCallback(() => {
     startSelectedBuiltin();
     onOpenPreview(selectedSource);
   }, [startSelectedBuiltin, onOpenPreview, selectedSource]);
   const previewMode = isBackground ? "backdrop" : previewOpen ? "side" : "off";
-  const [placementPref, setPlacementPref] = React21.useState(
+  const [placementPref, setPlacementPref] = React22.useState(
     "backdrop"
   );
-  const handleSetPreviewMode = React21.useCallback(
+  const handleSetPreviewMode = React22.useCallback(
     (next) => {
       if (next !== "off") setPlacementPref(next);
       if (next === previewMode) return;
@@ -50725,7 +50740,7 @@ function VizEditorChrome({
   const buttonState = previewMode === "off" ? "idle" : previewPaused ? "paused" : "running";
   const buttonLabel = buttonState === "running" ? "\u23F8 Pause" : "\u25B6 Play";
   const buttonTitle = buttonState === "running" ? "Pause this viz (side tab or backdrop)" : buttonState === "paused" ? "Resume this viz" : `Play this viz as ${placementPref === "backdrop" ? "backdrop" : "side preview"}`;
-  const activatePreferred = React21.useCallback(() => {
+  const activatePreferred = React22.useCallback(() => {
     if (placementPref === "backdrop") {
       startSelectedBuiltin();
       onToggleBackground(selectedSource);
@@ -50739,7 +50754,7 @@ function VizEditorChrome({
     openSidePreview,
     selectedSource
   ]);
-  const handlePrimaryClick = React21.useCallback(() => {
+  const handlePrimaryClick = React22.useCallback(() => {
     if (previewMode === "off") activatePreferred();
     else onTogglePausePreview?.();
   }, [previewMode, activatePreferred, onTogglePausePreview]);
@@ -50884,7 +50899,7 @@ function createCompiledVizProvider(opts) {
 __name(createCompiledVizProvider, "createCompiledVizProvider");
 function CompiledVizMount(props) {
   const { file, rendererType, audioSource, hidden, paused, fileId } = props;
-  const { descriptor, compileError } = React21.useMemo(() => {
+  const { descriptor, compileError } = React22.useMemo(() => {
     try {
       const preset = {
         id: file.id,
@@ -50920,9 +50935,9 @@ function CompiledVizMount(props) {
       return { descriptor: null, compileError: message };
     }
   }, [file.id, file.content, file.language, rendererType, file.path]);
-  const containerRef = React21.useRef(null);
-  const rendererRef = React21.useRef(null);
-  const components = React21.useMemo(() => {
+  const containerRef = React22.useRef(null);
+  const rendererRef = React22.useRef(null);
+  const components = React22.useMemo(() => {
     const bag = {};
     if (audioSource?.hapStream) {
       bag.streaming = { hapStream: audioSource.hapStream };
@@ -50954,7 +50969,7 @@ function CompiledVizMount(props) {
     }
     return bag;
   }, [audioSource]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     if (!descriptor) return;
     const el = containerRef.current;
     if (!el) return;
@@ -51014,7 +51029,7 @@ function CompiledVizMount(props) {
       }
     };
   }, [descriptor]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r || !r.update) return;
     try {
@@ -51022,7 +51037,7 @@ function CompiledVizMount(props) {
     } catch {
     }
   }, [components]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (hidden) {
@@ -51037,7 +51052,7 @@ function CompiledVizMount(props) {
       }
     }
   }, [hidden]);
-  React21.useEffect(() => {
+  React22.useEffect(() => {
     const r = rendererRef.current?.renderer;
     if (!r) return;
     if (paused) {
@@ -51353,13 +51368,13 @@ function silencedNamesFrom(strips, soloed) {
 __name(silencedNamesFrom, "silencedNamesFrom");
 function useSilencedTrackNames() {
   const soloed = useSoloedIds();
-  const [editor, setEditor] = React21__namespace.useState(() => getActiveEditor());
-  const [strips, setStrips] = React21__namespace.useState([]);
-  React21__namespace.useEffect(() => {
+  const [editor, setEditor] = React22__namespace.useState(() => getActiveEditor());
+  const [strips, setStrips] = React22__namespace.useState([]);
+  React22__namespace.useEffect(() => {
     setEditor(getActiveEditor());
     return onActiveEditorChange(() => setEditor(getActiveEditor()));
   }, []);
-  React21__namespace.useEffect(() => {
+  React22__namespace.useEffect(() => {
     if (!editor) {
       setStrips([]);
       return;
@@ -51383,7 +51398,7 @@ function useSilencedTrackNames() {
     const sub = model?.onDidChangeContent?.(rederive);
     return () => sub?.dispose?.();
   }, [editor]);
-  return React21__namespace.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
+  return React22__namespace.useMemo(() => silencedNamesFrom(strips, soloed), [strips, soloed]);
 }
 __name(useSilencedTrackNames, "useSilencedTrackNames");
 

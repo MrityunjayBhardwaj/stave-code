@@ -1,68 +1,14 @@
 import { describe, it, expect, vi } from 'vitest'
-import type * as Monaco from 'monaco-editor'
-import { Writeback, commit, type OffsetEdit, type WriteSource } from '../writeback'
+import { commit, isCommitting, openGesture, closeGesture, type OffsetEdit } from '../writeback'
 import { assignmentEdit } from '../assign/soundAssign'
+import { fakeEditor } from './fakeEditor'
 
 /**
  * #1900 — `commit` is the one way an operation's result reaches the open
- * document. These run it against a small in-memory model with the same surface
- * `Writeback` drives (offset ↔ position, `pushEditOperations`, undo boundaries),
- * and record which source was up while each change landed.
+ * document. These run it against `fakeEditor`, a small in-memory model with the
+ * same surface `Writeback` drives, recording which source was up while each
+ * change landed.
  */
-function fakeEditor(initial: string, opts: { noModel?: boolean } = {}) {
-  let text = initial
-  const changes: { source: WriteSource | null; text: string }[] = []
-  let undoStops = 0
-  let wb: Writeback | null = null
-  const offsetOf = (p: { lineNumber: number; column: number }): number => {
-    const lines = text.split('\n')
-    let off = 0
-    for (let i = 0; i < p.lineNumber - 1; i++) off += lines[i].length + 1
-    return off + p.column - 1
-  }
-  const model = {
-    getValue: () => text,
-    getPositionAt: (offset: number) => {
-      const before = text.slice(0, offset).split('\n')
-      return { lineNumber: before.length, column: before[before.length - 1].length + 1 }
-    },
-    pushStackElement: () => {
-      undoStops++
-    },
-    pushEditOperations: (
-      _sel: unknown,
-      ops: { range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }; text: string }[],
-    ) => {
-      const spans = ops
-        .map((o) => ({
-          s: offsetOf({ lineNumber: o.range.startLineNumber, column: o.range.startColumn }),
-          e: offsetOf({ lineNumber: o.range.endLineNumber, column: o.range.endColumn }),
-          t: o.text,
-        }))
-        .sort((a, b) => b.s - a.s)
-      for (const { s, e, t } of spans) text = text.slice(0, s) + t + text.slice(e)
-      changes.push({ source: wb?.currentSource ?? null, text })
-      return null
-    },
-  }
-  const editor = { getModel: () => (opts.noModel ? null : model) }
-  const monaco = {
-    Range: class {
-      constructor(
-        public startLineNumber: number,
-        public startColumn: number,
-        public endLineNumber: number,
-        public endColumn: number,
-      ) {}
-    },
-  }
-  wb = new Writeback(
-    editor as unknown as Monaco.editor.IStandaloneCodeEditor,
-    monaco as unknown as typeof Monaco,
-  )
-  return { wb, editor, changes, text: () => text, undoStops: () => undoStops }
-}
-
 describe('commit — an operation result into the document', () => {
   const doc = '$: s("bd").gain(0.5)'
   const gainArg: [number, number] = [doc.indexOf('0.5'), doc.indexOf('0.5') + 3]
@@ -198,5 +144,100 @@ describe('assignmentEdit — a plan as the plain edit it stands for', () => {
   it('replace keeps its range; insert is zero-width at its offset', () => {
     expect(assignmentEdit({ kind: 'replace', range: [3, 7], text: "'piano'" })).toEqual({ range: [3, 7], text: "'piano'" })
     expect(assignmentEdit({ kind: 'insert', offset: 12, text: '\ns("bd")' })).toEqual({ range: [12, 12], text: '\ns("bd")' })
+  })
+})
+
+/**
+ * #1909 — the door's remaining forms, for a surface that keeps a writer: build it,
+ * group a gesture's commits, and tell its own write from an external one.
+ */
+describe('createWriter / openGesture / closeGesture / isCommitting', () => {
+  const doc = '$: s("bd").gain(0.5)'
+  const g: [number, number] = [doc.indexOf('0.5'), doc.indexOf('0.5') + 3]
+
+  it('createWriter is null before Monaco is loaded, and a working writer after', async () => {
+    const { reg, door } = await freshDoor()
+    const f = fakeEditor(doc)
+    expect(door.createWriter(f.editor as never)).toBeNull()
+    reg.registerMonacoNamespace({ Range } as never)
+    const w = door.createWriter(f.editor as never)
+    expect(w).not.toBeNull()
+    expect(door.commit(w!, { range: g, text: '0.8' }, 'knob')).toBe('written')
+    expect(f.text()).toBe('$: s("bd").gain(0.8)')
+  })
+
+  it('a gesture is ONE undo step and ONE re-eval, on close, however many commits it holds', async () => {
+    vi.useFakeTimers()
+    try {
+      const { reg, door } = await freshDoor()
+      reg.registerMonacoNamespace({ Range } as never)
+      const f = fakeEditor(doc)
+      reg.registerEditor('song.js', f.editor as never)
+      const reevals: string[] = []
+      reg.registerReevalHandler((id) => reevals.push(id))
+      const w = door.createWriter(f.editor as never)!
+      door.openGesture(w)
+      door.openGesture(w) // opening an open gesture does nothing
+      for (const v of ['0.6', '0.7', '0.8']) {
+        const at = f.text().indexOf('gain(') + 5
+        door.commit(w, { range: [at, f.text().indexOf(')', at)], text: v }, 'knob')
+      }
+      vi.advanceTimersByTime(500)
+      expect(reevals).toEqual([]) // nothing re-evaluates mid-gesture
+      const stopsBeforeClose = f.undoStops()
+      door.closeGesture(w)
+      door.closeGesture(w) // closing a closed gesture does nothing
+      expect(f.changes).toHaveLength(3)
+      expect(stopsBeforeClose).toBe(1) // only the boundary the open pushed
+      expect(f.undoStops()).toBe(2) // ...and the one the close pushed: one undo step
+      vi.advanceTimersByTime(500)
+      expect(reevals).toEqual(['song.js'])
+      expect(f.text()).toBe('$: s("bd").gain(0.8)')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a gesture that wrote nothing does not re-evaluate', async () => {
+    vi.useFakeTimers()
+    try {
+      const { reg, door } = await freshDoor()
+      reg.registerMonacoNamespace({ Range } as never)
+      const f = fakeEditor(doc)
+      reg.registerEditor('song.js', f.editor as never)
+      const reevals: string[] = []
+      reg.registerReevalHandler((id) => reevals.push(id))
+      const w = door.createWriter(f.editor as never)!
+      door.openGesture(w)
+      door.closeGesture(w)
+      vi.advanceTimersByTime(500)
+      expect(reevals).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('isCommitting is true only inside this writer\'s own edit', () => {
+    const f = fakeEditor(doc)
+    const seen: boolean[] = []
+    const other = fakeEditor(doc) // a second writer on its own document
+    const model = f.editor.getModel()!
+    const push = model.pushEditOperations
+    model.pushEditOperations = (...a: Parameters<typeof push>) => {
+      seen.push(isCommitting(f.wb), isCommitting(other.wb))
+      return push(...a)
+    }
+    expect(isCommitting(f.wb)).toBe(false)
+    commit(f.wb, { range: g, text: '0.8' }, 'seq')
+    expect(seen).toEqual([true, false]) // up for its own writer, not for another
+    expect(isCommitting(f.wb)).toBe(false)
+    expect(isCommitting(null)).toBe(false)
+  })
+
+  it('the gesture forms tolerate a missing writer (no editor yet)', () => {
+    expect(() => {
+      openGesture(null)
+      closeGesture(null)
+    }).not.toThrow()
   })
 })
