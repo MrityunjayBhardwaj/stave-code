@@ -141,12 +141,11 @@ import {
   type BackdropQuality,
   type BackdropVizSpan,
   getActiveEditor,
-  getMonacoNamespace,
 } from './editorRegistry'
 // Cursor-targeted sound assignment (#820) — the Asset Library sidebar writes a
 // `.sound()` / `s()` into the code at the cursor via `assignSoundToCursor`,
 // reusing the same chunk-detection + writeback spine the Mixer picker uses.
-import { Writeback } from '../codeView'
+import { commitToEditor, assignmentEdit } from '../codeView'
 import { planSoundAssignment } from '../codeView'
 import { planVizAssignment } from '../codeView'
 import type { WorkspaceShellActions } from './commands/CommandRegistry'
@@ -3136,10 +3135,9 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         // Mixer's `useActiveChunk` (which only exists while that panel is
         // mounted) — the sidebar assigns with the Pattern tab closed.
         const editor = getActiveEditor()
-        const monaco = getMonacoNamespace()
         const model = editor?.getModel()
         const pos = editor?.getPosition()
-        if (!editor || !monaco || !model || !pos) return
+        if (!editor || !model || !pos) return
         const offset = model.getOffsetAt(pos)
         // The whole decision — roll chunk under the cursor → set/replace its
         // `.sound()` (chainMethod idiom, single-quoted so PV44 doesn't reify
@@ -3149,9 +3147,7 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         // is fresh at call time, which also sidesteps the freshness guard.
         const plan = planSoundAssignment(model.getValue(), offset, sound)
         if (!plan) return
-        const wb = new Writeback(editor, monaco)
-        if (plan.kind === 'replace') wb.replaceRange(plan.range, plan.text, 'mixer')
-        else wb.insertAt(plan.offset, plan.text, 'mixer')
+        commitToEditor(editor, assignmentEdit(plan), 'mixer')
       },
       assignVizToCursor: (name: string): boolean => {
         if (!name) return false
@@ -3161,17 +3157,13 @@ export const WorkspaceShell = forwardRef<WorkspaceShellHandle, WorkspaceShellPro
         // write; returns false so the caller can guide the user (a viz decorates
         // a pattern; it can't stand alone).
         const editor = getActiveEditor()
-        const monaco = getMonacoNamespace()
         const model = editor?.getModel()
         const pos = editor?.getPosition()
-        if (!editor || !monaco || !model || !pos) return false
+        if (!editor || !model || !pos) return false
         const offset = model.getOffsetAt(pos)
         const plan = planVizAssignment(model.getValue(), offset, name)
         if (!plan) return false
-        const wb = new Writeback(editor, monaco)
-        if (plan.kind === 'replace') wb.replaceRange(plan.range, plan.text, 'mixer')
-        else wb.insertAt(plan.offset, plan.text, 'mixer')
-        return true
+        return commitToEditor(editor, assignmentEdit(plan), 'mixer') === 'written'
       },
     }),
     [

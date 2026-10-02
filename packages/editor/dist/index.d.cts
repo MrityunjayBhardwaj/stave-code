@@ -1,5 +1,5 @@
-import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-BaAuVFzG.cjs';
-export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-BaAuVFzG.cjs';
+import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, V as VizQualityLevel, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, d as VizDescriptor, e as VizRenderer, f as VizOptions, g as P5SketchFactory, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './types-iS-lMC_f.cjs';
+export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './types-iS-lMC_f.cjs';
 import * as Monaco from 'monaco-editor';
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
@@ -2928,6 +2928,354 @@ declare function detectBarePattern(doc: string, pos: number): {
 } | null;
 
 /**
+ * aliasMap — built-in named-signal aliases for the SignalBus, plus the
+ * engine-keyed model that lets one alias NAME carry per-engine sound lists.
+ *
+ * ## Why engine-keyed
+ * The bus is engine-agnostic at the IR level (it keys on `IREvent.s`), but the
+ * `s` VALUES are the one place engine-specificity leaks through: Strudel writes
+ * `bd`/`sd`/`hh`; Sonic Pi writes sample symbols (`drum_heavy_kick`,
+ * `drum_snare_hard`) and synth names (`prophet`, `beep`) — verified against the
+ * Sonic Pi source (`synthinfo.rb` `@@grouped_samples` :9304+, `@@synth_infos`
+ * :9609; every trigger resolves to a single `scsynth_name` string,
+ * `sound.rb:160-181`). The key fact: in BOTH engines a sound's identity is a
+ * single STRING (or a list) — the alias VALUE type never needs to be richer,
+ * only the values differ per engine. So an alias absorbs the leak: the NAME
+ * (`kick`) stays unified across engines, only the sound list is per-engine.
+ *
+ *   kick → { strudel: ['bd','kick9'], sonicpi: ['drum_heavy_kick'] }
+ *
+ * The active engine is resolved at MOUNT (`resolveAliasesForEngine`) down to the
+ * flat `Record<name, string|string[]>` the bus already consumes — so the bus and
+ * its `setAliases` contract are UNCHANGED; the engine dimension lives entirely in
+ * storage + this resolver (PV12: the bus stays pure, never sees an engine).
+ *
+ * ## Array aliases
+ * An alias may map to a SINGLE sound (`uKick → 'bd'`) or an ARRAY
+ * (`uTom → ['lt','mt','ht']`); for array aliases the bus resolves the envelope
+ * value as the MAX over members (any tom firing lights the alias).
+ *
+ * NOTE: `uKeyVelocity` is NOT a sound alias — it resolves to the active event's
+ * `.velocity` (handled in the per-renderer bare-alias preamble, not here).
+ */
+/** The live-coding engine a viz sketch is currently driven by. Strudel is the
+ *  only engine wired today; `sonicpi` is reserved for Sonic Web (a thesis,
+ *  not yet built — see `project_sonic_pi_web`). The union is open by intent:
+ *  storage/sanitize keep ANY engine key with a valid value, so a future engine
+ *  survives a round-trip through an older build. */
+type VizEngine = 'strudel' | 'sonicpi';
+/** A resolved alias value for one engine: a single sound name, or a list whose
+ *  envelope reads as the MAX over members. */
+type EngineAliasValue = string | string[];
+/** One alias' per-engine sound lists. Partial: an alias may define a value for
+ *  some engines and not others (e.g. a Strudel-only clap with no Sonic Pi
+ *  equivalent → silently inert under Sonic Pi, never a crash). */
+type EngineAliasMap = Partial<Record<VizEngine, EngineAliasValue>>;
+/** The persisted custom-alias shape: alias name → per-engine sound lists. This
+ *  is what lives in localStorage (`editorRegistry`); the flat per-engine view
+ *  the bus consumes is derived from it via `resolveAliasesForEngine`. */
+type StoredSignalAliases = Record<string, EngineAliasMap>;
+/** The active viz engine. Strudel is the only live engine today; this is the
+ *  single wire-point — when Sonic Web lands, source the active engine from
+ *  the running `LiveCodingEngine` at the renderer mount and pass it to
+ *  `resolveAliasesForEngine`. */
+declare const DEFAULT_VIZ_ENGINE: VizEngine;
+/**
+ * Built-in aliases, engine-keyed. Strudel values are the canonical Strudel
+ * sound names; Sonic Pi values are sample symbols from the Sonic Pi source
+ * (`synthinfo.rb` `@@grouped_samples`, the `:drum` group) so the built-in
+ * signals work cross-engine the day Sonic Web ships. Aliases with no
+ * canonical Sonic Pi sample (`uClap`, `uRim`) intentionally omit the `sonicpi`
+ * slot rather than guess — they stay Strudel-only until a user maps them.
+ */
+declare const BUILTIN_ALIASES: Record<string, EngineAliasMap>;
+/**
+ * Resolve built-ins + custom aliases into the flat `Record<name, value>` the bus
+ * consumes for a single engine. Built-ins first, custom LAST so a user override
+ * WINS on collision (mirrors the old `{ ...ALIAS_MAP, ...custom }` merge). An
+ * alias with no value for `engine` is omitted (its bare name stays unbound under
+ * that engine — honest, never a silent zero-as-bug). Pure: takes the stored
+ * custom map as an arg, imports nothing impure (PV12).
+ */
+declare function resolveAliasesForEngine(custom: StoredSignalAliases, engine: VizEngine): Record<string, EngineAliasValue>;
+/**
+ * ALIAS_MAP — the built-in aliases flattened for the DEFAULT engine (Strudel).
+ * Kept as a derived view for back-compat: the bus' default constructor and the
+ * renderers' bare-name injection consume this flat shape. Equivalent to the
+ * pre-engine-keyed constant (`uKick → 'bd'`, `uTom → ['lt','mt','ht']`).
+ */
+declare const ALIAS_MAP: Record<string, EngineAliasValue>;
+
+/**
+ * editorRegistry — tiny module-level map so callers outside the
+ * editor package (shell, app, outline panel) can find the Monaco
+ * editor instance that's currently rendering a given fileId. Used
+ * for cross-file navigation features like "reveal at line".
+ *
+ * EditorView registers on mount and unregisters on unmount. Only the
+ * ACTIVE editor for a fileId matters — if two groups show the same
+ * file, the last mount wins, which matches the UX ("jump to this
+ * symbol" lands wherever the editor is currently focused).
+ */
+
+type MonacoEditor$1 = any;
+/** The active Monaco editor, or null if none is focused/mounted. */
+declare function getActiveEditor(): MonacoEditor$1 | null;
+/**
+ * The fileId of the active editor, or null if none is active. Reverse-looks-up
+ * the registry (one registered editor per fileId). Visual-editing consumers that
+ * must follow the SAME file the active editor shows — e.g. the Mixer meters
+ * pinning the audio bus to the active program rather than the bus's "default"
+ * (most-recent) publisher, which can be a chord/sample/drum preview — use this.
+ */
+declare function getActiveFileId(): string | null;
+/** Subscribe to active-editor changes. Returns an unsubscribe fn. */
+declare function onActiveEditorChange(cb: () => void): () => void;
+/** App-side: register how to re-evaluate a playing file. Returns an unregister fn. */
+declare function registerReevalHandler(fn: (fileId: string) => void): () => void;
+/** Editor-side: request an immediate re-eval of `fileId` (no-op if unregistered). */
+declare function requestReeval(fileId: string | null): void;
+/** Editor-side: register a transform applied to a file's source before eval.
+ *  Returns an unregister fn. Replaces any prior transform (one owner). */
+declare function registerEvalSourceTransform(fn: (fileId: string, raw: string) => string): () => void;
+/** App-side: apply the registered eval-source transform (identity if none, and
+ *  identity-on-throw so a transform bug can never break playback). */
+declare function applyEvalSourceTransform(fileId: string, raw: string): string;
+/**
+ * Reveal the given line in the editor for `fileId` and set the cursor
+ * at column 1. Returns true if the editor was found. Line numbers are
+ * 1-based.
+ */
+declare function revealLineInFile(fileId: string, line: number): boolean;
+/**
+ * Reveal a source CHARACTER OFFSET in the editor for `fileId`, placing the cursor
+ * at its exact line AND column (not column 1). Returns true if the editor was
+ * found. Use this when the cursor position must land INSIDE a specific
+ * expression — e.g. binding a track that is one arm of a combinator on a shared
+ * line (`arrange([w, pat], …)`): column 1 resolves to the whole combinator
+ * (standby), while the leaf's own offset descends to the arm (#472). Falls back
+ * to line-only reveal if the model can't map the offset.
+ */
+declare function revealOffsetInFile(fileId: string, offset: number): boolean;
+/**
+ * Why a write-back did not land. Each value names ONE refusal the writer can
+ * actually tell apart, because a report that cannot name its cause cannot drive
+ * the next decision (#1414) — "the edit was declined" and "the document moved
+ * under you" call for opposite responses from a caller, and a bare `false` says
+ * neither.
+ */
+type WriteRefusal = 
+/** No editor is registered for `fileId` — typically unmounted mid-gesture. */
+'no-editor'
+/** The monaco namespace was never captured, so no edit can be constructed. */
+ | 'no-monaco'
+/** Nothing to write — upstream (usually a serializer) declined the gesture. */
+ | 'no-edits'
+/** `expectedDoc` no longer matches the live model: the offsets are stale and
+ *  applying them would corrupt unrelated code. RETRYABLE — unlike the rest. */
+ | 'stale-document'
+/** `Writeback.replaceRanges` threw. */
+ | 'writeback-threw';
+/** `'applied'`, or the reason the write-back refused. */
+type WriteOutcome = 'applied' | WriteRefusal;
+/**
+ * Apply a batch of surgical offset edits to the model of `fileId`'s editor as
+ * ONE undo step, tagged with `source`. This is the arrangement timeline's
+ * write-back seam: the canvas hands up the edits (built by `codeView/arrange`),
+ * the registry routes them through the same surgical `Writeback` the panels use,
+ * and the runtime's debounced re-eval picks the change up (no explicit eval call
+ * needed). PV122 #2.
+ *
+ * ⚠ RETURNS A REASON, NOT A BOOLEAN, AND THE REASON IS THE POINT (#1414). This
+ * function has always refused correctly; every one of its fourteen call sites
+ * discarded the answer, so a refused timeline gesture and an applied one were
+ * indistinguishable to the user AND to us. A `boolean` could be read; naming the
+ * cause is what makes the refusal actionable — and makes "how often does this
+ * fire, and which one" a question with an answer. Callers should compare against
+ * `'applied'` explicitly: every member of this union is truthy, so a bare
+ * `if (result)` is always true and is always a bug.
+ */
+declare function applyOffsetEditsToFile(fileId: string, edits: OffsetEdit[], source: WriteSource, expectedDoc?: string): WriteOutcome;
+/** CSS variable that scales every chrome-level icon glyph (menu gear,
+ *  activity bar, etc.). Applied to documentElement on mount and on
+ *  every change. */
+declare const UI_ICON_SIZE_VAR = "--ui-icon-size";
+/** Separate CSS variable for the floating action buttons (edit / crop)
+ *  attached to inline `.viz()` zones. They sit inside the canvas area
+ *  and tend to need a tighter scale than the rest of the chrome —
+ *  hence their own slider, independent of the main UI icon size. */
+declare const INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
+/** Get the current global editor font size (px). */
+declare function getEditorFontSize(): number;
+/** Get the current global minimap visibility flag. */
+declare function getEditorMinimap(): boolean;
+/** Set the font size (clamped 8–40) and apply to every open editor. */
+declare function setEditorFontSize(size: number): void;
+/** Bump font size by delta (positive / negative). */
+declare function bumpEditorFontSize(delta: number): void;
+/** Toggle minimap visibility across every open editor. */
+declare function toggleEditorMinimap(): void;
+declare function getEditorUiIconSize(): number;
+declare function setEditorUiIconSize(size: number): void;
+declare function onUiIconSizeChange(cb: (size: number) => void): () => void;
+/** Apply the persisted icon size to the document root on first mount. */
+declare function applyPersistedUiIconSize(): void;
+declare function getInlineVizActionSize(): number;
+declare function setInlineVizActionSize(size: number): void;
+declare function onInlineVizActionSizeChange(cb: (size: number) => void): () => void;
+declare function applyPersistedInlineVizActionSize(): void;
+/** Current inline-viz render resolution (height in px). */
+declare function getInlineVizResolution(): number;
+/** Set the inline-viz render resolution (clamped 64–2048). Notifies listeners;
+ *  takes effect on the next zone (re)mount / evaluate. */
+declare function setInlineVizResolution(n: number): void;
+declare function onInlineVizResolutionChange(cb: (n: number) => void): () => void;
+/** Current viz quality level ("performance mode"). */
+declare function getVizQuality(): VizQualityLevel;
+/** Set the viz quality level — persists, applies resolution + density to their
+ *  channels (the density marshals live to worker viz), and notifies listeners. */
+declare function setVizQuality(level: VizQualityLevel): void;
+declare function onVizQualityChange(cb: (level: VizQualityLevel) => void): () => void;
+/** Restore the persisted quality's DENSITY into the vizConfig singleton on
+ *  startup (call once at app init, like `applyPersistedInlineVizActionSize`).
+ *
+ *  Density ONLY — deliberately NOT resolution. Resolution is pull-model (read
+ *  fresh from its own `stave:inlineVizResolution` setting when a zone mounts),
+ *  and `setVizQuality` already writes that setting at set-time, so a chosen
+ *  level's resolution persists through that channel. Re-applying resolution here
+ *  would CLOBBER a user's standalone render-resolution override on every reload
+ *  (it would force the default level's 512 whenever quality was never changed).
+ *  Density, by contrast, lives in the in-memory vizConfig singleton that resets
+ *  to default(1) per page load, so it's the only knob that needs restoring. */
+declare function applyPersistedVizQuality(): void;
+/** Whether off-screen inline viz are torn down (destroyed to reclaim memory)
+ *  after the threshold. Default ON. */
+declare function getInlineVizTeardownEnabled(): boolean;
+/** Enable/disable off-screen inline-viz teardown. Notifies listeners; takes
+ *  effect on the next zone (re)mount / evaluate. */
+declare function setInlineVizTeardownEnabled(on: boolean): void;
+declare function onInlineVizTeardownChange(cb: (on: boolean) => void): () => void;
+/** Whether the left-edge per-track colour bar is painted in the code view.
+ *  Default ON. */
+declare function getTrackColourBarsEnabled(): boolean;
+/** Show/hide the left-edge track colour bar. Notifies listeners so open
+ *  editors add/remove the overlay live. */
+declare function setTrackColourBarsEnabled(on: boolean): void;
+declare function onTrackColourBarsChange(cb: (on: boolean) => void): () => void;
+/** Whether non-focused split-pane backdrops freeze unless hovered. Default OFF
+ *  (all panes live, #768). */
+declare function getPlayVizOnHoverEnabled(): boolean;
+/** Enable/disable the hover-gated backdrop freeze. Notifies listeners so the open
+ *  WorkspaceShell re-evaluates every pane's `paused` state live. */
+declare function setPlayVizOnHoverEnabled(on: boolean): void;
+declare function onPlayVizOnHoverChange(cb: (on: boolean) => void): () => void;
+type BackdropVizSpan = 'file' | 'workspace';
+/** Whether backdrops are per-pane ('file', default) or one shared viz spanning
+ *  every split pane ('workspace'). */
+declare function getBackdropVizSpan(): BackdropVizSpan;
+/** Switch the backdrop span mode. Notifies listeners so the open WorkspaceShell
+ *  re-renders (per-pane backdrops ⇄ one spanning backdrop) without a remount. */
+declare function setBackdropVizSpan(span: BackdropVizSpan): void;
+declare function onBackdropVizSpanChange(cb: (span: BackdropVizSpan) => void): () => void;
+/** Effective teardown delay in ms for a newly-mounted inline zone: the threshold
+ *  when enabled, 0 (= never tear down) when disabled. Read at mount. An optional
+ *  `stave:inlineVizTeardownMs` localStorage override tunes the delay (advanced /
+ *  test churn harnesses) — clamped to ≥1000ms; absent → the 60s default. */
+declare function getInlineVizTeardownMs(): number;
+/** Whether the open Stave Inputs drawer paints live master signal values
+ *  (#346). Default ON. */
+declare function getVizInputsLiveValuesEnabled(): boolean;
+/** Enable/disable live values in the Stave Inputs drawer. Notifies listeners so
+ *  a mounted panel can start/stop its paint loop without a reload. */
+declare function setVizInputsLiveValuesEnabled(on: boolean): void;
+declare function onVizInputsLiveValuesChange(cb: (on: boolean) => void): () => void;
+/** The setting's range, px. Exported for a caller that solves for a height
+ *  (the Song timeline's row-edge drag, #1750) and must search inside it. */
+declare const MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN = 12;
+declare const MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX = 48;
+declare function getMusicalTimelineSubRowHeight(): number;
+declare function setMusicalTimelineSubRowHeight(h: number): void;
+declare function onMusicalTimelineSubRowHeightChange(cb: (h: number) => void): () => void;
+/** CSS variable read by the shell's code-panel blur rule (see
+ *  globals.css). 0 disables the blur entirely; higher values push
+ *  more toward frosted-glass legibility. */
+declare const BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
+declare function getEditorBackdropBlur(): number;
+declare function setEditorBackdropBlur(size: number): void;
+declare function applyPersistedBackdropBlur(): void;
+declare function getBackdropOpacity(): number;
+declare function setBackdropOpacity(o: number): void;
+declare function onBackdropOpacityChange(cb: (o: number) => void): () => void;
+/** The flat per-engine view the bus consumes and the settings UI edits. */
+type SignalAliasMap = Record<string, string | string[]>;
+/** The raw engine-keyed custom-alias map (sanitized + migrated). Source of
+ *  truth for the renderer's `resolveAliasesForEngine` and any future
+ *  multi-engine settings UI. */
+declare function getStoredSignalAliases(): StoredSignalAliases;
+/** Custom signal aliases for ONE engine (default: the active engine, Strudel),
+ *  as the flat `name → value` view the settings UI edits. Built-ins are NOT
+ *  included — custom map only. */
+declare function getSignalAliases(engine?: VizEngine): SignalAliasMap;
+/** Replace the custom aliases for ONE engine (default: active/Strudel) from the
+ *  flat `name → value` view, persist, and notify. Surviving names KEEP their
+ *  other engines' slots (editing the Strudel column never wipes a Sonic Pi one);
+ *  names absent from `map` are removed. The values are sanitized so a bad caller
+ *  can't poison storage. */
+declare function setSignalAliases(map: SignalAliasMap, engine?: VizEngine): void;
+/** Subscribe to alias-map changes (fires on every setSignalAliases). The
+ *  callback receives the FLAT view for the engine that was set. Returns an
+ *  unsubscribe. */
+declare function onSignalAliasesChange(cb: (map: SignalAliasMap) => void): () => void;
+type BackdropQuality = 'full' | 'half' | 'quarter';
+declare function getBackdropQuality(): BackdropQuality;
+declare function setBackdropQuality(q: BackdropQuality): void;
+declare function onBackdropQualityChange(cb: (q: BackdropQuality) => void): () => void;
+/** Resolution factor applied to the backdrop — render at factor×
+ *  viewport size, CSS-stretch to fill. Lower = cheaper GPU. */
+declare function backdropQualityFactor(q: BackdropQuality): number;
+type EditorTheme = 'dark' | 'light' | 'system';
+type ResolvedTheme = 'dark' | 'light';
+type ThemeListener = (t: ResolvedTheme) => void;
+declare function getEditorTheme(): EditorTheme;
+declare function getResolvedTheme(): ResolvedTheme;
+declare function setEditorTheme(theme: EditorTheme): void;
+/** Cycle dark → light → system → dark. Used by the menu command. */
+declare function cycleEditorTheme(): EditorTheme;
+/** Subscribe to resolved theme changes. Fires when mode changes or when
+ * 'system' preference flips. Returns an unsubscribe. */
+declare function onThemeChange(fn: ThemeListener): () => void;
+/** Seed DOM + monaco with the persisted theme. Call after mounting. */
+declare function applyPersistedTheme(): void;
+/** Whether the perf overlay/profiler is enabled (persisted preference, or the
+ *  `__STAVE_PERF__` global force-on). */
+declare function getPerfEnabled(): boolean;
+/** Enable/disable the perf profiler + overlay. Persists, flips the profiler
+ *  singleton's live flag, and notifies listeners (the overlay subscribes). */
+declare function setPerfEnabled(on: boolean): void;
+/** Toggle the perf overlay; returns the new state. */
+declare function togglePerfEnabled(): boolean;
+/** Subscribe to perf-enabled changes (fires on set/toggle). Returns an
+ *  unsubscribe. */
+declare function onPerfEnabledChange(cb: (on: boolean) => void): () => void;
+/** Apply the persisted perf-enabled preference to the profiler. Call once at
+ *  app start so a reload restores an enabled overlay. */
+declare function applyPersistedPerfEnabled(): void;
+/** Whether adaptive performance (the viz governor) is enabled (persisted; ON by default). */
+declare function getAdaptivePerfEnabled(): boolean;
+/** Enable/disable adaptive performance. Persists, flips the governor's live gate
+ *  (disabling releases the levers immediately — full resolution, no throttle),
+ *  and notifies listeners. */
+declare function setAdaptivePerfEnabled(on: boolean): void;
+/** Toggle adaptive performance; returns the new state. */
+declare function toggleAdaptivePerfEnabled(): boolean;
+/** Subscribe to adaptive-performance changes (fires on set/toggle). */
+declare function onAdaptivePerfChange(cb: (on: boolean) => void): () => void;
+/** Apply the persisted adaptive-performance preference to the governor. Call once
+ *  at app start (like applyPersistedPerfEnabled) so the governor's live flag agrees
+ *  with the stored preference regardless of module-load ordering. */
+declare function applyPersistedAdaptivePerf(): void;
+
+/**
  * writeback — chunk → document.
  *
  * The mutation half of the visual-editing spine. Visual panels read a
@@ -3069,6 +3417,15 @@ declare class Writeback {
      */
     private requestLiveReeval;
 }
+/**
+ * `commit` addressed by FILE rather than by a writer — the route a surface takes
+ * when it does not own the editor (the app's backdrop write, #1906). Keeps the
+ * file route's stale-document check: pass the document the edit was computed
+ * against as `expectedDoc`, and a document that moved since is refused rather
+ * than corrupted. Answers with the writer's named refusals (`no-editor`,
+ * `stale-document`, …) so the caller can report the one it got.
+ */
+declare function commitToFile(fileId: string, edit: OffsetEdit | readonly OffsetEdit[] | null, source: WriteSource, expectedDoc?: string): WriteOutcome;
 
 /**
  * arrange/serialize — structural ops on a detected combinator call.
@@ -6161,354 +6518,6 @@ type LayoutColumn = readonly string[];
  * placeholder.
  */
 type GroupLayout = readonly LayoutColumn[];
-
-/**
- * aliasMap — built-in named-signal aliases for the SignalBus, plus the
- * engine-keyed model that lets one alias NAME carry per-engine sound lists.
- *
- * ## Why engine-keyed
- * The bus is engine-agnostic at the IR level (it keys on `IREvent.s`), but the
- * `s` VALUES are the one place engine-specificity leaks through: Strudel writes
- * `bd`/`sd`/`hh`; Sonic Pi writes sample symbols (`drum_heavy_kick`,
- * `drum_snare_hard`) and synth names (`prophet`, `beep`) — verified against the
- * Sonic Pi source (`synthinfo.rb` `@@grouped_samples` :9304+, `@@synth_infos`
- * :9609; every trigger resolves to a single `scsynth_name` string,
- * `sound.rb:160-181`). The key fact: in BOTH engines a sound's identity is a
- * single STRING (or a list) — the alias VALUE type never needs to be richer,
- * only the values differ per engine. So an alias absorbs the leak: the NAME
- * (`kick`) stays unified across engines, only the sound list is per-engine.
- *
- *   kick → { strudel: ['bd','kick9'], sonicpi: ['drum_heavy_kick'] }
- *
- * The active engine is resolved at MOUNT (`resolveAliasesForEngine`) down to the
- * flat `Record<name, string|string[]>` the bus already consumes — so the bus and
- * its `setAliases` contract are UNCHANGED; the engine dimension lives entirely in
- * storage + this resolver (PV12: the bus stays pure, never sees an engine).
- *
- * ## Array aliases
- * An alias may map to a SINGLE sound (`uKick → 'bd'`) or an ARRAY
- * (`uTom → ['lt','mt','ht']`); for array aliases the bus resolves the envelope
- * value as the MAX over members (any tom firing lights the alias).
- *
- * NOTE: `uKeyVelocity` is NOT a sound alias — it resolves to the active event's
- * `.velocity` (handled in the per-renderer bare-alias preamble, not here).
- */
-/** The live-coding engine a viz sketch is currently driven by. Strudel is the
- *  only engine wired today; `sonicpi` is reserved for Sonic Web (a thesis,
- *  not yet built — see `project_sonic_pi_web`). The union is open by intent:
- *  storage/sanitize keep ANY engine key with a valid value, so a future engine
- *  survives a round-trip through an older build. */
-type VizEngine = 'strudel' | 'sonicpi';
-/** A resolved alias value for one engine: a single sound name, or a list whose
- *  envelope reads as the MAX over members. */
-type EngineAliasValue = string | string[];
-/** One alias' per-engine sound lists. Partial: an alias may define a value for
- *  some engines and not others (e.g. a Strudel-only clap with no Sonic Pi
- *  equivalent → silently inert under Sonic Pi, never a crash). */
-type EngineAliasMap = Partial<Record<VizEngine, EngineAliasValue>>;
-/** The persisted custom-alias shape: alias name → per-engine sound lists. This
- *  is what lives in localStorage (`editorRegistry`); the flat per-engine view
- *  the bus consumes is derived from it via `resolveAliasesForEngine`. */
-type StoredSignalAliases = Record<string, EngineAliasMap>;
-/** The active viz engine. Strudel is the only live engine today; this is the
- *  single wire-point — when Sonic Web lands, source the active engine from
- *  the running `LiveCodingEngine` at the renderer mount and pass it to
- *  `resolveAliasesForEngine`. */
-declare const DEFAULT_VIZ_ENGINE: VizEngine;
-/**
- * Built-in aliases, engine-keyed. Strudel values are the canonical Strudel
- * sound names; Sonic Pi values are sample symbols from the Sonic Pi source
- * (`synthinfo.rb` `@@grouped_samples`, the `:drum` group) so the built-in
- * signals work cross-engine the day Sonic Web ships. Aliases with no
- * canonical Sonic Pi sample (`uClap`, `uRim`) intentionally omit the `sonicpi`
- * slot rather than guess — they stay Strudel-only until a user maps them.
- */
-declare const BUILTIN_ALIASES: Record<string, EngineAliasMap>;
-/**
- * Resolve built-ins + custom aliases into the flat `Record<name, value>` the bus
- * consumes for a single engine. Built-ins first, custom LAST so a user override
- * WINS on collision (mirrors the old `{ ...ALIAS_MAP, ...custom }` merge). An
- * alias with no value for `engine` is omitted (its bare name stays unbound under
- * that engine — honest, never a silent zero-as-bug). Pure: takes the stored
- * custom map as an arg, imports nothing impure (PV12).
- */
-declare function resolveAliasesForEngine(custom: StoredSignalAliases, engine: VizEngine): Record<string, EngineAliasValue>;
-/**
- * ALIAS_MAP — the built-in aliases flattened for the DEFAULT engine (Strudel).
- * Kept as a derived view for back-compat: the bus' default constructor and the
- * renderers' bare-name injection consume this flat shape. Equivalent to the
- * pre-engine-keyed constant (`uKick → 'bd'`, `uTom → ['lt','mt','ht']`).
- */
-declare const ALIAS_MAP: Record<string, EngineAliasValue>;
-
-/**
- * editorRegistry — tiny module-level map so callers outside the
- * editor package (shell, app, outline panel) can find the Monaco
- * editor instance that's currently rendering a given fileId. Used
- * for cross-file navigation features like "reveal at line".
- *
- * EditorView registers on mount and unregisters on unmount. Only the
- * ACTIVE editor for a fileId matters — if two groups show the same
- * file, the last mount wins, which matches the UX ("jump to this
- * symbol" lands wherever the editor is currently focused).
- */
-
-type MonacoEditor$1 = any;
-/** The active Monaco editor, or null if none is focused/mounted. */
-declare function getActiveEditor(): MonacoEditor$1 | null;
-/**
- * The fileId of the active editor, or null if none is active. Reverse-looks-up
- * the registry (one registered editor per fileId). Visual-editing consumers that
- * must follow the SAME file the active editor shows — e.g. the Mixer meters
- * pinning the audio bus to the active program rather than the bus's "default"
- * (most-recent) publisher, which can be a chord/sample/drum preview — use this.
- */
-declare function getActiveFileId(): string | null;
-/** Subscribe to active-editor changes. Returns an unsubscribe fn. */
-declare function onActiveEditorChange(cb: () => void): () => void;
-/** App-side: register how to re-evaluate a playing file. Returns an unregister fn. */
-declare function registerReevalHandler(fn: (fileId: string) => void): () => void;
-/** Editor-side: request an immediate re-eval of `fileId` (no-op if unregistered). */
-declare function requestReeval(fileId: string | null): void;
-/** Editor-side: register a transform applied to a file's source before eval.
- *  Returns an unregister fn. Replaces any prior transform (one owner). */
-declare function registerEvalSourceTransform(fn: (fileId: string, raw: string) => string): () => void;
-/** App-side: apply the registered eval-source transform (identity if none, and
- *  identity-on-throw so a transform bug can never break playback). */
-declare function applyEvalSourceTransform(fileId: string, raw: string): string;
-/**
- * Reveal the given line in the editor for `fileId` and set the cursor
- * at column 1. Returns true if the editor was found. Line numbers are
- * 1-based.
- */
-declare function revealLineInFile(fileId: string, line: number): boolean;
-/**
- * Reveal a source CHARACTER OFFSET in the editor for `fileId`, placing the cursor
- * at its exact line AND column (not column 1). Returns true if the editor was
- * found. Use this when the cursor position must land INSIDE a specific
- * expression — e.g. binding a track that is one arm of a combinator on a shared
- * line (`arrange([w, pat], …)`): column 1 resolves to the whole combinator
- * (standby), while the leaf's own offset descends to the arm (#472). Falls back
- * to line-only reveal if the model can't map the offset.
- */
-declare function revealOffsetInFile(fileId: string, offset: number): boolean;
-/**
- * Why a write-back did not land. Each value names ONE refusal the writer can
- * actually tell apart, because a report that cannot name its cause cannot drive
- * the next decision (#1414) — "the edit was declined" and "the document moved
- * under you" call for opposite responses from a caller, and a bare `false` says
- * neither.
- */
-type WriteRefusal = 
-/** No editor is registered for `fileId` — typically unmounted mid-gesture. */
-'no-editor'
-/** The monaco namespace was never captured, so no edit can be constructed. */
- | 'no-monaco'
-/** Nothing to write — upstream (usually a serializer) declined the gesture. */
- | 'no-edits'
-/** `expectedDoc` no longer matches the live model: the offsets are stale and
- *  applying them would corrupt unrelated code. RETRYABLE — unlike the rest. */
- | 'stale-document'
-/** `Writeback.replaceRanges` threw. */
- | 'writeback-threw';
-/** `'applied'`, or the reason the write-back refused. */
-type WriteOutcome = 'applied' | WriteRefusal;
-/**
- * Apply a batch of surgical offset edits to the model of `fileId`'s editor as
- * ONE undo step, tagged with `source`. This is the arrangement timeline's
- * write-back seam: the canvas hands up the edits (built by `codeView/arrange`),
- * the registry routes them through the same surgical `Writeback` the panels use,
- * and the runtime's debounced re-eval picks the change up (no explicit eval call
- * needed). PV122 #2.
- *
- * ⚠ RETURNS A REASON, NOT A BOOLEAN, AND THE REASON IS THE POINT (#1414). This
- * function has always refused correctly; every one of its fourteen call sites
- * discarded the answer, so a refused timeline gesture and an applied one were
- * indistinguishable to the user AND to us. A `boolean` could be read; naming the
- * cause is what makes the refusal actionable — and makes "how often does this
- * fire, and which one" a question with an answer. Callers should compare against
- * `'applied'` explicitly: every member of this union is truthy, so a bare
- * `if (result)` is always true and is always a bug.
- */
-declare function applyOffsetEditsToFile(fileId: string, edits: OffsetEdit[], source: WriteSource, expectedDoc?: string): WriteOutcome;
-/** CSS variable that scales every chrome-level icon glyph (menu gear,
- *  activity bar, etc.). Applied to documentElement on mount and on
- *  every change. */
-declare const UI_ICON_SIZE_VAR = "--ui-icon-size";
-/** Separate CSS variable for the floating action buttons (edit / crop)
- *  attached to inline `.viz()` zones. They sit inside the canvas area
- *  and tend to need a tighter scale than the rest of the chrome —
- *  hence their own slider, independent of the main UI icon size. */
-declare const INLINE_VIZ_ACTION_SIZE_VAR = "--inline-viz-action-size";
-/** Get the current global editor font size (px). */
-declare function getEditorFontSize(): number;
-/** Get the current global minimap visibility flag. */
-declare function getEditorMinimap(): boolean;
-/** Set the font size (clamped 8–40) and apply to every open editor. */
-declare function setEditorFontSize(size: number): void;
-/** Bump font size by delta (positive / negative). */
-declare function bumpEditorFontSize(delta: number): void;
-/** Toggle minimap visibility across every open editor. */
-declare function toggleEditorMinimap(): void;
-declare function getEditorUiIconSize(): number;
-declare function setEditorUiIconSize(size: number): void;
-declare function onUiIconSizeChange(cb: (size: number) => void): () => void;
-/** Apply the persisted icon size to the document root on first mount. */
-declare function applyPersistedUiIconSize(): void;
-declare function getInlineVizActionSize(): number;
-declare function setInlineVizActionSize(size: number): void;
-declare function onInlineVizActionSizeChange(cb: (size: number) => void): () => void;
-declare function applyPersistedInlineVizActionSize(): void;
-/** Current inline-viz render resolution (height in px). */
-declare function getInlineVizResolution(): number;
-/** Set the inline-viz render resolution (clamped 64–2048). Notifies listeners;
- *  takes effect on the next zone (re)mount / evaluate. */
-declare function setInlineVizResolution(n: number): void;
-declare function onInlineVizResolutionChange(cb: (n: number) => void): () => void;
-/** Current viz quality level ("performance mode"). */
-declare function getVizQuality(): VizQualityLevel;
-/** Set the viz quality level — persists, applies resolution + density to their
- *  channels (the density marshals live to worker viz), and notifies listeners. */
-declare function setVizQuality(level: VizQualityLevel): void;
-declare function onVizQualityChange(cb: (level: VizQualityLevel) => void): () => void;
-/** Restore the persisted quality's DENSITY into the vizConfig singleton on
- *  startup (call once at app init, like `applyPersistedInlineVizActionSize`).
- *
- *  Density ONLY — deliberately NOT resolution. Resolution is pull-model (read
- *  fresh from its own `stave:inlineVizResolution` setting when a zone mounts),
- *  and `setVizQuality` already writes that setting at set-time, so a chosen
- *  level's resolution persists through that channel. Re-applying resolution here
- *  would CLOBBER a user's standalone render-resolution override on every reload
- *  (it would force the default level's 512 whenever quality was never changed).
- *  Density, by contrast, lives in the in-memory vizConfig singleton that resets
- *  to default(1) per page load, so it's the only knob that needs restoring. */
-declare function applyPersistedVizQuality(): void;
-/** Whether off-screen inline viz are torn down (destroyed to reclaim memory)
- *  after the threshold. Default ON. */
-declare function getInlineVizTeardownEnabled(): boolean;
-/** Enable/disable off-screen inline-viz teardown. Notifies listeners; takes
- *  effect on the next zone (re)mount / evaluate. */
-declare function setInlineVizTeardownEnabled(on: boolean): void;
-declare function onInlineVizTeardownChange(cb: (on: boolean) => void): () => void;
-/** Whether the left-edge per-track colour bar is painted in the code view.
- *  Default ON. */
-declare function getTrackColourBarsEnabled(): boolean;
-/** Show/hide the left-edge track colour bar. Notifies listeners so open
- *  editors add/remove the overlay live. */
-declare function setTrackColourBarsEnabled(on: boolean): void;
-declare function onTrackColourBarsChange(cb: (on: boolean) => void): () => void;
-/** Whether non-focused split-pane backdrops freeze unless hovered. Default OFF
- *  (all panes live, #768). */
-declare function getPlayVizOnHoverEnabled(): boolean;
-/** Enable/disable the hover-gated backdrop freeze. Notifies listeners so the open
- *  WorkspaceShell re-evaluates every pane's `paused` state live. */
-declare function setPlayVizOnHoverEnabled(on: boolean): void;
-declare function onPlayVizOnHoverChange(cb: (on: boolean) => void): () => void;
-type BackdropVizSpan = 'file' | 'workspace';
-/** Whether backdrops are per-pane ('file', default) or one shared viz spanning
- *  every split pane ('workspace'). */
-declare function getBackdropVizSpan(): BackdropVizSpan;
-/** Switch the backdrop span mode. Notifies listeners so the open WorkspaceShell
- *  re-renders (per-pane backdrops ⇄ one spanning backdrop) without a remount. */
-declare function setBackdropVizSpan(span: BackdropVizSpan): void;
-declare function onBackdropVizSpanChange(cb: (span: BackdropVizSpan) => void): () => void;
-/** Effective teardown delay in ms for a newly-mounted inline zone: the threshold
- *  when enabled, 0 (= never tear down) when disabled. Read at mount. An optional
- *  `stave:inlineVizTeardownMs` localStorage override tunes the delay (advanced /
- *  test churn harnesses) — clamped to ≥1000ms; absent → the 60s default. */
-declare function getInlineVizTeardownMs(): number;
-/** Whether the open Stave Inputs drawer paints live master signal values
- *  (#346). Default ON. */
-declare function getVizInputsLiveValuesEnabled(): boolean;
-/** Enable/disable live values in the Stave Inputs drawer. Notifies listeners so
- *  a mounted panel can start/stop its paint loop without a reload. */
-declare function setVizInputsLiveValuesEnabled(on: boolean): void;
-declare function onVizInputsLiveValuesChange(cb: (on: boolean) => void): () => void;
-/** The setting's range, px. Exported for a caller that solves for a height
- *  (the Song timeline's row-edge drag, #1750) and must search inside it. */
-declare const MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN = 12;
-declare const MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX = 48;
-declare function getMusicalTimelineSubRowHeight(): number;
-declare function setMusicalTimelineSubRowHeight(h: number): void;
-declare function onMusicalTimelineSubRowHeightChange(cb: (h: number) => void): () => void;
-/** CSS variable read by the shell's code-panel blur rule (see
- *  globals.css). 0 disables the blur entirely; higher values push
- *  more toward frosted-glass legibility. */
-declare const BACKDROP_BLUR_VAR = "--stave-backdrop-blur";
-declare function getEditorBackdropBlur(): number;
-declare function setEditorBackdropBlur(size: number): void;
-declare function applyPersistedBackdropBlur(): void;
-declare function getBackdropOpacity(): number;
-declare function setBackdropOpacity(o: number): void;
-declare function onBackdropOpacityChange(cb: (o: number) => void): () => void;
-/** The flat per-engine view the bus consumes and the settings UI edits. */
-type SignalAliasMap = Record<string, string | string[]>;
-/** The raw engine-keyed custom-alias map (sanitized + migrated). Source of
- *  truth for the renderer's `resolveAliasesForEngine` and any future
- *  multi-engine settings UI. */
-declare function getStoredSignalAliases(): StoredSignalAliases;
-/** Custom signal aliases for ONE engine (default: the active engine, Strudel),
- *  as the flat `name → value` view the settings UI edits. Built-ins are NOT
- *  included — custom map only. */
-declare function getSignalAliases(engine?: VizEngine): SignalAliasMap;
-/** Replace the custom aliases for ONE engine (default: active/Strudel) from the
- *  flat `name → value` view, persist, and notify. Surviving names KEEP their
- *  other engines' slots (editing the Strudel column never wipes a Sonic Pi one);
- *  names absent from `map` are removed. The values are sanitized so a bad caller
- *  can't poison storage. */
-declare function setSignalAliases(map: SignalAliasMap, engine?: VizEngine): void;
-/** Subscribe to alias-map changes (fires on every setSignalAliases). The
- *  callback receives the FLAT view for the engine that was set. Returns an
- *  unsubscribe. */
-declare function onSignalAliasesChange(cb: (map: SignalAliasMap) => void): () => void;
-type BackdropQuality = 'full' | 'half' | 'quarter';
-declare function getBackdropQuality(): BackdropQuality;
-declare function setBackdropQuality(q: BackdropQuality): void;
-declare function onBackdropQualityChange(cb: (q: BackdropQuality) => void): () => void;
-/** Resolution factor applied to the backdrop — render at factor×
- *  viewport size, CSS-stretch to fill. Lower = cheaper GPU. */
-declare function backdropQualityFactor(q: BackdropQuality): number;
-type EditorTheme = 'dark' | 'light' | 'system';
-type ResolvedTheme = 'dark' | 'light';
-type ThemeListener = (t: ResolvedTheme) => void;
-declare function getEditorTheme(): EditorTheme;
-declare function getResolvedTheme(): ResolvedTheme;
-declare function setEditorTheme(theme: EditorTheme): void;
-/** Cycle dark → light → system → dark. Used by the menu command. */
-declare function cycleEditorTheme(): EditorTheme;
-/** Subscribe to resolved theme changes. Fires when mode changes or when
- * 'system' preference flips. Returns an unsubscribe. */
-declare function onThemeChange(fn: ThemeListener): () => void;
-/** Seed DOM + monaco with the persisted theme. Call after mounting. */
-declare function applyPersistedTheme(): void;
-/** Whether the perf overlay/profiler is enabled (persisted preference, or the
- *  `__STAVE_PERF__` global force-on). */
-declare function getPerfEnabled(): boolean;
-/** Enable/disable the perf profiler + overlay. Persists, flips the profiler
- *  singleton's live flag, and notifies listeners (the overlay subscribes). */
-declare function setPerfEnabled(on: boolean): void;
-/** Toggle the perf overlay; returns the new state. */
-declare function togglePerfEnabled(): boolean;
-/** Subscribe to perf-enabled changes (fires on set/toggle). Returns an
- *  unsubscribe. */
-declare function onPerfEnabledChange(cb: (on: boolean) => void): () => void;
-/** Apply the persisted perf-enabled preference to the profiler. Call once at
- *  app start so a reload restores an enabled overlay. */
-declare function applyPersistedPerfEnabled(): void;
-/** Whether adaptive performance (the viz governor) is enabled (persisted; ON by default). */
-declare function getAdaptivePerfEnabled(): boolean;
-/** Enable/disable adaptive performance. Persists, flips the governor's live gate
- *  (disabling releases the levers immediately — full resolution, no throttle),
- *  and notifies listeners. */
-declare function setAdaptivePerfEnabled(on: boolean): void;
-/** Toggle adaptive performance; returns the new state. */
-declare function toggleAdaptivePerfEnabled(): boolean;
-/** Subscribe to adaptive-performance changes (fires on set/toggle). */
-declare function onAdaptivePerfChange(cb: (on: boolean) => void): () => void;
-/** Apply the persisted adaptive-performance preference to the governor. Call once
- *  at app start (like applyPersistedPerfEnabled) so the governor's live flag agrees
- *  with the stored preference regardless of module-load ordering. */
-declare function applyPersistedAdaptivePerf(): void;
 
 /**
  * Reload policy per CONTEXT D-07. Encoded as a string literal rather than
@@ -13874,4 +13883,4 @@ declare function codeEditorForFocus(el: Element | null | undefined): MonacoEdito
  */
 declare function codeUndoForFocus(el: Element | null | undefined, which: 'undo' | 'redo'): boolean;
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type AnalyzeWindowOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AssetDigest, type AssetImportInput, type AssetImportPlan, type AssetOrigin, type AssetRecord, type AudioFrame, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, type BootStepFailure, BottomPanel, type BottomPanelTab, type BouncedStem, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, CODE_UNDO_ATTR, type CapabilityEnv, type CaptionFieldKind, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type CollectResult, type Commit, type CommitKind, type CouldNotCheckReason, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DisplaySpan, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EncodeOptions, type EngineAliasMap, type EngineAliasValue, EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, type FixedMarker, type FixedParameter, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, type GmFamily, type GridGestureDef, type GridGestureId, type GridKeyMatcher, type GridMode, type GridScope, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IREvent, IRPattern, type IRSnapshot, type ImportAssetDeps, type ImportAssetResult, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, type LaneItem, type LanePeriod, type LaneSkeleton, LiveCodingEditor, type LiveCodingEditorProps, LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterScalar, Mixer, type NamedStage, type NormalizedHap, type NoteColorMode, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, PatternIR, type PatternKind, PatternPanel, PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PickSectionEntry, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type PutAssetResult, type RegionControl, type RegionEdit, type RegionTrimRefusal, type RegionTrimResult, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplePeaks, type SampleRef, type SamplerInputs, type SectionStats, type SectionWindow, SequencerGrid, type ShapeSwap, type ShellSnapshot, type SignalAliasMap, type SignalAutomation, SignalBus, type SignalDimensions, type SignalFrame, type SignalKind, type SignalReading, type SignalSpans, type SignalTransportReader, type SignalTransportWriter, SilentCaptureError, type SkippedSounds, type SnapshotMeta, type SongAnalysis, type SongExtent, type SongSection, SonicPiEngine, type SoundMapDict, SourceLocation, SplitPane, type StemOutcome, type StepCountEdit, type StepGridModel, type StepLane, type SteppedAutomation, type SteppedStep, StorageFullError, type StorageStatus, type StoredAsset, type StoredAssetMeta, type StoredSignalAliases, type StripEdit, StrudelEditor, type StrudelEditorProps, StrudelEngine, type StrudelTheme, type Surface, TAKE_NAME_PREFIX, type TierFlags, type TierName, type TimeStep, type TimeWarp, type TimelineCaptureEntry, type TrackDisplay, type TrackEnvelopeAccess, type TrackEnvelopeStatus, type TrackEnvelopeView, type TrackMeta, UI_ICON_SIZE_VAR, type UnboundedSignalKind, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizPreviewSpec, VizQualityLevel, VizRenderer, type VizRendererKind, VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, type WalkWindow, WavEncoder, type WindowAnalysis, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteOutcome, type WriteRefusal, type WriteSource, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms$1 as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, insertSilenceArm$1 as insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts$1 as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, insertSilenceArm as pickInsertSilenceArm, listSectionParts as pickListSectionParts, removeArm as pickRemoveArm, renameSection as pickRenameSection, reorderArm as pickReorderArm, setArmHead as pickSetArmHead, setWeight as pickSetWeight, silenceArm as pickSilenceArm, splitArm as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionControlEdit, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm$1 as removeArm, removeAssetRecord, renameSection$1 as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm$1 as silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, useGridMode, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type AnalyzeWindowOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AssetDigest, type AssetImportInput, type AssetImportPlan, type AssetOrigin, type AssetRecord, type AudioFrame, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, type BootStepFailure, BottomPanel, type BottomPanelTab, type BouncedStem, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, CODE_UNDO_ATTR, type CapabilityEnv, type CaptionFieldKind, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type CollectResult, type Commit, type CommitKind, type CouldNotCheckReason, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DisplaySpan, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EncodeOptions, type EngineAliasMap, type EngineAliasValue, EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, type FixedMarker, type FixedParameter, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, type GmFamily, type GridGestureDef, type GridGestureId, type GridKeyMatcher, type GridMode, type GridScope, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IREvent, IRPattern, type IRSnapshot, type ImportAssetDeps, type ImportAssetResult, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, type LaneItem, type LanePeriod, type LaneSkeleton, LiveCodingEditor, type LiveCodingEditorProps, LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterScalar, Mixer, type NamedStage, type NormalizedHap, type NoteColorMode, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, PatternIR, type PatternKind, PatternPanel, PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PickSectionEntry, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type PutAssetResult, type RegionControl, type RegionEdit, type RegionTrimRefusal, type RegionTrimResult, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplePeaks, type SampleRef, type SamplerInputs, type SectionStats, type SectionWindow, SequencerGrid, type ShapeSwap, type ShellSnapshot, type SignalAliasMap, type SignalAutomation, SignalBus, type SignalDimensions, type SignalFrame, type SignalKind, type SignalReading, type SignalSpans, type SignalTransportReader, type SignalTransportWriter, SilentCaptureError, type SkippedSounds, type SnapshotMeta, type SongAnalysis, type SongExtent, type SongSection, SonicPiEngine, type SoundMapDict, SourceLocation, SplitPane, type StemOutcome, type StepCountEdit, type StepGridModel, type StepLane, type SteppedAutomation, type SteppedStep, StorageFullError, type StorageStatus, type StoredAsset, type StoredAssetMeta, type StoredSignalAliases, type StripEdit, StrudelEditor, type StrudelEditorProps, StrudelEngine, type StrudelTheme, type Surface, TAKE_NAME_PREFIX, type TierFlags, type TierName, type TimeStep, type TimeWarp, type TimelineCaptureEntry, type TrackDisplay, type TrackEnvelopeAccess, type TrackEnvelopeStatus, type TrackEnvelopeView, type TrackMeta, UI_ICON_SIZE_VAR, type UnboundedSignalKind, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizPreviewSpec, VizQualityLevel, VizRenderer, type VizRendererKind, VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, type WalkWindow, WavEncoder, type WindowAnalysis, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteOutcome, type WriteRefusal, type WriteSource, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyOffsetEditsToFile, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms$1 as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, insertSilenceArm$1 as insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts$1 as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, insertSilenceArm as pickInsertSilenceArm, listSectionParts as pickListSectionParts, removeArm as pickRemoveArm, renameSection as pickRenameSection, reorderArm as pickReorderArm, setArmHead as pickSetArmHead, setWeight as pickSetWeight, silenceArm as pickSilenceArm, splitArm as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionControlEdit, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm$1 as removeArm, removeAssetRecord, renameSection$1 as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm$1 as silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, useGridMode, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
