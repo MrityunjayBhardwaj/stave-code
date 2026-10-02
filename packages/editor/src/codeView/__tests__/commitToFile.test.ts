@@ -149,8 +149,9 @@ describe('commitToFile — every refusal names itself (#1414)', () => {
     // not re-detect against the live document the way a panel does — so it is
     // required, and leaving it out no longer compiles.
     // @ts-expect-error — expectedDoc is required
-    reg.commitToFile(FILE, EDIT, 'arrange.weights')
+    const outcome = reg.commitToFile(FILE, EDIT, 'arrange.weights')
     // At runtime a missing document is a document that does not match.
+    expect(outcome).toBe('stale-document')
     expect(f.calls.pushEditOperations).toBe(0)
   })
 

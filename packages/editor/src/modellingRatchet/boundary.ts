@@ -115,7 +115,7 @@ function subpathSources(root: string, known: Set<string>): Map<string, string> {
  * Where the door is declared. The editor's own program sees the source files; the app's
  * sees the editor through its built declarations, where everything is in one bundle.
  */
-function isDoorHome(file: string, name: string): boolean {
+function isDoorHome(file: string): boolean {
   if (/\/packages\/editor\/dist\/[^/]+\.d\.(ts|cts|mts)$/.test(file)) return true
   return file.endsWith(`/${AREA}writeback.ts`)
 }
@@ -233,7 +233,7 @@ export function measureBoundary(opts: MeasureOptions = {}): Measurement {
       for (const d of real.declarations ?? []) {
         // the door by where it is DECLARED, never by its name alone: a panel's own
         // `applyEdits`, or a `replaceRanges` on some other class, is not the door
-        if (!isDoorHome(toPosix(d.getSourceFile().fileName), real.name)) continue
+        if (!isDoorHome(toPosix(d.getSourceFile().fileName))) continue
         if (ts.isClassDeclaration(d) && d.name?.text === DOOR_CLASS) return { kind: 'class', name: DOOR_CLASS }
         if (d.parent && ts.isClassDeclaration(d.parent) && d.parent.name?.text === DOOR_CLASS && ts.isClassElement(d)) {
           return { kind: 'member', name: real.name }
