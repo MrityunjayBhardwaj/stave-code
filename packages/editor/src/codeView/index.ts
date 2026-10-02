@@ -200,7 +200,7 @@ export {
   previewRepeat,
   previewShapeSwap,
 } from './ir'
-export { masterGainEdit, masterMuteEdit, masterVizEdit } from './mixer/masterEdit'
+export { masterGainEdit, masterMuteEdit, masterVizEdit, masterAudioLineEdit } from './mixer/masterEdit'
 export { renameEdit, gainEdit, panEdit, muteEdit } from './mixer/writeStrip'
 export {
   knobEdit,

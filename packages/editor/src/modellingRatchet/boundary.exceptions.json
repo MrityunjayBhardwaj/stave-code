@@ -81,7 +81,7 @@
         "door#Writeback.insertAt",
         "door#new Writeback"
       ],
-      "why": "Constructs the writer and drives it directly instead of committing an op through codeView/.",
+      "why": "Constructs the writer and drives it directly instead of committing an op through codeView/. What it inserts comes from a codeView operation (masterAudioLineEdit).",
       "issue": "#1880"
     },
     {
@@ -149,11 +149,6 @@
     {
       "file": "packages/editor/src/visualEdit/mixer/soloMuteSync.ts",
       "what": "decides and batches edits",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/mixer/useMixerModel.ts",
-      "what": "builds replacement text for the document",
       "issue": "#1880"
     },
     {

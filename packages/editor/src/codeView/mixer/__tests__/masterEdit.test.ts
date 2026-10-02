@@ -20,6 +20,7 @@ import {
   masterGainEdit,
   masterMuteEdit,
   masterVizEdit,
+  masterAudioLineEdit,
 } from '../masterEdit'
 
 /** apply a master edit to the source it was computed from */
@@ -202,6 +203,42 @@ describe('detectMasterAudioAll', () => {
     const m = detectMasterAudioAll('all(x => x)')
     expect(m).toBeDefined()
     expect(m!.chain).toEqual([])
+  })
+})
+
+describe('masterAudioLineEdit (#1889 — the base line the first master insert appends onto)', () => {
+  const apply = (doc: string): string => {
+    const edit = masterAudioLineEdit(doc)
+    return edit ? applyEdits(doc, [edit]) : doc
+  }
+
+  it('adds `all(x => x)` as the last line, on its own line', () => {
+    expect(apply('$: s("bd*4")')).toBe('$: s("bd*4")\nall(x => x)')
+  })
+
+  it('adds no second newline when the document already ends in one', () => {
+    expect(apply('$: s("bd*4")\n')).toBe('$: s("bd*4")\nall(x => x)')
+  })
+
+  it('writes just the line into an empty document', () => {
+    expect(apply('')).toBe('all(x => x)')
+  })
+
+  it('the line it adds is the one the drawer then binds to', () => {
+    const doc = apply('$: s("bd*4")')
+    const line = detectMasterAudioAll(doc)
+    expect(line && doc.slice(line.statementRange[0], line.statementRange[1])).toBe('all(x => x)')
+  })
+
+  it('writes nothing when the document already has a master audio line', () => {
+    expect(masterAudioLineEdit('$: s("bd*4")\nall(x => x.room(0.4))')).toBeNull()
+    expect(masterAudioLineEdit('all(x => x.mul(postgain(0.8)))')).toBeNull()
+  })
+
+  it('a mute line or a backdrop line is not an audio line — the base is still added', () => {
+    expect(apply('all(x => silence)')).toBe('all(x => silence)\nall(x => x)')
+    const viz = 'all(x => x.viz("scope", { backdrop: true }))'
+    expect(apply(viz)).toBe(`${viz}\nall(x => x)`)
   })
 })
 
