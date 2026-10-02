@@ -12,8 +12,8 @@
  * a signal/expression value disables the control rather than corrupting it.
  */
 import type { ChunkInfo } from '../chunkDetect'
-import { formatNumber } from '../writeback'
 import { readGainState, scaleManagedGain } from './gain'
+import { setNumberCall } from '../chainEdit'
 import { splitMuteMarker } from '../ir/trackId'
 
 /** a single surgical edit: replace `range` with `text` (insert = zero-width range). */
@@ -33,11 +33,10 @@ export function gainEdit(fresh: ChunkInfo, value: number): StripEdit | null {
   const g = readGainState(fresh)
   switch (g.kind) {
     case 'scalar':
-      return { range: g.range, text: formatNumber(value) }
+    case 'absent':
+      return setNumberCall(fresh, ['gain'], 'gain', value)
     case 'managed':
       return { range: g.range, text: scaleManagedGain(g.mg, value) }
-    case 'absent':
-      return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${formatNumber(value)})` }
     case 'foreign':
       return null
   }
@@ -50,13 +49,7 @@ export function gainEdit(fresh: ChunkInfo, value: number): StripEdit | null {
  *  - patterned/signal → null (hands off).
  */
 export function panEdit(fresh: ChunkInfo, value: number): StripEdit | null {
-  const call = fresh.chain.find((c) => c.name === 'pan' && c.args.length >= 1)
-  if (!call) {
-    return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.pan(${formatNumber(value)})` }
-  }
-  const arg = call.args[0]
-  if (arg.numeric === null) return null // a signal/patterned pan — disabled
-  return { range: arg.range, text: formatNumber(value) }
+  return setNumberCall(fresh, ['pan'], 'pan', value)
 }
 
 /**

@@ -7637,29 +7637,106 @@ function stripContainingOffset(strips, offset) {
 }
 __name(stripContainingOffset, "stripContainingOffset");
 
+// src/codeView/chainEdit.ts
+function appendCall(fresh, name, argText) {
+  const end = fresh.exprRange[1];
+  return { range: [end, end], text: `.${name}(${argText})` };
+}
+__name(appendCall, "appendCall");
+function numberArgEdit(arg, value) {
+  if (arg.numeric === null) return null;
+  return { range: arg.range, text: formatNumber(value) };
+}
+__name(numberArgEdit, "numberArgEdit");
+function setNumberCall(fresh, names, canonical, value) {
+  const call = fresh.chain.find((c) => names.includes(c.name) && c.args.length >= 1);
+  if (!call) return appendCall(fresh, canonical, formatNumber(value));
+  return numberArgEdit(call.args[0], value);
+}
+__name(setNumberCall, "setNumberCall");
+function setLiteralCall(fresh, names, canonical, literal) {
+  const cur = readChainMethod(fresh, names);
+  if (cur) return { range: cur.range, text: literal };
+  return appendCall(fresh, canonical, literal);
+}
+__name(setLiteralCall, "setLiteralCall");
+function setStringCall(fresh, names, canonical, value) {
+  return setLiteralCall(fresh, names, canonical, `'${value}'`);
+}
+__name(setStringCall, "setStringCall");
+function removeCall(fresh, index) {
+  if (index <= 0) return null;
+  const call = fresh.chain[index];
+  return call ? { range: call.range, text: "" } : null;
+}
+__name(removeCall, "removeCall");
+function callAt(fresh, ref) {
+  const call = fresh.chain[ref.chainIndex];
+  return call && call.name === ref.method ? call : null;
+}
+__name(callAt, "callAt");
+function knobEdit(fresh, ref, value) {
+  const arg = callAt(fresh, ref)?.args[ref.argIndex];
+  return arg ? numberArgEdit(arg, value) : null;
+}
+__name(knobEdit, "knobEdit");
+function rangeArgsEdit(call, min, max) {
+  const value = call.args[0];
+  const body = `${formatNumber(min)}, ${formatNumber(max)}`;
+  const extra = call.args.slice(1);
+  if (extra.length > 0) {
+    return { range: [extra[0].range[0], extra[extra.length - 1].range[1]], text: body };
+  }
+  return { range: [value.range[1], value.range[1]], text: `, ${body}` };
+}
+__name(rangeArgsEdit, "rangeArgsEdit");
+function rangeResetEdit(call) {
+  const value = call.args[0];
+  const extra = call.args.slice(1);
+  if (!value || extra.length === 0) return null;
+  return { range: [value.range[1], extra[extra.length - 1].range[1]], text: "" };
+}
+__name(rangeResetEdit, "rangeResetEdit");
+function knobRangeEdit(fresh, ref, min, max) {
+  const call = callAt(fresh, ref);
+  return call ? rangeArgsEdit(call, min, max) : null;
+}
+__name(knobRangeEdit, "knobRangeEdit");
+function knobRangeResetEdit(fresh, ref) {
+  const call = callAt(fresh, ref);
+  return call ? rangeResetEdit(call) : null;
+}
+__name(knobRangeResetEdit, "knobRangeResetEdit");
+function memberIndex(fresh, names) {
+  return fresh.chain.findIndex((c, i) => i > 0 && names.includes(c.name));
+}
+__name(memberIndex, "memberIndex");
+function toggleCallEdit(fresh, names, method, def) {
+  const idx = memberIndex(fresh, names);
+  return idx >= 0 ? removeCall(fresh, idx) : appendCall(fresh, method, formatNumber(def));
+}
+__name(toggleCallEdit, "toggleCallEdit");
+function removeNamedCall(fresh, method) {
+  return removeCall(fresh, memberIndex(fresh, [method]));
+}
+__name(removeNamedCall, "removeNamedCall");
+
 // src/codeView/mixer/writeStrip.ts
 function gainEdit(fresh, value) {
   const g = readGainState(fresh);
   switch (g.kind) {
     case "scalar":
-      return { range: g.range, text: formatNumber(value) };
+    case "absent":
+      return setNumberCall(fresh, ["gain"], "gain", value);
     case "managed":
       return { range: g.range, text: scaleManagedGain(g.mg, value) };
-    case "absent":
-      return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${formatNumber(value)})` };
     case "foreign":
       return null;
   }
 }
 __name(gainEdit, "gainEdit");
 function panEdit(fresh, value) {
-  const call = fresh.chain.find((c) => c.name === "pan" && c.args.length >= 1);
-  if (!call) {
-    return { range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.pan(${formatNumber(value)})` };
-  }
-  const arg = call.args[0];
-  if (arg.numeric === null) return null;
-  return { range: arg.range, text: formatNumber(value) };
+  return setNumberCall(fresh, ["pan"], "pan", value);
 }
 __name(panEdit, "panEdit");
 function muteEdit(fresh, muted3) {
@@ -11907,9 +11984,8 @@ function planSoundAssignment(doc, offset, sound) {
   if (!sound) return null;
   const chunk = detectChunk(doc, offset);
   if (chunk && patternKind(chunk) === "roll") {
-    const cur = readChainMethod(chunk, ["sound", "s"]);
-    if (cur) return { kind: "replace", range: cur.range, text: `'${sound}'` };
-    return { kind: "insert", offset: chunk.exprRange[1], text: `.sound('${sound}')` };
+    const edit = setStringCall(chunk, ["sound", "s"], "sound", sound);
+    return edit.range[0] === edit.range[1] ? { kind: "insert", offset: edit.range[0], text: edit.text } : { kind: "replace", range: edit.range, text: edit.text };
   }
   const lineStart = doc.lastIndexOf("\n", offset - 1) + 1;
   const nextNewline = doc.indexOf("\n", offset);
@@ -11928,10 +12004,8 @@ function planVizAssignment(doc, offset, name) {
   if (!name) return null;
   const chunk = detectChunk(doc, offset);
   if (!chunk) return null;
-  const text = JSON.stringify(name);
-  const cur = readChainMethod(chunk, ["viz"]);
-  if (cur) return { kind: "replace", range: cur.range, text };
-  return { kind: "insert", offset: chunk.exprRange[1], text: `.viz(${text})` };
+  const edit = setLiteralCall(chunk, ["viz"], "viz", JSON.stringify(name));
+  return edit.range[0] === edit.range[1] ? { kind: "insert", offset: edit.range[0], text: edit.text } : { kind: "replace", range: edit.range, text: edit.text };
 }
 __name(planVizAssignment, "planVizAssignment");
 
@@ -40718,23 +40792,6 @@ function rangeInfo(call) {
   return { editable: false };
 }
 __name(rangeInfo, "rangeInfo");
-function rangeArgsEdit(call, min, max) {
-  const value = call.args[0];
-  const body = `${formatNumber(min)}, ${formatNumber(max)}`;
-  const extra = call.args.slice(1);
-  if (extra.length > 0) {
-    return { range: [extra[0].range[0], extra[extra.length - 1].range[1]], text: body };
-  }
-  return { range: [value.range[1], value.range[1]], text: `, ${body}` };
-}
-__name(rangeArgsEdit, "rangeArgsEdit");
-function rangeResetEdit(call) {
-  const value = call.args[0];
-  const extra = call.args.slice(1);
-  if (!value || extra.length === 0) return null;
-  return { range: [value.range[1], extra[extra.length - 1].range[1]], text: "" };
-}
-__name(rangeResetEdit, "rangeResetEdit");
 function knobsFromChunk(chunk, includeGain = false) {
   const knobs = [];
   chunk.chain.forEach((call, chainIndex) => {
@@ -40805,6 +40862,10 @@ function DivisionSelect({
 }
 __name(DivisionSelect, "DivisionSelect");
 var GAIN_EFFECT = { method: "gain", label: "Gain", group: "Level", def: 1 };
+function write(wb, edit) {
+  if (edit) wb.replaceRange(edit.range, edit.text, "knob");
+}
+__name(write, "write");
 var COLUMN_HEADER_W = 232;
 function MixerBody({
   chunk,
@@ -40825,64 +40886,38 @@ function MixerBody({
   const knobs = knobsFromChunk(chunk, showGain);
   const writeKnob = React21.useCallback(
     (entry, value) => {
-      applyEdit((fresh, wb) => {
-        const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex];
-        if (!arg) return;
-        wb.replaceRange(arg.range, formatNumber(value), "knob");
-      });
+      applyEdit((fresh, wb) => write(wb, knobEdit(fresh, entry, value)));
     },
     [applyEdit]
   );
   const writeRange = React21.useCallback(
     (entry, min, max) => {
-      applyEdit((fresh, wb) => {
-        const call = fresh.chain[entry.chainIndex];
-        if (!call) return;
-        const edit = rangeArgsEdit(call, min, max);
-        wb.replaceRange(edit.range, edit.text, "knob");
-      });
+      applyEdit((fresh, wb) => write(wb, knobRangeEdit(fresh, entry, min, max)));
     },
     [applyEdit]
   );
   const resetRange = React21.useCallback(
     (entry) => {
-      applyEdit((fresh, wb) => {
-        const call = fresh.chain[entry.chainIndex];
-        if (!call) return;
-        const edit = rangeResetEdit(call);
-        if (edit) wb.deleteRange(edit.range, "knob");
-      });
+      applyEdit((fresh, wb) => write(wb, knobRangeResetEdit(fresh, entry)));
     },
     [applyEdit]
   );
   const toggleEffect = React21.useCallback(
     (e) => {
-      applyEdit((fresh, wb) => {
-        const names = effectNames(e);
-        const idx = fresh.chain.findIndex((c, i) => i > 0 && names.includes(c.name));
-        if (idx >= 0) wb.deleteRange(fresh.chain[idx].range, "knob");
-        else wb.insertAt(fresh.exprRange[1], `.${e.method}(${formatNumber(e.def)})`, "knob");
-      });
+      applyEdit((fresh, wb) => write(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def)));
     },
     [applyEdit]
   );
   const removeMethod = React21.useCallback(
     (method) => {
-      applyEdit((fresh, wb) => {
-        const idx = fresh.chain.findIndex((c, i) => i > 0 && c.name === method);
-        if (idx >= 0) wb.deleteRange(fresh.chain[idx].range, "knob");
-      });
+      applyEdit((fresh, wb) => write(wb, removeNamedCall(fresh, method)));
     },
     [applyEdit]
   );
   const writeChainMethod = React21.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
-      applyEdit((fresh, wb) => {
-        const cur = readChainMethod(fresh, names);
-        if (cur) wb.replaceRange(cur.range, `'${value}'`, "knob");
-        else wb.insertAt(fresh.exprRange[1], `.${canonical}('${value}')`, "knob");
-      });
+      applyEdit((fresh, wb) => write(wb, setStringCall(fresh, names, canonical, value)));
     },
     [applyEdit]
   );

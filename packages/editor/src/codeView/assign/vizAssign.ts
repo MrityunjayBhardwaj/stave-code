@@ -12,7 +12,7 @@
 // inline-viz `.viz("pianoroll")`), not the single-quoted sound-id rule.
 
 import { detectChunk } from '../chunkDetect'
-import { readChainMethod } from '../chainMethod'
+import { setLiteralCall } from '../chainEdit'
 
 /** An offset-space edit describing how to write a viz name at the cursor. */
 export type VizAssignPlan =
@@ -38,8 +38,9 @@ export function planVizAssignment(
   const chunk = detectChunk(doc, offset)
   if (!chunk) return null
 
-  const text = JSON.stringify(name) // double-quoted, escapes special chars
-  const cur = readChainMethod(chunk, ['viz'])
-  if (cur) return { kind: 'replace', range: cur.range, text }
-  return { kind: 'insert', offset: chunk.exprRange[1], text: `.viz(${text})` }
+  // double-quoted, escapes special chars
+  const edit = setLiteralCall(chunk, ['viz'], 'viz', JSON.stringify(name))
+  return edit.range[0] === edit.range[1]
+    ? { kind: 'insert', offset: edit.range[0], text: edit.text }
+    : { kind: 'replace', range: edit.range, text: edit.text }
 }

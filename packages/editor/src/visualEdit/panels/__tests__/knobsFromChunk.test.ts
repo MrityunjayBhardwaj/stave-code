@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { detectAllChunks } from '../../../codeView/chunkDetect'
-import { knobsFromChunk, rangeArgsEdit, rangeResetEdit } from '../MixerBody'
+import { knobsFromChunk } from '../MixerBody'
+import { rangeArgsEdit, rangeResetEdit } from '../../../codeView/chainEdit'
 import { applyEdits } from '../../../codeView/writeback'
 
 /**

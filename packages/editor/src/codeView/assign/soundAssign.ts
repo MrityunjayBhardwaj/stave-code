@@ -8,7 +8,7 @@
 // here and applies it via `Writeback`; the tested code is the shipped code.
 
 import { detectChunk } from '../chunkDetect'
-import { readChainMethod } from '../chainMethod'
+import { setStringCall } from '../chainEdit'
 import { patternKind } from '../patternKind'
 
 /**
@@ -43,9 +43,10 @@ export function planSoundAssignment(
 
   const chunk = detectChunk(doc, offset)
   if (chunk && patternKind(chunk) === 'roll') {
-    const cur = readChainMethod(chunk, ['sound', 's'])
-    if (cur) return { kind: 'replace', range: cur.range, text: `'${sound}'` }
-    return { kind: 'insert', offset: chunk.exprRange[1], text: `.sound('${sound}')` }
+    const edit = setStringCall(chunk, ['sound', 's'], 'sound', sound)
+    return edit.range[0] === edit.range[1]
+      ? { kind: 'insert', offset: edit.range[0], text: edit.text }
+      : { kind: 'replace', range: edit.range, text: edit.text }
   }
 
   // Line-aware source insert. Compute the cursor's line span in pure string
