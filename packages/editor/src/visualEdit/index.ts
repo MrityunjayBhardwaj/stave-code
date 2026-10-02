@@ -20,7 +20,7 @@ export {
 } from '../codeView'
 export type { ChunkInfo, ChainCall, ChainArg, ChunkType } from '../codeView'
 
-export { Writeback, formatNumber, normalizeEdits, applyEdits } from '../codeView'
+export { type Writeback, formatNumber, normalizeEdits, applyEdits } from '../codeView'
 export type { WriteSource, OffsetEdit } from '../codeView'
 
 export {
