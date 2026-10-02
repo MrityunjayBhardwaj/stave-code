@@ -12024,6 +12024,49 @@ function rateEdit(a, nextText) {
 }
 __name(rateEdit, "rateEdit");
 
+// src/codeView/notation/gainEdit.ts
+function readChunkGain(chunk) {
+  const call = chunk.chain.find((c) => c.name === "gain");
+  const arg = call?.args[0];
+  if (!call || !arg) return { mini: null, numeric: null, foreign: false };
+  if (arg.numeric !== null) return { mini: null, numeric: arg.numeric, foreign: false };
+  if (/^["'`]/.test(arg.raw)) return { mini: arg.raw.slice(1, -1), numeric: null, foreign: false };
+  return { mini: null, numeric: null, foreign: true };
+}
+__name(readChunkGain, "readChunkGain");
+function managedGainArg(chunk) {
+  const call = chunk.chain.find((c) => c.name === "gain");
+  const arg = call?.args[0];
+  if (!call || !arg) return null;
+  if (arg.numeric !== null || /^["'`]/.test(arg.raw)) return { call, argRange: arg.range };
+  return null;
+}
+__name(managedGainArg, "managedGainArg");
+function gainEdits(fresh, g) {
+  if (g.kind === "skip") return [];
+  const managed = managedGainArg(fresh);
+  if (g.kind === "clear") {
+    return managed ? [{ range: managed.call.range, text: "" }] : [];
+  }
+  const lit = g.quoted ? `"${g.value}"` : g.value;
+  if (managed) return [{ range: managed.argRange, text: lit }];
+  return [{ range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${lit})` }];
+}
+__name(gainEdits, "gainEdits");
+function gainUnchanged(g, cur) {
+  if (g.kind === "skip") return true;
+  if (g.kind === "clear") return cur.mini === null && cur.numeric === null;
+  return g.quoted ? cur.mini === g.value : cur.numeric !== null && cur.numeric === parseFloat(g.value);
+}
+__name(gainUnchanged, "gainUnchanged");
+function gridWriteEdits(fresh, mini, gain) {
+  if (!fresh.miniRange) return null;
+  const edits = [{ range: fresh.miniRange, text: mini }];
+  if (gain) edits.push(...gainEdits(fresh, gain));
+  return edits;
+}
+__name(gridWriteEdits, "gridWriteEdits");
+
 // src/codeView/notation/place.ts
 function viewPlacesNotes(model) {
   let asked = 0;
@@ -35165,40 +35208,6 @@ var VISUAL_EDIT_TABS = [
     icon: "settings"
   }
 ];
-function readChunkGain(chunk) {
-  const call = chunk.chain.find((c) => c.name === "gain");
-  const arg = call?.args[0];
-  if (!call || !arg) return { mini: null, numeric: null, foreign: false };
-  if (arg.numeric !== null) return { mini: null, numeric: arg.numeric, foreign: false };
-  if (/^["'`]/.test(arg.raw)) return { mini: arg.raw.slice(1, -1), numeric: null, foreign: false };
-  return { mini: null, numeric: null, foreign: true };
-}
-__name(readChunkGain, "readChunkGain");
-function managedGainArg(chunk) {
-  const call = chunk.chain.find((c) => c.name === "gain");
-  const arg = call?.args[0];
-  if (!call || !arg) return null;
-  if (arg.numeric !== null || /^["'`]/.test(arg.raw)) return { call, argRange: arg.range };
-  return null;
-}
-__name(managedGainArg, "managedGainArg");
-function gainEdits(fresh, g) {
-  if (g.kind === "skip") return [];
-  const managed = managedGainArg(fresh);
-  if (g.kind === "clear") {
-    return managed ? [{ range: managed.call.range, text: "" }] : [];
-  }
-  const lit = g.quoted ? `"${g.value}"` : g.value;
-  if (managed) return [{ range: managed.argRange, text: lit }];
-  return [{ range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${lit})` }];
-}
-__name(gainEdits, "gainEdits");
-function gainUnchanged(g, cur) {
-  if (g.kind === "skip") return true;
-  if (g.kind === "clear") return cur.mini === null && cur.numeric === null;
-  return g.quoted ? cur.mini === g.value : cur.numeric !== null && cur.numeric === parseFloat(g.value);
-}
-__name(gainUnchanged, "gainUnchanged");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const [model, setModel] = React21__namespace.useState(null);
@@ -35253,10 +35262,8 @@ function useGridModel(opts) {
       setModel(written);
       if (spellsRefinement) o.onViewScaleConsumed?.();
       applyEdit((fresh, wb) => {
-        if (!fresh.miniRange) return;
-        const edits = [{ range: fresh.miniRange, text: mini }];
-        if (o.serializeGain) edits.push(...gainEdits(fresh, o.serializeGain(toWrite)));
-        wb.replaceRanges(edits, o.source);
+        const edits = gridWriteEdits(fresh, mini, o.serializeGain ? o.serializeGain(toWrite) : null);
+        if (edits) wb.replaceRanges(edits, o.source);
       });
     },
     [applyEdit]
@@ -35275,8 +35282,8 @@ function useGridModel(opts) {
   const writeMini = React21__namespace.useCallback(
     (mini) => {
       applyEdit((fresh, wb) => {
-        if (!fresh.miniRange) return;
-        wb.replaceRanges([{ range: fresh.miniRange, text: mini }], optsRef.current.source);
+        const edits = gridWriteEdits(fresh, mini, null);
+        if (edits) wb.replaceRanges(edits, optsRef.current.source);
       });
     },
     [applyEdit]
