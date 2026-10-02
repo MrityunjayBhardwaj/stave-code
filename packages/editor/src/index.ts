@@ -302,6 +302,9 @@ export {
   withStructBatch,
 } from './workspace/undoManager'
 export type { WriteOutcome, WriteRefusal } from './workspace/editorRegistry'
+// #1906 — the file route of the code↔view commit door; the app's backdrop write
+// commits through it instead of calling applyOffsetEditsToFile.
+export { commitToFile } from './codeView'
 export {
   revealLineInFile,
   revealOffsetInFile,

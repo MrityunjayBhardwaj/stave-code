@@ -82,7 +82,7 @@ import {
   getBackdropVizSpan,
   setBackdropVizSpan,
   getActiveEditor,
-  applyOffsetEditsToFile,
+  commitToFile,
   masterVizEdit,
   readMasterViz,
   onActiveEditorChange,
@@ -739,8 +739,8 @@ export default function StrudelEditorClient({
       // there is anything to write; it says nothing about whether the write landed.
       // This was the fourteenth call site discarding the writer's answer — and the
       // one most likely to be miscounted as safe, because it has an `if` in front
-      // of it. `applyOffsetEditsToFile` names five refusals; report the one we got.
-      const outcome = applyOffsetEditsToFile(fileId, [edit], "mixer", doc);
+      // of it. The file route names five refusals; report the one we got.
+      const outcome = commitToFile(fileId, edit, "mixer", doc);
       if (outcome !== "applied") reportWriteRefusal(fileId, "Mixer: the backdrop", outcome);
     },
     [backdropName],

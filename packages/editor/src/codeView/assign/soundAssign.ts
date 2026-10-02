@@ -5,11 +5,13 @@
 // extracts the whole decision into a pure function over `(doc, offset, sound)`
 // — mirroring the `detectChunk(doc, offset)` idiom — so the line-aware source
 // insert can be pinned by fast unit tests. WorkspaceShell computes the plan
-// here and applies it via `Writeback`; the tested code is the shipped code.
+// here and commits it (`assignmentEdit` → `commitToEditor`); the tested code is
+// the shipped code.
 
 import { detectChunk } from '../chunkDetect'
 import { setStringCall } from '../chainEdit'
 import { patternKind } from '../patternKind'
+import type { OffsetEdit } from '../writeback'
 
 /**
  * An offset-space edit describing how to write a sound name at the cursor.
@@ -62,4 +64,20 @@ export function planSoundAssignment(
     offset: lineEnd,
     text: `${hasContent ? '\n' : ''}s("${sound}")`,
   }
+}
+
+/**
+ * The plain edit an assignment plan stands for (#1906). `insert` is a zero-width
+ * edit at its offset; `replace` keeps its range — exactly what the writer did
+ * with each shape, so a caller hands the result to `commit` without branching on
+ * the plan. Takes either planner's result: both share this shape.
+ */
+export function assignmentEdit(
+  plan:
+    | { kind: 'replace'; range: [number, number]; text: string }
+    | { kind: 'insert'; offset: number; text: string },
+): OffsetEdit {
+  return plan.kind === 'replace'
+    ? { range: plan.range, text: plan.text }
+    : { range: [plan.offset, plan.offset], text: plan.text }
 }

@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type * as Monaco from 'monaco-editor'
 import { Writeback, commit, type OffsetEdit, type WriteSource } from '../writeback'
+import { assignmentEdit } from '../assign/soundAssign'
 
 /**
  * #1900 — `commit` is the one way an operation's result reaches the open
@@ -59,7 +60,7 @@ function fakeEditor(initial: string, opts: { noModel?: boolean } = {}) {
     editor as unknown as Monaco.editor.IStandaloneCodeEditor,
     monaco as unknown as typeof Monaco,
   )
-  return { wb, changes, text: () => text, undoStops: () => undoStops }
+  return { wb, editor, changes, text: () => text, undoStops: () => undoStops }
 }
 
 describe('commit — an operation result into the document', () => {
@@ -103,5 +104,99 @@ describe('commit — an operation result into the document', () => {
     const f = fakeEditor(doc)
     commit(f.wb, { range: gainArg, text: '0.8' }, 'knob')
     expect(f.wb.currentSource).toBeNull()
+  })
+})
+
+/**
+ * #1906 — the two other forms of the door. Both reach the registry, which holds
+ * the monaco namespace and the editors once per module instance, so each arm
+ * takes a fresh module pair (the same reason `editorRegistry.writeOutcome.test`
+ * resets per arm).
+ */
+async function freshDoor() {
+  vi.resetModules()
+  const reg = await import('../../workspace/editorRegistry')
+  const door = await import('../writeback')
+  return { reg, door }
+}
+class Range {
+  constructor(
+    public startLineNumber: number,
+    public startColumn: number,
+    public endLineNumber: number,
+    public endColumn: number,
+  ) {}
+}
+
+describe('commitToEditor — the editor route without a writer in hand', () => {
+  const doc = '$: s("bd")'
+  const bd: [number, number] = [doc.indexOf('bd'), doc.indexOf('bd') + 2]
+
+  it('writes, tagged, when Monaco is loaded', async () => {
+    const { reg, door } = await freshDoor()
+    reg.registerMonacoNamespace({ Range } as never)
+    const f = fakeEditor(doc)
+    const spy = vi.spyOn(door.Writeback.prototype, 'replaceRanges')
+    expect(door.commitToEditor(f.editor as never, { range: bd, text: 'hh' }, 'rename')).toBe('written')
+    expect(spy.mock.calls.map((c) => c[1])).toEqual(['rename'])
+    expect(f.text()).toBe('$: s("hh")')
+    expect(f.changes.map((c) => c.text)).toEqual(['$: s("hh")'])
+  })
+
+  it('says no-document (and writes nothing) before Monaco is loaded', async () => {
+    const { door } = await freshDoor()
+    const f = fakeEditor(doc)
+    expect(door.commitToEditor(f.editor as never, { range: bd, text: 'hh' }, 'mixer')).toBe('no-document')
+    expect(f.text()).toBe(doc)
+  })
+
+  it('nothing to write is nothing-to-write', async () => {
+    const { reg, door } = await freshDoor()
+    reg.registerMonacoNamespace({ Range } as never)
+    const f = fakeEditor(doc)
+    expect(door.commitToEditor(f.editor as never, null, 'mixer')).toBe('nothing-to-write')
+    expect(f.changes).toEqual([])
+  })
+})
+
+describe('commitToFile — the file route keeps its stale-document check', () => {
+  const FILE = 'song.js'
+  const doc = '$: s("bd").gain(0.5)'
+  const g: [number, number] = [doc.indexOf('0.5'), doc.indexOf('0.5') + 3]
+
+  it('applies one edit against the document it was computed from', async () => {
+    const { reg, door } = await freshDoor()
+    reg.registerMonacoNamespace({ Range } as never)
+    const f = fakeEditor(doc)
+    reg.registerEditor(FILE, f.editor as never)
+    expect(door.commitToFile(FILE, { range: g, text: '0.8' }, 'mixer', doc)).toBe('applied')
+    expect(f.text()).toBe('$: s("bd").gain(0.8)')
+  })
+
+  it('refuses a moved document as stale-document and writes nothing', async () => {
+    const { reg, door } = await freshDoor()
+    reg.registerMonacoNamespace({ Range } as never)
+    const f = fakeEditor(doc)
+    reg.registerEditor(FILE, f.editor as never)
+    expect(door.commitToFile(FILE, { range: g, text: '0.8' }, 'mixer', doc + ' ')).toBe('stale-document')
+    expect(f.text()).toBe(doc)
+  })
+
+  it('names the other refusals: no editor, nothing to write', async () => {
+    const { reg, door } = await freshDoor()
+    reg.registerMonacoNamespace({ Range } as never)
+    expect(door.commitToFile('nope.js', { range: g, text: '0.8' }, 'mixer', doc)).toBe('no-editor')
+    const f = fakeEditor(doc)
+    reg.registerEditor(FILE, f.editor as never)
+    expect(door.commitToFile(FILE, null, 'mixer', doc)).toBe('no-edits')
+    expect(door.commitToFile(FILE, [], 'mixer', doc)).toBe('no-edits')
+    expect(f.text()).toBe(doc)
+  })
+})
+
+describe('assignmentEdit — a plan as the plain edit it stands for', () => {
+  it('replace keeps its range; insert is zero-width at its offset', () => {
+    expect(assignmentEdit({ kind: 'replace', range: [3, 7], text: "'piano'" })).toEqual({ range: [3, 7], text: "'piano'" })
+    expect(assignmentEdit({ kind: 'insert', offset: 12, text: '\ns("bd")' })).toEqual({ range: [12, 12], text: '\ns("bd")' })
   })
 })

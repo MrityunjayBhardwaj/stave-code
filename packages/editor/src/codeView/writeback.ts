@@ -29,7 +29,13 @@
  */
 import type * as Monaco from 'monaco-editor'
 import { isChunkFresh, type ChunkInfo } from './chunkDetect'
-import { requestReeval, getFileIdForEditor } from '../workspace/editorRegistry'
+import {
+  requestReeval,
+  getFileIdForEditor,
+  getMonacoNamespace,
+  applyOffsetEditsToFile,
+  type WriteOutcome,
+} from '../workspace/editorRegistry'
 
 /** trailing-debounce window for the live re-eval — coalesces a quick burst of
  * commits into fewer re-evals (less eval churn) while staying snappy for a
@@ -321,9 +327,47 @@ export function commit(
   edit: OffsetEdit | readonly OffsetEdit[] | null,
   source: WriteSource,
 ): CommitOutcome {
-  const edits: OffsetEdit[] = edit == null ? [] : isEditList(edit) ? [...edit] : [edit]
+  const edits = editList(edit)
   if (edits.length === 0) return 'nothing-to-write'
   return writer.replaceRanges(edits, source) ? 'written' : 'no-document'
+}
+
+/**
+ * `commit` for a caller that holds an editor but no writer — a gesture that
+ * reaches the live editor through the registry (the sidebar's sound / viz
+ * assignment, #1906). Builds the writer here so no surface outside this area
+ * constructs one. 'no-document' also covers Monaco not being loaded yet.
+ */
+export function commitToEditor(
+  editor: Monaco.editor.IStandaloneCodeEditor,
+  edit: OffsetEdit | readonly OffsetEdit[] | null,
+  source: WriteSource,
+): CommitOutcome {
+  const monaco = getMonacoNamespace()
+  if (!monaco) return 'no-document'
+  return commit(new Writeback(editor, monaco), edit, source)
+}
+
+/**
+ * `commit` addressed by FILE rather than by a writer — the route a surface takes
+ * when it does not own the editor (the app's backdrop write, #1906). Keeps the
+ * file route's stale-document check: pass the document the edit was computed
+ * against as `expectedDoc`, and a document that moved since is refused rather
+ * than corrupted. Answers with the writer's named refusals (`no-editor`,
+ * `stale-document`, …) so the caller can report the one it got.
+ */
+export function commitToFile(
+  fileId: string,
+  edit: OffsetEdit | readonly OffsetEdit[] | null,
+  source: WriteSource,
+  expectedDoc?: string,
+): WriteOutcome {
+  return applyOffsetEditsToFile(fileId, editList(edit), source, expectedDoc)
+}
+
+/** what an operation returned, as the list the writer takes */
+function editList(edit: OffsetEdit | readonly OffsetEdit[] | null): OffsetEdit[] {
+  return edit == null ? [] : isEditList(edit) ? [...edit] : [edit]
 }
 
 function isEditList(edit: OffsetEdit | readonly OffsetEdit[]): edit is readonly OffsetEdit[] {

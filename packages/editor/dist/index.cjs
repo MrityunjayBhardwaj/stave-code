@@ -7133,11 +7133,25 @@ var _Writeback = class _Writeback {
 __name(_Writeback, "Writeback");
 var Writeback = _Writeback;
 function commit(writer, edit, source) {
-  const edits = edit == null ? [] : isEditList(edit) ? [...edit] : [edit];
+  const edits = editList(edit);
   if (edits.length === 0) return "nothing-to-write";
   return writer.replaceRanges(edits, source) ? "written" : "no-document";
 }
 __name(commit, "commit");
+function commitToEditor(editor, edit, source) {
+  const monaco = getMonacoNamespace();
+  if (!monaco) return "no-document";
+  return commit(new Writeback(editor, monaco), edit, source);
+}
+__name(commitToEditor, "commitToEditor");
+function commitToFile(fileId, edit, source, expectedDoc) {
+  return applyOffsetEditsToFile(fileId, editList(edit), source, expectedDoc);
+}
+__name(commitToFile, "commitToFile");
+function editList(edit) {
+  return edit == null ? [] : isEditList(edit) ? [...edit] : [edit];
+}
+__name(editList, "editList");
 function isEditList(edit) {
   return Array.isArray(edit);
 }
@@ -12041,6 +12055,10 @@ function planSoundAssignment(doc, offset, sound) {
   };
 }
 __name(planSoundAssignment, "planSoundAssignment");
+function assignmentEdit(plan) {
+  return plan.kind === "replace" ? { range: plan.range, text: plan.text } : { range: [plan.offset, plan.offset], text: plan.text };
+}
+__name(assignmentEdit, "assignmentEdit");
 
 // src/codeView/assign/vizAssign.ts
 function planVizAssignment(doc, offset, name) {
@@ -45583,31 +45601,24 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
       assignSoundToCursor: /* @__PURE__ */ __name((sound) => {
         if (!sound) return;
         const editor = getActiveEditor();
-        const monaco = getMonacoNamespace();
         const model = editor?.getModel();
         const pos = editor?.getPosition();
-        if (!editor || !monaco || !model || !pos) return;
+        if (!editor || !model || !pos) return;
         const offset = model.getOffsetAt(pos);
         const plan = planSoundAssignment(model.getValue(), offset, sound);
         if (!plan) return;
-        const wb = new Writeback(editor, monaco);
-        if (plan.kind === "replace") wb.replaceRange(plan.range, plan.text, "mixer");
-        else wb.insertAt(plan.offset, plan.text, "mixer");
+        commitToEditor(editor, assignmentEdit(plan), "mixer");
       }, "assignSoundToCursor"),
       assignVizToCursor: /* @__PURE__ */ __name((name) => {
         if (!name) return false;
         const editor = getActiveEditor();
-        const monaco = getMonacoNamespace();
         const model = editor?.getModel();
         const pos = editor?.getPosition();
-        if (!editor || !monaco || !model || !pos) return false;
+        if (!editor || !model || !pos) return false;
         const offset = model.getOffsetAt(pos);
         const plan = planVizAssignment(model.getValue(), offset, name);
         if (!plan) return false;
-        const wb = new Writeback(editor, monaco);
-        if (plan.kind === "replace") wb.replaceRange(plan.range, plan.text, "mixer");
-        else wb.insertAt(plan.offset, plan.text, "mixer");
-        return true;
+        return commitToEditor(editor, assignmentEdit(plan), "mixer") === "written";
       }, "assignVizToCursor")
     }),
     [
@@ -51728,6 +51739,7 @@ exports.clearShellState = clearShellState;
 exports.codeEditorForFocus = codeEditorForFocus;
 exports.codeUndoForFocus = codeUndoForFocus;
 exports.collectUnusedSounds = collectUnusedSounds;
+exports.commitToFile = commitToFile;
 exports.commitWorkspace = commitWorkspace;
 exports.compilePreset = compilePreset;
 exports.computeSections = computeSections;

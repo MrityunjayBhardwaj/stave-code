@@ -19,14 +19,6 @@
       "issue": "#1880"
     },
     {
-      "file": "packages/app/src/components/StrudelEditorClient.tsx",
-      "reaches": [
-        "door#applyOffsetEditsToFile"
-      ],
-      "why": "Applies edits to a file through applyOffsetEditsToFile with text assembled on the timeline side.",
-      "issue": "#1880"
-    },
-    {
       "file": "packages/app/src/components/musicalTimeline/trackLabel.ts",
       "reaches": [
         "codeView/ir/trackId#splitMuteMarker"
@@ -85,16 +77,6 @@
         "door#Writeback.replaceRanges"
       ],
       "why": "Calls the writer directly on a Writeback handed to it, with ranges and text decided here.",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/workspace/WorkspaceShell.tsx",
-      "reaches": [
-        "door#Writeback.insertAt",
-        "door#Writeback.replaceRange",
-        "door#new Writeback"
-      ],
-      "why": "Constructs the writer and drives it directly instead of committing an op through codeView/.",
       "issue": "#1880"
     },
     {

@@ -3,7 +3,7 @@
 // The Asset Library's Viz provider inserts `.viz("name")` onto the pattern under
 // the cursor. Like `soundAssign`, the decision is extracted into a pure function
 // over `(doc, offset, name)` so it can be unit-tested without Monaco; the shell's
-// `assignVizToCursor` applies the result via `Writeback`.
+// `assignVizToCursor` commits the result (`assignmentEdit` → `commitToEditor`).
 //
 // Unlike a sound, a viz has nothing to stand on its own — it decorates an
 // existing pattern — so there is no "drop a fresh line" fallback: with no chunk

@@ -185,6 +185,7 @@ export {
 export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './arrange'
 export { planSoundAssignment } from './assign/soundAssign'
 export { planVizAssignment } from './assign/vizAssign'
+export { assignmentEdit } from './assign/soundAssign'
 export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './automation/captionEdit'
 export { gridWriteEdits, readChunkGain, gainUnchanged } from './notation/gainEdit'
 export type { CaptionFieldKind } from './automation/captionEdit'
@@ -261,5 +262,5 @@ export {
 export type { PickControl, PickControlArm, PickMethod, PickSectionEntry } from './pickControl'
 
 // ── commit ── an op's edits, through the one writer
-export { Writeback, formatNumber, normalizeEdits, applyEdits, commit } from './writeback'
+export { Writeback, formatNumber, normalizeEdits, applyEdits, commit, commitToEditor, commitToFile } from './writeback'
 export type { WriteSource, OffsetEdit, CommitOutcome } from './writeback'
