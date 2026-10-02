@@ -2,13 +2,9 @@
  * chainMethod.ts — read a string-valued chain method (`.sound`/`.s`/`.bank`)
  * off a detected chunk, for the sound-assignment pickers (#514/#515).
  *
- * The WRITE side lives in the panel (it needs `applyEdit`/`Writeback`): when the
- * method is present, replace its arg range; otherwise insert `.method('value')`
- * at `exprRange[1]` (the same idiom as the Mixer's `addTransform`). This pure
- * reader is the READ side — current value + the arg range to overwrite.
- *
- * Single-quoted literals are emitted on write (PV44/P62 — the transpiler reifies
- * double-quoted strings to mini Patterns; a single-quoted id is left alone).
+ * This pure reader is the READ side — current value + the arg range to
+ * overwrite. The WRITE side is `chainEdit.ts` (`setStringCall`): replace that
+ * range when the method is present, otherwise append `.method('value')`.
  */
 import type { ChunkInfo } from './'
 

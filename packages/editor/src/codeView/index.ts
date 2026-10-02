@@ -202,6 +202,15 @@ export {
 } from './ir'
 export { masterGainEdit, masterMuteEdit, masterVizEdit } from './mixer/masterEdit'
 export { renameEdit, gainEdit, panEdit, muteEdit } from './mixer/writeStrip'
+export {
+  knobEdit,
+  knobRangeEdit,
+  knobRangeResetEdit,
+  toggleCallEdit,
+  removeNamedCall,
+  setStringCall,
+} from './chainEdit'
+export type { ChainArgRef } from './chainEdit'
 export { resizeGrid, resizeRoll } from './notation'
 export { addLane, removeLane } from './notation/lane'
 export { appendEmptyBars, duplicateBar } from './notation/lengthen'

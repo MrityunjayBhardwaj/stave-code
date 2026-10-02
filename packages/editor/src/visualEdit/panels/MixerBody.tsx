@@ -18,7 +18,16 @@
 import * as React from 'react'
 
 import { type ChunkInfo, type ChainCall } from '../../codeView'
-import { type Writeback, type OffsetEdit, formatNumber } from '../../codeView'
+import { type Writeback, type OffsetEdit } from '../../codeView'
+import {
+  type ChainArgRef,
+  knobEdit,
+  knobRangeEdit,
+  knobRangeResetEdit,
+  toggleCallEdit,
+  removeNamedCall,
+  setStringCall,
+} from '../../codeView'
 import { Knob } from './Knob'
 import { knobRangeFor, isKnownControl, isStrudelControl, customRange } from './knobRanges'
 import { FAVORITES, isEffectActive, effectNames, type Effect } from './effectCatalog'
@@ -33,11 +42,9 @@ import { INSTRUMENTS, DRUM_KITS } from './soundCatalog'
 import { useSoundCatalog, useDrumKitCatalog } from '../../workspace/soundRegistry'
 import { auditionSound } from '../audition'
 
-/** one knob = one numeric argument of one chain call */
-interface KnobEntry {
-  chainIndex: number
-  argIndex: number
-  method: string
+/** one knob = one numeric argument of one chain call; the `ChainArgRef` half is
+ *  the address its writes are made at */
+interface KnobEntry extends ChainArgRef {
   label: string
   value: number
   /** the user-authored dial range from `.control(value, min, max)` (#844), when
@@ -71,37 +78,6 @@ function rangeInfo(call: ChainCall): { customRange?: { min: number; max: number 
     }
   }
   return { editable: false }
-}
-
-/**
- * The text edit that writes `min, max` into a control's range slots (#844):
- * replace the existing extra-arg span in place, or insert `, min, max` right
- * after the value arg when there is none. Pure — a `(range, text)` OffsetEdit,
- * so it unit-tests against `applyEdits` with no Monaco.
- */
-export function rangeArgsEdit(call: ChainCall, min: number, max: number): OffsetEdit {
-  const value = call.args[0]
-  const body = `${formatNumber(min)}, ${formatNumber(max)}`
-  const extra = call.args.slice(1)
-  if (extra.length > 0) {
-    // Replace whatever extra args exist with exactly two — normalises a lone or
-    // junk extra arg to a clean `min, max`. The leading `, ` before the first
-    // extra arg is outside the value arg's range, so it is preserved.
-    return { range: [extra[0].range[0], extra[extra.length - 1].range[1]], text: body }
-  }
-  return { range: [value.range[1], value.range[1]], text: `, ${body}` }
-}
-
-/**
- * The text edit that clears a control's range back to `.control(value)` (#844):
- * delete from the end of the value arg through the last extra arg (dropping the
- * `, min, max`). Returns null when there is no range to remove. Pure.
- */
-export function rangeResetEdit(call: ChainCall): OffsetEdit | null {
-  const value = call.args[0]
-  const extra = call.args.slice(1)
-  if (!value || extra.length === 0) return null
-  return { range: [value.range[1], extra[extra.length - 1].range[1]], text: '' }
 }
 
 /**
@@ -257,6 +233,11 @@ export interface MixerBodyProps {
  *  adding it gives a fader to pull DOWN; reuses the effect add/remove plumbing. */
 const GAIN_EFFECT: Effect = { method: 'gain', label: 'Gain', group: 'Level', def: 1 }
 
+/** hand one code↔view edit to the writer, as a mixer-control write */
+function write(wb: Writeback, edit: OffsetEdit | null): void {
+  if (edit) wb.replaceRange(edit.range, edit.text, 'knob')
+}
+
 /** Base content width of the drawer header (picker + transforms) in column flow,
  *  so the drawer stays ~264px until the knob columns grow past it. */
 const COLUMN_HEADER_W = 232
@@ -285,13 +266,12 @@ export function MixerBody({
 
   const knobs = knobsFromChunk(chunk, showGain)
 
+  // Every gesture below asks the code↔view area what to write (#1888) and hands
+  // the answer to the writer. Null = nothing may be written: the control it was
+  // drawn for is gone, or its value is not ours to replace.
   const writeKnob = React.useCallback(
     (entry: KnobEntry, value: number): void => {
-      applyEdit((fresh, wb) => {
-        const arg = fresh.chain[entry.chainIndex]?.args[entry.argIndex]
-        if (!arg) return
-        wb.replaceRange(arg.range, formatNumber(value), 'knob')
-      })
+      applyEdit((fresh, wb) => write(wb, knobEdit(fresh, entry, value)))
     },
     [applyEdit],
   )
@@ -301,12 +281,7 @@ export function MixerBody({
   // linked (the strip re-derives from the text, so the dial re-ranges live).
   const writeRange = React.useCallback(
     (entry: KnobEntry, min: number, max: number): void => {
-      applyEdit((fresh, wb) => {
-        const call = fresh.chain[entry.chainIndex]
-        if (!call) return
-        const edit = rangeArgsEdit(call, min, max)
-        wb.replaceRange(edit.range, edit.text, 'knob')
-      })
+      applyEdit((fresh, wb) => write(wb, knobRangeEdit(fresh, entry, min, max)))
     },
     [applyEdit],
   )
@@ -314,30 +289,17 @@ export function MixerBody({
   // Reset the dial back to its default range — drop the `, min, max` metadata.
   const resetRange = React.useCallback(
     (entry: KnobEntry): void => {
-      applyEdit((fresh, wb) => {
-        const call = fresh.chain[entry.chainIndex]
-        if (!call) return
-        const edit = rangeResetEdit(call)
-        if (edit) wb.deleteRange(edit.range, 'knob')
-      })
+      applyEdit((fresh, wb) => write(wb, knobRangeResetEdit(fresh, entry)))
     },
     [applyEdit],
   )
 
   // Add/remove an effect (#575). Favorites and the ＋More menu both call this.
-  // Alias-aware: if the chain already has the effect under any spelling
-  // (`.cutoff` for Low-pass, …) we remove THAT call; otherwise append
-  // `.method(default)`. A member call's `range` is [dot, callEnd] (chunkDetect),
-  // so deleting it drops the whole call (and its knob). Guard to members (i > 0)
-  // so the head pattern is never deleted.
+  // Alias-aware: an effect already on the chain under any of its spellings is
+  // removed; otherwise it is added at its default.
   const toggleEffect = React.useCallback(
     (e: Effect): void => {
-      applyEdit((fresh, wb) => {
-        const names = effectNames(e)
-        const idx = fresh.chain.findIndex((c, i) => i > 0 && names.includes(c.name))
-        if (idx >= 0) wb.deleteRange(fresh.chain[idx].range, 'knob')
-        else wb.insertAt(fresh.exprRange[1], `.${e.method}(${formatNumber(e.def)})`, 'knob')
-      })
+      applyEdit((fresh, wb) => write(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def)))
     },
     [applyEdit],
   )
@@ -345,26 +307,17 @@ export function MixerBody({
   // Remove one method by its exact name — the knob's `×` affordance (#575).
   const removeMethod = React.useCallback(
     (method: string): void => {
-      applyEdit((fresh, wb) => {
-        const idx = fresh.chain.findIndex((c, i) => i > 0 && c.name === method)
-        if (idx >= 0) wb.deleteRange(fresh.chain[idx].range, 'knob')
-      })
+      applyEdit((fresh, wb) => write(wb, removeNamedCall(fresh, method)))
     },
     [applyEdit],
   )
 
-  // Sound assignment (#514 instrument / #515 kit): write a string-valued chain
-  // method. Replace an existing `.sound`/`.s`/`.bank` arg in place, else append
-  // `.canonical('value')`. Single-quoted literal (PV44 — double quotes reify to
-  // mini). Reuses the `'knob'` write source, like `addTransform`.
+  // Sound assignment (#514 instrument / #515 kit): set a string-valued chain
+  // method (`.sound`/`.s`/`.bank`). Reuses the `'knob'` write source.
   const writeChainMethod = React.useCallback(
     (names: string[], canonical: string, value: string): void => {
       if (value === '') return
-      applyEdit((fresh, wb) => {
-        const cur = readChainMethod(fresh, names)
-        if (cur) wb.replaceRange(cur.range, `'${value}'`, 'knob')
-        else wb.insertAt(fresh.exprRange[1], `.${canonical}('${value}')`, 'knob')
-      })
+      applyEdit((fresh, wb) => write(wb, setStringCall(fresh, names, canonical, value)))
     },
     [applyEdit],
   )
