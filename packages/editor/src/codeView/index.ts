@@ -264,4 +264,4 @@ export type { PickControl, PickControlArm, PickMethod, PickSectionEntry } from '
 
 // ── commit ── an op's edits, through the one writer
 export { Writeback, formatNumber, normalizeEdits, applyEdits, commit, commitToEditor, commitToFile, createWriter, openGesture, closeGesture, isCommitting } from './writeback'
-export type { WriteSource, OffsetEdit, CommitOutcome } from './writeback'
+export type { WriteSource, OffsetEdit, CommitOutcome, WriteOutcome, WriteRefusal } from './writeback'

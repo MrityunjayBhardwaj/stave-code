@@ -56,7 +56,7 @@ describe('commit — an operation result into the document', () => {
 /**
  * #1906 — the two other forms of the door. Both reach the registry, which holds
  * the monaco namespace and the editors once per module instance, so each arm
- * takes a fresh module pair (the same reason `editorRegistry.writeOutcome.test`
+ * takes a fresh module pair (the same reason `commitToFile.test`
  * resets per arm).
  */
 async function freshDoor() {

@@ -11,14 +11,6 @@
       "issue": "#1877"
     },
     {
-      "file": "packages/app/src/components/MusicalTimeline.tsx",
-      "reaches": [
-        "door#applyOffsetEditsToFile"
-      ],
-      "why": "Applies edits to a file through applyOffsetEditsToFile with text assembled on the timeline side.",
-      "issue": "#1880"
-    },
-    {
       "file": "packages/app/src/components/musicalTimeline/trackLabel.ts",
       "reaches": [
         "codeView/ir/trackId#splitMuteMarker"
@@ -39,16 +31,6 @@
         "codeView/mixer/stripModel#bareCaptureIdFor": "#1882 the engine already imported this file; it moved into the area in #1884, so the same dependency now crosses the boundary",
         "codeView/mixer/stripModel#isTrackChunk": "#1882 the engine already imported this file; it moved into the area in #1884, so the same dependency now crosses the boundary"
       }
-    },
-    {
-      "file": "packages/editor/src/workspace/editorRegistry.ts",
-      "reaches": [
-        "codeView/writeback#Writeback",
-        "door#Writeback.replaceRanges",
-        "door#new Writeback"
-      ],
-      "why": "Defines applyOffsetEditsToFile, the app-facing write door, on top of Writeback. writeback.ts imports this file back, so it cannot import the entry without a cycle through the engine's graph. The door belongs inside codeView/.",
-      "issue": "#1880"
     }
   ],
   "declared": [

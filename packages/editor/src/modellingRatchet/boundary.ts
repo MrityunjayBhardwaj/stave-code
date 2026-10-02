@@ -12,7 +12,7 @@
  *            entry that points into the area)
  *   owner  — it imports krill, `@strudel/mini` or acorn (`engine/` is exempt: it runs Strudel)
  *   door   — it touches the write door: a member of `Writeback`, the class as a value,
- *            `applyEdits`, or `applyOffsetEditsToFile`. Asked of the TYPE CHECKER, because
+ *            or `applyEdits`. Asked of the TYPE CHECKER, because
  *            the import lines do not show it: a panel calls `wb.replaceRanges` on a callback
  *            parameter and never imports `Writeback` at all.
  *
@@ -53,7 +53,7 @@ const ENTRY = `${AREA}index.ts`
 const ENGINE = `${EDITOR_SRC}/engine/`
 const PACKAGES = ['packages/editor', 'packages/app'] as const
 const DOOR_CLASS = 'Writeback'
-const DOOR_FUNCTIONS = new Set(['applyEdits', 'applyOffsetEditsToFile'])
+const DOOR_FUNCTIONS = new Set(['applyEdits'])
 
 export type Rule = 'import' | 'owner' | 'door'
 export interface Reach {
@@ -115,9 +115,8 @@ function subpathSources(root: string, known: Set<string>): Map<string, string> {
  * Where the door is declared. The editor's own program sees the source files; the app's
  * sees the editor through its built declarations, where everything is in one bundle.
  */
-function isDoorHome(file: string, name: string): boolean {
+function isDoorHome(file: string): boolean {
   if (/\/packages\/editor\/dist\/[^/]+\.d\.(ts|cts|mts)$/.test(file)) return true
-  if (name === 'applyOffsetEditsToFile') return file.endsWith(`/${EDITOR_SRC}/workspace/editorRegistry.ts`)
   return file.endsWith(`/${AREA}writeback.ts`)
 }
 
@@ -234,7 +233,7 @@ export function measureBoundary(opts: MeasureOptions = {}): Measurement {
       for (const d of real.declarations ?? []) {
         // the door by where it is DECLARED, never by its name alone: a panel's own
         // `applyEdits`, or a `replaceRanges` on some other class, is not the door
-        if (!isDoorHome(toPosix(d.getSourceFile().fileName), real.name)) continue
+        if (!isDoorHome(toPosix(d.getSourceFile().fileName))) continue
         if (ts.isClassDeclaration(d) && d.name?.text === DOOR_CLASS) return { kind: 'class', name: DOOR_CLASS }
         if (d.parent && ts.isClassDeclaration(d.parent) && d.parent.name?.text === DOOR_CLASS && ts.isClassElement(d)) {
           return { kind: 'member', name: real.name }
@@ -262,7 +261,7 @@ export function measureBoundary(opts: MeasureOptions = {}): Measurement {
         const classUse = (at: ts.Node): string =>
           ts.isNewExpression(at.parent) && at.parent.expression === at ? `door#new ${DOOR_CLASS}` : `door#${DOOR_CLASS} as a value`
         if (ts.isPropertyAccessExpression(n)) {
-          // `wb.replaceRanges`, and a namespace's `E.applyOffsetEditsToFile` / `E.Writeback`
+          // `wb.replaceRanges`, and a namespace's `E.applyEdits` / `E.Writeback`
           const d = doorOf(checker.getSymbolAtLocation(n.name))
           if (d?.kind === 'member') add(rel, 'door', `door#${DOOR_CLASS}.${d.name}`)
           else if (d?.kind === 'function') add(rel, 'door', `door#${d.name}`)
@@ -283,10 +282,10 @@ export function measureBoundary(opts: MeasureOptions = {}): Measurement {
           !(ts.isPropertyAccessExpression(n.parent) && n.parent.name === n) &&
           !inTypePosition(n)
         ) {
+          // every door is declared inside the area or in the built declarations, and
+          // neither is measured, so an identifier that resolves to one is always a use
           const d = doorOf(checker.getSymbolAtLocation(n))
-          // `applyOffsetEditsToFile` is DEFINED outside the area; its own declaration is not a use
-          const declares = (ts.isFunctionDeclaration(n.parent) || ts.isVariableDeclaration(n.parent) || ts.isClassDeclaration(n.parent)) && n.parent.name === n
-          if (d && !declares) {
+          if (d) {
             if (d.kind === 'function') add(rel, 'door', `door#${d.name}`)
             else if (d.kind === 'class') add(rel, 'door', classUse(n))
           }

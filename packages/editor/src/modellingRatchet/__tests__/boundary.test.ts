@@ -116,8 +116,8 @@ describe('the code↔view boundary (#1879)', () => {
       [`${PANELS}/plantedDoorAlias.tsx`]: `import { Writeback as W } from '../../codeView'\nexport const f = (e: never, m: never) => new W(e, m)`,
       [`${PANELS}/plantedDoorPassed.tsx`]: `import { Writeback } from '../../codeView'\nexport const f = (g: (c: unknown) => void) => g(Writeback)`,
       [`${PANELS}/plantedDoorApplyEdits.tsx`]: `import { applyEdits } from '../../codeView'\nexport const f = () => applyEdits('abc', [{ range: [0, 1], text: 'x' }])`,
-      [`packages/app/src/components/plantedDoorApp.ts`]: `import { applyOffsetEditsToFile } from '@stave/editor'\nexport const f = () => applyOffsetEditsToFile('f', [], 'timeline' as never)`,
-      [`packages/app/src/components/plantedDoorNamespace.ts`]: `import * as Ed from '@stave/editor'\nexport const f = () => Ed.applyOffsetEditsToFile('f', [], 'timeline' as never)`,
+      [`packages/app/src/components/plantedDoorApp.ts`]: `import { applyEdits } from '@stave/editor'\nexport const f = () => applyEdits('abc', [])`,
+      [`packages/app/src/components/plantedDoorNamespace.ts`]: `import * as Ed from '@stave/editor'\nexport const f = () => Ed.applyEdits('abc', [])`,
       // ── must NOT fire ──
       [`${PANELS}/plantedTypeOnly.tsx`]: `import type { Writeback, OffsetEdit } from '../../codeView'\nexport type Apply = (m: (wb: Writeback) => void, e: OffsetEdit) => void`,
       [`${PANELS}/plantedLookalike.tsx`]:
@@ -174,8 +174,8 @@ describe('the code↔view boundary (#1879)', () => {
 
     it('…and through the door functions, from the editor and from the app', () => {
       expect(of('plantedDoorApplyEdits.tsx')).toEqual(['door#applyEdits'])
-      expect(of('plantedDoorApp.ts')).toEqual(['door#applyOffsetEditsToFile'])
-      expect(of('plantedDoorNamespace.ts')).toEqual(['door#applyOffsetEditsToFile'])
+      expect(of('plantedDoorApp.ts')).toEqual(['door#applyEdits'])
+      expect(of('plantedDoorNamespace.ts')).toEqual(['door#applyEdits'])
     })
 
     it('naming the writer as a TYPE is not a write, and a look-alike method on another class is not the door', () => {

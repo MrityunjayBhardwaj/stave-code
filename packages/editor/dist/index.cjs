@@ -6161,22 +6161,6 @@ function revealOffsetInFile(fileId, offset) {
   }
 }
 __name(revealOffsetInFile, "revealOffsetInFile");
-function applyOffsetEditsToFile(fileId, edits, source, expectedDoc) {
-  const editor = editors.get(fileId);
-  if (!editor) return "no-editor";
-  if (!monacoNs) return "no-monaco";
-  if (edits.length === 0) return "no-edits";
-  if (expectedDoc != null && editor.getModel?.()?.getValue?.() !== expectedDoc) {
-    return "stale-document";
-  }
-  try {
-    new Writeback(editor, monacoNs).replaceRanges(edits, source);
-    return "applied";
-  } catch {
-    return "writeback-threw";
-  }
-}
-__name(applyOffsetEditsToFile, "applyOffsetEditsToFile");
 var DEFAULT_FONT_SIZE = 14;
 var FONT_SIZE_STORAGE = "stave:editorFontSize";
 var MINIMAP_STORAGE = "stave:editorMinimap";
@@ -7162,7 +7146,19 @@ function isCommitting(writer) {
 }
 __name(isCommitting, "isCommitting");
 function commitToFile(fileId, edit, source, expectedDoc) {
-  return applyOffsetEditsToFile(fileId, editList(edit), source, expectedDoc);
+  const editor = getEditorForFile(fileId);
+  if (!editor) return "no-editor";
+  const writer = createWriter(editor);
+  if (!writer) return "no-monaco";
+  const edits = editList(edit);
+  if (edits.length === 0) return "no-edits";
+  if (editor.getModel?.()?.getValue?.() !== expectedDoc) return "stale-document";
+  try {
+    writer.replaceRanges(edits, source);
+    return "applied";
+  } catch {
+    return "writeback-threw";
+  }
 }
 __name(commitToFile, "commitToFile");
 function editList(edit) {
@@ -51720,7 +51716,6 @@ exports.analyzeSong = analyzeSong;
 exports.analyzeWindow = analyzeWindow;
 exports.applyEdits = applyEdits;
 exports.applyEvalSourceTransform = applyEvalSourceTransform;
-exports.applyOffsetEditsToFile = applyOffsetEditsToFile;
 exports.applyPersistedAdaptivePerf = applyPersistedAdaptivePerf;
 exports.applyPersistedBackdropBlur = applyPersistedBackdropBlur;
 exports.applyPersistedInlineVizActionSize = applyPersistedInlineVizActionSize;
