@@ -20,12 +20,12 @@
  * `serializeGain`/`applyGain` are supplied, every `mutate` writes the mini AND
  * the coordinated gain edit (replace an existing string `.gain` arg, insert
  * `.gain("…")` after the expression, or remove our `.gain` when all-neutral) as
- * ONE `replaceRanges` — a single undo step. The model is reseeded when EITHER
+ * ONE `commit` — a single undo step. The model is reseeded when EITHER
  * the mini OR the `.gain` changes externally. WHICH BYTES that write changes is
  * not decided here: `gridWriteEdits` (`codeView/notation/gainEdit`, #1887) builds
  * the edit list and this hook hands it to `commit` (#1909).
  *
- * Built on `useActiveChunk` (the active-editor → chunk → writeback layer).
+ * Built on `useActiveChunk` (the active-editor → chunk layer).
  */
 import * as React from 'react'
 
