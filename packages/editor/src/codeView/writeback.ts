@@ -29,12 +29,13 @@
  */
 import type * as Monaco from 'monaco-editor'
 import { isChunkFresh, type ChunkInfo } from './chunkDetect'
+// One direction only (#1911): this area reads the registry (which editor shows a
+// file, the monaco namespace, the re-eval seam); the registry imports nothing back.
 import {
   requestReeval,
   getFileIdForEditor,
   getMonacoNamespace,
-  applyOffsetEditsToFile,
-  type WriteOutcome,
+  getEditorForFile,
 } from '../workspace/editorRegistry'
 
 /** trailing-debounce window for the live re-eval — coalesces a quick burst of
@@ -319,7 +320,7 @@ export type CommitOutcome =
  *
  * The editor route does not re-check freshness here: panels re-detect their
  * chunk against the live document immediately before asking the operation, in
- * the same synchronous turn. The file route (`applyOffsetEditsToFile`) keeps its
+ * the same synchronous turn. The file route (`commitToFile`) keeps its
  * stale-document check.
  */
 export function commit(
@@ -387,20 +388,66 @@ export function isCommitting(writer: Writeback | null): boolean {
 }
 
 /**
+ * Why a write by file did not land. Each value names ONE refusal the file route
+ * can actually tell apart, because a report that cannot name its cause cannot
+ * drive the next decision (#1414) — "the edit was declined" and "the document
+ * moved under you" call for opposite responses from a caller, and a bare `false`
+ * says neither.
+ */
+export type WriteRefusal =
+  /** No editor is registered for `fileId` — typically unmounted mid-gesture. */
+  | 'no-editor'
+  /** The monaco namespace was never captured, so no edit can be constructed. */
+  | 'no-monaco'
+  /** Nothing to write — upstream (usually a serializer) declined the gesture. */
+  | 'no-edits'
+  /** `expectedDoc` no longer matches the live model: the offsets are stale and
+   *  applying them would corrupt unrelated code. RETRYABLE — unlike the rest. */
+  | 'stale-document'
+  /** The writer threw while applying the edits. */
+  | 'writeback-threw'
+
+/** `'applied'`, or the reason the file route refused. */
+export type WriteOutcome = 'applied' | WriteRefusal
+
+/**
  * `commit` addressed by FILE rather than by a writer — the route a surface takes
- * when it does not own the editor (the app's backdrop write, #1906). Keeps the
- * file route's stale-document check: pass the document the edit was computed
- * against as `expectedDoc`, and a document that moved since is refused rather
- * than corrupted. Answers with the writer's named refusals (`no-editor`,
- * `stale-document`, …) so the caller can report the one it got.
+ * when it does not own the editor: the Song Timeline's gestures and the app's
+ * backdrop write (#1906, #1911). The edits land in `fileId`'s editor as ONE undo
+ * step tagged `source`, and the writer's debounced re-eval makes them audible.
+ *
+ * `expectedDoc` is REQUIRED (#1911): the document the edit's offsets were computed
+ * against. A panel re-detects its chunk against the live document in the same
+ * turn it writes; a caller of this route does not (the timeline computes from its
+ * last IR snapshot, which lags typing by a debounce), so this comparison is the
+ * only thing standing between stale offsets and unrelated code. A document that
+ * moved is refused as 'stale-document' and nothing is written.
+ *
+ * ⚠ RETURNS A REASON, NOT A BOOLEAN (#1414). Every member of `WriteOutcome` is a
+ * non-empty string, so a bare `if (outcome)` is always true and always a bug —
+ * compare against 'applied'. Refusals are checked in a fixed order (no editor, no
+ * monaco, nothing to write, stale document) so the cause a caller reports is the
+ * same on every run.
  */
 export function commitToFile(
   fileId: string,
   edit: OffsetEdit | readonly OffsetEdit[] | null,
   source: WriteSource,
-  expectedDoc?: string,
+  expectedDoc: string,
 ): WriteOutcome {
-  return applyOffsetEditsToFile(fileId, editList(edit), source, expectedDoc)
+  const editor = getEditorForFile(fileId)
+  if (!editor) return 'no-editor'
+  const writer = createWriter(editor)
+  if (!writer) return 'no-monaco'
+  const edits = editList(edit)
+  if (edits.length === 0) return 'no-edits'
+  if (editor.getModel?.()?.getValue?.() !== expectedDoc) return 'stale-document'
+  try {
+    writer.replaceRanges(edits, source)
+    return 'applied'
+  } catch {
+    return 'writeback-threw'
+  }
 }
 
 /** what an operation returned, as the list the writer takes */

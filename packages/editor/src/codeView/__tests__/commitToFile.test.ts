@@ -1,7 +1,8 @@
 /**
- * editorRegistry — `applyOffsetEditsToFile` names WHY it refused (#1414).
+ * commitToFile — the commit door's file route names WHY it refused (#1414).
+ * Moved here from the editor registry with the route itself (#1911).
  *
- * This function has always refused correctly. What it could not do was say
+ * This route has always refused correctly. What it could not do was say
  * WHICH refusal fired, and all fourteen of its call sites discarded even the
  * boolean — so a refused timeline gesture and an applied one were
  * indistinguishable, and "how often does this happen, and why" had no answer.
@@ -13,12 +14,13 @@
  *
  * Per feedback_editor_idb_test_split: plain fakes over a fake Monaco, no Monaco
  * runtime. `vi.resetModules()` per arm because the registry captures the monaco
- * namespace ONCE per module instance and never clears it — without a fresh
+ * namespace ONCE per module instance and never clears it (the door reads it
+ * from there) — without a fresh
  * module the `no-monaco` arm is unreachable, and every arm becomes
  * order-dependent.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { OffsetEdit } from '../../visualEdit/types'
+import type { OffsetEdit } from '../writeback'
 
 const FILE = 'song.js'
 const DOC = 'stack(a, b)'
@@ -58,13 +60,17 @@ class FakeRange {
 
 const EDIT: OffsetEdit[] = [{ range: [0, 5], text: 'lead' }]
 
-/** Fresh module instance — see the header on why this cannot be hoisted. */
+/** Fresh module instances — see the header on why this cannot be hoisted. The
+ * registry and the door come from the SAME fresh graph, or the door would read a
+ * registry the arm never registered anything in. */
 async function freshRegistry() {
   vi.resetModules()
-  return await import('../editorRegistry')
+  const reg = await import('../../workspace/editorRegistry')
+  const door = await import('../writeback')
+  return { ...reg, commitToFile: door.commitToFile }
 }
 
-describe('applyOffsetEditsToFile — every refusal names itself (#1414)', () => {
+describe('commitToFile — every refusal names itself (#1414)', () => {
   beforeEach(() => {
     vi.useRealTimers()
   })
@@ -75,7 +81,7 @@ describe('applyOffsetEditsToFile — every refusal names itself (#1414)', () => 
     reg.registerMonacoNamespace({ Range: FakeRange } as never)
     reg.registerEditor(FILE, f.editor as never)
 
-    expect(reg.applyOffsetEditsToFile(FILE, EDIT, 'arrange.weights', DOC)).toBe('applied')
+    expect(reg.commitToFile(FILE, EDIT, 'arrange.weights', DOC)).toBe('applied')
     // The write actually reached the model — otherwise 'applied' is a lie and
     // every other arm here is measuring nothing.
     expect(f.calls.pushEditOperations).toBe(1)
@@ -85,7 +91,7 @@ describe('applyOffsetEditsToFile — every refusal names itself (#1414)', () => 
     const reg = await freshRegistry()
     reg.registerMonacoNamespace({ Range: FakeRange } as never)
 
-    expect(reg.applyOffsetEditsToFile(FILE, EDIT, 'arrange.weights', DOC)).toBe('no-editor')
+    expect(reg.commitToFile(FILE, EDIT, 'arrange.weights', DOC)).toBe('no-editor')
   })
 
   it("reports 'no-monaco' when the namespace was never captured", async () => {
@@ -93,7 +99,7 @@ describe('applyOffsetEditsToFile — every refusal names itself (#1414)', () => 
     const f = fakeEditor(DOC)
     reg.registerEditor(FILE, f.editor as never) // no registerMonacoNamespace
 
-    expect(reg.applyOffsetEditsToFile(FILE, EDIT, 'arrange.weights', DOC)).toBe('no-monaco')
+    expect(reg.commitToFile(FILE, EDIT, 'arrange.weights', DOC)).toBe('no-monaco')
     expect(f.calls.pushEditOperations).toBe(0)
   })
 
@@ -103,7 +109,7 @@ describe('applyOffsetEditsToFile — every refusal names itself (#1414)', () => 
     reg.registerMonacoNamespace({ Range: FakeRange } as never)
     reg.registerEditor(FILE, f.editor as never)
 
-    expect(reg.applyOffsetEditsToFile(FILE, [], 'arrange.structure', DOC)).toBe('no-edits')
+    expect(reg.commitToFile(FILE, [], 'arrange.structure', DOC)).toBe('no-edits')
     expect(f.calls.pushEditOperations).toBe(0)
   })
 
@@ -114,7 +120,7 @@ describe('applyOffsetEditsToFile — every refusal names itself (#1414)', () => 
     reg.registerMonacoNamespace({ Range: FakeRange } as never)
     reg.registerEditor(FILE, f.editor as never)
 
-    expect(reg.applyOffsetEditsToFile(FILE, EDIT, 'arrange.weights', DOC)).toBe('stale-document')
+    expect(reg.commitToFile(FILE, EDIT, 'arrange.weights', DOC)).toBe('stale-document')
     // ⚠ THE ARM THAT GUARDS REAL CORRUPTION. Applying offsets computed against
     // `DOC` to a document that is no longer `DOC` rewrites whatever now occupies
     // those bytes. Naming the refusal is worthless if the write went out anyway.
@@ -128,27 +134,31 @@ describe('applyOffsetEditsToFile — every refusal names itself (#1414)', () => 
     reg.registerMonacoNamespace({ Range: FakeRange } as never)
     reg.registerEditor(FILE, f.editor as never)
 
-    expect(reg.applyOffsetEditsToFile(FILE, EDIT, 'arrange.weights', DOC)).toBe('writeback-threw')
+    expect(reg.commitToFile(FILE, EDIT, 'arrange.weights', DOC)).toBe('writeback-threw')
     expect(f.calls.pushEditOperations).toBe(0)
   })
 
-  it('skips the freshness check when no expectedDoc is supplied', async () => {
+  it('cannot be called without the document the edits were computed against (#1911)', async () => {
     const reg = await freshRegistry()
     const f = fakeEditor('anything at all')
     reg.registerMonacoNamespace({ Range: FakeRange } as never)
     reg.registerEditor(FILE, f.editor as never)
 
-    // No expectedDoc → the caller is not claiming to know the document, so the
-    // stale guard cannot fire and must not invent a refusal.
-    expect(reg.applyOffsetEditsToFile(FILE, EDIT, 'arrange.weights')).toBe('applied')
-    expect(f.calls.pushEditOperations).toBe(1)
+    // `expectedDoc` used to be optional, and leaving it out wrote blind. It is
+    // the file route's only protection against stale offsets — its callers do
+    // not re-detect against the live document the way a panel does — so it is
+    // required, and leaving it out no longer compiles.
+    // @ts-expect-error — expectedDoc is required
+    reg.commitToFile(FILE, EDIT, 'arrange.weights')
+    // At runtime a missing document is a document that does not match.
+    expect(f.calls.pushEditOperations).toBe(0)
   })
 
   it('reports the FIRST unmet precondition when several hold at once', async () => {
     const reg = await freshRegistry()
     // No editor AND no edits AND no monaco. The cause a caller reports has to be
     // deterministic, else the Console tells a different story on each run.
-    expect(reg.applyOffsetEditsToFile(FILE, [], 'arrange.weights', DOC)).toBe('no-editor')
+    expect(reg.commitToFile(FILE, [], 'arrange.weights', DOC)).toBe('no-editor')
   })
 
   it('never returns a falsy value — `if (outcome)` is always a bug', async () => {
@@ -158,9 +168,9 @@ describe('applyOffsetEditsToFile — every refusal names itself (#1414)', () => 
     reg.registerEditor(FILE, f.editor as never)
 
     // Pinned deliberately: this union replaced a `boolean`, so the tempting
-    // `if (applyOffsetEditsToFile(...))` now reads as success for EVERY refusal.
+    // `if (commitToFile(...))` now reads as success for EVERY refusal.
     // The comparison against 'applied' is not style — it is the contract.
-    const refused = reg.applyOffsetEditsToFile(FILE, EDIT, 'arrange.weights', DOC)
+    const refused = reg.commitToFile(FILE, EDIT, 'arrange.weights', DOC)
     expect(refused).toBe('stale-document')
     expect(Boolean(refused)).toBe(true)
     expect(refused === 'applied').toBe(false)

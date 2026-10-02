@@ -301,14 +301,12 @@ export {
   resetUndoManager,
   withStructBatch,
 } from './workspace/undoManager'
-export type { WriteOutcome, WriteRefusal } from './workspace/editorRegistry'
-// #1906 — the file route of the code↔view commit door; the app's backdrop write
-// commits through it instead of calling applyOffsetEditsToFile.
-export { commitToFile } from './codeView'
+// #1906 / #1911 — the file route of the code↔view commit door; the Song Timeline's
+// gestures and the app's backdrop write commit through it, and name its refusals.
+export { commitToFile, type WriteOutcome, type WriteRefusal } from './codeView'
 export {
   revealLineInFile,
   revealOffsetInFile,
-  applyOffsetEditsToFile,
   // #641 — the app's Song Timeline derives its selected lane from the editor
   // caret (the same selection bus the Mixer uses, V-mixer-18); it needs to read
   // the active editor + which file it edits.

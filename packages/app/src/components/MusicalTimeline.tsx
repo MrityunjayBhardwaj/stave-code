@@ -38,7 +38,7 @@ import {
   getIRSnapshot,
   subscribeIRSnapshot,
   revealOffsetInFile,
-  applyOffsetEditsToFile,
+  commitToFile,
   type OffsetEdit,
   type WriteSource,
   type WriteOutcome,
@@ -601,8 +601,8 @@ export function MusicalTimeline(
   // ── The Song Timeline's ONE write seam (#1414) ──────────────────────────
   //
   // ⚠ WHY THIS EXISTS, AND WHY IT IS A FUNCTION AND NOT A CONVENTION.
-  // `applyOffsetEditsToFile` has always refused correctly and has always said so
-  // — it names five distinct refusals. Every one of its fourteen call sites threw
+  // The file route (now `commitToFile`, #1911) has always refused correctly and has
+  // always said so — it names five distinct refusals. Every one of its fourteen call sites threw
   // the answer away, and twelve of them bailed out one line earlier on an empty
   // edit list without telling anyone either. The result: a clip drag that was
   // REFUSED and one that was APPLIED looked identical, to the user and to us.
@@ -624,7 +624,7 @@ export function MusicalTimeline(
       const fileId = snapshot?.source
       const outcome: WriteOutcome = !fileId
         ? 'no-editor'
-        : applyOffsetEditsToFile(fileId, edits, source, snapshot.code)
+        : commitToFile(fileId, edits, source, snapshot.code)
       // ⚠ `'applied'` compared explicitly. Every member of WriteOutcome is a
       // non-empty string and therefore truthy, so `if (outcome)` is always true.
       // The count this builds up in the Console IS the instrument #1414 asked
@@ -673,7 +673,7 @@ export function MusicalTimeline(
   // arm index, and the new whole-cycle weight. We parse the arrangement at that
   // anchor against the SAME snapshot text the offsets came from, build a surgical
   // set-weight edit (cat→arrange promotion handled by the serializer), and route
-  // it through the editor registry's write-back — guarded against a stale model
+  // it through `writeArrange` (the commit door's file route) — guarded against a stale model
   // (`snapshot.code`). The runtime's debounced re-eval then republishes the IR
   // and the timeline re-derives the clip's new extent (PV122 #2/#3).
   const handleTrimClip = React.useCallback(
