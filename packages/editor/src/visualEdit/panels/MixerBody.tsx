@@ -18,7 +18,7 @@
 import * as React from 'react'
 
 import { type ChunkInfo, type ChainCall } from '../../codeView'
-import { type Writeback, type OffsetEdit } from '../../codeView'
+import { type Writeback, commit } from '../../codeView'
 import {
   type ChainArgRef,
   knobEdit,
@@ -233,11 +233,6 @@ export interface MixerBodyProps {
  *  adding it gives a fader to pull DOWN; reuses the effect add/remove plumbing. */
 const GAIN_EFFECT: Effect = { method: 'gain', label: 'Gain', group: 'Level', def: 1 }
 
-/** hand one code↔view edit to the writer, as a mixer-control write */
-function write(wb: Writeback, edit: OffsetEdit | null): void {
-  if (edit) wb.replaceRange(edit.range, edit.text, 'knob')
-}
-
 /** Base content width of the drawer header (picker + transforms) in column flow,
  *  so the drawer stays ~264px until the knob columns grow past it. */
 const COLUMN_HEADER_W = 232
@@ -271,7 +266,7 @@ export function MixerBody({
   // drawn for is gone, or its value is not ours to replace.
   const writeKnob = React.useCallback(
     (entry: KnobEntry, value: number): void => {
-      applyEdit((fresh, wb) => write(wb, knobEdit(fresh, entry, value)))
+      applyEdit((fresh, wb) => commit(wb, knobEdit(fresh, entry, value), 'knob'))
     },
     [applyEdit],
   )
@@ -281,7 +276,7 @@ export function MixerBody({
   // linked (the strip re-derives from the text, so the dial re-ranges live).
   const writeRange = React.useCallback(
     (entry: KnobEntry, min: number, max: number): void => {
-      applyEdit((fresh, wb) => write(wb, knobRangeEdit(fresh, entry, min, max)))
+      applyEdit((fresh, wb) => commit(wb, knobRangeEdit(fresh, entry, min, max), 'knob'))
     },
     [applyEdit],
   )
@@ -289,7 +284,7 @@ export function MixerBody({
   // Reset the dial back to its default range — drop the `, min, max` metadata.
   const resetRange = React.useCallback(
     (entry: KnobEntry): void => {
-      applyEdit((fresh, wb) => write(wb, knobRangeResetEdit(fresh, entry)))
+      applyEdit((fresh, wb) => commit(wb, knobRangeResetEdit(fresh, entry), 'knob'))
     },
     [applyEdit],
   )
@@ -299,7 +294,7 @@ export function MixerBody({
   // removed; otherwise it is added at its default.
   const toggleEffect = React.useCallback(
     (e: Effect): void => {
-      applyEdit((fresh, wb) => write(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def)))
+      applyEdit((fresh, wb) => commit(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def), 'knob'))
     },
     [applyEdit],
   )
@@ -307,7 +302,7 @@ export function MixerBody({
   // Remove one method by its exact name — the knob's `×` affordance (#575).
   const removeMethod = React.useCallback(
     (method: string): void => {
-      applyEdit((fresh, wb) => write(wb, removeNamedCall(fresh, method)))
+      applyEdit((fresh, wb) => commit(wb, removeNamedCall(fresh, method), 'knob'))
     },
     [applyEdit],
   )
@@ -317,7 +312,7 @@ export function MixerBody({
   const writeChainMethod = React.useCallback(
     (names: string[], canonical: string, value: string): void => {
       if (value === '') return
-      applyEdit((fresh, wb) => write(wb, setStringCall(fresh, names, canonical, value)))
+      applyEdit((fresh, wb) => commit(wb, setStringCall(fresh, names, canonical, value), 'knob'))
     },
     [applyEdit],
   )
