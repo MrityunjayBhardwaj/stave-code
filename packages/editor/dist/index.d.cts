@@ -3041,7 +3041,7 @@ declare class Writeback {
      * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
      * the whole gesture).
      */
-    replaceRanges(edits: OffsetEdit[], source: WriteSource): void;
+    replaceRanges(edits: OffsetEdit[], source: WriteSource): boolean;
     /** Insert text at an offset (zero-width edit). */
     insertAt(offset: number, text: string, source: WriteSource): void;
     /** Delete an offset range. */
@@ -3053,6 +3053,7 @@ declare class Writeback {
      * Prefer this over the raw methods on any path that can race a typed edit.
      */
     applyFresh(chunk: ChunkInfo, edits: OffsetEdit[], source: WriteSource): boolean;
+    /** false when there is no document to write to — nothing was applied */
     private apply;
     /**
      * Ask the app to re-evaluate the EDITED file so a visual mutation is audible

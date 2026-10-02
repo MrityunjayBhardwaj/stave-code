@@ -7056,7 +7056,7 @@ var _Writeback = class _Writeback {
    * the whole gesture).
    */
   replaceRanges(edits, source) {
-    this.apply(edits, source);
+    return this.apply(edits, source);
   }
   /** Insert text at an offset (zero-width edit). */
   insertAt(offset, text, source) {
@@ -7079,9 +7079,10 @@ var _Writeback = class _Writeback {
     this.apply(edits, source);
     return true;
   }
+  /** false when there is no document to write to — nothing was applied */
   apply(edits, source) {
     const model = this.editor.getModel();
-    if (!model) return;
+    if (!model) return false;
     const normalized = normalizeEdits(edits);
     const ops = normalized.map((e) => {
       const start = model.getPositionAt(e.range[0]);
@@ -7107,6 +7108,7 @@ var _Writeback = class _Writeback {
     if (!this.inGesture) model.pushStackElement();
     if (this.inGesture) this.gestureDidEdit = true;
     else this.requestLiveReeval();
+    return true;
   }
   /**
    * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
@@ -7130,6 +7132,16 @@ var _Writeback = class _Writeback {
 };
 __name(_Writeback, "Writeback");
 var Writeback = _Writeback;
+function commit(writer, edit, source) {
+  const edits = edit == null ? [] : isEditList(edit) ? [...edit] : [edit];
+  if (edits.length === 0) return "nothing-to-write";
+  return writer.replaceRanges(edits, source) ? "written" : "no-document";
+}
+__name(commit, "commit");
+function isEditList(edit) {
+  return Array.isArray(edit);
+}
+__name(isEditList, "isEditList");
 
 // src/codeView/mixer/masterEdit.ts
 var MASTER_UNITY_GAIN = 1;
@@ -32461,7 +32473,7 @@ function commitOnto(h, changed, opts) {
   if (Object.keys(changed).length === 0 && !opts.allowEmpty) return h;
   const branch = h.currentBranch;
   const parent = h.branches[branch]?.head ?? null;
-  const commit = {
+  const commit2 = {
     id: opts.id,
     parent,
     branch,
@@ -32478,7 +32490,7 @@ function commitOnto(h, changed, opts) {
   }
   return {
     ...h,
-    commits: { ...h.commits, [opts.id]: commit },
+    commits: { ...h.commits, [opts.id]: commit2 },
     branches: {
       ...h.branches,
       [branch]: { ...h.branches[branch], head: opts.id }
@@ -33974,15 +33986,15 @@ function shortId(id) {
 __name(shortId, "shortId");
 function HistoryDiffOverlay({
   history: history2,
-  commit,
+  commit: commit2,
   initialFileId,
   defaultMode = "previous",
   pickerFileIds,
   onClose
 }) {
   const changedIds = React21__namespace.useMemo(
-    () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit.files),
-    [commit, pickerFileIds]
+    () => pickerFileIds && pickerFileIds.length > 0 ? [...pickerFileIds] : Object.keys(commit2.files),
+    [commit2, pickerFileIds]
   );
   const [mode, setMode2] = React21__namespace.useState(defaultMode);
   React21__namespace.useEffect(() => {
@@ -34050,7 +34062,7 @@ function HistoryDiffOverlay({
       /* @__PURE__ */ jsxRuntime.jsxs("div", { style: headerRow, children: [
         /* @__PURE__ */ jsxRuntime.jsxs("span", { style: { flex: 1 }, children: [
           "Diff \xB7 ",
-          shortId(commit.id)
+          shortId(commit2.id)
         ] }),
         /* @__PURE__ */ jsxRuntime.jsx("button", { style: ctl, onClick: onClose, "data-history-diff-close": true, children: "Close" })
       ] }),
@@ -34058,9 +34070,9 @@ function HistoryDiffOverlay({
     ] });
   }
   const lang = toMonacoLanguage(history2.fileMeta[fileId]?.language ?? "strudel");
-  const parent = commit.parent;
-  const original = mode === "previous" ? parent ? getFileContentAt(history2, fileId, parent) : null : getFileContentAt(history2, fileId, commit.id);
-  const modified = mode === "current" ? getLiveFileContent(fileId) : getFileContentAt(history2, fileId, commit.id);
+  const parent = commit2.parent;
+  const original = mode === "previous" ? parent ? getFileContentAt(history2, fileId, parent) : null : getFileContentAt(history2, fileId, commit2.id);
+  const modified = mode === "current" ? getLiveFileContent(fileId) : getFileContentAt(history2, fileId, commit2.id);
   return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: wrap, "data-history-diff-overlay": true, children: [
     /* @__PURE__ */ jsxRuntime.jsxs("div", { style: headerRow, children: [
       /* @__PURE__ */ jsxRuntime.jsx(
@@ -34090,7 +34102,7 @@ function HistoryDiffOverlay({
         },
         m
       )) }),
-      /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1, color: "var(--foreground-muted, #a0a0aa)" }, children: mode === "previous" ? `${parent ? shortId(parent) : "\u2205"} \u2192 ${shortId(commit.id)}` : `${shortId(commit.id)} \u2192 current` }),
+      /* @__PURE__ */ jsxRuntime.jsx("span", { style: { flex: 1, color: "var(--foreground-muted, #a0a0aa)" }, children: mode === "previous" ? `${parent ? shortId(parent) : "\u2205"} \u2192 ${shortId(commit2.id)}` : `${shortId(commit2.id)} \u2192 current` }),
       /* @__PURE__ */ jsxRuntime.jsx("button", { style: ctl, onClick: onClose, "data-history-diff-close": true, children: "Close" })
     ] }),
     /* @__PURE__ */ jsxRuntime.jsx("div", { style: { flex: 1, minHeight: 0 }, children: /* @__PURE__ */ jsxRuntime.jsx(
@@ -34129,11 +34141,11 @@ function shortId2(id) {
 __name(shortId2, "shortId");
 function HistoryViewOverlay({
   history: history2,
-  commit,
+  commit: commit2,
   initialFileId,
   onClose
 }) {
-  const snapshot = React21__namespace.useMemo(() => snapshotAt(history2, commit.id), [history2, commit]);
+  const snapshot = React21__namespace.useMemo(() => snapshotAt(history2, commit2.id), [history2, commit2]);
   const fileIds = React21__namespace.useMemo(() => Object.keys(snapshot.files), [snapshot]);
   const [fileId, setFileId] = React21__namespace.useState(
     () => initialFileId && fileIds.includes(initialFileId) ? initialFileId : fileIds[0] ?? ""
@@ -34180,7 +34192,7 @@ function HistoryViewOverlay({
     fontSize: 11,
     cursor: "pointer"
   };
-  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: wrap, "data-history-view-overlay": commit.id, children: [
+  return /* @__PURE__ */ jsxRuntime.jsxs("div", { style: wrap, "data-history-view-overlay": commit2.id, children: [
     /* @__PURE__ */ jsxRuntime.jsxs("div", { style: headerRow, children: [
       /* @__PURE__ */ jsxRuntime.jsxs(
         "span",
@@ -34196,7 +34208,7 @@ function HistoryViewOverlay({
           },
           children: [
             "\u23F1 Viewing ",
-            shortId2(commit.id)
+            shortId2(commit2.id)
           ]
         }
       ),
@@ -34220,7 +34232,7 @@ function HistoryViewOverlay({
         height: "100%",
         language: toMonacoLanguage(history2.fileMeta[fileId]?.language ?? "strudel"),
         value: snapshot.files[fileId] ?? "",
-        path: `history:${commit.id}:${fileId}`,
+        path: `history:${commit2.id}:${fileId}`,
         onMount: handleMount,
         options: {
           readOnly: true,
@@ -36278,9 +36290,7 @@ function PatternTrackChip() {
     if (!v) return;
     applyToStripAt(strip.statementRange[0], (fresh, wb, doc) => {
       const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]));
-      const e = renameEdit(fresh, v, taken);
-      if (!e) return;
-      wb.replaceRange(e.range, e.text, "rename");
+      if (commit(wb, renameEdit(fresh, v, taken), "rename") !== "written") return;
       if (fileId) {
         const prevColor = getTrackMeta(fileId, strip.name).color;
         if (prevColor && strip.name !== v) {
@@ -40894,10 +40904,6 @@ function DivisionSelect({
 }
 __name(DivisionSelect, "DivisionSelect");
 var GAIN_EFFECT = { method: "gain", label: "Gain", group: "Level", def: 1 };
-function write(wb, edit) {
-  if (edit) wb.replaceRange(edit.range, edit.text, "knob");
-}
-__name(write, "write");
 var COLUMN_HEADER_W = 232;
 function MixerBody({
   chunk,
@@ -40918,38 +40924,38 @@ function MixerBody({
   const knobs = knobsFromChunk(chunk, showGain);
   const writeKnob = React21__namespace.useCallback(
     (entry, value) => {
-      applyEdit((fresh, wb) => write(wb, knobEdit(fresh, entry, value)));
+      applyEdit((fresh, wb) => commit(wb, knobEdit(fresh, entry, value), "knob"));
     },
     [applyEdit]
   );
   const writeRange = React21__namespace.useCallback(
     (entry, min, max) => {
-      applyEdit((fresh, wb) => write(wb, knobRangeEdit(fresh, entry, min, max)));
+      applyEdit((fresh, wb) => commit(wb, knobRangeEdit(fresh, entry, min, max), "knob"));
     },
     [applyEdit]
   );
   const resetRange = React21__namespace.useCallback(
     (entry) => {
-      applyEdit((fresh, wb) => write(wb, knobRangeResetEdit(fresh, entry)));
+      applyEdit((fresh, wb) => commit(wb, knobRangeResetEdit(fresh, entry), "knob"));
     },
     [applyEdit]
   );
   const toggleEffect = React21__namespace.useCallback(
     (e) => {
-      applyEdit((fresh, wb) => write(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def)));
+      applyEdit((fresh, wb) => commit(wb, toggleCallEdit(fresh, effectNames(e), e.method, e.def), "knob"));
     },
     [applyEdit]
   );
   const removeMethod = React21__namespace.useCallback(
     (method) => {
-      applyEdit((fresh, wb) => write(wb, removeNamedCall(fresh, method)));
+      applyEdit((fresh, wb) => commit(wb, removeNamedCall(fresh, method), "knob"));
     },
     [applyEdit]
   );
   const writeChainMethod = React21__namespace.useCallback(
     (names, canonical, value) => {
       if (value === "") return;
-      applyEdit((fresh, wb) => write(wb, setStringCall(fresh, names, canonical, value)));
+      applyEdit((fresh, wb) => commit(wb, setStringCall(fresh, names, canonical, value), "knob"));
     },
     [applyEdit]
   );
@@ -42164,18 +42170,18 @@ function LocalMixerStrip() {
           strip,
           showHeader: false,
           orientation: "horizontal",
-          onGainChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
-            const e = gainEdit(fresh, value);
-            if (e) wb.replaceRange(e.range, e.text, "mixer");
-          }),
-          onPanChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
-            const e = panEdit(fresh, value);
-            if (e) wb.replaceRange(e.range, e.text, "mixer");
-          }),
-          onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
-            const e = muteEdit(fresh, !strip.muted);
-            if (e) wb.replaceRange(e.range, e.text, "mixer");
-          }),
+          onGainChange: (value) => applyToStrip(
+            strip.id,
+            (fresh, wb) => commit(wb, gainEdit(fresh, value), "mixer")
+          ),
+          onPanChange: (value) => applyToStrip(
+            strip.id,
+            (fresh, wb) => commit(wb, panEdit(fresh, value), "mixer")
+          ),
+          onMuteToggle: () => applyToStrip(
+            strip.id,
+            (fresh, wb) => commit(wb, muteEdit(fresh, !strip.muted), "mixer")
+          ),
           soloed: soloed.has(strip.id),
           onSoloToggle: () => toggleSolo2(strip.id),
           dimmed: soloActive && !soloed.has(strip.id),
@@ -42957,18 +42963,18 @@ function MixerStrips({
                     {
                       strip,
                       zoom: faceZoom,
-                      onGainChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
-                        const e = gainEdit(fresh, value);
-                        if (e) wb.replaceRange(e.range, e.text, "mixer");
-                      }),
-                      onPanChange: (value) => applyToStrip(strip.id, (fresh, wb) => {
-                        const e = panEdit(fresh, value);
-                        if (e) wb.replaceRange(e.range, e.text, "mixer");
-                      }),
-                      onMuteToggle: () => applyToStrip(strip.id, (fresh, wb) => {
-                        const e = muteEdit(fresh, !strip.muted);
-                        if (e) wb.replaceRange(e.range, e.text, "mixer");
-                      }),
+                      onGainChange: (value) => applyToStrip(
+                        strip.id,
+                        (fresh, wb) => commit(wb, gainEdit(fresh, value), "mixer")
+                      ),
+                      onPanChange: (value) => applyToStrip(
+                        strip.id,
+                        (fresh, wb) => commit(wb, panEdit(fresh, value), "mixer")
+                      ),
+                      onMuteToggle: () => applyToStrip(
+                        strip.id,
+                        (fresh, wb) => commit(wb, muteEdit(fresh, !strip.muted), "mixer")
+                      ),
                       onRename: (newLabel) => (
                         // Anchored, NOT id-addressed (#877). A rename changes the strip's
                         // own id — naming an anonymous track turns `#0` into `drums` AND
@@ -42978,9 +42984,7 @@ function MixerStrips({
                         // rename, so the write addresses the track by it.
                         applyToStripAt(chunks[i].statementRange[0], (fresh, wb, doc) => {
                           const taken = new Set(otherTrackNames(doc, fresh.statementRange[0]));
-                          const e = renameEdit(fresh, newLabel, taken);
-                          if (!e) return;
-                          wb.replaceRange(e.range, e.text, "mixer");
+                          if (commit(wb, renameEdit(fresh, newLabel, taken), "rename") !== "written") return;
                           if (fileId) {
                             const prevColor = getTrackMeta(fileId, strip.name).color;
                             if (prevColor && strip.name !== newLabel) {
@@ -43043,14 +43047,8 @@ function MixerStrips({
                   muted: masterMuted,
                   expanded: masterExpanded,
                   onToggleExpand: () => toggle(MASTER_EXPAND_ID),
-                  onGainChange: (value) => applyToMaster((doc, wb) => {
-                    const e = masterGainEdit(doc, value);
-                    if (e) wb.replaceRange(e.range, e.text, "mixer");
-                  }),
-                  onMuteToggle: () => applyToMaster((doc, wb) => {
-                    const e = masterMuteEdit(doc, !masterMuted);
-                    if (e) wb.replaceRange(e.range, e.text, "mixer");
-                  }),
+                  onGainChange: (value) => applyToMaster((doc, wb) => commit(wb, masterGainEdit(doc, value), "mixer")),
+                  onMuteToggle: () => applyToMaster((doc, wb) => commit(wb, masterMuteEdit(doc, !masterMuted), "mixer")),
                   onGestureStart: beginGesture,
                   onGestureEnd: endGesture
                 }
@@ -43242,7 +43240,7 @@ function useDragResize(opts) {
     [value]
   );
   const endDrag = React21__namespace.useCallback(
-    (e, commit) => {
+    (e, commit2) => {
       if (!draggingRef.current) return;
       draggingRef.current = false;
       setDragging(false);
@@ -43252,7 +43250,7 @@ function useDragResize(opts) {
         if (id != null) e.currentTarget.releasePointerCapture(id);
       } catch {
       }
-      if (commit) opts.onCommit(value);
+      if (commit2) opts.onCommit(value);
     },
     [opts, value]
   );
@@ -44976,8 +44974,8 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
         }
         case "history": {
           const history2 = getCurrentHistory();
-          const commit = history2 ? getCommit(history2, tab.commitId) : void 0;
-          if (!history2 || !commit) {
+          const commit2 = history2 ? getCommit(history2, tab.commitId) : void 0;
+          if (!history2 || !commit2) {
             return /* @__PURE__ */ jsxRuntime.jsx(
               "div",
               {
@@ -44998,7 +44996,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
             HistoryViewOverlay,
             {
               history: history2,
-              commit,
+              commit: commit2,
               initialFileId: tab.fileId,
               onClose: () => closeTabById(tab.id)
             },
@@ -45007,7 +45005,7 @@ var WorkspaceShell = React21.forwardRef(/* @__PURE__ */ __name(function Workspac
             HistoryDiffOverlay,
             {
               history: history2,
-              commit,
+              commit: commit2,
               initialFileId: tab.fileId,
               defaultMode: tab.vsCurrent ? "current" : "previous",
               pickerFileIds: tab.pickerFileIds,

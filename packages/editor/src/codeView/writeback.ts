@@ -202,8 +202,8 @@ export class Writeback {
    * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
    * the whole gesture).
    */
-  replaceRanges(edits: OffsetEdit[], source: WriteSource): void {
-    this.apply(edits, source)
+  replaceRanges(edits: OffsetEdit[], source: WriteSource): boolean {
+    return this.apply(edits, source)
   }
 
   /** Insert text at an offset (zero-width edit). */
@@ -230,9 +230,10 @@ export class Writeback {
     return true
   }
 
-  private apply(edits: OffsetEdit[], source: WriteSource): void {
+  /** false when there is no document to write to — nothing was applied */
+  private apply(edits: OffsetEdit[], source: WriteSource): boolean {
     const model = this.editor.getModel()
-    if (!model) return
+    if (!model) return false
     const normalized = normalizeEdits(edits)
     const ops: Monaco.editor.IIdentifiedSingleEditOperation[] = normalized.map((e) => {
       const start = model.getPositionAt(e.range[0])
@@ -264,6 +265,7 @@ export class Writeback {
     // edits coalesce into ONE re-eval on `endGesture`.
     if (this.inGesture) this.gestureDidEdit = true
     else this.requestLiveReeval()
+    return true
   }
 
   /**
@@ -285,4 +287,45 @@ export class Writeback {
       requestReeval(getFileIdForEditor(this.editor))
     }, REEVAL_DEBOUNCE_MS)
   }
+}
+
+/** What `commit` did with an operation's result. */
+export type CommitOutcome =
+  /** the edits are in the document, as one undo step (or inside the open gesture) */
+  | 'written'
+  /** the operation returned nothing to write — it refused, or the value is already there */
+  | 'nothing-to-write'
+  /** the writer has no document open; nothing was applied */
+  | 'no-document'
+
+/**
+ * commit — the one way a code↔view operation's result reaches the open document
+ * (#1900). A panel asks an operation what to write (`gainEdit`, `knobEdit`,
+ * `renameEdit`, …), then hands the answer here with the writer it was given and
+ * the tag that names it. It never calls the writer's methods itself, so where an
+ * edit lands, how it groups for undo and what it is tagged as are decided in this
+ * area alone.
+ *
+ * `edit` is what the operation returned: one edit, several (applied together as
+ * one undo step), or null / empty when there is nothing to write. The outcome
+ * lets a caller do follow-up work only when the edit really landed — e.g. move a
+ * track's colour to its new name only after the rename was written.
+ *
+ * The editor route does not re-check freshness here: panels re-detect their
+ * chunk against the live document immediately before asking the operation, in
+ * the same synchronous turn. The file route (`applyOffsetEditsToFile`) keeps its
+ * stale-document check.
+ */
+export function commit(
+  writer: Writeback,
+  edit: OffsetEdit | readonly OffsetEdit[] | null,
+  source: WriteSource,
+): CommitOutcome {
+  const edits: OffsetEdit[] = edit == null ? [] : isEditList(edit) ? [...edit] : [edit]
+  if (edits.length === 0) return 'nothing-to-write'
+  return writer.replaceRanges(edits, source) ? 'written' : 'no-document'
+}
+
+function isEditList(edit: OffsetEdit | readonly OffsetEdit[]): edit is readonly OffsetEdit[] {
+  return Array.isArray(edit)
 }

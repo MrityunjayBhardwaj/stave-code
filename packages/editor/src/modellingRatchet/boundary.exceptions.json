@@ -49,22 +49,6 @@
       }
     },
     {
-      "file": "packages/editor/src/visualEdit/mixer/LocalMixerStrip.tsx",
-      "reaches": [
-        "door#Writeback.replaceRange"
-      ],
-      "why": "Calls the writer directly on a Writeback handed to it, with ranges and text decided here.",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/mixer/MixerStrips.tsx",
-      "reaches": [
-        "door#Writeback.replaceRange"
-      ],
-      "why": "Calls the writer directly on a Writeback handed to it, with ranges and text decided here.",
-      "issue": "#1880"
-    },
-    {
       "file": "packages/editor/src/visualEdit/mixer/soloMuteSync.ts",
       "reaches": [
         "door#Writeback.replaceRanges",
@@ -82,22 +66,6 @@
         "door#new Writeback"
       ],
       "why": "Constructs the writer and drives it directly instead of committing an op through codeView/. What it inserts comes from a codeView operation (masterAudioLineEdit).",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/panels/MixerBody.tsx",
-      "reaches": [
-        "door#Writeback.replaceRange"
-      ],
-      "why": "Calls the writer directly on a Writeback handed to it. The range and text come from a codeView operation (chainEdit); the call goes when the area has a commit that takes an operation's result.",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/panels/PatternTrackChip.tsx",
-      "reaches": [
-        "door#Writeback.replaceRange"
-      ],
-      "why": "Calls the writer directly on a Writeback handed to it, with ranges and text decided here.",
       "issue": "#1880"
     },
     {
