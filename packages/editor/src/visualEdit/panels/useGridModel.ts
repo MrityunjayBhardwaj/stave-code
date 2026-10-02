@@ -21,9 +21,9 @@
  * the coordinated gain edit (replace an existing string `.gain` arg, insert
  * `.gain("…")` after the expression, or remove our `.gain` when all-neutral) as
  * ONE `replaceRanges` — a single undo step. The model is reseeded when EITHER
- * the mini OR the `.gain` changes externally. We only ever touch a `.gain`
- * whose arg is a grid-aligned string we authored; a numeric `.gain(0.8)` knob
- * or an unaligned/broadcast `.gain("0.8")` is left byte-identical.
+ * the mini OR the `.gain` changes externally. WHICH BYTES that write changes is
+ * not decided here: `gridWriteEdits` (`codeView/notation/gainEdit`, #1887) builds
+ * the edit list and this hook hands it to the writer.
  *
  * Built on `useActiveChunk` (the active-editor → chunk → writeback layer).
  */
@@ -32,7 +32,8 @@ import * as React from 'react'
 import type { ChunkInfo } from '../../codeView'
 import type { ChunkGain, GainWrite, ParseResult } from '../../codeView'
 import { UNREFINED, absorbViewScale, type ViewScale } from '../../codeView'
-import type { OffsetEdit, WriteSource } from '../../codeView'
+import type { WriteSource } from '../../codeView'
+import { gridWriteEdits, readChunkGain, gainUnchanged } from '../../codeView'
 import { useActiveChunk } from './useActiveChunk'
 
 export interface GridModelOptions<M> {
@@ -109,52 +110,6 @@ export interface GridModel<M> {
   endGesture: () => void
 }
 
-/**
- * Read a chunk's `.gain` argument into a normalized `ChunkGain`:
- *   - no `.gain`            → { mini:null, numeric:null, foreign:false }
- *   - scalar `.gain(0.4)`   → { numeric:0.4 }   (a uniform base — velocity reads it)
- *   - string `.gain("…")`   → { mini:inner }    (per-column; applyGain checks alignment)
- *   - any other arg         → { foreign:true }  (a signal/expr — hands off)
- */
-function readChunkGain(chunk: ChunkInfo): ChunkGain {
-  const call = chunk.chain.find((c) => c.name === 'gain')
-  const arg = call?.args[0]
-  if (!call || !arg) return { mini: null, numeric: null, foreign: false }
-  if (arg.numeric !== null) return { mini: null, numeric: arg.numeric, foreign: false }
-  if (/^["'`]/.test(arg.raw)) return { mini: arg.raw.slice(1, -1), numeric: null, foreign: false }
-  return { mini: null, numeric: null, foreign: true } // some other expression
-}
-
-/** is the `.gain` arg one velocity manages (a scalar number or a string)? */
-function managedGainArg(chunk: ChunkInfo): { call: ChunkInfo['chain'][number]; argRange: [number, number] } | null {
-  const call = chunk.chain.find((c) => c.name === 'gain')
-  const arg = call?.args[0]
-  if (!call || !arg) return null
-  if (arg.numeric !== null || /^["'`]/.test(arg.raw)) return { call, argRange: arg.range }
-  return null
-}
-
-/** the gain edits for one `mutate`, given the model's `GainWrite` intent */
-function gainEdits(fresh: ChunkInfo, g: GainWrite): OffsetEdit[] {
-  if (g.kind === 'skip') return []
-  const managed = managedGainArg(fresh)
-  if (g.kind === 'clear') {
-    // remove ONLY a `.gain` we manage (scalar/string); absent/foreign → nothing
-    return managed ? [{ range: managed.call.range, text: '' }] : []
-  }
-  const lit = g.quoted ? `"${g.value}"` : g.value
-  // replace the whole managed arg in place (swaps scalar↔string as needed)…
-  if (managed) return [{ range: managed.argRange, text: lit }]
-  // …else append `.gain(…)` after the expression (the Mixer's quick-transform idiom)
-  return [{ range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${lit})` }]
-}
-
-/** does prev's gain intent already match the chunk's current `.gain`? */
-function gainUnchanged(g: GainWrite, cur: ChunkGain): boolean {
-  if (g.kind === 'skip') return true // not managing it → never force a reseed
-  if (g.kind === 'clear') return cur.mini === null && cur.numeric === null
-  return g.quoted ? cur.mini === g.value : cur.numeric !== null && cur.numeric === parseFloat(g.value)
-}
 
 export function useGridModel<M extends { viewScale?: ViewScale }>(
   opts: GridModelOptions<M>,
@@ -257,14 +212,12 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
       setModel(written)
       if (spellsRefinement) o.onViewScaleConsumed?.()
       applyEdit((fresh, wb) => {
-        if (!fresh.miniRange) return
-        const edits: OffsetEdit[] = [{ range: fresh.miniRange, text: mini }]
         // ⚠ THE SAME MODEL as the mini. These read `next` and `toWrite` separately
         // once, and the gain mini was widened to the drawn column count while the
         // notation was not — two ranges disagreeing about the document's resolution.
-        if (o.serializeGain) edits.push(...gainEdits(fresh, o.serializeGain(toWrite)))
+        const edits = gridWriteEdits(fresh, mini, o.serializeGain ? o.serializeGain(toWrite) : null)
         // One pushEditOperations → the mini and its `.gain` are one undo step.
-        wb.replaceRanges(edits, o.source)
+        if (edits) wb.replaceRanges(edits, o.source)
       })
     },
     [applyEdit],
@@ -288,8 +241,8 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
   const writeMini = React.useCallback(
     (mini: string): void => {
       applyEdit((fresh, wb) => {
-        if (!fresh.miniRange) return
-        wb.replaceRanges([{ range: fresh.miniRange, text: mini }], optsRef.current.source)
+        const edits = gridWriteEdits(fresh, mini, null)
+        if (edits) wb.replaceRanges(edits, optsRef.current.source)
       })
     },
     [applyEdit],

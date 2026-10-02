@@ -186,6 +186,7 @@ export type { ArrangeCall, ArrangeArmRange, ArrangeMode } from './arrange'
 export { planSoundAssignment } from './assign/soundAssign'
 export { planVizAssignment } from './assign/vizAssign'
 export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './automation/captionEdit'
+export { gridWriteEdits, readChunkGain, gainUnchanged } from './notation/gainEdit'
 export type { CaptionFieldKind } from './automation/captionEdit'
 export {
   merge,
