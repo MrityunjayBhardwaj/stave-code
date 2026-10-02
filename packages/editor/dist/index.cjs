@@ -7725,7 +7725,7 @@ function rangeResetEdit(call) {
 __name(rangeResetEdit, "rangeResetEdit");
 function knobRangeEdit(fresh, ref, min, max) {
   const call = callAt(fresh, ref);
-  return call ? rangeArgsEdit(call, min, max) : null;
+  return call && call.args.length > 0 ? rangeArgsEdit(call, min, max) : null;
 }
 __name(knobRangeEdit, "knobRangeEdit");
 function knobRangeResetEdit(fresh, ref) {

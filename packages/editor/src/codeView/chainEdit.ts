@@ -155,10 +155,11 @@ export function rangeResetEdit(call: ChainCall): OffsetEdit | null {
   return { range: [value.range[1], extra[extra.length - 1].range[1]], text: '' }
 }
 
-/** The dial-range popup: write `min, max` into the dial's call. */
+/** The dial-range popup: write `min, max` into the dial's call. Null when that
+ *  call has no value argument left to put a range after (#1897). */
 export function knobRangeEdit(fresh: ChunkInfo, ref: ChainArgRef, min: number, max: number): OffsetEdit | null {
   const call = callAt(fresh, ref)
-  return call ? rangeArgsEdit(call, min, max) : null
+  return call && call.args.length > 0 ? rangeArgsEdit(call, min, max) : null
 }
 
 /** Reset the dial to its default range: drop the `, min, max` from its call. */

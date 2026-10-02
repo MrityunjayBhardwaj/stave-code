@@ -102,6 +102,12 @@ describe('chainEdit — the mixer panel gestures (#1888)', () => {
     expect(knobRangeResetEdit(chunk(moved), room)).toBeNull()
   })
 
+  it('the dial range writes nothing when its call has lost its value argument (#1897)', () => {
+    const emptied = '$: s("bd*4").lpf(800).room()'
+    expect(knobRangeEdit(chunk(emptied), dial(drawn, 'room'), 0, 100)).toBeNull()
+    expect(knobRangeResetEdit(chunk(emptied), dial(drawn, 'room'))).toBeNull()
+  })
+
   it('an effect toggle appends at its default, and removes it under any spelling', () => {
     const names = ['lpf', 'cutoff']
     const off = '$: s("bd*4").room(0.5)'
