@@ -25,6 +25,7 @@ import {
   readMasterMute,
   detectMasterAudioAll,
   adaptMasterChunk,
+  masterAudioLineEdit,
   type MasterGainState,
 } from '../../codeView'
 
@@ -354,9 +355,10 @@ export function useMixerModel(): MixerModel {
       }
       // No audio line yet — a deliberate add gesture first materializes the base
       // `all(x => x)` line, then the effect appends onto it, as ONE undo step.
+      const base = masterAudioLineEdit(doc)
+      if (!base) return
       wb.beginGesture()
-      const lead = doc.length === 0 || doc.endsWith('\n') ? '' : '\n'
-      wb.insertAt(doc.length, `${lead}all(x => x)`, 'mixer')
+      wb.insertAt(base.range[0], base.text, 'mixer')
       const next = model.getValue()
       const fresh = detectMasterAudioAll(next)
       if (fresh) mutate(adaptMasterChunk(next, fresh), wb)

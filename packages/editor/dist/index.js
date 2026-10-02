@@ -7224,6 +7224,11 @@ function detectMasterAudioAll(doc) {
   });
 }
 __name(detectMasterAudioAll, "detectMasterAudioAll");
+function masterAudioLineEdit(doc) {
+  if (detectMasterAudioAll(doc)) return null;
+  return insertStatement(doc, "all(x => x)");
+}
+__name(masterAudioLineEdit, "masterAudioLineEdit");
 function adaptMasterChunk(doc, m) {
   const head = {
     name: "x",
@@ -35993,9 +35998,10 @@ function useMixerModel() {
         mutate(adaptMasterChunk(doc, line), wb);
         return;
       }
+      const base = masterAudioLineEdit(doc);
+      if (!base) return;
       wb.beginGesture();
-      const lead = doc.length === 0 || doc.endsWith("\n") ? "" : "\n";
-      wb.insertAt(doc.length, `${lead}all(x => x)`, "mixer");
+      wb.insertAt(base.range[0], base.text, "mixer");
       const next = model.getValue();
       const fresh = detectMasterAudioAll(next);
       if (fresh) mutate(adaptMasterChunk(next, fresh), wb);

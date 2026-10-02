@@ -271,6 +271,17 @@ export function detectMasterAudioAll(doc: string): MasterAll | undefined {
 }
 
 /**
+ * The edit that gives a document its master audio line — a bare `all(x => x)` as
+ * the last line, for the expand drawer's first insert to append onto (#800). Null
+ * when the document already has one: there is nothing to add, and a second base
+ * line would only be a second place for the next effect to land.
+ */
+export function masterAudioLineEdit(doc: string): StripEdit | null {
+  if (detectMasterAudioAll(doc)) return null
+  return insertStatement(doc, 'all(x => x)')
+}
+
+/**
  * Adapt a master `all(x => …)` line to a `ChunkInfo` so the shared `MixerBody` /
  * `ExpandDrawer` can render + edit its insert chain exactly as for a channel.
  *
