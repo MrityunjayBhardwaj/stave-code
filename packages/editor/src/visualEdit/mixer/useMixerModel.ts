@@ -5,7 +5,8 @@
  * ALL of them: it is a row of strips, cursor-independent. This hook tracks the
  * active Monaco editor and re-derives the whole strip array from the document on
  * every content change, exactly like `useActiveChunk` re-detects on edits —
- * sharing the same editor-registry plumbing so the two can't drift.
+ * both take the editor and their writer from `useActiveWriter`, so the two can't
+ * drift.
  *
  * `applyToStrip(id, mutate)` is `useActiveChunk.applyEdit` generalised from "the
  * chunk at the cursor" to "the chunk with this stable id": it re-derives the
@@ -16,9 +17,8 @@
  */
 import * as React from 'react'
 
-import { getActiveEditor, onActiveEditorChange, getMonacoNamespace } from '../../workspace/editorRegistry'
 import { detectAllChunks, type ChunkInfo } from '../../codeView'
-import { Writeback } from '../../codeView'
+import { commit, openGesture, closeGesture, type Writeback } from '../../codeView'
 import { buildStripModels, type StripModel } from '../../codeView'
 import {
   readMasterGain,
@@ -28,6 +28,7 @@ import {
   masterAudioLineEdit,
   type MasterGainState,
 } from '../../codeView'
+import { useActiveWriter } from '../useActiveWriter'
 
 export interface MixerModel {
   /** one strip per top-level statement, in source order (re-derived on edits) */
@@ -212,28 +213,16 @@ export function jumpCursorToTrack(
 }
 
 export function useMixerModel(): MixerModel {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [editor, setEditor] = React.useState<any>(() => getActiveEditor())
+  const { editor, editorRef, writerRef: writebackRef } = useActiveWriter()
   const [derived, setDerived] = React.useState<Derived>(EMPTY_DERIVED)
-  const editorRef = React.useRef<any>(null) // eslint-disable-line @typescript-eslint/no-explicit-any
-  const writebackRef = React.useRef<Writeback | null>(null)
   // The statement offset the cursor was last jumped to (#595). Lets a continuous
   // fader/knob drag (many `applyToStrip` ticks on ONE strip) reveal+focus once,
   // then leave the caret pinned, instead of re-centring + re-focusing per frame.
   const lastJumpRef = React.useRef<number | null>(null)
 
-  // Track the active editor (same source as useActiveChunk).
+  // A fresh editor → the next strip edit re-jumps.
   React.useEffect(() => {
-    setEditor(getActiveEditor())
-    return onActiveEditorChange(() => setEditor(getActiveEditor()))
-  }, [])
-
-  // (Re)build the Writeback when the active editor changes.
-  React.useEffect(() => {
-    editorRef.current = editor
-    const monaco = getMonacoNamespace()
-    writebackRef.current = editor && monaco ? new Writeback(editor, monaco) : null
-    lastJumpRef.current = null // a fresh editor → next strip edit re-jumps
+    lastJumpRef.current = null
   }, [editor])
 
   // Re-derive the strip array from the document — on mount and on every content
@@ -357,18 +346,18 @@ export function useMixerModel(): MixerModel {
       // `all(x => x)` line, then the effect appends onto it, as ONE undo step.
       const base = masterAudioLineEdit(doc)
       if (!base) return
-      wb.beginGesture()
-      wb.insertAt(base.range[0], base.text, 'mixer')
+      openGesture(wb)
+      commit(wb, base, 'mixer')
       const next = model.getValue()
       const fresh = detectMasterAudioAll(next)
       if (fresh) mutate(adaptMasterChunk(next, fresh), wb)
-      wb.endGesture()
+      closeGesture(wb)
     },
     [],
   )
 
-  const beginGesture = React.useCallback(() => writebackRef.current?.beginGesture(), [])
-  const endGesture = React.useCallback(() => writebackRef.current?.endGesture(), [])
+  const beginGesture = React.useCallback(() => openGesture(writebackRef.current), [writebackRef])
+  const endGesture = React.useCallback(() => closeGesture(writebackRef.current), [writebackRef])
 
   // #639 — the selected strip is DERIVED from the editor caret: the strip whose
   // statement contains the cursor. This makes the cursor the ONE source of truth

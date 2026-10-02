@@ -15,6 +15,8 @@ import type { ChunkInfo } from '../chunkDetect'
 import { readGainState, scaleManagedGain } from './gain'
 import { setNumberCall } from '../chainEdit'
 import { splitMuteMarker } from '../ir/trackId'
+import { detectAllChunks } from '../chunkDetect'
+import { buildStripModels } from './stripModel'
 
 /** a single surgical edit: replace `range` with `text` (insert = zero-width range). */
 export interface StripEdit {
@@ -141,4 +143,75 @@ export function renameEdit(
   const start = fresh.statementRange[0] + (prefix ? 1 : 0)
   const end = fresh.statementRange[0] + fresh.label.length - (suffix ? 1 : 0)
   return { range: [start, end], text: newLabel }
+}
+
+/** The subset of strip facts the solo reconciliation needs — `id` (solo key + mute
+ *  target), whether it currently carries the `_`, and whether it CAN (labelled). */
+export interface SoloStripFacts {
+  id: string
+  muted: boolean
+  muteable: boolean
+}
+
+/**
+ * The mute markers the code should have after a solo change, plus the snapshot to
+ * carry forward — the entire solo/mute policy in one pure, testable function (#735).
+ * Solo is a CODE operation: soloing a track writes `_` mute markers on every other
+ * track, so the engine silences off the file and the code shows what you hear.
+ *
+ *  - solo ACTIVE (`newSolo` non-empty): mute every muteable track that ISN'T
+ *    soloed; the soloed track(s) go un-muted (audible). The snapshot is captured
+ *    on the FIRST activation (the mutes present then) and preserved across further
+ *    solo edits, so it always reflects the pre-solo hand-set mutes.
+ *  - solo CLEARED (`newSolo` empty): restore the snapshot — the hand-set mutes
+ *    from before solo — and drop it. An empty/absent snapshot un-mutes everything.
+ *
+ * `targetMuted` is the set of ids that should carry `_` afterwards; the caller
+ * writes only the strips whose current `muted` differs.
+ */
+export function reconcileSoloMutes(
+  strips: readonly SoloStripFacts[],
+  newSolo: ReadonlySet<string>,
+  prevSnapshot: ReadonlySet<string> | null,
+): { targetMuted: Set<string>; nextSnapshot: ReadonlySet<string> | null } {
+  if (newSolo.size > 0) {
+    const snapshot =
+      prevSnapshot ?? new Set(strips.filter((s) => s.muted).map((s) => s.id))
+    const targetMuted = new Set(
+      strips.filter((s) => s.muteable && !newSolo.has(s.id)).map((s) => s.id),
+    )
+    return { targetMuted, nextSnapshot: snapshot }
+  }
+  // Solo cleared → restore the pre-solo mutes (empty set if there were none).
+  return { targetMuted: new Set(prevSnapshot ?? []), nextSnapshot: null }
+}
+
+/**
+ * The edits a solo change makes to `doc` (#1909): `reconcileSoloMutes` over the
+ * document's strips, then a `muteEdit` for each muteable strip whose marker must
+ * change. All offsets come from ONE detection of `doc`, so the list is applied
+ * together as one undo step. `edits` is empty when every marker is already right —
+ * `nextSnapshot` must still be carried forward then.
+ */
+export function soloMuteEdits(
+  doc: string,
+  newSolo: ReadonlySet<string>,
+  prevSnapshot: ReadonlySet<string> | null,
+): { edits: StripEdit[]; nextSnapshot: ReadonlySet<string> | null } {
+  const chunks = detectAllChunks(doc)
+  const strips = buildStripModels(chunks, doc)
+  const { targetMuted, nextSnapshot } = reconcileSoloMutes(
+    strips.map((s) => ({ id: s.id, muted: s.muted, muteable: s.muteable })),
+    newSolo,
+    prevSnapshot,
+  )
+  const edits: StripEdit[] = []
+  for (const s of strips) {
+    if (!s.muteable) continue
+    const want = targetMuted.has(s.id)
+    if (want === s.muted) continue
+    const e = muteEdit(chunks[s.index], want)
+    if (e) edits.push(e)
+  }
+  return { edits, nextSnapshot }
 }

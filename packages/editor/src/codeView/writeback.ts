@@ -343,9 +343,47 @@ export function commitToEditor(
   edit: OffsetEdit | readonly OffsetEdit[] | null,
   source: WriteSource,
 ): CommitOutcome {
+  const writer = createWriter(editor)
+  if (!writer) return 'no-document'
+  return commit(writer, edit, source)
+}
+
+/**
+ * The writer for `editor`, or null before Monaco has loaded (#1909). The one place
+ * a writer is built for a surface that keeps it — a panel binding holds one per
+ * active editor so its gestures and its own-edit check stay on the same writer.
+ * Each holder gets its OWN writer: `isCommitting` answers for that writer alone, so
+ * an edit made through another surface's writer still reads as external to it.
+ */
+export function createWriter(editor: Monaco.editor.IStandaloneCodeEditor): Writeback | null {
   const monaco = getMonacoNamespace()
-  if (!monaco) return 'no-document'
-  return commit(new Writeback(editor, monaco), edit, source)
+  return monaco ? new Writeback(editor, monaco) : null
+}
+
+/**
+ * Open a gesture on `writer` (#1909): every commit until `closeGesture` is ONE undo
+ * step, and the gesture re-evaluates once, on close, if it wrote anything. For a
+ * continuous drag (a fader, a sweep across grid cells) or a write that needs two
+ * edits where the second is computed from the document after the first. Opening an
+ * open gesture does nothing.
+ */
+export function openGesture(writer: Writeback | null): void {
+  writer?.beginGesture()
+}
+
+/** Close the gesture `openGesture` opened; closing when none is open does nothing. */
+export function closeGesture(writer: Writeback | null): void {
+  writer?.endGesture()
+}
+
+/**
+ * Is `writer` applying an edit right now? (#1909) True only inside the document's
+ * synchronous content-change event for an edit this writer made, so a surface's
+ * change listener can tell its own write (keep what it shows) from an external one
+ * (re-read the document).
+ */
+export function isCommitting(writer: Writeback | null): boolean {
+  return writer?.currentSource != null
 }
 
 /**

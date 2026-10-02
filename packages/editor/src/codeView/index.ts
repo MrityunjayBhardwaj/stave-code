@@ -202,7 +202,8 @@ export {
   previewShapeSwap,
 } from './ir'
 export { masterGainEdit, masterMuteEdit, masterVizEdit, masterAudioLineEdit } from './mixer/masterEdit'
-export { renameEdit, gainEdit, panEdit, muteEdit } from './mixer/writeStrip'
+export { renameEdit, gainEdit, panEdit, muteEdit, reconcileSoloMutes, soloMuteEdits } from './mixer/writeStrip'
+export type { SoloStripFacts } from './mixer/writeStrip'
 export {
   knobEdit,
   knobRangeEdit,
@@ -262,5 +263,5 @@ export {
 export type { PickControl, PickControlArm, PickMethod, PickSectionEntry } from './pickControl'
 
 // ── commit ── an op's edits, through the one writer
-export { Writeback, formatNumber, normalizeEdits, applyEdits, commit, commitToEditor, commitToFile } from './writeback'
+export { Writeback, formatNumber, normalizeEdits, applyEdits, commit, commitToEditor, commitToFile, createWriter, openGesture, closeGesture, isCommitting } from './writeback'
 export type { WriteSource, OffsetEdit, CommitOutcome } from './writeback'

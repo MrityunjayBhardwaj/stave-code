@@ -23,7 +23,7 @@
  * ONE `replaceRanges` — a single undo step. The model is reseeded when EITHER
  * the mini OR the `.gain` changes externally. WHICH BYTES that write changes is
  * not decided here: `gridWriteEdits` (`codeView/notation/gainEdit`, #1887) builds
- * the edit list and this hook hands it to the writer.
+ * the edit list and this hook hands it to `commit` (#1909).
  *
  * Built on `useActiveChunk` (the active-editor → chunk → writeback layer).
  */
@@ -32,7 +32,7 @@ import * as React from 'react'
 import type { ChunkInfo } from '../../codeView'
 import type { ChunkGain, GainWrite, ParseResult } from '../../codeView'
 import { UNREFINED, absorbViewScale, type ViewScale } from '../../codeView'
-import type { WriteSource } from '../../codeView'
+import { commit, type WriteSource } from '../../codeView'
 import { gridWriteEdits, readChunkGain, gainUnchanged } from '../../codeView'
 import { useActiveChunk } from './useActiveChunk'
 
@@ -216,8 +216,8 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
         // once, and the gain mini was widened to the drawn column count while the
         // notation was not — two ranges disagreeing about the document's resolution.
         const edits = gridWriteEdits(fresh, mini, o.serializeGain ? o.serializeGain(toWrite) : null)
-        // One pushEditOperations → the mini and its `.gain` are one undo step.
-        if (edits) wb.replaceRanges(edits, o.source)
+        // One commit → the mini and its `.gain` are one undo step.
+        commit(wb, edits, o.source)
       })
     },
     [applyEdit],
@@ -241,8 +241,7 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
   const writeMini = React.useCallback(
     (mini: string): void => {
       applyEdit((fresh, wb) => {
-        const edits = gridWriteEdits(fresh, mini, null)
-        if (edits) wb.replaceRanges(edits, optsRef.current.source)
+        commit(wb, gridWriteEdits(fresh, mini, null), optsRef.current.source)
       })
     },
     [applyEdit],

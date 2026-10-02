@@ -41,45 +41,6 @@
       }
     },
     {
-      "file": "packages/editor/src/visualEdit/mixer/soloMuteSync.ts",
-      "reaches": [
-        "door#Writeback.replaceRanges",
-        "door#new Writeback"
-      ],
-      "why": "Constructs the writer and drives it directly instead of committing an op through codeView/.",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/mixer/useMixerModel.ts",
-      "reaches": [
-        "door#Writeback.beginGesture",
-        "door#Writeback.endGesture",
-        "door#Writeback.insertAt",
-        "door#new Writeback"
-      ],
-      "why": "Constructs the writer and drives it directly instead of committing an op through codeView/. What it inserts comes from a codeView operation (masterAudioLineEdit).",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/panels/useActiveChunk.ts",
-      "reaches": [
-        "door#Writeback.beginGesture",
-        "door#Writeback.currentSource",
-        "door#Writeback.endGesture",
-        "door#new Writeback"
-      ],
-      "why": "Constructs the writer and drives it directly instead of committing an op through codeView/.",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/panels/useGridModel.ts",
-      "reaches": [
-        "door#Writeback.replaceRanges"
-      ],
-      "why": "Calls the writer directly on a Writeback handed to it, with ranges and text decided here.",
-      "issue": "#1880"
-    },
-    {
       "file": "packages/editor/src/workspace/editorRegistry.ts",
       "reaches": [
         "codeView/writeback#Writeback",
@@ -94,11 +55,6 @@
     {
       "file": "packages/editor/src/StrudelEditor.tsx",
       "what": "reads syntax from user code by hand",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/mixer/soloMuteSync.ts",
-      "what": "decides and batches edits",
       "issue": "#1880"
     },
     {

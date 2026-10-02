@@ -22,6 +22,13 @@ import { render, act } from '@testing-library/react'
 // ── a single-line Monaco stand-in ────────────────────────────────────────────
 let DOC = ''
 let cursorOffset = 0
+// #1909 — what the gesture / own-write cases read: undo boundaries pushed, and the
+// content listeners the hooks subscribe (fired after every edit, as Monaco does).
+let undoStops = 0
+let contentListeners: (() => void)[] = []
+const fireContentChange = (): void => {
+  for (const l of [...contentListeners]) l()
+}
 
 class FakeRange {
   constructor(
@@ -36,13 +43,19 @@ const fakeModel = {
   getValue: () => DOC,
   getOffsetAt: (p: { column: number }) => p.column - 1,
   getPositionAt: (o: number) => ({ lineNumber: 1, column: o + 1 }),
-  onDidChangeContent: () => ({ dispose: () => {} }),
-  pushStackElement: () => {},
+  onDidChangeContent: (l: () => void) => {
+    contentListeners.push(l)
+    return { dispose: () => (contentListeners = contentListeners.filter((x) => x !== l)) }
+  },
+  pushStackElement: () => {
+    undoStops++
+  },
   pushEditOperations: (_sel: unknown, ops: { range: FakeRange; text: string }[]) => {
     // right-to-left so earlier offsets stay valid, matching Monaco's own semantics
     for (const op of [...ops].sort((a, b) => b.range.startColumn - a.range.startColumn)) {
       DOC = DOC.slice(0, op.range.startColumn - 1) + op.text + DOC.slice(op.range.endColumn - 1)
     }
+    fireContentChange() // inside the edit, while the writer's own-edit flag is up
     return null
   },
 }
@@ -52,6 +65,20 @@ const fakeEditor = {
   getPosition: () => ({ lineNumber: 1, column: cursorOffset + 1 }),
   onDidChangeCursorPosition: () => ({ dispose: () => {} }),
 }
+
+// Every chunk detection, with the offset it was asked at — so a test can tell the
+// cursor re-detect (at `cursorOffset`) from the write's own re-read (at the anchor).
+const detectCalls: number[] = []
+vi.mock('../../../codeView', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../../codeView')>()
+  return {
+    ...real,
+    detectChunk: (doc: string, offset: number) => {
+      detectCalls.push(offset)
+      return real.detectChunk(doc, offset)
+    },
+  }
+})
 
 vi.mock('../../../workspace/editorRegistry', () => ({
   getActiveEditor: () => fakeEditor,
@@ -75,6 +102,8 @@ import type { StepGridModel } from '../../../codeView/notation/model'
 interface Handle {
   model: StepGridModel | null
   mutate: (fn: (m: StepGridModel) => StepGridModel) => void
+  beginGesture: () => void
+  endGesture: () => void
   setViewScale: (s: ViewScale) => void
   viewScale: ViewScale
 }
@@ -82,7 +111,7 @@ let h: Handle
 
 function Harness(): React.ReactElement {
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { model, mutate } = useGridModel<StepGridModel>({
+  const { model, mutate, beginGesture, endGesture } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: isStepChunk,
     parse: parseStepGrid,
@@ -93,7 +122,7 @@ function Harness(): React.ReactElement {
     onViewScaleConsumed: () => setViewScale(UNREFINED),
     collapseToDocument: collapseStepGridToDocument,
   })
-  h = { model, mutate, setViewScale, viewScale }
+  h = { model, mutate, beginGesture, endGesture, setViewScale, viewScale }
   return React.createElement('div')
 }
 
@@ -221,5 +250,55 @@ describe('useGridModel — writing from a refined view (#1057)', () => {
     expect(DOC).not.toBe(afterFirst) // the second edit really did land…
     expect(DOC.startsWith('s("bd ~ sn ~")'), DOC).toBe(true) // …and notation held
     expect(h.viewScale).toBe(2)
+  })
+})
+
+/**
+ * #1909 — the binding under every grid (`useGridModel` on `useActiveChunk`) reaches
+ * the writer only through the door. Two things it must keep doing: a gesture is one
+ * undo step however many cells it writes, and the panel's OWN write never runs the
+ * external-change re-detect (that path is for typed edits and other surfaces).
+ */
+describe('the grid binding through the door (#1909)', () => {
+  beforeEach(() => {
+    DOC = 's("bd ~ sn ~")'
+    cursorOffset = 5
+    undoStops = 0
+    contentListeners = []
+    detectCalls.length = 0
+  })
+
+  it('one write outside a gesture is its own undo step', () => {
+    render(React.createElement(Harness))
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 1, true)))
+    expect(DOC).toBe('s("bd bd sn ~")')
+    expect(undoStops).toBe(2)
+  })
+
+  it('a gesture writing several cells is ONE undo step', () => {
+    render(React.createElement(Harness))
+    act(() => {
+      h.beginGesture()
+      h.mutate((prev) => toggleCell(prev, 0, 1, true))
+      h.mutate((prev) => toggleCell(prev, 0, 3, true))
+      h.endGesture()
+    })
+    expect(DOC).toBe('s("bd bd sn bd")')
+    expect(undoStops).toBe(2) // one boundary opening the gesture, one closing it
+  })
+
+  it("the panel's own write does not re-detect at the cursor; an external edit does", () => {
+    render(React.createElement(Harness))
+    detectCalls.length = 0
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 1, true)))
+    expect(detectCalls.filter((o) => o === cursorOffset)).toEqual([])
+    expect(detectCalls.length).toBeGreaterThan(0) // the write's own re-read, at the anchor
+
+    detectCalls.length = 0
+    act(() => {
+      DOC = 's("hh ~ sn ~")' // a typed edit: no writer is committing
+      fireContentChange()
+    })
+    expect(detectCalls).toContain(cursorOffset)
   })
 })
