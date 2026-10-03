@@ -5,8 +5,8 @@
  * A control that edits `.name(arg)` on a pattern does one of three things, and
  * the area used to spell each of them once per control:
  *
- *  - set a NUMBER call — replace the literal in place, append `.name(n)` when the
- *    call is absent, and refuse (null) when the argument is not a plain number: a
+ *  - set a NUMBER call — replace the literal of the call that plays (the last
+ *    one, `chainMethod.playingCall`), append `.name(n)` when the call is absent, and refuse (null) when the argument is not a plain number: a
  *    signal or an expression is somebody's code, not a dial position;
  *  - set a STRING call — replace the string argument in place, else append;
  *  - REMOVE a call — by its range, members only: the head pattern is never
@@ -22,28 +22,31 @@
  */
 import type { ChainArg, ChainCall, ChunkInfo } from './chunkDetect'
 import { formatNumber, type OffsetEdit } from './writeback'
-import { readChainMethod } from './chainMethod'
+import { playingCall, readChainMethod } from './chainMethod'
 
 // ── the three primitives ─────────────────────────────────────────────────────
 
-/** `.name(arg)` appended at the end of the chunk's expression. */
-function appendCall(fresh: ChunkInfo, name: string, argText: string): OffsetEdit {
+/** `.name(arg)` appended at the end of the chunk's expression. Being last, it is
+ *  the call that plays. */
+export function appendCall(fresh: ChunkInfo, name: string, argText: string): OffsetEdit {
   const end = fresh.exprRange[1]
   return { range: [end, end], text: `.${name}(${argText})` }
 }
 
 /** Replace a number literal with `value`; null when the argument is not one. */
-function numberArgEdit(arg: ChainArg, value: number): OffsetEdit | null {
-  if (arg.numeric === null) return null // a signal / expression — hands off
+function numberArgEdit(arg: ChainArg | undefined, value: number): OffsetEdit | null {
+  if (!arg || arg.numeric === null) return null // a signal / expression / bare call — hands off
   return { range: arg.range, text: formatNumber(value) }
 }
 
 /**
- * Set a number-valued call. The first call named in `names` that has an argument
- * is the one edited:
+ * Set a number-valued call. The call edited is the one that plays
+ * (`playingCall`: the last named in `names`):
  *  - its first argument is a number literal → replace that literal;
  *  - it is anything else → null (hands off);
  *  - no such call → append `.canonical(value)`.
+ * A non-finite value writes nothing — `formatNumber` would render it `0`, a
+ * plausible value and so a silent rewrite.
  */
 export function setNumberCall(
   fresh: ChunkInfo,
@@ -51,7 +54,8 @@ export function setNumberCall(
   canonical: string,
   value: number,
 ): OffsetEdit | null {
-  const call = fresh.chain.find((c) => names.includes(c.name) && c.args.length >= 1)
+  if (!Number.isFinite(value)) return null
+  const call = playingCall(fresh, names)
   if (!call) return appendCall(fresh, canonical, formatNumber(value))
   return numberArgEdit(call.args[0], value)
 }

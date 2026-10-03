@@ -1,17 +1,17 @@
 import { describe, it, expect } from 'vitest'
 
 import { detectAllChunks } from '../../chunkDetect'
-import { applyEdits } from '../../writeback'
-import { gainEdit, panEdit, muteEdit, renameEdit, isValidTrackLabel, type StripEdit } from '../writeStrip'
+import { applyEdits, type OffsetEdit } from '../../writeback'
+import { gainEdit, panEdit, muteEdit, renameEdit, isValidTrackLabel } from '../writeStrip'
 
 /** the nth detected chunk of a doc */
 function chunkAt(src: string, i = 0) {
   return detectAllChunks(src)[i]
 }
 /** apply a strip edit to the source it was computed from */
-function applied(src: string, edit: StripEdit | null): string {
+function applied(src: string, edit: OffsetEdit | null): string {
   expect(edit).not.toBeNull()
-  return applyEdits(src, [edit as StripEdit])
+  return applyEdits(src, [edit as OffsetEdit])
 }
 
 describe('gainEdit', () => {
@@ -128,7 +128,7 @@ describe('renameEdit (#580 Phase C)', () => {
 
   it('keeps sibling statements untouched when renaming one', () => {
     const src = '$: s("bd*4")\nlead: note("c4")\n$: s("hh*8")'
-    const out = applyEdits(src, [renameEdit(chunkAt(src, 0), 'drums', NO_SIBLINGS) as StripEdit])
+    const out = applyEdits(src, [renameEdit(chunkAt(src, 0), 'drums', NO_SIBLINGS) as OffsetEdit])
     expect(out).toBe('drums: s("bd*4")\nlead: note("c4")\n$: s("hh*8")')
   })
 
@@ -204,7 +204,7 @@ describe('write is surgical — siblings stay byte-identical', () => {
   it('editing one statement leaves the others untouched', () => {
     const src = '$: s("bd").gain(0.5)\nd1: note("c e").pan(0.2)\n$: s("hh*4")'
     // edit the gain on the SECOND statement's neighbour by index 0
-    const out = applyEdits(src, [gainEdit(chunkAt(src, 0), 0.9) as StripEdit])
+    const out = applyEdits(src, [gainEdit(chunkAt(src, 0), 0.9) as OffsetEdit])
     expect(out).toBe('$: s("bd").gain(0.9)\nd1: note("c e").pan(0.2)\n$: s("hh*4")')
   })
 })

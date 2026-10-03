@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../parseStrudel'
-import { steppedAutomations, stepIndexAtCycle, stepValueEdit, type SteppedAutomation } from '../steppedAutomation'
+import { steppedAutomations, stepIndexAtCycle, stepValueEdit, stepTextEdit, type SteppedAutomation } from '../steppedAutomation'
 
 const read = (src: string) => steppedAutomations(parseStrudel(src) as never)
 const apply = (src: string, e: { range: [number, number]; text: string }) =>
@@ -591,5 +591,29 @@ describe('stepValueEdit — replaces one number and no other byte', () => {
     // Negative and whole numbers stay plain decimals and are written.
     expect(stepValueEdit(a, 0, -2)?.text).toBe('-2')
     expect(stepValueEdit(a, 0, 3)?.text).toBe('3')
+  })
+})
+
+describe('stepTextEdit — what typed text may become (#1463 Stage 3, moved by #1918)', () => {
+  const src = '$: s("bd*2").gain("<0.2 0.8>")'
+  const [a] = read(src)
+
+  it('a typed number, spaces and all, writes that step', () => {
+    expect(apply(src, stepTextEdit(a, 1, ' 0.4 ')!)).toBe('$: s("bd*2").gain("<0.2 0.4>")')
+  })
+
+  it('an empty or blank entry writes nothing — `Number(\'\')` is 0, not NaN', () => {
+    expect(Number('')).toBe(0)
+    expect(stepTextEdit(a, 0, '')).toBeNull()
+    expect(stepTextEdit(a, 0, '   ')).toBeNull()
+  })
+
+  it('a non-numeric entry writes nothing', () => {
+    expect(stepTextEdit(a, 0, 'loud')).toBeNull()
+    expect(stepTextEdit(a, 0, 'Infinity')).toBeNull()
+  })
+
+  it('then the value rules apply: the number the step already holds writes nothing', () => {
+    expect(stepTextEdit(a, 1, '0.80')).toBeNull()
   })
 })

@@ -12,9 +12,12 @@
  *            entry that points into the area)
  *   owner  — it imports krill, `@strudel/mini` or acorn (`engine/` is exempt: it runs Strudel)
  *   door   — it touches the write door: a member of `Writeback`, the class as a value,
- *            or `applyEdits`. Asked of the TYPE CHECKER, because
- *            the import lines do not show it: a panel calls `wb.replaceRanges` on a callback
- *            parameter and never imports `Writeback` at all.
+ *            or `applyEdits` — or it writes the document behind the door's back, through
+ *            one of Monaco's own document writes (`ITextModel.setValue`, `pushEditOperations`,
+ *            `applyEdits`; `ICodeEditor.setValue`, `executeEdits`, `executeCommand(s)`), #1914.
+ *            Asked of the TYPE CHECKER, because the import lines do not show it: a panel
+ *            calls `wb.replaceRanges` on a callback parameter and never imports `Writeback`
+ *            at all, and a `setValue` is the door only when Monaco declared it.
  *
  * Each thing found is a REACH, named by symbol and never by line, so an entry does not go
  * stale when a file is edited above it. `boundary.exceptions.json` lists the reaches that
@@ -26,6 +29,12 @@
  * replacement text and RETURNS it to a caller crosses no import and touches no door, so no
  * rule here fires. Those files are listed under `declared` — named, counted on every run,
  * and not enforced. A receiver typed `any` is invisible to the door rule for the same reason.
+ * So is a Monaco write that is not a document-write method: `editor.trigger(…, 'type', …)`,
+ * undo/redo, or a keystroke — `trigger` also runs every editor action, so naming it would
+ * flag the play/stop shortcuts, not writes. And so is a write a LIBRARY makes on a prop's
+ * behalf: `EditorView` passes `value={file.content}` to `@monaco-editor/react`, which replaces
+ * the whole document itself when that value changes (#1903). It has to be decided and written
+ * down; a symbol rule cannot reach it.
  * The declared list empties as #1880 moves those files in; once nothing outside the area
  * touches the door, text built outside it has no way to reach a document.
  *
@@ -54,13 +63,18 @@ const ENGINE = `${EDITOR_SRC}/engine/`
 const PACKAGES = ['packages/editor', 'packages/app'] as const
 const DOOR_CLASS = 'Writeback'
 const DOOR_FUNCTIONS = new Set(['applyEdits'])
+/** Monaco's own document writes, by the interface that declares them (#1914) */
+const RAW_WRITES: Record<string, ReadonlySet<string>> = {
+  ITextModel: new Set(['setValue', 'pushEditOperations', 'applyEdits']),
+  ICodeEditor: new Set(['setValue', 'executeEdits', 'executeCommand', 'executeCommands']),
+}
 
 export type Rule = 'import' | 'owner' | 'door'
 export interface Reach {
   /** repo-relative path of the file outside the area */
   file: string
   rule: Rule
-  /** `codeView/<module>#<name>`, `owner#<specifier>` or `door#<what>` */
+  /** `codeView/<module>#<name>`, `owner#<specifier>`, `door#<what>` or `door#monaco <Interface>.<method>` */
   reach: string
 }
 export interface Measurement {
@@ -119,6 +133,9 @@ function isDoorHome(file: string): boolean {
   if (/\/packages\/editor\/dist\/[^/]+\.d\.(ts|cts|mts)$/.test(file)) return true
   return file.endsWith(`/${AREA}writeback.ts`)
 }
+
+/** where Monaco declares its API — the editor's program and the app's each resolve it there */
+const isMonacoHome = (file: string): boolean => /\/node_modules\/monaco-editor\//.test(file)
 
 const isOwnerSpecifier =(spec: string): boolean =>
   spec === '@strudel/mini' || spec.startsWith('@strudel/mini/') || spec.includes('krill-parser') || spec === 'acorn' || /^acorn[-/]/.test(spec)
@@ -227,10 +244,16 @@ export function measureBoundary(opts: MeasureOptions = {}): Measurement {
     const checker = program.getTypeChecker()
 
     /** what a symbol is, when it is part of the door */
-    const doorOf = (sym: ts.Symbol | undefined): { kind: 'member' | 'class' | 'function'; name: string } | null => {
+    const doorOf = (sym: ts.Symbol | undefined): { kind: 'member' | 'class' | 'function' | 'raw'; name: string } | null => {
       if (!sym) return null
       const real = sym.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(sym) : sym
       for (const d of real.declarations ?? []) {
+        // a raw document write: the method as MONACO declares it, so a form field's own
+        // `setValue` is not one (#1914)
+        if (isMonacoHome(toPosix(d.getSourceFile().fileName)) && ts.isMethodSignature(d) && ts.isInterfaceDeclaration(d.parent)) {
+          if (RAW_WRITES[d.parent.name.text]?.has(real.name)) return { kind: 'raw', name: `${d.parent.name.text}.${real.name}` }
+          continue
+        }
         // the door by where it is DECLARED, never by its name alone: a panel's own
         // `applyEdits`, or a `replaceRanges` on some other class, is not the door
         if (!isDoorHome(toPosix(d.getSourceFile().fileName))) continue
@@ -264,17 +287,20 @@ export function measureBoundary(opts: MeasureOptions = {}): Measurement {
           // `wb.replaceRanges`, and a namespace's `E.applyEdits` / `E.Writeback`
           const d = doorOf(checker.getSymbolAtLocation(n.name))
           if (d?.kind === 'member') add(rel, 'door', `door#${DOOR_CLASS}.${d.name}`)
+          else if (d?.kind === 'raw') add(rel, 'door', `door#monaco ${d.name}`)
           else if (d?.kind === 'function') add(rel, 'door', `door#${d.name}`)
           else if (d?.kind === 'class' && !inTypePosition(n)) add(rel, 'door', classUse(n))
         } else if (ts.isElementAccessExpression(n) && ts.isStringLiteralLike(n.argumentExpression)) {
           const d = doorOf(checker.getTypeAtLocation(n.expression).getProperty(n.argumentExpression.text))
           if (d?.kind === 'member') add(rel, 'door', `door#${DOOR_CLASS}.${d.name}`)
+          else if (d?.kind === 'raw') add(rel, 'door', `door#monaco ${d.name}`)
         } else if (ts.isBindingElement(n) && ts.isObjectBindingPattern(n.parent)) {
           // `const { replaceRanges } = wb`
           const key = n.propertyName ?? n.name
           if (ts.isIdentifier(key)) {
             const d = doorOf(checker.getTypeAtLocation(n.parent).getProperty(key.text))
             if (d?.kind === 'member') add(rel, 'door', `door#${DOOR_CLASS}.${d.name}`)
+            else if (d?.kind === 'raw') add(rel, 'door', `door#monaco ${d.name}`)
           }
         } else if (
           ts.isIdentifier(n) &&

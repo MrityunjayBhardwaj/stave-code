@@ -4,7 +4,7 @@
  * Each takes a freshly-detected chunk and a target value and returns the single
  * surgical text edit to make (a replace range + text), or null when the control
  * must hand off (a foreign/patterned value it can't safely rewrite). Keeping the
- * decision pure — `ChunkInfo` + value → `StripEdit` — means the fader/pan
+ * decision pure — `ChunkInfo` + value → `OffsetEdit` — means the fader/pan
  * write-back is unit-testable without Monaco; the caller just applies the edit
  * through the tagged `Writeback` inside `applyToStrip` (one undo step).
  *
@@ -14,15 +14,11 @@
 import type { ChunkInfo } from '../chunkDetect'
 import { readGainState, scaleManagedGain } from './gain'
 import { setNumberCall } from '../chainEdit'
+import type { OffsetEdit } from '../writeback'
 import { splitMuteMarker, isWritableName } from '../ir/trackId'
 import { detectAllChunks } from '../chunkDetect'
 import { buildStripModels } from './stripModel'
 
-/** a single surgical edit: replace `range` with `text` (insert = zero-width range). */
-export interface StripEdit {
-  range: [number, number]
-  text: string
-}
 
 /**
  * The edit a fader drag makes for `value` (a linear gain):
@@ -31,7 +27,7 @@ export interface StripEdit {
  *  - absent  → append `.gain(value)` at the end of the expression;
  *  - foreign → null (a signal gain — the fader is disabled).
  */
-export function gainEdit(fresh: ChunkInfo, value: number): StripEdit | null {
+export function gainEdit(fresh: ChunkInfo, value: number): OffsetEdit | null {
   const g = readGainState(fresh)
   switch (g.kind) {
     case 'scalar':
@@ -50,7 +46,7 @@ export function gainEdit(fresh: ChunkInfo, value: number): StripEdit | null {
  *  - absent  → append `.pan(value)`;
  *  - patterned/signal → null (hands off).
  */
-export function panEdit(fresh: ChunkInfo, value: number): StripEdit | null {
+export function panEdit(fresh: ChunkInfo, value: number): OffsetEdit | null {
   return setNumberCall(fresh, ['pan'], 'pan', value)
 }
 
@@ -66,7 +62,7 @@ export function panEdit(fresh: ChunkInfo, value: number): StripEdit | null {
  * the marker doesn't apply). Surgical: only the marker changes, so unmute is the
  * exact inverse of mute and round-trips byte-for-byte.
  */
-export function muteEdit(fresh: ChunkInfo, muted: boolean): StripEdit | null {
+export function muteEdit(fresh: ChunkInfo, muted: boolean): OffsetEdit | null {
   if (fresh.label === null) return null // unlabelled — can't carry the marker
   const marker = splitMuteMarker(fresh.label)
   const isMuted = marker.prefix || marker.suffix
@@ -119,7 +115,7 @@ export function renameEdit(
   fresh: ChunkInfo,
   newLabel: string,
   takenNames: ReadonlySet<string>,
-): StripEdit | null {
+): OffsetEdit | null {
   if (fresh.label === null) return null // a bare expression has no label slot
   if (!isValidTrackLabel(newLabel)) return null // invalid → caller reverts
   const { bare: bareLabel, prefix, suffix } = splitMuteMarker(fresh.label)
@@ -183,7 +179,7 @@ export function soloMuteEdits(
   doc: string,
   newSolo: ReadonlySet<string>,
   prevSnapshot: ReadonlySet<string> | null,
-): { edits: StripEdit[]; nextSnapshot: ReadonlySet<string> | null } {
+): { edits: OffsetEdit[]; nextSnapshot: ReadonlySet<string> | null } {
   const chunks = detectAllChunks(doc)
   const strips = buildStripModels(chunks, doc)
   const { targetMuted, nextSnapshot } = reconcileSoloMutes(
@@ -191,7 +187,7 @@ export function soloMuteEdits(
     newSolo,
     prevSnapshot,
   )
-  const edits: StripEdit[] = []
+  const edits: OffsetEdit[] = []
   for (const s of strips) {
     if (!s.muteable) continue
     const want = targetMuted.has(s.id)

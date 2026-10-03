@@ -190,6 +190,26 @@ test.describe('Mixer strip write-back (#540 / S1)', () => {
     expect(await strudelValue(page)).toBe(original)
   })
 
+  // #1918 — Strudel plays the LAST of two calls to one control, so the strip must
+  // show that one and a drag must rewrite it; the earlier call stays byte-identical.
+  test('a doubled call: the strip reads and writes the call that plays', async ({ page }) => {
+    await boot(page)
+    const original = '$: s("bd").gain(0.5).gain(0.8).pan(0.1).pan(0.9)'
+    await setStrudelCode(page, original)
+    const drawer = await openMixer(page)
+    await enlargeDrawer(page)
+    const strip = drawer.locator('[data-mixer-strip]').first()
+    await expect(strip.locator('[data-mixer-strip-db]')).toHaveText('-1.9') // 0.8, not 0.5 (-6.0)
+    await expect(strip.locator('[data-mixer-strip-pan]')).toHaveText('R80') // 0.9, not 0.1 (L80)
+    await dragFader(page, drawer, '#0', 30)
+    const after = await strudelValue(page)
+    const m = after.match(/^\$: s\("bd"\)\.gain\(0\.5\)\.gain\((\d*\.?\d+)\)\.pan\(0\.1\)\.pan\(0\.9\)$/)
+    expect(m, `unexpected document: ${after}`).not.toBeNull()
+    expect(Number(m![1])).toBeGreaterThan(0.8)
+    await undo(page)
+    expect(await strudelValue(page)).toBe(original)
+  })
+
   test('dragging a fader on a track with no .gain inserts one', async ({ page }) => {
     await boot(page)
     await setStrudelCode(page, '$: s("bd")')
