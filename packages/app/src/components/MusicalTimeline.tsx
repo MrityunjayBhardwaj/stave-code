@@ -772,7 +772,8 @@ export function MusicalTimeline(
   // (which validates + no-ops + preserves a `_` mute marker), and apply it
   // surgically. The debounced re-eval republishes the IR and BOTH views
   // re-resolve the new label (Timeline via the Step 2 dollarPos resolver, Mixer
-  // via `bareLabel`) — so the rename shows everywhere.
+  // via the strip model) — both through the editor's one `labelName` rule
+  // (#1921), so the rename shows everywhere.
   const handleRenameLane = React.useCallback(
     (labelOffset: number, newLabel: string, oldDisplayName: string) => {
       if (!snapshot?.source) return

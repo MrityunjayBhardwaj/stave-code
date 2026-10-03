@@ -22,35 +22,13 @@
  * (no-auto-naming principle, #579). The display resolves a label when present;
  * it never creates one.
  *
- * PURE — no React, no IR, no editor barrel — so it stays out of the vitest
- * CJS-`gifenc` trap (P172) and is freely unit-testable. The one editor import is
- * the dependency-free `@stave/editor/trackId` entry, not the barrel (#1679).
+ * Reading the label is the editor's (`labelAtOffset`, in `@stave/editor/trackId`
+ * since #1921 — the one rule for what a name is, shared with section names, the
+ * Mixer and the rename validators). This file keeps only the display fallback.
+ * That entry is dependency-free, not the barrel, so this stays out of the vitest
+ * CJS-`gifenc` trap (P172).
  */
-import { splitMuteMarker } from '@stave/editor/trackId'
-
-/**
- * The label of the labeled statement at `offset` in `code`, or null when the
- * track is anonymous (`$:`) or the offset doesn't resolve to a `<label>:` head.
- *
- * `dollarPos` points at the statement start (verified live #579), so from there
- * the source reads `<label>: <expr>`. Mirrors the Mixer's `bareLabel`: the
- * `_` mute marker (leading or trailing, #1679) is stripped, so a muted `_bass:` still reads `bass`
- * (and a muted anon `_$:` still resolves to anonymous → null).
- */
-export function labelAtOffset(code: string, offset: number): string | null {
-  if (!Number.isFinite(offset) || offset < 0 || offset >= code.length) return null
-  // `dollarPos` is the statement (line) start — tolerate any leading indentation.
-  let i = offset
-  while (i < code.length && /\s/.test(code[i]!)) i++
-  // A labeled statement head: a JS-identifier-ish label (incl. `$`) then `:`.
-  const m = /^([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/u.exec(code.slice(i)) // any JS identifier (#1683)
-  if (!m) return null
-  const raw = m[1]!
-  // strip the `_` mute marker — either side (#1679); the editor owns what one is
-  const { bare } = splitMuteMarker(raw)
-  if (bare === '' || bare === '$') return null // anonymous `$:` → keep d{N}
-  return bare
-}
+import { labelAtOffset } from '@stave/editor/trackId'
 
 /**
  * A lane's display NAME: the source label when the track is named, else the

@@ -5,14 +5,94 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
 
 // src/codeView/ir/trackId.ts
 function trackIdFromLabel(label, index) {
-  return namedIdOf(label) ?? `d${index + 1}`;
+  return labelName(label) ?? `d${index + 1}`;
 }
 __name(trackIdFromLabel, "trackIdFromLabel");
-function namedIdOf(label) {
-  const bare = label === void 0 ? void 0 : splitMuteMarker(label).bare;
+var IDENTIFIER = String.raw`[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*`;
+var WHOLE_IDENTIFIER = new RegExp(`^${IDENTIFIER}$`, "u");
+function isIdentifier(text) {
+  return WHOLE_IDENTIFIER.test(text);
+}
+__name(isIdentifier, "isIdentifier");
+var RESERVED_WORDS = /* @__PURE__ */ new Set([
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+  "await",
+  "let",
+  "implements",
+  "interface",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "static"
+]);
+function isWritableName(text) {
+  return isIdentifier(text) && !RESERVED_WORDS.has(text);
+}
+__name(isWritableName, "isWritableName");
+var LABEL_HEAD = new RegExp(`^(${IDENTIFIER})\\s*:`, "u");
+function labelName(label) {
+  const bare = label == null ? void 0 : splitMuteMarker(label).bare;
   return bare && bare !== "$" ? bare : null;
 }
-__name(namedIdOf, "namedIdOf");
+__name(labelName, "labelName");
+function labelAtOffset(code, offset) {
+  if (!Number.isFinite(offset) || offset < 0 || offset >= code.length) return null;
+  let i = offset;
+  while (i < code.length && /\s/.test(code[i])) i++;
+  const m = LABEL_HEAD.exec(code.slice(i));
+  return m ? labelName(m[1]) : null;
+}
+__name(labelAtOffset, "labelAtOffset");
+function sectionNameAt(code, range) {
+  const [start, end] = range;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (start < 0 || end > code.length || end <= start) return null;
+  let text = code.slice(start, end).trim();
+  if (text.startsWith("[") && text.endsWith("]")) {
+    const comma = text.indexOf(",");
+    if (comma < 0) return null;
+    text = text.slice(comma + 1, -1).trim();
+  }
+  return isIdentifier(text) ? text : null;
+}
+__name(sectionNameAt, "sectionNameAt");
 function splitMuteMarker(label) {
   const prefix = label.startsWith("_");
   const rest = prefix ? label.slice(1) : label;
@@ -21,7 +101,7 @@ function splitMuteMarker(label) {
 }
 __name(splitMuteMarker, "splitMuteMarker");
 function trackIdsFromLabels(labels, commented = []) {
-  const claimed = labels.map(namedIdOf);
+  const claimed = labels.map(labelName);
   const taken = /* @__PURE__ */ new Set();
   for (let i = 0; i < claimed.length; i++) {
     const id = claimed[i];
@@ -49,7 +129,13 @@ function isMutedLabel(label) {
 }
 __name(isMutedLabel, "isMutedLabel");
 
+exports.LABEL_HEAD = LABEL_HEAD;
+exports.isIdentifier = isIdentifier;
 exports.isMutedLabel = isMutedLabel;
+exports.isWritableName = isWritableName;
+exports.labelAtOffset = labelAtOffset;
+exports.labelName = labelName;
+exports.sectionNameAt = sectionNameAt;
 exports.splitMuteMarker = splitMuteMarker;
 exports.trackIdFromLabel = trackIdFromLabel;
 exports.trackIdsFromLabels = trackIdsFromLabels;

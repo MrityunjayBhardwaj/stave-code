@@ -190,6 +190,9 @@ describe('isValidTrackLabel', () => {
       expect(isValidTrackLabel(ok), ok).toBe(true)
     }
   })
+  it('accepts any identifier, not only ASCII ones (#1683, #1921)', () => {
+    for (const ok of ['節奏', '前奏', 'café', 'x\u200Cy']) expect(isValidTrackLabel(ok), ok).toBe(true)
+  })
   it('rejects non-identifiers and reserved words', () => {
     for (const bad of ['2drums', 'my track', 'a-b', '', 'return', 'class', 'for', 'interface', 'static']) {
       expect(isValidTrackLabel(bad), bad).toBe(false)

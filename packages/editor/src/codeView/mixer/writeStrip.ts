@@ -15,7 +15,7 @@ import type { ChunkInfo } from '../chunkDetect'
 import { readGainState, scaleManagedGain } from './gain'
 import { setNumberCall } from '../chainEdit'
 import type { OffsetEdit } from '../writeback'
-import { splitMuteMarker } from '../ir/trackId'
+import { splitMuteMarker, isWritableName } from '../ir/trackId'
 import { detectAllChunks } from '../chunkDetect'
 import { buildStripModels } from './stripModel'
 
@@ -76,27 +76,13 @@ export function muteEdit(fresh: ChunkInfo, muted: boolean): OffsetEdit | null {
   return { range: [pos, pos + fresh.label.length], text: marker.bare }
 }
 
-/** A JS reserved word can't be a LabeledStatement label (`return: …` is a syntax
- *  error), so a rename to one is rejected. Config heads (`setcps`, `hush`, …) are
- *  NOT here — they're plain identifiers and rename them as a LABEL is valid
- *  (`setcps: s("bd")` parses; the label never invokes the function). */
-const RESERVED_LABELS = new Set([
-  'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default',
-  'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for',
-  'function', 'if', 'import', 'in', 'instanceof', 'new', 'null', 'return', 'super',
-  'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while',
-  'with', 'yield', 'await', 'let',
-  // strict-mode reserved — Strudel transpiles as a module, so these are syntax
-  // errors AS labels too; reject them rather than write a name that breaks eval.
-  'implements', 'interface', 'package', 'private', 'protected', 'public', 'static',
-])
 
-/** A valid track label: a JS identifier (incl. `$`/`_`) that is not a reserved
- *  word. Mirrors what a `name:` LabeledStatement accepts. Exported so the rename
- *  UIs can gate/validate keystrokes without re-deriving the rule. */
+/** A valid track label: a name the user can write (`isWritableName` — any JS
+ *  identifier that is not a reserved word, the same rule a section rename uses,
+ *  #1924). Exported so the rename UIs can gate/validate keystrokes without
+ *  re-deriving the rule. */
 export function isValidTrackLabel(name: string): boolean {
-  // Any JS identifier (#1683) — `節奏` is as good a label as `drums`.
-  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u.test(name) && !RESERVED_LABELS.has(name)
+  return isWritableName(name)
 }
 
 /**

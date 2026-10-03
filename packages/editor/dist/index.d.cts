@@ -2042,9 +2042,10 @@ declare function otherTrackNames(doc: string, selfStatementStart: number): strin
  * a signal/expression value disables the control rather than corrupting it.
  */
 
-/** A valid track label: a JS identifier (incl. `$`/`_`) that is not a reserved
- *  word. Mirrors what a `name:` LabeledStatement accepts. Exported so the rename
- *  UIs can gate/validate keystrokes without re-deriving the rule. */
+/** A valid track label: a name the user can write (`isWritableName` — any JS
+ *  identifier that is not a reserved word, the same rule a section rename uses,
+ *  #1924). Exported so the rename UIs can gate/validate keystrokes without
+ *  re-deriving the rule. */
 declare function isValidTrackLabel(name: string): boolean;
 /**
  * The edit an inline rename makes — write the user's chosen `name:` label into
