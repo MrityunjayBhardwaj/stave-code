@@ -78,9 +78,10 @@ vi.mock('@stave/editor', async () => {
   // #1463 Stage 2 — the same trap, twice more: the component now reads stepped
   // automation and resolves each one's axis. Both real, from source (the knob
   // table imports nothing but its own control list).
-  // Stage 3 adds the write: a press on a step commits through `stepValueEdit`.
+  // Stage 3 adds the write: a press on a step commits through `stepTextEdit`
+  // (typed text → `stepValueEdit`, #1918).
   // #1585 adds the read: each lane entry carries `stepIndexAtCycle`.
-  const { steppedAutomations, stepValueEdit, stepIndexAtCycle } = await import('../../../../editor/src/codeView/ir/steppedAutomation')
+  const { steppedAutomations, stepTextEdit, stepIndexAtCycle } = await import('../../../../editor/src/codeView/ir/steppedAutomation')
   const { knobRangeFor, hasKnownKnobRange } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
   // #1601 — the lane's automate menu reads fixed values and writes them as steps.
   const { fixedParameters, fixedToStepsEdit } = await import('../../../../editor/src/codeView/ir/fixedParameters')
@@ -99,7 +100,7 @@ vi.mock('@stave/editor', async () => {
     shapeOptions,
     rateEditable,
     steppedAutomations,
-    stepValueEdit,
+    stepTextEdit,
     stepIndexAtCycle,
     knobRangeFor,
     hasKnownKnobRange,

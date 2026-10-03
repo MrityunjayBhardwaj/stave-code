@@ -19,7 +19,7 @@ import {
   type SignalAutomation,
   type SignalKind,
 } from '../ir/signalAutomation'
-import type { OffsetEdit } from '../writeback'
+import { parseTypedNumber, type OffsetEdit } from '../writeback'
 
 /** Which leg of the automation a caption field names.
  *
@@ -73,14 +73,9 @@ export function captionEdit(a: SignalAutomation, field: CaptionFieldKind, nextTe
   // signal, or under an inner range that is not 0..1, the typed pair would play another.
   if (!a.boundsAsWritten) return null
 
-  const raw = nextText.trim()
-  // ⚠ `Number('')` is 0, not NaN — and so is `Number(' ')`. Without this guard,
-  // clearing the field and committing writes a bound of ZERO into the document,
-  // which is a plausible number and therefore a silent corruption rather than a
-  // visible error. Caught by its own test, not by reading.
-  if (raw.length === 0) return null
-  const next = Number(raw)
-  if (!Number.isFinite(next)) return null
+  // An empty field is not zero — see `parseTypedNumber`. Caught by its own test.
+  const next = parseTypedNumber(nextText)
+  if (next === null) return null
 
   const lo = field === 'lo' ? next : a.lo
   const hi = field === 'hi' ? next : a.hi
@@ -164,10 +159,8 @@ const RATE_DIGITS = 6
 function rateEdit(a: SignalAutomation, nextText: string): OffsetEdit | null {
   const shown = a.lanePeriodCycles
   if (shown === null || !rateEditable(a)) return null
-  const raw = nextText.trim()
-  if (raw.length === 0) return null
-  const bars = Number(raw)
-  if (!Number.isFinite(bars) || bars <= 0 || bars === shown) return null
+  const bars = parseTypedNumber(nextText)
+  if (bars === null || bars <= 0 || bars === shown) return null
 
   // What the route's time changes multiply the signal's own period by.
   const scale = shown / a.periodCycles

@@ -1,15 +1,14 @@
 /**
  * masterEdit — the master strip's pure write path (all(x => …)), issue #792.
  *
- * These lock the pure `doc → StripEdit` boundary for the master fader and the
+ * These lock the pure `doc → OffsetEdit` boundary for the master fader and the
  * global backdrop, the same way `writeStrip.test.ts` locks the channel controls:
  * detect → edit → apply → assert the exact resulting source. No Monaco. The live
  * round-trip (drag → code, code → backdrop render) is the Playwright layer.
  */
 import { describe, it, expect } from 'vitest'
 
-import { applyEdits } from '../../writeback'
-import type { StripEdit } from '../writeStrip'
+import { applyEdits, type OffsetEdit } from '../../writeback'
 import {
   detectMasterAll,
   detectMasterAudioAll,
@@ -24,9 +23,9 @@ import {
 } from '../masterEdit'
 
 /** apply a master edit to the source it was computed from */
-function applied(src: string, edit: StripEdit | null): string {
+function applied(src: string, edit: OffsetEdit | null): string {
   expect(edit).not.toBeNull()
-  return applyEdits(src, [edit as StripEdit])
+  return applyEdits(src, [edit as OffsetEdit])
 }
 
 describe('detectMasterAll', () => {

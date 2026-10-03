@@ -8,14 +8,13 @@
  * expression, and a bound identifier.
  */
 import { describe, it, expect } from 'vitest'
-import { detectChunk, type ChunkInfo } from '../../codeView/chunkDetect'
-import {
-  MIN_REGION_SPAN,
-  readRegion,
-  readRegionControl,
-  regionControlEdit,
-  regionTrimEdit,
-} from '../regionTrim'
+import { detectChunk, type ChunkInfo } from '../chunkDetect'
+import { MIN_REGION_SPAN, readRegion, readRegionControl, regionTrimEdit, type RegionControl } from '../regionTrim'
+import { setNumberCall } from '../chainEdit'
+
+/** One region control set to `value` — the shared number setter the trim stands on (#1918). */
+const regionControlEdit = (chunk: ChunkInfo, control: RegionControl, value: number) =>
+  setNumberCall(chunk, [control], control, value)
 
 function chunkOf(code: string): ChunkInfo {
   const c = detectChunk(code, code.length - 1)
@@ -88,7 +87,7 @@ describe('readRegion — the region as the document writes it', () => {
   })
 })
 
-describe('regionControlEdit — replace, append, refuse', () => {
+describe('a region control through the shared setter — replace, append, refuse', () => {
   it('appends the call when the control is absent', () => {
     const code = '$: s("take_1")'
     const edit = regionControlEdit(chunkOf(code), 'begin', 0.25)

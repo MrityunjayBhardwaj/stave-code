@@ -47,6 +47,7 @@
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import type { PatternIR } from './PatternIR'
 import type { SourceLocation } from './IREvent'
+import { parseTypedNumber, type OffsetEdit } from '../writeback'
 import { atomSpan, type KElement, type KPattern } from './parseMini'
 import { isSectionWindow, placementsTimeAt, playableParameters, type SectionWindow, type TimeStep, type TimeWarp } from './parameterRoutes'
 
@@ -333,7 +334,7 @@ export function stepValueEdit(
   a: SteppedAutomation,
   index: number,
   value: number,
-): { range: [number, number]; text: string } | null {
+): OffsetEdit | null {
   const step = a.steps[index]
   if (!step || !Number.isFinite(value) || value === step.value) return null
   const text = String(value)
@@ -344,4 +345,14 @@ export function stepValueEdit(
   // checked on the way out as well as on the way in.
   if (!NUMBER.test(text)) return null
   return { range: [step.valueSpan.start, step.valueSpan.end], text }
+}
+
+/**
+ * "The user typed `text` over step `index`" as a source edit, or nothing: the
+ * text must be a number (`parseTypedNumber` — an empty field is not zero), and
+ * then `stepValueEdit`'s rules apply.
+ */
+export function stepTextEdit(a: SteppedAutomation, index: number, text: string): OffsetEdit | null {
+  const value = parseTypedNumber(text)
+  return value === null ? null : stepValueEdit(a, index, value)
 }

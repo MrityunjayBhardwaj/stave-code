@@ -22,7 +22,7 @@ export type { SignalAutomation, SignalKind, SignalSpans, UnboundedSignalKind } f
 export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './codeView'
 export type { CaptionFieldKind } from './codeView'
 // #1463 Stage 1 — the stepped class, for the same lane.
-export { steppedAutomations, stepIndexAtCycle, stepValueEdit } from './codeView'
+export { steppedAutomations, stepIndexAtCycle, stepValueEdit, stepTextEdit } from './codeView'
 export type { SteppedAutomation, SteppedStep, SectionWindow, TimeStep, TimeWarp } from './codeView'
 // #1600 — a fixed value a lane can start automating.
 export { fixedParameters, fixedToStepsEdit } from './codeView'
@@ -777,8 +777,8 @@ export {
 export { statementOffsetForSource } from './codeView'
 // Track rename (#580, Phase C) — the pure label-rewrite primitive + its
 // validator, so the app's Song Timeline can rename a lane (the Mixer uses them
-// internally). `StripEdit` is the surgical {range,text} the caller applies.
-export { renameEdit, isValidTrackLabel, type StripEdit } from './codeView'
+// internally). The edit is an `OffsetEdit`, applied through the commit door.
+export { renameEdit, isValidTrackLabel } from './codeView'
 // Region trim (#1527) — the pure write decisions for the slice of a sample file
 // a mark plays, so the app's Song Timeline can turn a dragged mark edge into
 // `.begin(0.25)`. `readRegionControl` is exported alongside because the caller
@@ -787,15 +787,13 @@ export { renameEdit, isValidTrackLabel, type StripEdit } from './codeView'
 export {
   readRegion,
   readRegionControl,
-  regionControlEdit,
   regionTrimEdit,
   MIN_REGION_SPAN,
   MULTI_VOICE_HEADS,
   type RegionControl,
-  type RegionEdit,
   type RegionTrimRefusal,
   type RegionTrimResult,
-} from './visualEdit/regionTrim'
+} from './codeView'
 // Master-strip code counterpart (#792) — the pure `all(x=>…)` write path the app
 // wires to the "set backdrop" UI (viz) and the Mixer uses internally (gain).
 export {

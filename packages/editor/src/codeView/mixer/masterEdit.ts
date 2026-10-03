@@ -13,7 +13,7 @@
  * By the SPLIT decision (design §9.4) gain and viz live on SEPARATE `all()`
  * lines — each edit function owns its own line, so they never coordinate on one
  * shared statement (`all()` transforms compose). The functions mirror
- * `writeStrip.ts`: pure `doc + value → StripEdit`, applied through the same
+ * `writeStrip.ts`: pure `doc + value → OffsetEdit`, applied through the same
  * tagged `Writeback` seam every channel control uses (`MixerStrips.tsx`), so the
  * write-back is unit-testable without Monaco. The read path (code → live
  * backdrop / master gain) already ships in the engine — this is the write path.
@@ -52,7 +52,7 @@
  */
 import { parseTopLevel, collectChain, toArg, type ChainArg, type ChainCall, type ChunkInfo } from '../chunkDetect'
 import { formatNumber } from '../writeback'
-import type { StripEdit } from './writeStrip'
+import type { OffsetEdit } from '../writeback'
 
 /** unity gain — an untouched master reads unity from the ABSENCE of a line. */
 export const MASTER_UNITY_GAIN = 1
@@ -276,7 +276,7 @@ export function detectMasterAudioAll(doc: string): MasterAll | undefined {
  * when the document already has one: there is nothing to add, and a second base
  * line would only be a second place for the next effect to land.
  */
-export function masterAudioLineEdit(doc: string): StripEdit | null {
+export function masterAudioLineEdit(doc: string): OffsetEdit | null {
   if (detectMasterAudioAll(doc)) return null
   return insertStatement(doc, 'all(x => x)')
 }
@@ -345,7 +345,7 @@ function scaleCall(value: number): string {
  *    = write the literal, incl. a factor of 1 at unity, matching `gainEdit`);
  *  - foreign → null (a signal/empty gain — the fader disables).
  */
-export function masterGainEdit(doc: string, value: number): StripEdit | null {
+export function masterGainEdit(doc: string, value: number): OffsetEdit | null {
   const site = findMasterGainSite(doc)
   if (!site) return insertStatement(doc, `all(x => x${scaleCall(value)})`)
   const arg = site.arg
@@ -363,7 +363,7 @@ export function masterGainEdit(doc: string, value: number): StripEdit | null {
  *  - mute (true)  → insert `all(x => silence)` (no-op/null if already muted);
  *  - unmute (false)→ remove the whole `all(x => silence)` line (null if not muted).
  */
-export function masterMuteEdit(doc: string, muted: boolean): StripEdit | null {
+export function masterMuteEdit(doc: string, muted: boolean): OffsetEdit | null {
   const line = findMuteLine(doc)
   if (muted) return line ? null : insertStatement(doc, 'all(x => silence)')
   return line ? removeStatement(doc, line.statementRange) : null
@@ -381,7 +381,7 @@ export function masterMuteEdit(doc: string, muted: boolean): StripEdit | null {
  * Returns null when clearing with no master backdrop present (nothing to do), or
  * when an existing backdrop viz has no string name to rewrite.
  */
-export function masterVizEdit(doc: string, name: string | null): StripEdit | null {
+export function masterVizEdit(doc: string, name: string | null): OffsetEdit | null {
   for (const m of detectMasterAll(doc)) {
     const v = findVizBackdropCall(m)
     if (!v) continue
@@ -401,7 +401,7 @@ export function masterVizEdit(doc: string, name: string | null): StripEdit | nul
 /** Append `statement` as the document's last line. Adds a single leading
  *  newline unless the doc is empty or already ends in one — never a materialize
  *  on render, only on a deliberate control gesture (design §7). */
-function insertStatement(doc: string, statement: string): StripEdit {
+function insertStatement(doc: string, statement: string): OffsetEdit {
   const pos = doc.length
   const lead = doc.length === 0 || doc.endsWith('\n') ? '' : '\n'
   return { range: [pos, pos], text: `${lead}${statement}` }
@@ -410,7 +410,7 @@ function insertStatement(doc: string, statement: string): StripEdit {
 /** Remove a whole statement AND its own line (the preceding newline + any
  *  indentation, or the trailing newline for a first line) so clearing leaves no
  *  blank line behind. */
-function removeStatement(doc: string, stmt: [number, number]): StripEdit {
+function removeStatement(doc: string, stmt: [number, number]): OffsetEdit {
   let start = stmt[0]
   let end = stmt[1]
   const prevNL = doc.lastIndexOf('\n', start - 1)

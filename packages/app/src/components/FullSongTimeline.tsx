@@ -100,7 +100,7 @@ import {
 } from './musicalTimeline/stableVoiceOrder'
 import { collectNoteMarks, readEventsInBand } from './musicalTimeline/timelineMarks'
 import { declaredTracks } from './musicalTimeline/trackOrder'
-import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepValueEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf, shapeAlternatives, crossClassShapes, captionEdit, shapeEdit, shapeOptions, rateEditable } from '@stave/editor'
+import { signalAutomations, signalTimeAt, steppedAutomations, stepIndexAtCycle, stepTextEdit, knobRangeFor, fixedParameters, fixedToStepsEdit, hasKnownKnobRange, stepCountEdit, previewRepeat, songPeriodOf, shapeAlternatives, crossClassShapes, captionEdit, shapeEdit, shapeOptions, rateEditable } from '@stave/editor'
 import type { FixedParameter, TrackDisplay } from '@stave/editor'
 import { automatableFixed, automateStepCount, stepAxis, stepDragValue, stepEdit, stepHitAt, stepTravel, stepY, travelledPx, withFineDrag, withStepValue, type StepBand, type StepHit, type StepTravel } from './musicalTimeline/steppedLane'
 import { stepCountOptions, type StepCountGroup } from './musicalTimeline/stepCountMenu'
@@ -2063,7 +2063,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
       const editing = editingStep
       setEditingStep(null)
       if (!editing || !onEditAutomation) return
-      const edit = stepEdit(editing.hit, value, stepValueEdit)
+      const edit = stepEdit(editing.hit, value, stepTextEdit)
       if (!edit) return
       onEditAutomation(edit, `automation ${editing.hit.entry.automation.paramKey} step ${editing.hit.index}`)
     },
@@ -2078,7 +2078,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
   //
   // ⚠ THE PREVIEW NEVER REACHES THE DOCUMENT. Every pixel of travel redraws the
   // staircase from a copy of the scene (`drawScene`); the edit is written once, on
-  // release, through the typed value's own `stepEdit` → `stepValueEdit` path. A
+  // release, through the typed value's own `stepEdit` → `stepTextEdit` path. A
   // write per pixel would re-evaluate the song on every pointer event and fill the
   // undo history with a hundred steps nobody chose.
   //
@@ -2205,10 +2205,10 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
         return
       }
       if (!onEditAutomation) return
-      // The typed path's own gate: `stepValueEdit` returns null for a value the
+      // The typed path's own gate: `stepTextEdit` returns null for a value the
       // step already holds, so a drag that came back to where it started writes
       // nothing.
-      const edit = stepEdit(drag.hit, String(drag.value), stepValueEdit)
+      const edit = stepEdit(drag.hit, String(drag.value), stepTextEdit)
       if (!edit) return
       onEditAutomation(edit, `automation ${drag.hit.entry.automation.paramKey} step ${drag.hit.index}`)
     },

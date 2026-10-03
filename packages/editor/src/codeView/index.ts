@@ -20,7 +20,7 @@
  */
 
 // ── read ── the finished models a view draws, and the facts read off the code
-export { readChainMethod } from './chainMethod'
+export { readChainMethod, playingCall, readNumberCall, stringLiteralBody } from './chainMethod'
 export {
   detectAllChunks,
   detectChunk,
@@ -123,7 +123,6 @@ export {
 } from './mixer/stripModel'
 export type { StripModel } from './mixer/stripModel'
 export { isValidTrackLabel } from './mixer/writeStrip'
-export type { StripEdit } from './mixer/writeStrip'
 export type { StepLane, ResizeMode } from './notation'
 export {
   columnCount,
@@ -196,6 +195,7 @@ export {
   filter,
   scaleGain,
   stepValueEdit,
+  stepTextEdit,
   fixedToStepsEdit,
   stepCountEdit,
   previewRepeat,
@@ -213,6 +213,14 @@ export {
   setStringCall,
 } from './chainEdit'
 export type { ChainArgRef } from './chainEdit'
+export {
+  readRegion,
+  readRegionControl,
+  regionTrimEdit,
+  MIN_REGION_SPAN,
+  MULTI_VOICE_HEADS,
+} from './regionTrim'
+export type { RegionControl, RegionTrimRefusal, RegionTrimResult } from './regionTrim'
 export { resizeGrid, resizeRoll } from './notation'
 export { addLane, removeLane } from './notation/lane'
 export { appendEmptyBars, duplicateBar } from './notation/lengthen'

@@ -17,7 +17,7 @@
 import { detectAllChunks } from '../chunkDetect'
 import type { ChunkInfo, ChainCall } from '../chunkDetect'
 import { patternKind } from '../patternKind'
-import { readChainMethod } from '../chainMethod'
+import { readChainMethod, readNumberCall } from '../chainMethod'
 import { trackIdentity } from '../trackColor'
 import { type GainState, readGainState } from './gain'
 import { NON_TRACK_HEADS } from '../ir/statementHeads'
@@ -235,15 +235,13 @@ function readSource(chunk: ChunkInfo, kind: StripKind): string | null {
 
 /** a scalar numeric chain method (`.pan(0.3)` → 0.3); null when absent/foreign. */
 function readScalar(chunk: ChunkInfo, name: string): number | null {
-  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1)
-  const arg = call?.args[0]
-  return arg && arg.numeric !== null ? arg.numeric : null
+  const n = readNumberCall(chunk, [name])
+  return typeof n === 'number' ? n : null
 }
 
-/** true when `name` is present in the chain with a non-numeric (signal) first arg. */
+/** true when the playing `name` call is written but not as a number (a signal). */
 function isForeign(chunk: ChunkInfo, name: string): boolean {
-  const call = chunk.chain.find((c) => c.name === name && c.args.length >= 1)
-  return call !== undefined && call.args[0].numeric === null
+  return readNumberCall(chunk, [name]) === null
 }
 
 /**

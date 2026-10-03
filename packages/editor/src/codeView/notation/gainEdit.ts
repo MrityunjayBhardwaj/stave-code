@@ -10,12 +10,15 @@
  * model, the gesture and the writer; it decides nothing about text.
  *
  * We only ever touch a `.gain` whose arg is a scalar number or a string — one the grid
- * could have authored. A signal or any other expression is left byte-identical.
+ * could have authored. A signal or any other expression is left byte-identical. The
+ * `.gain` read is the one that plays: the last in the chain (#1918).
  *
  * This module is pure.
  */
 import type { ChunkInfo } from '../chunkDetect'
 import type { OffsetEdit } from '../writeback'
+import { playingCall, stringLiteralBody } from '../chainMethod'
+import { appendCall } from '../chainEdit'
 import type { ChunkGain, GainWrite } from './model'
 
 /**
@@ -26,21 +29,21 @@ import type { ChunkGain, GainWrite } from './model'
  *   - any other arg         → { foreign:true }  (a signal/expr — hands off)
  */
 export function readChunkGain(chunk: ChunkInfo): ChunkGain {
-  const call = chunk.chain.find((c) => c.name === 'gain')
-  const arg = call?.args[0]
-  if (!call || !arg) return { mini: null, numeric: null, foreign: false }
-  if (arg.numeric !== null) return { mini: null, numeric: arg.numeric, foreign: false }
-  if (/^["'`]/.test(arg.raw)) return { mini: arg.raw.slice(1, -1), numeric: null, foreign: false }
-  return { mini: null, numeric: null, foreign: true } // some other expression
+  const call = playingCall(chunk, ['gain'])
+  if (!call) return { mini: null, numeric: null, foreign: false }
+  const arg = call.args[0]
+  if (arg && arg.numeric !== null) return { mini: null, numeric: arg.numeric, foreign: false }
+  const mini = arg ? stringLiteralBody(arg.raw) : null
+  if (mini !== null) return { mini, numeric: null, foreign: false }
+  return { mini: null, numeric: null, foreign: true } // some other expression, or a bare `.gain()`
 }
 
-/** is the `.gain` arg one velocity manages (a scalar number or a string)? */
+/** the playing `.gain` when its arg is one velocity manages (a scalar number or a string) */
 function managedGainArg(chunk: ChunkInfo): { call: ChunkInfo['chain'][number]; argRange: [number, number] } | null {
-  const call = chunk.chain.find((c) => c.name === 'gain')
-  const arg = call?.args[0]
-  if (!call || !arg) return null
-  if (arg.numeric !== null || /^["'`]/.test(arg.raw)) return { call, argRange: arg.range }
-  return null
+  const cur = readChunkGain(chunk)
+  if (cur.mini === null && cur.numeric === null) return null
+  const call = playingCall(chunk, ['gain'])!
+  return { call, argRange: call.args[0].range }
 }
 
 /** the gain edits for one `mutate`, given the model's `GainWrite` intent */
@@ -55,7 +58,7 @@ function gainEdits(fresh: ChunkInfo, g: GainWrite): OffsetEdit[] {
   // replace the whole managed arg in place (swaps scalar↔string as needed)…
   if (managed) return [{ range: managed.argRange, text: lit }]
   // …else append `.gain(…)` after the expression (the Mixer's quick-transform idiom)
-  return [{ range: [fresh.exprRange[1], fresh.exprRange[1]], text: `.gain(${lit})` }]
+  return [appendCall(fresh, 'gain', lit)]
 }
 
 /** does prev's gain intent already match the chunk's current `.gain`? */

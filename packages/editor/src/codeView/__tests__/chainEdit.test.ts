@@ -34,6 +34,12 @@ describe('chainEdit — the three primitives (#1888)', () => {
     expect(setNumberCall(chunk(signal), ['pan'], 'pan', 0.75)).toBeNull()
   })
 
+  it('a number call writes nothing for a non-finite value — it would land as `0` (#1918)', () => {
+    for (const doc of ['$: s("bd*4").pan(0.2)', '$: s("bd*4")']) {
+      for (const v of [Number.NaN, Number.POSITIVE_INFINITY]) expect(setNumberCall(chunk(doc), ['pan'], 'pan', v)).toBeNull()
+    }
+  })
+
   it('a number call is found under any of its names and written under the one it has', () => {
     const doc = '$: s("bd*4").cutoff(800)'
     expect(after(doc, setNumberCall(chunk(doc), ['lpf', 'cutoff'], 'lpf', 1200))).toBe('$: s("bd*4").cutoff(1200)')
