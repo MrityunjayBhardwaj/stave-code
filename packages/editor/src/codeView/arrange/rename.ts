@@ -60,7 +60,7 @@ import { parse } from 'acorn'
 import type { OffsetEdit } from '../writeback'
 
 import type { ArrangeCall } from './parse'
-import { isIdentifier, sectionNameAt } from '../ir/trackId'
+import { isWritableName, sectionNameAt } from '../ir/trackId'
 
 // acorn's node types are intentionally loose; we walk untyped nodes here.
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -168,7 +168,7 @@ export function renameSection(
   i: number,
   newName: string,
 ): OffsetEdit[] {
-  if (!isIdentifier(newName) || newName === NOT_A_NAME) return []
+  if (!isWritableName(newName) || newName === NOT_A_NAME) return []
   const oldName = armIdentifier(doc, call, i)
   if (oldName == null || oldName === newName) return []
 

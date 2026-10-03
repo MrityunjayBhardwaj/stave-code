@@ -39,6 +39,14 @@ describe('renameSection — the arrange spelling', () => {
     )
   })
 
+  it('never renames a section to a reserved word — `const class` does not parse (#1924)', () => {
+    for (const word of ['class', 'return', 'let', 'await', 'yield', 'static']) {
+      expect(renameSection(SONG, call(SONG), 1, word), word).toEqual([])
+    }
+    // control: an ordinary name over the same section does rename
+    expect(renameSection(SONG, call(SONG), 1, 'chorus').length).toBeGreaterThan(0)
+  })
+
   it('a section named with any identifier renames, to any identifier (#1921)', () => {
     const doc = 'const 前奏 = s("bd")\nconst verse = s("hh")\n$: arrange([4, 前奏], [8, verse])'
     expect(countSectionArms(doc, call(doc), 0)).toBe(1)

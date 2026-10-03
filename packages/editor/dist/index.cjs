@@ -3552,6 +3552,58 @@ function isIdentifier(text) {
   return WHOLE_IDENTIFIER.test(text);
 }
 __name(isIdentifier, "isIdentifier");
+var RESERVED_WORDS = /* @__PURE__ */ new Set([
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+  "await",
+  "let",
+  "implements",
+  "interface",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "static"
+]);
+function isWritableName(text) {
+  return isIdentifier(text) && !RESERVED_WORDS.has(text);
+}
+__name(isWritableName, "isWritableName");
 var LABEL_HEAD = new RegExp(`^(${IDENTIFIER})\\s*:`, "u");
 function labelName(label) {
   const bare = label == null ? void 0 : splitMuteMarker(label).bare;
@@ -7832,58 +7884,8 @@ function muteEdit(fresh, muted3) {
   return { range: [pos, pos + fresh.label.length], text: marker.bare };
 }
 __name(muteEdit, "muteEdit");
-var RESERVED_LABELS = /* @__PURE__ */ new Set([
-  "break",
-  "case",
-  "catch",
-  "class",
-  "const",
-  "continue",
-  "debugger",
-  "default",
-  "delete",
-  "do",
-  "else",
-  "enum",
-  "export",
-  "extends",
-  "false",
-  "finally",
-  "for",
-  "function",
-  "if",
-  "import",
-  "in",
-  "instanceof",
-  "new",
-  "null",
-  "return",
-  "super",
-  "switch",
-  "this",
-  "throw",
-  "true",
-  "try",
-  "typeof",
-  "var",
-  "void",
-  "while",
-  "with",
-  "yield",
-  "await",
-  "let",
-  // strict-mode reserved — Strudel transpiles as a module, so these are syntax
-  // errors AS labels too; reject them rather than write a name that breaks eval.
-  "implements",
-  "interface",
-  "package",
-  "private",
-  "protected",
-  "public",
-  "static"
-]);
 function isValidTrackLabel(name) {
-  return isIdentifier(name) && !RESERVED_LABELS.has(name);
+  return isWritableName(name);
 }
 __name(isValidTrackLabel, "isValidTrackLabel");
 function renameEdit(fresh, newLabel, takenNames) {
@@ -12009,7 +12011,7 @@ function countSectionArms(doc, call, i) {
 }
 __name(countSectionArms, "countSectionArms");
 function renameSection(doc, call, i, newName) {
-  if (!isIdentifier(newName) || newName === NOT_A_NAME) return [];
+  if (!isWritableName(newName) || newName === NOT_A_NAME) return [];
   const oldName = armIdentifier(doc, call, i);
   if (oldName == null || oldName === newName) return [];
   const references = analyze(doc, oldName, newName);

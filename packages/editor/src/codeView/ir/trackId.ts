@@ -54,6 +54,35 @@ export function isIdentifier(text: string): boolean {
 }
 
 /**
+ * Words a rename must never write, though each is an identifier by shape: as a
+ * label (`return: …`) or a binding (`const class = …`) they are syntax errors.
+ * Config heads (`setcps`, `hush`, …) are NOT here — they are plain identifiers,
+ * and `setcps: s("bd")` parses; the label never invokes the function.
+ *
+ * The strict-mode words are a conservative choice, not a parse requirement:
+ * Strudel's transpiler parses a script (`ecmaVersion: 2022`, no `sourceType`),
+ * where `static: …` would pass. Refusing them costs a rename and writing one
+ * would put the song one strict context away from not evaluating.
+ */
+const RESERVED_WORDS: ReadonlySet<string> = new Set([
+  'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default',
+  'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for',
+  'function', 'if', 'import', 'in', 'instanceof', 'new', 'null', 'return', 'super',
+  'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while',
+  'with', 'yield', 'await', 'let',
+  'implements', 'interface', 'package', 'private', 'protected', 'public', 'static',
+])
+
+/**
+ * A name a rename may write — as a track label or a section binding: an
+ * identifier that is not a reserved word. The track and the section renames
+ * both ask this, so neither can write `class` again (#1924).
+ */
+export function isWritableName(text: string): boolean {
+  return isIdentifier(text) && !RESERVED_WORDS.has(text)
+}
+
+/**
  * The head of a labelled statement at the start of a string: the label (group 1,
  * mute marker and all) followed by `:`. For the line scanners, which read the
  * raw label because their keys must equal the engine's `.p('節奏')`.

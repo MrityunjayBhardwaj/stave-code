@@ -12,6 +12,58 @@ function isIdentifier(text) {
   return WHOLE_IDENTIFIER.test(text);
 }
 __name(isIdentifier, "isIdentifier");
+var RESERVED_WORDS = /* @__PURE__ */ new Set([
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+  "await",
+  "let",
+  "implements",
+  "interface",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "static"
+]);
+function isWritableName(text) {
+  return isIdentifier(text) && !RESERVED_WORDS.has(text);
+}
+__name(isWritableName, "isWritableName");
 var LABEL_HEAD = new RegExp(`^(${IDENTIFIER})\\s*:`, "u");
 function labelName(label) {
   const bare = label == null ? void 0 : splitMuteMarker(label).bare;
@@ -75,6 +127,6 @@ function isMutedLabel(label) {
 }
 __name(isMutedLabel, "isMutedLabel");
 
-export { LABEL_HEAD, isIdentifier, isMutedLabel, labelAtOffset, labelName, sectionNameAt, splitMuteMarker, trackIdFromLabel, trackIdsFromLabels };
+export { LABEL_HEAD, isIdentifier, isMutedLabel, isWritableName, labelAtOffset, labelName, sectionNameAt, splitMuteMarker, trackIdFromLabel, trackIdsFromLabels };
 //# sourceMappingURL=trackId.js.map
 //# sourceMappingURL=trackId.js.map

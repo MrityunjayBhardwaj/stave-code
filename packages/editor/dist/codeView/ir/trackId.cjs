@@ -14,6 +14,58 @@ function isIdentifier(text) {
   return WHOLE_IDENTIFIER.test(text);
 }
 __name(isIdentifier, "isIdentifier");
+var RESERVED_WORDS = /* @__PURE__ */ new Set([
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  "yield",
+  "await",
+  "let",
+  "implements",
+  "interface",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "static"
+]);
+function isWritableName(text) {
+  return isIdentifier(text) && !RESERVED_WORDS.has(text);
+}
+__name(isWritableName, "isWritableName");
 var LABEL_HEAD = new RegExp(`^(${IDENTIFIER})\\s*:`, "u");
 function labelName(label) {
   const bare = label == null ? void 0 : splitMuteMarker(label).bare;
@@ -80,6 +132,7 @@ __name(isMutedLabel, "isMutedLabel");
 exports.LABEL_HEAD = LABEL_HEAD;
 exports.isIdentifier = isIdentifier;
 exports.isMutedLabel = isMutedLabel;
+exports.isWritableName = isWritableName;
 exports.labelAtOffset = labelAtOffset;
 exports.labelName = labelName;
 exports.sectionNameAt = sectionNameAt;

@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { trackIdFromLabel, trackIdsFromLabels, isMutedLabel, splitMuteMarker, isIdentifier, labelName, labelAtOffset, sectionNameAt, LABEL_HEAD } from '../trackId'
+import { trackIdFromLabel, trackIdsFromLabels, isMutedLabel, splitMuteMarker, isIdentifier, isWritableName, labelName, labelAtOffset, sectionNameAt, LABEL_HEAD } from '../trackId'
 import { parseStrudel } from '../parseStrudel'
 import type { PatternIR } from '../PatternIR'
 
@@ -270,6 +270,11 @@ describe('one rule for a name (#1921)', () => {
   it('any JavaScript identifier is a name — and nothing else is', () => {
     for (const ok of ['drums', 'd1', '$', '_x', '前奏', 'café', '節奏', 'x‌y']) expect(isIdentifier(ok), ok).toBe(true)
     for (const no of ['', '1x', 'a b', 'a-b', 'a.b', '"a"', 's("bd")', '[4, a]']) expect(isIdentifier(no), no).toBe(false)
+  })
+
+  it('a writable name is an identifier that is not a reserved word (#1924)', () => {
+    for (const ok of ['drums', '前奏', 'setcps', 'eval']) expect(isWritableName(ok), ok).toBe(true)
+    for (const no of ['class', 'return', 'let', 'static', '1x', '']) expect(isWritableName(no), no).toBe(false)
   })
 
   it('a label names nothing when it is anonymous, muted or not', () => {
