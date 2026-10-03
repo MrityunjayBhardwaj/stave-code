@@ -1383,6 +1383,183 @@ type SongExtent =
  */
 declare function songExtent(ir: PatternIR | null): SongExtent;
 
+/**
+ * writeback — chunk → document.
+ *
+ * The mutation half of the visual-editing spine. Visual panels read a
+ * `ChunkInfo` (see `chunkDetect.ts`) to learn the doc offsets they may edit,
+ * then route every edit through here so it is:
+ *
+ *  1. **Surgical** — only the named offset range changes; the rest of the
+ *     statement (mini-notation quotes, spacing, indent) stays byte-identical.
+ *     This is the whole reason write-back panels edit TEXT and not the IR:
+ *     `toStrudel` is a whole-statement canonical regenerator that would
+ *     reformat the leaf layer (design doc Appendix A).
+ *  2. **Own-edit visible** — while an edit is applied, the writer holds its
+ *     source tag, so a surface's `onDidChangeModelContent` listener can ask
+ *     `isCommitting(writer)` and tell its own write (keep what it shows) from an
+ *     external one (re-read the document). Monaco's content-change event
+ *     carries no source of its own, so the tag is set synchronously around the
+ *     edit — the listener fires inside `pushEditOperations`, while it is up.
+ *     Product code reads only WHETHER a tag is set, never which one (#1914);
+ *     the tag names the surface for a reader of this code, not for a listener.
+ *  3. **One undo step** — every write is a single `pushEditOperations`, so even
+ *     a multi-cell drag is one Ctrl-Z.
+ *
+ * Range discipline: offsets come from a `ChunkInfo` and are valid ONLY against
+ * the exact doc it was detected from. A panel re-detects its chunk against the
+ * live document in the same turn it writes; `commitToFile` compares the whole
+ * document instead. Stale offsets corrupt unrelated code.
+ *
+ * The pure helpers (`formatNumber`, `normalizeEdits`) are string/number math
+ * with no Monaco dependency, so they unit-test with plain assertions. The
+ * `Writeback` class is the thin Monaco-bound shell, observed in the app.
+ */
+
+/**
+ * Which surface originated an edit. Required on every write, and held by the
+ * writer while the edit applies — but product code reads it only as "is a tag
+ * set right now" (`isCommitting`), never by value (#1914). It documents the
+ * caller; no listener switches on it.
+ */
+type WriteSource = 'knob' | 'seq' | 'roll' | 'arrange.weights' | 'arrange.structure' | 'transport' | 'mixer' | 'rename' | 'automation' | 'region.trim';
+/** A single replacement, addressed by absolute pre-edit doc offsets. */
+interface OffsetEdit {
+    /** absolute [start, end) offsets in the document as it was when detected */
+    range: [number, number];
+    /** replacement text ('' to delete) */
+    text: string;
+}
+/**
+ * Format a number for insertion as a source literal. Drag handlers produce
+ * values like `0.30000000000000004` or `2.9999999`; emitting those verbatim
+ * would corrupt the user's code with float noise. We round to `maxDecimals`
+ * and strip trailing zeros, so `0.3`, `2`, `-1.5` come out clean.
+ *
+ * Pure — no Monaco.
+ */
+declare function formatNumber(v: number, maxDecimals?: number): string;
+/**
+ * Validate a batch of edits and return them sorted ascending by start offset.
+ * Throws on any overlap — overlapping ranges in a single `pushEditOperations`
+ * have undefined application order and would corrupt the doc. Zero-width edits
+ * (inserts) are allowed and never count as overlapping a neighbour that starts
+ * at the same offset only if texts don't both target it; we conservatively
+ * reject ranges that share interior space.
+ *
+ * Pure — no Monaco.
+ */
+declare function normalizeEdits(edits: OffsetEdit[]): OffsetEdit[];
+/**
+ * Apply a batch of offset edits to a string and return the result. Pure mirror
+ * of what the writer does to a Monaco model — used by callers that edit
+ * plain text (arrangement round-trip / parity tests) and to preview an edit
+ * before it touches the document. Edits are validated + sorted by
+ * `normalizeEdits`, then spliced from the END so earlier offsets stay valid.
+ *
+ * Pure — no Monaco.
+ */
+declare function applyEdits(doc: string, edits: OffsetEdit[]): string;
+/**
+ * Monaco-bound edit sink. Built only by `createWriter`, and driven only by the
+ * functions below it (`commit`, `commitToEditor`, `commitToFile`, `openGesture`,
+ * `closeGesture`, `isCommitting`); outside this area it is a type a surface holds
+ * and hands back, never something it calls (#1914). Every edit goes through
+ * `apply`, which keeps the source tag up across the synchronous content-change
+ * event.
+ */
+declare class Writeback {
+    private readonly editor;
+    private readonly monaco;
+    private writingSource;
+    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
+    private inGesture;
+    /** whether the in-flight gesture has applied any edit — gates the one re-eval
+     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
+    private gestureDidEdit;
+    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
+    private reevalTimer;
+    constructor(editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco);
+    /**
+     * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
+     * step. Used for a continuous knob drag or a multi-cell sweep so the whole
+     * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
+     * the undo grouping is affected. Idempotent if already in a gesture.
+     */
+    beginGesture(): void;
+    /** Close the gesture, sealing all its edits as one undo step — and, if the
+     * gesture changed anything, make it audible immediately (one re-eval on
+     * release, not per drag frame). */
+    endGesture(): void;
+    /**
+     * The source of the edit currently being applied, or null. Non-null ONLY for
+     * the duration of `apply`; `isCommitting` reads it, and only as null or not.
+     */
+    get currentSource(): WriteSource | null;
+    /**
+     * Replace several non-overlapping ranges as ONE edit — one undo step. Used
+     * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
+     * the whole gesture).
+     */
+    replaceRanges(edits: OffsetEdit[], source: WriteSource): boolean;
+    /** false when there is no document to write to — nothing was applied */
+    private apply;
+    /**
+     * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
+     * the moment it commits. Centralised here so every visual surface — sequencer,
+     * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
+     * re-evals only a PLAYING file, and only when live mode isn't already doing
+     * it, so this never auto-starts audio nor double-evaluates.
+     *
+     * Trailing-debounced: rapid successive commits (e.g. clearing several
+     * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
+     * which also lets the Monaco→file-store sync settle so the re-eval reads the
+     * final content rather than racing a not-yet-synced edit.
+     */
+    private requestLiveReeval;
+}
+/**
+ * Why a write by file did not land. Each value names ONE refusal the file route
+ * can actually tell apart, because a report that cannot name its cause cannot
+ * drive the next decision (#1414) — "the edit was declined" and "the document
+ * moved under you" call for opposite responses from a caller, and a bare `false`
+ * says neither.
+ */
+type WriteRefusal = 
+/** No editor is registered for `fileId` — typically unmounted mid-gesture. */
+'no-editor'
+/** The monaco namespace was never captured, so no edit can be constructed. */
+ | 'no-monaco'
+/** Nothing to write — upstream (usually a serializer) declined the gesture. */
+ | 'no-edits'
+/** `expectedDoc` no longer matches the live model: the offsets are stale and
+ *  applying them would corrupt unrelated code. RETRYABLE — unlike the rest. */
+ | 'stale-document'
+/** The writer threw while applying the edits. */
+ | 'writeback-threw';
+/** `'applied'`, or the reason the file route refused. */
+type WriteOutcome = 'applied' | WriteRefusal;
+/**
+ * `commit` addressed by FILE rather than by a writer — the route a surface takes
+ * when it does not own the editor: the Song Timeline's gestures and the app's
+ * backdrop write (#1906, #1911). The edits land in `fileId`'s editor as ONE undo
+ * step tagged `source`, and the writer's debounced re-eval makes them audible.
+ *
+ * `expectedDoc` is REQUIRED (#1911): the document the edit's offsets were computed
+ * against. A panel re-detects its chunk against the live document in the same
+ * turn it writes; a caller of this route does not (the timeline computes from its
+ * last IR snapshot, which lags typing by a debounce), so this comparison is the
+ * only thing standing between stale offsets and unrelated code. A document that
+ * moved is refused as 'stale-document' and nothing is written.
+ *
+ * ⚠ RETURNS A REASON, NOT A BOOLEAN (#1414). Every member of `WriteOutcome` is a
+ * non-empty string, so a bare `if (outcome)` is always true and always a bug —
+ * compare against 'applied'. Refusals are checked in a fixed order (no editor, no
+ * monaco, nothing to write, stale document) so the cause a caller reports is the
+ * same on every run.
+ */
+declare function commitToFile(fileId: string, edit: OffsetEdit | readonly OffsetEdit[] | null, source: WriteSource, expectedDoc: string): WriteOutcome;
+
 /** One step of a stepped parameter. */
 interface SteppedStep {
     /** The value this step holds, as a number. */
@@ -1455,10 +1632,13 @@ declare function stepIndexAtCycle(a: SteppedAutomation, cycle: number): number |
  * is no arithmetic here to produce float noise, and a rounding formatter would
  * write a different number than the one asked for.
  */
-declare function stepValueEdit(a: SteppedAutomation, index: number, value: number): {
-    range: [number, number];
-    text: string;
-} | null;
+declare function stepValueEdit(a: SteppedAutomation, index: number, value: number): OffsetEdit | null;
+/**
+ * "The user typed `text` over step `index`" as a source edit, or nothing: the
+ * text must be a number (`parseTypedNumber` — an empty field is not zero), and
+ * then `stepValueEdit`'s rules apply.
+ */
+declare function stepTextEdit(a: SteppedAutomation, index: number, text: string): OffsetEdit | null;
 
 /**
  * Fixed parameter values read off the static IR, and the one edit that turns one
@@ -1679,57 +1859,6 @@ declare function runPasses<IR>(input: IR, passes: readonly Pass<IR>[]): {
 }[];
 
 /**
- * writeStrip.ts — the strip controls' write decisions, as PURE functions.
- *
- * Each takes a freshly-detected chunk and a target value and returns the single
- * surgical text edit to make (a replace range + text), or null when the control
- * must hand off (a foreign/patterned value it can't safely rewrite). Keeping the
- * decision pure — `ChunkInfo` + value → `StripEdit` — means the fader/pan
- * write-back is unit-testable without Monaco; the caller just applies the edit
- * through the tagged `Writeback` inside `applyToStrip` (one undo step).
- *
- * Surgical & conservative (V-mixer-1, P194): only the targeted literal changes;
- * a signal/expression value disables the control rather than corrupting it.
- */
-
-/** a single surgical edit: replace `range` with `text` (insert = zero-width range). */
-interface StripEdit {
-    range: [number, number];
-    text: string;
-}
-/** A valid track label: a JS identifier (incl. `$`/`_`) that is not a reserved
- *  word. Mirrors what a `name:` LabeledStatement accepts. Exported so the rename
- *  UIs can gate/validate keystrokes without re-deriving the rule. */
-declare function isValidTrackLabel(name: string): boolean;
-/**
- * The edit an inline rename makes — write the user's chosen `name:` label into
- * the code (#580, Phase C). Renaming is the ONLY way a descriptive name reaches
- * the file: the display never auto-names (the `d{N}` friction prompts THIS edit).
- *
- *  - named   (`bass:`)  → replace the label with `newLabel` (`lead: …`);
- *  - anon    (`$:`, label `'$'`) → replace the `$` → INSERT a name (`drums: …`);
- *  - the `_` mute marker is PRESERVED (only the bare label is rewritten), so a
- *    muted track stays muted across a rename and the edit round-trips cleanly.
- *
- * Returns null when the statement is unlabelled (a bare expression has no label
- * slot), when `newLabel` is not a valid track label (invalid → no write, the UI
- * reverts), when it equals the current bare label (no-op), or when it would
- * COLLIDE with another track's display name (#585 — see `takenNames`). Surgical:
- * only the label characters change; the pattern expression is byte-identical.
- *
- * `takenNames` = the display names of all OTHER tracks (the caller excludes the
- * track being renamed). A rename whose new label equals one of them is rejected
- * rather than written: a duplicate label collides on the engine's capture/meter
- * join AND on the per-track colour-override key (which is keyed by display name,
- * #581), so two tracks would share one meter and one colour. Consistent with the
- * friction principle (#579) — the UI reverts, exactly like an invalid label, and
- * the user picks a name that's free. Two tracks the user DELIBERATELY labels the
- * same are valid JS and stay shared identity by design (Phase D); this guard only
- * prevents a rename from silently CREATING a new duplicate.
- */
-declare function renameEdit(fresh: ChunkInfo, newLabel: string, takenNames: ReadonlySet<string>): StripEdit | null;
-
-/**
  * masterEdit — the MASTER strip's write decisions, as PURE functions.
  *
  * The master bus in Strudel is `all(x => …)`: it stacks every `$:`/named pattern
@@ -1744,7 +1873,7 @@ declare function renameEdit(fresh: ChunkInfo, newLabel: string, takenNames: Read
  * By the SPLIT decision (design §9.4) gain and viz live on SEPARATE `all()`
  * lines — each edit function owns its own line, so they never coordinate on one
  * shared statement (`all()` transforms compose). The functions mirror
- * `writeStrip.ts`: pure `doc + value → StripEdit`, applied through the same
+ * `writeStrip.ts`: pure `doc + value → OffsetEdit`, applied through the same
  * tagged `Writeback` seam every channel control uses (`MixerStrips.tsx`), so the
  * write-back is unit-testable without Monaco. The read path (code → live
  * backdrop / master gain) already ships in the engine — this is the write path.
@@ -1852,7 +1981,7 @@ declare function readMasterViz(doc: string): {
  *    = write the literal, incl. a factor of 1 at unity, matching `gainEdit`);
  *  - foreign → null (a signal/empty gain — the fader disables).
  */
-declare function masterGainEdit(doc: string, value: number): StripEdit | null;
+declare function masterGainEdit(doc: string, value: number): OffsetEdit | null;
 /**
  * The edit a master mute toggle makes — add/remove the `all(x => silence)` line
  * (design: the master analog of a channel's `_`-prefix). Mute is ORTHOGONAL to
@@ -1861,7 +1990,7 @@ declare function masterGainEdit(doc: string, value: number): StripEdit | null;
  *  - mute (true)  → insert `all(x => silence)` (no-op/null if already muted);
  *  - unmute (false)→ remove the whole `all(x => silence)` line (null if not muted).
  */
-declare function masterMuteEdit(doc: string, muted: boolean): StripEdit | null;
+declare function masterMuteEdit(doc: string, muted: boolean): OffsetEdit | null;
 /**
  * The edit the "set backdrop" UI makes (decision 2 = code is the single source):
  *  - set `name`  → replace the name literal in the existing master backdrop viz,
@@ -1874,7 +2003,7 @@ declare function masterMuteEdit(doc: string, muted: boolean): StripEdit | null;
  * Returns null when clearing with no master backdrop present (nothing to do), or
  * when an existing backdrop viz has no string name to rewrite.
  */
-declare function masterVizEdit(doc: string, name: string | null): StripEdit | null;
+declare function masterVizEdit(doc: string, name: string | null): OffsetEdit | null;
 
 /**
  * Char offset of the top-level statement whose instrument (`.sound`/`.s`/
@@ -1898,6 +2027,52 @@ declare function statementOffsetForSource(doc: string, source: string): number |
  * collision.
  */
 declare function otherTrackNames(doc: string, selfStatementStart: number): string[];
+
+/**
+ * writeStrip.ts — the strip controls' write decisions, as PURE functions.
+ *
+ * Each takes a freshly-detected chunk and a target value and returns the single
+ * surgical text edit to make (a replace range + text), or null when the control
+ * must hand off (a foreign/patterned value it can't safely rewrite). Keeping the
+ * decision pure — `ChunkInfo` + value → `OffsetEdit` — means the fader/pan
+ * write-back is unit-testable without Monaco; the caller just applies the edit
+ * through the tagged `Writeback` inside `applyToStrip` (one undo step).
+ *
+ * Surgical & conservative (V-mixer-1, P194): only the targeted literal changes;
+ * a signal/expression value disables the control rather than corrupting it.
+ */
+
+/** A valid track label: a JS identifier (incl. `$`/`_`) that is not a reserved
+ *  word. Mirrors what a `name:` LabeledStatement accepts. Exported so the rename
+ *  UIs can gate/validate keystrokes without re-deriving the rule. */
+declare function isValidTrackLabel(name: string): boolean;
+/**
+ * The edit an inline rename makes — write the user's chosen `name:` label into
+ * the code (#580, Phase C). Renaming is the ONLY way a descriptive name reaches
+ * the file: the display never auto-names (the `d{N}` friction prompts THIS edit).
+ *
+ *  - named   (`bass:`)  → replace the label with `newLabel` (`lead: …`);
+ *  - anon    (`$:`, label `'$'`) → replace the `$` → INSERT a name (`drums: …`);
+ *  - the `_` mute marker is PRESERVED (only the bare label is rewritten), so a
+ *    muted track stays muted across a rename and the edit round-trips cleanly.
+ *
+ * Returns null when the statement is unlabelled (a bare expression has no label
+ * slot), when `newLabel` is not a valid track label (invalid → no write, the UI
+ * reverts), when it equals the current bare label (no-op), or when it would
+ * COLLIDE with another track's display name (#585 — see `takenNames`). Surgical:
+ * only the label characters change; the pattern expression is byte-identical.
+ *
+ * `takenNames` = the display names of all OTHER tracks (the caller excludes the
+ * track being renamed). A rename whose new label equals one of them is rejected
+ * rather than written: a duplicate label collides on the engine's capture/meter
+ * join AND on the per-track colour-override key (which is keyed by display name,
+ * #581), so two tracks would share one meter and one colour. Consistent with the
+ * friction principle (#579) — the UI reverts, exactly like an invalid label, and
+ * the user picks a name that's free. Two tracks the user DELIBERATELY labels the
+ * same are valid JS and stay shared identity by design (Phase D); this guard only
+ * prevents a rename from silently CREATING a new duplicate.
+ */
+declare function renameEdit(fresh: ChunkInfo, newLabel: string, takenNames: ReadonlySet<string>): OffsetEdit | null;
 
 /**
  * One top-level element of the source, and the columns it produced.
@@ -2928,183 +3103,6 @@ declare function detectBarePattern(doc: string, pos: number): {
 } | null;
 
 /**
- * writeback — chunk → document.
- *
- * The mutation half of the visual-editing spine. Visual panels read a
- * `ChunkInfo` (see `chunkDetect.ts`) to learn the doc offsets they may edit,
- * then route every edit through here so it is:
- *
- *  1. **Surgical** — only the named offset range changes; the rest of the
- *     statement (mini-notation quotes, spacing, indent) stays byte-identical.
- *     This is the whole reason write-back panels edit TEXT and not the IR:
- *     `toStrudel` is a whole-statement canonical regenerator that would
- *     reformat the leaf layer (design doc Appendix A).
- *  2. **Own-edit visible** — while an edit is applied, the writer holds its
- *     source tag, so a surface's `onDidChangeModelContent` listener can ask
- *     `isCommitting(writer)` and tell its own write (keep what it shows) from an
- *     external one (re-read the document). Monaco's content-change event
- *     carries no source of its own, so the tag is set synchronously around the
- *     edit — the listener fires inside `pushEditOperations`, while it is up.
- *     Product code reads only WHETHER a tag is set, never which one (#1914);
- *     the tag names the surface for a reader of this code, not for a listener.
- *  3. **One undo step** — every write is a single `pushEditOperations`, so even
- *     a multi-cell drag is one Ctrl-Z.
- *
- * Range discipline: offsets come from a `ChunkInfo` and are valid ONLY against
- * the exact doc it was detected from. A panel re-detects its chunk against the
- * live document in the same turn it writes; `commitToFile` compares the whole
- * document instead. Stale offsets corrupt unrelated code.
- *
- * The pure helpers (`formatNumber`, `normalizeEdits`) are string/number math
- * with no Monaco dependency, so they unit-test with plain assertions. The
- * `Writeback` class is the thin Monaco-bound shell, observed in the app.
- */
-
-/**
- * Which surface originated an edit. Required on every write, and held by the
- * writer while the edit applies — but product code reads it only as "is a tag
- * set right now" (`isCommitting`), never by value (#1914). It documents the
- * caller; no listener switches on it.
- */
-type WriteSource = 'knob' | 'seq' | 'roll' | 'arrange.weights' | 'arrange.structure' | 'transport' | 'mixer' | 'rename' | 'automation' | 'region.trim';
-/** A single replacement, addressed by absolute pre-edit doc offsets. */
-interface OffsetEdit {
-    /** absolute [start, end) offsets in the document as it was when detected */
-    range: [number, number];
-    /** replacement text ('' to delete) */
-    text: string;
-}
-/**
- * Format a number for insertion as a source literal. Drag handlers produce
- * values like `0.30000000000000004` or `2.9999999`; emitting those verbatim
- * would corrupt the user's code with float noise. We round to `maxDecimals`
- * and strip trailing zeros, so `0.3`, `2`, `-1.5` come out clean.
- *
- * Pure — no Monaco.
- */
-declare function formatNumber(v: number, maxDecimals?: number): string;
-/**
- * Validate a batch of edits and return them sorted ascending by start offset.
- * Throws on any overlap — overlapping ranges in a single `pushEditOperations`
- * have undefined application order and would corrupt the doc. Zero-width edits
- * (inserts) are allowed and never count as overlapping a neighbour that starts
- * at the same offset only if texts don't both target it; we conservatively
- * reject ranges that share interior space.
- *
- * Pure — no Monaco.
- */
-declare function normalizeEdits(edits: OffsetEdit[]): OffsetEdit[];
-/**
- * Apply a batch of offset edits to a string and return the result. Pure mirror
- * of what the writer does to a Monaco model — used by callers that edit
- * plain text (arrangement round-trip / parity tests) and to preview an edit
- * before it touches the document. Edits are validated + sorted by
- * `normalizeEdits`, then spliced from the END so earlier offsets stay valid.
- *
- * Pure — no Monaco.
- */
-declare function applyEdits(doc: string, edits: OffsetEdit[]): string;
-/**
- * Monaco-bound edit sink. Built only by `createWriter`, and driven only by the
- * functions below it (`commit`, `commitToEditor`, `commitToFile`, `openGesture`,
- * `closeGesture`, `isCommitting`); outside this area it is a type a surface holds
- * and hands back, never something it calls (#1914). Every edit goes through
- * `apply`, which keeps the source tag up across the synchronous content-change
- * event.
- */
-declare class Writeback {
-    private readonly editor;
-    private readonly monaco;
-    private writingSource;
-    /** true between beginGesture/endGesture — suppresses per-edit undo boundaries */
-    private inGesture;
-    /** whether the in-flight gesture has applied any edit — gates the one re-eval
-     * on `endGesture` so a gesture that wrote nothing doesn't re-evaluate. */
-    private gestureDidEdit;
-    /** trailing-debounce timer for the live re-eval (see `requestLiveReeval`). */
-    private reevalTimer;
-    constructor(editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco);
-    /**
-     * Open a gesture: edits applied until `endGesture` coalesce into ONE undo
-     * step. Used for a continuous knob drag or a multi-cell sweep so the whole
-     * gesture is a single Ctrl-Z. Re-eval still fires per edit (live audio); only
-     * the undo grouping is affected. Idempotent if already in a gesture.
-     */
-    beginGesture(): void;
-    /** Close the gesture, sealing all its edits as one undo step — and, if the
-     * gesture changed anything, make it audible immediately (one re-eval on
-     * release, not per drag frame). */
-    endGesture(): void;
-    /**
-     * The source of the edit currently being applied, or null. Non-null ONLY for
-     * the duration of `apply`; `isCommitting` reads it, and only as null or not.
-     */
-    get currentSource(): WriteSource | null;
-    /**
-     * Replace several non-overlapping ranges as ONE edit — one undo step. Used
-     * for multi-cell drags (toggle several steps, then a single Ctrl-Z reverts
-     * the whole gesture).
-     */
-    replaceRanges(edits: OffsetEdit[], source: WriteSource): boolean;
-    /** false when there is no document to write to — nothing was applied */
-    private apply;
-    /**
-     * Ask the app to re-evaluate the EDITED file so a visual mutation is audible
-     * the moment it commits. Centralised here so every visual surface — sequencer,
-     * piano roll, knobs, mixer — goes live from ONE place, not per panel. The app
-     * re-evals only a PLAYING file, and only when live mode isn't already doing
-     * it, so this never auto-starts audio nor double-evaluates.
-     *
-     * Trailing-debounced: rapid successive commits (e.g. clearing several
-     * sequencer steps in a row) coalesce into ONE re-eval shortly after the last,
-     * which also lets the Monaco→file-store sync settle so the re-eval reads the
-     * final content rather than racing a not-yet-synced edit.
-     */
-    private requestLiveReeval;
-}
-/**
- * Why a write by file did not land. Each value names ONE refusal the file route
- * can actually tell apart, because a report that cannot name its cause cannot
- * drive the next decision (#1414) — "the edit was declined" and "the document
- * moved under you" call for opposite responses from a caller, and a bare `false`
- * says neither.
- */
-type WriteRefusal = 
-/** No editor is registered for `fileId` — typically unmounted mid-gesture. */
-'no-editor'
-/** The monaco namespace was never captured, so no edit can be constructed. */
- | 'no-monaco'
-/** Nothing to write — upstream (usually a serializer) declined the gesture. */
- | 'no-edits'
-/** `expectedDoc` no longer matches the live model: the offsets are stale and
- *  applying them would corrupt unrelated code. RETRYABLE — unlike the rest. */
- | 'stale-document'
-/** The writer threw while applying the edits. */
- | 'writeback-threw';
-/** `'applied'`, or the reason the file route refused. */
-type WriteOutcome = 'applied' | WriteRefusal;
-/**
- * `commit` addressed by FILE rather than by a writer — the route a surface takes
- * when it does not own the editor: the Song Timeline's gestures and the app's
- * backdrop write (#1906, #1911). The edits land in `fileId`'s editor as ONE undo
- * step tagged `source`, and the writer's debounced re-eval makes them audible.
- *
- * `expectedDoc` is REQUIRED (#1911): the document the edit's offsets were computed
- * against. A panel re-detects its chunk against the live document in the same
- * turn it writes; a caller of this route does not (the timeline computes from its
- * last IR snapshot, which lags typing by a debounce), so this comparison is the
- * only thing standing between stale offsets and unrelated code. A document that
- * moved is refused as 'stale-document' and nothing is written.
- *
- * ⚠ RETURNS A REASON, NOT A BOOLEAN (#1414). Every member of `WriteOutcome` is a
- * non-empty string, so a bare `if (outcome)` is always true and always a bug —
- * compare against 'applied'. Refusals are checked in a fixed order (no editor, no
- * monaco, nothing to write, stale document) so the cause a caller reports is the
- * same on every run.
- */
-declare function commitToFile(fileId: string, edit: OffsetEdit | readonly OffsetEdit[] | null, source: WriteSource, expectedDoc: string): WriteOutcome;
-
-/**
  * arrange/serialize — structural ops on a detected combinator call.
  *
  * Each op is PURE: it takes an `ArrangeCall` (from `arrange/parse`) + the live
@@ -3375,6 +3373,114 @@ declare function shapeOptions(a: SignalAutomation): readonly SignalKind[];
  * another document and replacing them would corrupt it.
  */
 declare function shapeEdit(a: SignalAutomation, next: string, source: string): OffsetEdit | null;
+
+/**
+ * regionTrim.ts — the WRITE DECISIONS for a sample's played region (#1527).
+ *
+ * `begin` and `end` say which slice of a sample file a mark plays. The timeline
+ * already DRAWS that slice (#1512, `waveformLane.ts`); this is the other
+ * direction — a dragged mark edge becoming `.begin(0.25)` in the document.
+ *
+ * Pure, like `mixer/writeStrip.ts` and for the same reason: `ChunkInfo` + a
+ * target value → one surgical edit, or `null` when the control must hand off.
+ * The gesture is then unit-testable without a canvas or Monaco.
+ *
+ * `begin` and `end` are number controls like `pan`, so the reading and the
+ * writing are the shared ones (#1918): `readNumberCall` and `setNumberCall`,
+ * both landing on the call that plays. What is the region's own is the clamp
+ * against the partner edge and the multi-voice refusal below.
+ *
+ * ── WHY THIS IS ITS OWN MODULE AND NOT AN ADD-EFFECT ENTRY ──────────────────
+ * `effectCatalog.ts` excludes `begin`/`end` deliberately, and says why:
+ * "sample trim (a sample/region concern)". That division of labour is right —
+ * the FX menu is per-track colour, and a region is a property of the audio a
+ * mark plays. This module is the surface those two were being reserved for, so
+ * the fence stays up rather than being routed around.
+ *
+ * ── WHAT IT REFUSES, AND HOW OFTEN THAT IS ──────────────────────────────────
+ * Measured over the 558-document archive (deduped by sha256 of `code`): of the
+ * region controls that a chunk actually exposes, **8 of 16 `.begin` and 6 of 17
+ * `.end` are numeric** — the rest are patterned (`"<0 .25 .5 .75>"`), computed
+ * (`rand.rangex(0.1,.5)`) or bound (`beginVal`). Roughly half must be refused,
+ * so refusing is a first-class outcome here rather than an edge case.
+ *
+ * The common case is neither: **544 of those 558 documents write no `.begin` at
+ * all**, so the path that runs most is the append.
+ */
+
+/** The two ends of a region, in the order superdough reads them. */
+type RegionControl = 'begin' | 'end';
+/**
+ * The narrowest gap the two edges may be pushed to, as a fraction of the file.
+ *
+ * WHY A FLOOR AT ALL: `regionPlayback` returns null — draws nothing, plays
+ * nothing — the moment `end <= begin`, so a drag that crosses over silently
+ * empties the mark. A gesture whose far end is "the take disappears" is not a
+ * trim. 0.01 is `knobRanges`' own step for both controls, so the floor and the
+ * knob agree on what one unit of this value is.
+ */
+declare const MIN_REGION_SPAN = 0.01;
+/**
+ * What the document currently says this control is: a number, `null` for
+ * written-but-not-a-number (refuse), or `'absent'` (append). See
+ * `readNumberCall` for why those two must stay apart.
+ */
+declare function readRegionControl(chunk: ChunkInfo, control: RegionControl): number | null | 'absent';
+/** The region a chunk plays today, with absent controls resolved to defaults. */
+declare function readRegion(chunk: ChunkInfo): {
+    begin: number;
+    end: number;
+} | null;
+/**
+ * Head functions whose expression is MORE THAN ONE SOUND SOURCE.
+ *
+ * ⚠ MEASURED, NOT DEFENSIVE. A lane's source anchor resolves to the outer
+ * combinator for a nested arm — `$: stack(s("drums"), s("take_1"))` gives one
+ * chunk headed `stack` whichever anchor is used. Appending `.begin(0.3)` there
+ * is valid code that does the wrong thing: the user grabbed the take's mark and
+ * the drums get trimmed too, silently, with the document looking reasonable.
+ *
+ * The agreement check cannot catch this one. When neither the mark nor the
+ * combinator has a region, both read the default and they agree — the append is
+ * only wrong about WHOSE region it sets. So the head is checked directly.
+ *
+ * Refusing costs a real case: `$: arrange([4, vox])`, one take, where appending
+ * would have been right. That is the trade taken deliberately — a refusal is
+ * visible and can be relaxed later; a silent edit to the wrong voices is neither.
+ */
+declare const MULTI_VOICE_HEADS: ReadonlySet<string>;
+/** Why a trim produced no edit — carried so the caller can say so out loud. */
+type RegionTrimRefusal = 
+/** the control (or its partner) is patterned, computed or bound */
+'not-a-number'
+/** the expression combines several voices — the edit would reach all of them */
+ | 'not-one-voice'
+/** the drag asked for a value the document already says */
+ | 'no-change';
+interface RegionTrimResult {
+    /** The edit to apply, or null when `refusal` says why there is none. */
+    readonly edit: OffsetEdit | null;
+    readonly refusal: RegionTrimRefusal | null;
+    /** What the control will read after the edit — already clamped. */
+    readonly value: number;
+}
+/**
+ * Move ONE edge of the region to `value`, clamped so the result is still a
+ * region someone can hear.
+ *
+ * Clamping is against the OTHER edge as the document currently writes it, not
+ * against 0/1 alone: dragging `begin` past `end` would make
+ * `regionPlayback` return null and the mark would vanish mid-gesture. So a
+ * `begin` may reach at most `end - MIN_REGION_SPAN`, and an `end` at least
+ * `begin + MIN_REGION_SPAN`.
+ *
+ * ⚠ THE PARTNER IS READ EVEN WHEN IT IS NOT BEING EDITED, and a patterned
+ * partner refuses the whole trim. Not defensiveness — with `.end("<0.3 0.8>")`
+ * there is no single number to clamp against, and clamping against the default
+ * 1 instead would let `begin` be dragged past the end this mark actually plays
+ * on the cycle the user is looking at.
+ */
+declare function regionTrimEdit(chunk: ChunkInfo, control: RegionControl, value: number): RegionTrimResult;
 
 type PickMethod = 'pick' | 'pickRestart' | 'pickReset';
 /** One arm of the `<…@w …>` control = one section clip. */
@@ -13122,131 +13228,6 @@ interface AuditionHandle {
  */
 declare function startAudition(sound: string, note?: string): AuditionHandle;
 
-/**
- * regionTrim.ts — the WRITE DECISIONS for a sample's played region (#1527).
- *
- * `begin` and `end` say which slice of a sample file a mark plays. The timeline
- * already DRAWS that slice (#1512, `waveformLane.ts`); this is the other
- * direction — a dragged mark edge becoming `.begin(0.25)` in the document.
- *
- * Pure, like `mixer/writeStrip.ts` and for the same reason: `ChunkInfo` + a
- * target value → one surgical edit, or `null` when the control must hand off.
- * The gesture is then unit-testable without a canvas or Monaco.
- *
- * ── WHY THIS IS ITS OWN MODULE AND NOT AN ADD-EFFECT ENTRY ──────────────────
- * `effectCatalog.ts` excludes `begin`/`end` deliberately, and says why:
- * "sample trim (a sample/region concern)". That division of labour is right —
- * the FX menu is per-track colour, and a region is a property of the audio a
- * mark plays. This module is the surface those two were being reserved for, so
- * the fence stays up rather than being routed around.
- *
- * ── WHAT IT REFUSES, AND HOW OFTEN THAT IS ──────────────────────────────────
- * Measured over the 558-document archive (deduped by sha256 of `code`): of the
- * region controls that a chunk actually exposes, **8 of 16 `.begin` and 6 of 17
- * `.end` are numeric** — the rest are patterned (`"<0 .25 .5 .75>"`), computed
- * (`rand.rangex(0.1,.5)`) or bound (`beginVal`). Roughly half must be refused,
- * so refusing is a first-class outcome here rather than an edge case.
- *
- * The common case is neither: **544 of those 558 documents write no `.begin` at
- * all**, so the path that runs most is the append.
- */
-
-/** One surgical edit: replace `range` with `text` (a zero-width range inserts). */
-interface RegionEdit {
-    range: [number, number];
-    text: string;
-}
-/** The two ends of a region, in the order superdough reads them. */
-type RegionControl = 'begin' | 'end';
-/**
- * The narrowest gap the two edges may be pushed to, as a fraction of the file.
- *
- * WHY A FLOOR AT ALL: `regionPlayback` returns null — draws nothing, plays
- * nothing — the moment `end <= begin`, so a drag that crosses over silently
- * empties the mark. A gesture whose far end is "the take disappears" is not a
- * trim. 0.01 is `knobRanges`' own step for both controls, so the floor and the
- * knob agree on what one unit of this value is.
- */
-declare const MIN_REGION_SPAN = 0.01;
-/**
- * What the document currently says this control is.
- *
- * `null` means "written, but not as a number" — patterned, computed or bound —
- * which is NOT the same as absent and must not be confused with it: absent is
- * writable (append the call), non-numeric is not (refuse). Returning the
- * default for both would make a `.begin("<0 .5>")` look like a plain 0 and let
- * a drag overwrite a pattern the user wrote on purpose.
- */
-declare function readRegionControl(chunk: ChunkInfo, control: RegionControl): number | null | 'absent';
-/** The region a chunk plays today, with absent controls resolved to defaults. */
-declare function readRegion(chunk: ChunkInfo): {
-    begin: number;
-    end: number;
-} | null;
-/**
- * The edit that sets one region control to `value`:
- *  - numeric literal → replace just that literal;
- *  - absent          → append `.begin(v)` / `.end(v)` at the end of the expression;
- *  - patterned/computed/bound → null, and the caller must decline VISIBLY.
- *
- * `value` is NOT clamped here. Clamping needs the other end (a `begin` may not
- * pass its `end`), and a function that silently repaired an out-of-range value
- * would make the refusal above indistinguishable from a rewrite to something
- * the caller never asked for. `regionTrimEdit` below is the clamping entry
- * point; this one is the primitive it is built from.
- */
-declare function regionControlEdit(chunk: ChunkInfo, control: RegionControl, value: number): RegionEdit | null;
-/**
- * Head functions whose expression is MORE THAN ONE SOUND SOURCE.
- *
- * ⚠ MEASURED, NOT DEFENSIVE. A lane's source anchor resolves to the outer
- * combinator for a nested arm — `$: stack(s("drums"), s("take_1"))` gives one
- * chunk headed `stack` whichever anchor is used. Appending `.begin(0.3)` there
- * is valid code that does the wrong thing: the user grabbed the take's mark and
- * the drums get trimmed too, silently, with the document looking reasonable.
- *
- * The agreement check cannot catch this one. When neither the mark nor the
- * combinator has a region, both read the default and they agree — the append is
- * only wrong about WHOSE region it sets. So the head is checked directly.
- *
- * Refusing costs a real case: `$: arrange([4, vox])`, one take, where appending
- * would have been right. That is the trade taken deliberately — a refusal is
- * visible and can be relaxed later; a silent edit to the wrong voices is neither.
- */
-declare const MULTI_VOICE_HEADS: ReadonlySet<string>;
-/** Why a trim produced no edit — carried so the caller can say so out loud. */
-type RegionTrimRefusal = 
-/** the control (or its partner) is patterned, computed or bound */
-'not-a-number'
-/** the expression combines several voices — the edit would reach all of them */
- | 'not-one-voice'
-/** the drag asked for a value the document already says */
- | 'no-change';
-interface RegionTrimResult {
-    /** The edit to apply, or null when `refusal` says why there is none. */
-    readonly edit: RegionEdit | null;
-    readonly refusal: RegionTrimRefusal | null;
-    /** What the control will read after the edit — already clamped. */
-    readonly value: number;
-}
-/**
- * Move ONE edge of the region to `value`, clamped so the result is still a
- * region someone can hear.
- *
- * Clamping is against the OTHER edge as the document currently writes it, not
- * against 0/1 alone: dragging `begin` past `end` would make
- * `regionPlayback` return null and the mark would vanish mid-gesture. So a
- * `begin` may reach at most `end - MIN_REGION_SPAN`, and an `end` at least
- * `begin + MIN_REGION_SPAN`.
- *
- * ⚠ THE PARTNER IS READ EVEN WHEN IT IS NOT BEING EDITED, and a patterned
- * partner refuses the whole trim. Not defensiveness — with `.end("<0.3 0.8>")`
- * there is no single number to clamp against, and clamping against the default
- * 1 instead would let `begin` be dragged past the end this mark actually plays
- * on the cycle the user is looking at.
- */
-declare function regionTrimEdit(chunk: ChunkInfo, control: RegionControl, value: number): RegionTrimResult;
-
 declare function pruneTrackMetaForCode(fileId: string, code: string): void;
 
 /**
@@ -13869,4 +13850,4 @@ declare function codeEditorForFocus(el: Element | null | undefined): MonacoEdito
  */
 declare function codeUndoForFocus(el: Element | null | undefined, which: 'undo' | 'redo'): boolean;
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type AnalyzeWindowOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AssetDigest, type AssetImportInput, type AssetImportPlan, type AssetOrigin, type AssetRecord, type AudioFrame, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, type BootStepFailure, BottomPanel, type BottomPanelTab, type BouncedStem, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, CODE_UNDO_ATTR, type CapabilityEnv, type CaptionFieldKind, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type CollectResult, type Commit, type CommitKind, type CouldNotCheckReason, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DisplaySpan, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EncodeOptions, type EngineAliasMap, type EngineAliasValue, EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, type FixedMarker, type FixedParameter, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, type GmFamily, type GridGestureDef, type GridGestureId, type GridKeyMatcher, type GridMode, type GridScope, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IREvent, IRPattern, type IRSnapshot, type ImportAssetDeps, type ImportAssetResult, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, type LaneItem, type LanePeriod, type LaneSkeleton, LiveCodingEditor, type LiveCodingEditorProps, LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterScalar, Mixer, type NamedStage, type NormalizedHap, type NoteColorMode, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, PatternIR, type PatternKind, PatternPanel, PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PickSectionEntry, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type PutAssetResult, type RegionControl, type RegionEdit, type RegionTrimRefusal, type RegionTrimResult, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplePeaks, type SampleRef, type SamplerInputs, type SectionStats, type SectionWindow, SequencerGrid, type ShapeSwap, type ShellSnapshot, type SignalAliasMap, type SignalAutomation, SignalBus, type SignalDimensions, type SignalFrame, type SignalKind, type SignalReading, type SignalSpans, type SignalTransportReader, type SignalTransportWriter, SilentCaptureError, type SkippedSounds, type SnapshotMeta, type SongAnalysis, type SongExtent, type SongSection, SonicPiEngine, type SoundMapDict, SourceLocation, SplitPane, type StemOutcome, type StepCountEdit, type StepGridModel, type StepLane, type SteppedAutomation, type SteppedStep, StorageFullError, type StorageStatus, type StoredAsset, type StoredAssetMeta, type StoredSignalAliases, type StripEdit, StrudelEditor, type StrudelEditorProps, StrudelEngine, type StrudelTheme, type Surface, TAKE_NAME_PREFIX, type TierFlags, type TierName, type TimeStep, type TimeWarp, type TimelineCaptureEntry, type TrackDisplay, type TrackEnvelopeAccess, type TrackEnvelopeStatus, type TrackEnvelopeView, type TrackMeta, UI_ICON_SIZE_VAR, type UnboundedSignalKind, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizPreviewSpec, VizQualityLevel, VizRenderer, type VizRendererKind, VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, type WalkWindow, WavEncoder, type WindowAnalysis, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteOutcome, type WriteRefusal, type WriteSource, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms$1 as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, insertSilenceArm$1 as insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts$1 as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, insertSilenceArm as pickInsertSilenceArm, listSectionParts as pickListSectionParts, removeArm as pickRemoveArm, renameSection as pickRenameSection, reorderArm as pickReorderArm, setArmHead as pickSetArmHead, setWeight as pickSetWeight, silenceArm as pickSilenceArm, splitArm as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionControlEdit, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm$1 as removeArm, removeAssetRecord, renameSection$1 as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm$1 as silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, useGridMode, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type AnalyzeWindowOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AssetDigest, type AssetImportInput, type AssetImportPlan, type AssetOrigin, type AssetRecord, type AudioFrame, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, type BootStepFailure, BottomPanel, type BottomPanelTab, type BouncedStem, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, CODE_UNDO_ATTR, type CapabilityEnv, type CaptionFieldKind, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type CollectResult, type Commit, type CommitKind, type CouldNotCheckReason, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DisplaySpan, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EncodeOptions, type EngineAliasMap, type EngineAliasValue, EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, type FixedMarker, type FixedParameter, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, type GmFamily, type GridGestureDef, type GridGestureId, type GridKeyMatcher, type GridMode, type GridScope, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IREvent, IRPattern, type IRSnapshot, type ImportAssetDeps, type ImportAssetResult, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, type LaneItem, type LanePeriod, type LaneSkeleton, LiveCodingEditor, type LiveCodingEditorProps, LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterScalar, Mixer, type NamedStage, type NormalizedHap, type NoteColorMode, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, PatternIR, type PatternKind, PatternPanel, PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PickSectionEntry, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type PutAssetResult, type RegionControl, type RegionTrimRefusal, type RegionTrimResult, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplePeaks, type SampleRef, type SamplerInputs, type SectionStats, type SectionWindow, SequencerGrid, type ShapeSwap, type ShellSnapshot, type SignalAliasMap, type SignalAutomation, SignalBus, type SignalDimensions, type SignalFrame, type SignalKind, type SignalReading, type SignalSpans, type SignalTransportReader, type SignalTransportWriter, SilentCaptureError, type SkippedSounds, type SnapshotMeta, type SongAnalysis, type SongExtent, type SongSection, SonicPiEngine, type SoundMapDict, SourceLocation, SplitPane, type StemOutcome, type StepCountEdit, type StepGridModel, type StepLane, type SteppedAutomation, type SteppedStep, StorageFullError, type StorageStatus, type StoredAsset, type StoredAssetMeta, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, type StrudelTheme, type Surface, TAKE_NAME_PREFIX, type TierFlags, type TierName, type TimeStep, type TimeWarp, type TimelineCaptureEntry, type TrackDisplay, type TrackEnvelopeAccess, type TrackEnvelopeStatus, type TrackEnvelopeView, type TrackMeta, UI_ICON_SIZE_VAR, type UnboundedSignalKind, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizPreviewSpec, VizQualityLevel, VizRenderer, type VizRendererKind, VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, type WalkWindow, WavEncoder, type WindowAnalysis, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteOutcome, type WriteRefusal, type WriteSource, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms$1 as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, insertSilenceArm$1 as insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts$1 as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, insertSilenceArm as pickInsertSilenceArm, listSectionParts as pickListSectionParts, removeArm as pickRemoveArm, renameSection as pickRenameSection, reorderArm as pickReorderArm, setArmHead as pickSetArmHead, setWeight as pickSetWeight, silenceArm as pickSilenceArm, splitArm as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm$1 as removeArm, removeAssetRecord, renameSection$1 as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm$1 as silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, useGridMode, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };

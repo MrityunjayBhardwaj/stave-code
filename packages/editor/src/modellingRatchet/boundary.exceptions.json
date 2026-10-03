@@ -77,19 +77,13 @@
     },
     {
       "file": "packages/editor/src/visualEdit/panels/usePatternLength.ts",
-      "what": "drives parse / serialize itself (through the entry, so no rule sees it); reads syntax from user code by hand",
+      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
       "issue": "#1880"
     },
     {
       "file": "packages/editor/src/visualEdit/panels/writtenSteps.ts",
       "what": "drives parse / serialize itself (through the entry, so no rule sees it); reads syntax from user code by hand",
       "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/regionTrim.ts",
-      "what": "builds replacement text for the document",
-      "issue": "#1894",
-      "added": "#1894 it has built the clip-trim edit since before this list was written and the survey missed it; listed so it is counted until its builder moves into the area"
     },
     {
       "file": "packages/editor/src/workspace/runtime/LiveCodingRuntime.ts",
@@ -114,11 +108,6 @@
     {
       "file": "packages/app/src/components/musicalTimeline/sectionLabel.ts",
       "what": "reads syntax from user code by hand",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/app/src/components/musicalTimeline/steppedLane.ts",
-      "what": "decides and batches edits",
       "issue": "#1880"
     },
     {

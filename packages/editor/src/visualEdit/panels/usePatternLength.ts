@@ -12,7 +12,7 @@ import { emitLog } from '../../engine/engineLog'
 import type { ChunkInfo } from '../../codeView'
 import { appendEmptyBars, duplicateBar, type LengthenResult } from '../../codeView'
 import type { ParseResult } from '../../codeView'
-import { UNREFINED, type ViewScale } from '../../codeView'
+import { UNREFINED, readChunkGain, type ViewScale } from '../../codeView'
 
 /**
  * A per-column `.gain("…")` is managed only while each bar is one column, so a
@@ -25,8 +25,7 @@ const VELOCITY_STRING =
 const GRID_CANT_SHOW = "the grid couldn't show the longer pattern"
 
 function hasVelocityString(chunk: ChunkInfo): boolean {
-  const arg = chunk.chain.find((c) => c.name === 'gain')?.args[0]
-  return !!arg && /^["'`]/.test(arg.raw)
+  return readChunkGain(chunk).mini !== null
 }
 
 export interface Verdict {

@@ -96,6 +96,20 @@ export function formatNumber(v: number, maxDecimals = 4): string {
 }
 
 /**
+ * A number the user typed into a field, or null when the text is not one.
+ *
+ * ⚠ `Number('')` IS 0, and so is `Number('  ')`. Without the empty check,
+ * clearing a field and pressing Enter writes a ZERO into the document — a
+ * plausible value, so a silent corruption rather than a visible error.
+ */
+export function parseTypedNumber(text: string): number | null {
+  const raw = text.trim()
+  if (raw.length === 0) return null
+  const n = Number(raw)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
  * Validate a batch of edits and return them sorted ascending by start offset.
  * Throws on any overlap — overlapping ranges in a single `pushEditOperations`
  * have undefined application order and would corrupt the doc. Zero-width edits
