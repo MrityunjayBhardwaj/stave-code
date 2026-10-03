@@ -3807,16 +3807,11 @@ var _Writeback = class _Writeback {
     }
   }
   /**
-   * The source of the edit currently being applied, or null. The host's
-   * `onDidChangeModelContent` listener reads this synchronously to attribute
-   * the change. It is non-null ONLY for the duration of `apply`.
+   * The source of the edit currently being applied, or null. Non-null ONLY for
+   * the duration of `apply`; `isCommitting` reads it, and only as null or not.
    */
   get currentSource() {
     return this.writingSource;
-  }
-  /** Replace a single offset range. One undo step. */
-  replaceRange(range2, text, source) {
-    this.apply([{ range: range2, text }], source);
   }
   /**
    * Replace several non-overlapping ranges as ONE edit — one undo step. Used
@@ -3825,27 +3820,6 @@ var _Writeback = class _Writeback {
    */
   replaceRanges(edits, source) {
     return this.apply(edits, source);
-  }
-  /** Insert text at an offset (zero-width edit). */
-  insertAt(offset, text, source) {
-    this.apply([{ range: [offset, offset], text }], source);
-  }
-  /** Delete an offset range. */
-  deleteRange(range2, source) {
-    this.apply([{ range: range2, text: "" }], source);
-  }
-  /**
-   * Freshness-guarded write. Re-reads the live model text and refuses the edit
-   * if the chunk's statement no longer matches what it was detected from
-   * (the doc changed under the panel). Returns true if applied, false if stale.
-   * Prefer this over the raw methods on any path that can race a typed edit.
-   */
-  applyFresh(chunk, edits, source) {
-    const model = this.editor.getModel();
-    if (!model) return false;
-    if (!isChunkFresh(model.getValue(), chunk)) return false;
-    this.apply(edits, source);
-    return true;
   }
   /** false when there is no document to write to — nothing was applied */
   apply(edits, source) {
@@ -51710,7 +51684,6 @@ exports.WavEncoder = WavEncoder;
 exports.WorkerBusFeed = WorkerBusFeed;
 exports.WorkerVizRenderer = WorkerVizRenderer;
 exports.WorkspaceShell = WorkspaceShell;
-exports.Writeback = Writeback;
 exports.accumulateLanes = accumulateLanes;
 exports.accumulateLanesInWindow = accumulateLanesInWindow;
 exports.adaptMasterChunk = adaptMasterChunk;
