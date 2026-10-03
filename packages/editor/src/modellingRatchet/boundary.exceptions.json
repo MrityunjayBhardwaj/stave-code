@@ -100,11 +100,6 @@
       "issue": "#1880"
     },
     {
-      "file": "packages/app/src/components/musicalTimeline/steppedLane.ts",
-      "what": "decides and batches edits",
-      "issue": "#1880"
-    },
-    {
       "file": "packages/app/src/components/musicalTimeline/trackLabel.ts",
       "what": "reads syntax from user code by hand",
       "issue": "#1880"
