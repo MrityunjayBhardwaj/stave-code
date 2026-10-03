@@ -2461,15 +2461,15 @@ export class StrudelEngine implements LiveCodingEngine {
    * The tempo the scheduler is ACTUALLY running at, in cycles per second, or
    * `null` when there is no scheduler yet (engine not initialised).
    *
-   * ⚠ WHY THIS EXISTS ALONGSIDE `extractBpmFromCode`. That helper regex-matches
-   * a literal `setcps(...)` in the source and is what feeds the status bar's BPM
-   * readout. It cannot see three things the scheduler knows: `setcpm(...)`,
-   * which the repl routes through the same setter (`repl.mjs` — `setCpm = (cpm)
-   * => scheduler.setCps(cpm/60)`); a tempo left at Strudel's default of `0.5`
-   * (`cyclist.mjs:24`) by a document that sets none; and a cps CHANGED mid-
-   * pattern from a hap value (`cyclist.mjs:72-74`). So `undefined` from the
-   * regex means "the code did not spell setcps", never "there is no tempo" —
-   * a distinction that matters the moment anything converts cycles to seconds.
+   * ⚠ WHY THIS EXISTS ALONGSIDE `extractBpmFromCode`. That helper reads the
+   * tempo the CODE sets (`codeView/tempo.ts`, the setter family `setcps`/
+   * `setcpm` and their camel-case twins, #1925) and is what feeds the status
+   * bar's BPM readout. It cannot see two things the scheduler knows: a tempo
+   * left at Strudel's default of `0.5` (`cyclist.mjs:24`) by a document that
+   * sets none, and a cps CHANGED mid-pattern from a hap value
+   * (`cyclist.mjs:72-74`). So `undefined` from it means "the code sets no tempo
+   * it can read", never "there is no tempo" — a distinction that matters the
+   * moment anything converts cycles to seconds.
    *
    * Deliberately NOT folded into `PatternScheduler`: that adapter is consumed by
    * ~10 visualiser modules, and a tempo read does not need their blast radius.

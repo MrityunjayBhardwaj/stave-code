@@ -21,6 +21,7 @@
 
 // ── read ── the finished models a view draws, and the facts read off the code
 export { readChainMethod } from './chainMethod'
+export { writtenCps, writtenBpm } from './tempo'
 export {
   detectAllChunks,
   detectChunk,

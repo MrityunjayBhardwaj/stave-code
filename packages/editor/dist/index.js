@@ -67,6 +67,51 @@ function docParses(doc) {
 }
 __name(docParses, "docParses");
 
+// src/codeView/tempo.ts
+var SETTERS = {
+  setcps: "cps",
+  setCps: "cps",
+  setcpm: "cpm",
+  setCpm: "cpm"
+};
+function writtenCps(doc) {
+  const body = parseTopLevel(doc);
+  if (body === null) return "unknown";
+  let found = null;
+  for (const stmt of body) {
+    const call = stmt?.type === "ExpressionStatement" ? stmt.expression : null;
+    if (call?.type !== "CallExpression" || call.callee?.type !== "Identifier") continue;
+    const unit = SETTERS[call.callee.name];
+    if (!unit) continue;
+    const value = call.arguments.length === 1 ? literalNumber(call.arguments[0]) : null;
+    found = value === null ? "unknown" : unit === "cpm" ? value / 60 : value;
+  }
+  return found;
+}
+__name(writtenCps, "writtenCps");
+function literalNumber(node) {
+  if (!node) return null;
+  if (node.type === "Literal") return typeof node.value === "number" && Number.isFinite(node.value) ? node.value : null;
+  if (node.type === "UnaryExpression" && (node.operator === "-" || node.operator === "+")) {
+    const v = literalNumber(node.argument);
+    return v === null ? null : node.operator === "-" ? -v : v;
+  }
+  if (node.type === "BinaryExpression") {
+    const a = literalNumber(node.left);
+    const b = literalNumber(node.right);
+    if (a === null || b === null) return null;
+    const v = node.operator === "+" ? a + b : node.operator === "-" ? a - b : node.operator === "*" ? a * b : node.operator === "/" ? a / b : null;
+    return v !== null && Number.isFinite(v) ? v : null;
+  }
+  return null;
+}
+__name(literalNumber, "literalNumber");
+function writtenBpm(doc) {
+  const cps = writtenCps(doc);
+  return typeof cps === "number" ? Math.round(cps * 240) : void 0;
+}
+__name(writtenBpm, "writtenBpm");
+
 // src/codeView/miniSource/spanRole.ts
 var NOTE_OVERRIDE = /* @__PURE__ */ new Set(["note", "n"]);
 function walk(node, parent, ctx) {
@@ -16383,15 +16428,15 @@ var _StrudelEngine = class _StrudelEngine {
    * The tempo the scheduler is ACTUALLY running at, in cycles per second, or
    * `null` when there is no scheduler yet (engine not initialised).
    *
-   * ⚠ WHY THIS EXISTS ALONGSIDE `extractBpmFromCode`. That helper regex-matches
-   * a literal `setcps(...)` in the source and is what feeds the status bar's BPM
-   * readout. It cannot see three things the scheduler knows: `setcpm(...)`,
-   * which the repl routes through the same setter (`repl.mjs` — `setCpm = (cpm)
-   * => scheduler.setCps(cpm/60)`); a tempo left at Strudel's default of `0.5`
-   * (`cyclist.mjs:24`) by a document that sets none; and a cps CHANGED mid-
-   * pattern from a hap value (`cyclist.mjs:72-74`). So `undefined` from the
-   * regex means "the code did not spell setcps", never "there is no tempo" —
-   * a distinction that matters the moment anything converts cycles to seconds.
+   * ⚠ WHY THIS EXISTS ALONGSIDE `extractBpmFromCode`. That helper reads the
+   * tempo the CODE sets (`codeView/tempo.ts`, the setter family `setcps`/
+   * `setcpm` and their camel-case twins, #1925) and is what feeds the status
+   * bar's BPM readout. It cannot see two things the scheduler knows: a tempo
+   * left at Strudel's default of `0.5` (`cyclist.mjs:24`) by a document that
+   * sets none, and a cps CHANGED mid-pattern from a hap value
+   * (`cyclist.mjs:72-74`). So `undefined` from it means "the code sets no tempo
+   * it can read", never "there is no tempo" — a distinction that matters the
+   * moment anything converts cycles to seconds.
    *
    * Deliberately NOT folded into `PatternScheduler`: that adapter is consumed by
    * ~10 visualiser modules, and a tempo read does not need their blast radius.
@@ -45878,24 +45923,7 @@ __name(stemFileNames, "stemFileNames");
 // src/workspace/runtime/LiveCodingRuntime.ts
 var LIVE_MODE_DEBOUNCE_MS = 500;
 function extractBpmFromCode(code) {
-  const fractionMatch = code.match(
-    /setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/
-  );
-  if (fractionMatch) {
-    const numerator = parseFloat(fractionMatch[1]);
-    const denominator = parseFloat(fractionMatch[2]);
-    if (denominator > 0 && Number.isFinite(numerator)) {
-      return Math.round(numerator / denominator * 60 * 4);
-    }
-  }
-  const scalarMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\)/);
-  if (scalarMatch) {
-    const cps = parseFloat(scalarMatch[1]);
-    if (Number.isFinite(cps)) {
-      return Math.round(cps * 60 * 4);
-    }
-  }
-  return void 0;
+  return writtenBpm(code);
 }
 __name(extractBpmFromCode, "extractBpmFromCode");
 var _LiveCodingRuntime = class _LiveCodingRuntime {
@@ -46592,12 +46620,12 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
    * Strudel engine).
    *
    * ⚠ THIS IS NOT `getBpm()` IN OTHER UNITS. `getBpm()` returns
-   * `extractBpmFromCode`, a regex over the source that matches only a literal
-   * `setcps(...)`; it is `undefined` for a document that sets no tempo, that
-   * uses `setcpm(...)`, or that changes cps mid-pattern — none of which mean
-   * the music has no tempo. Anything converting CYCLES to SECONDS must use
-   * this and not the readout, or it will size a document by a number the
-   * source text happened to spell. See `StrudelEngine.getCps`.
+   * `extractBpmFromCode`, the tempo the code SETS (`codeView/tempo.ts`); it is
+   * `undefined` for a document that sets no tempo it can read, and it cannot see
+   * cps changed mid-pattern — neither of which means the music has no tempo.
+   * Anything converting CYCLES to SECONDS must use this and not the readout, or
+   * it will size a document by a number the source text happened to spell. See
+   * `StrudelEngine.getCps`.
    *
    * Duck-typed on the engine for the same reason `record`/`canRecord` are
    * (#1346): the capability is Strudel-specific and the engine interface is
@@ -47108,13 +47136,8 @@ function StrudelEditor({
   const codeRef = useRef(controlledCode ?? defaultCode);
   codeRef.current = controlledCode ?? defaultCode;
   const handlePostEvaluate = useCallback((engine2) => {
-    const code = codeRef.current;
-    const cpsMatch = code.match(/setcps\s*\(\s*([\d.]+)\s*\/\s*([\d.]+)\s*\)/);
-    if (cpsMatch) {
-      const numerator = parseFloat(cpsMatch[1]);
-      const denominator = parseFloat(cpsMatch[2]);
-      if (denominator > 0) setBpm(Math.round(numerator / denominator * 60));
-    }
+    const written = writtenBpm(codeRef.current);
+    if (written !== void 0) setBpm(written);
     const strudelEngine = engine2;
     if (soundNames.length === 0) {
       setSoundNames(strudelEngine.getSoundNames());
