@@ -26,8 +26,8 @@
  * ## Chrome rendering
  *
  * Same `▶ ⏹ BPM error chromeExtras` shape as `STRUDEL_RUNTIME`. BPM
- * extraction relies on the same `setcps()` regex inside
- * `LiveCodingRuntime`, which Sonic Pi files do not typically use — the
+ * extraction is `LiveCodingRuntime`'s Strudel tempo reader (`codeView/tempo.ts`),
+ * which reads JavaScript setter calls a Sonic Pi file does not contain — the
  * runtime returns `undefined` for `getBpm()` on Sonic Pi code, and the
  * chrome silently omits the BPM display. A future Sonic Pi BPM source
  * (e.g., `use_bpm 120` extraction) is a follow-up task; the chrome's

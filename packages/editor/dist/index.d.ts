@@ -4478,15 +4478,15 @@ declare class StrudelEngine implements LiveCodingEngine {
      * The tempo the scheduler is ACTUALLY running at, in cycles per second, or
      * `null` when there is no scheduler yet (engine not initialised).
      *
-     * ⚠ WHY THIS EXISTS ALONGSIDE `extractBpmFromCode`. That helper regex-matches
-     * a literal `setcps(...)` in the source and is what feeds the status bar's BPM
-     * readout. It cannot see three things the scheduler knows: `setcpm(...)`,
-     * which the repl routes through the same setter (`repl.mjs` — `setCpm = (cpm)
-     * => scheduler.setCps(cpm/60)`); a tempo left at Strudel's default of `0.5`
-     * (`cyclist.mjs:24`) by a document that sets none; and a cps CHANGED mid-
-     * pattern from a hap value (`cyclist.mjs:72-74`). So `undefined` from the
-     * regex means "the code did not spell setcps", never "there is no tempo" —
-     * a distinction that matters the moment anything converts cycles to seconds.
+     * ⚠ WHY THIS EXISTS ALONGSIDE `extractBpmFromCode`. That helper reads the
+     * tempo the CODE sets (`codeView/tempo.ts`, the setter family `setcps`/
+     * `setcpm` and their camel-case twins, #1925) and is what feeds the status
+     * bar's BPM readout. It cannot see two things the scheduler knows: a tempo
+     * left at Strudel's default of `0.5` (`cyclist.mjs:24`) by a document that
+     * sets none, and a cps CHANGED mid-pattern from a hap value
+     * (`cyclist.mjs:72-74`). So `undefined` from it means "the code sets no tempo
+     * it can read", never "there is no tempo" — a distinction that matters the
+     * moment anything converts cycles to seconds.
      *
      * Deliberately NOT folded into `PatternScheduler`: that adapter is consumed by
      * ~10 visualiser modules, and a tempo read does not need their blast radius.
@@ -11468,12 +11468,12 @@ declare class LiveCodingRuntime implements LiveCodingRuntime$1 {
      * Strudel engine).
      *
      * ⚠ THIS IS NOT `getBpm()` IN OTHER UNITS. `getBpm()` returns
-     * `extractBpmFromCode`, a regex over the source that matches only a literal
-     * `setcps(...)`; it is `undefined` for a document that sets no tempo, that
-     * uses `setcpm(...)`, or that changes cps mid-pattern — none of which mean
-     * the music has no tempo. Anything converting CYCLES to SECONDS must use
-     * this and not the readout, or it will size a document by a number the
-     * source text happened to spell. See `StrudelEngine.getCps`.
+     * `extractBpmFromCode`, the tempo the code SETS (`codeView/tempo.ts`); it is
+     * `undefined` for a document that sets no tempo it can read, and it cannot see
+     * cps changed mid-pattern — neither of which means the music has no tempo.
+     * Anything converting CYCLES to SECONDS must use this and not the readout, or
+     * it will size a document by a number the source text happened to spell. See
+     * `StrudelEngine.getCps`.
      *
      * Duck-typed on the engine for the same reason `record`/`canRecord` are
      * (#1346): the capability is Strudel-specific and the engine interface is
@@ -11785,8 +11785,8 @@ declare const STRUDEL_RUNTIME: LiveCodingRuntimeProvider;
  * ## Chrome rendering
  *
  * Same `▶ ⏹ BPM error chromeExtras` shape as `STRUDEL_RUNTIME`. BPM
- * extraction relies on the same `setcps()` regex inside
- * `LiveCodingRuntime`, which Sonic Pi files do not typically use — the
+ * extraction is `LiveCodingRuntime`'s Strudel tempo reader (`codeView/tempo.ts`),
+ * which reads JavaScript setter calls a Sonic Pi file does not contain — the
  * runtime returns `undefined` for `getBpm()` on Sonic Pi code, and the
  * chrome silently omits the BPM display. A future Sonic Pi BPM source
  * (e.g., `use_bpm 120` extraction) is a follow-up task; the chrome's

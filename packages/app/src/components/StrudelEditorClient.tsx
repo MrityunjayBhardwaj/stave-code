@@ -2075,10 +2075,10 @@ export default function StrudelEditorClient({
       getCycle: () =>
         runtimesRef.current.get(accessorFid)?.getCurrentCycle?.() ?? null,
       // The tempo the SCHEDULER is running at — never `getBpm()` in other units
-      // (#1564). That readout is `extractBpmFromCode`, a regex that matches a
-      // literal `setcps(...)`, so it is undefined for a document that sets no
-      // tempo (Strudel's default 0.5 cps), one that uses `setcpm(...)`, and one
-      // that changes cps mid-pattern — none of which mean "no tempo". Both
+      // (#1564). That readout is `extractBpmFromCode`, the tempo the code SETS
+      // (#1925), so it is undefined for a document that sets no tempo (Strudel's
+      // default 0.5 cps) and blind to cps changed mid-pattern — neither of which
+      // means "no tempo". Both
       // consumers convert cycles to SECONDS (the LCD readout, and the waveform
       // lane's region widths), which is exactly what the runtime's own note on
       // `getCps` says must not be done from the readout.
