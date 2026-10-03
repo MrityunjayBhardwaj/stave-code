@@ -31,6 +31,17 @@
         "codeView/mixer/stripModel#bareCaptureIdFor": "#1882 the engine already imported this file; it moved into the area in #1884, so the same dependency now crosses the boundary",
         "codeView/mixer/stripModel#isTrackChunk": "#1882 the engine already imported this file; it moved into the area in #1884, so the same dependency now crosses the boundary"
       }
+    },
+    {
+      "file": "packages/editor/src/monaco/StrudelMonaco.tsx",
+      "reaches": [
+        "door#monaco ITextModel.setValue"
+      ],
+      "why": "Dead code: nothing has mounted this component since the editors became workspace compositions (32f0e33a) — no importer, not exported, not in the bundle. Its external sync (model.setValue when the code prop differs) therefore never runs. #1915 deletes the file and this entry with it. The live whole-document sync is EditorView's value prop, written by @monaco-editor/react itself, which no symbol rule can see (#1903).",
+      "issue": "#1915",
+      "added": {
+        "door#monaco ITextModel.setValue": "#1914 the door rule learned Monaco's own document writes; this call predates the rule and is the only one outside the writer"
+      }
     }
   ],
   "declared": [

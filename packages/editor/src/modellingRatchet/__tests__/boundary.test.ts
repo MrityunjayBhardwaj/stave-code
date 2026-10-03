@@ -110,15 +110,28 @@ describe('the code↔view boundary (#1879)', () => {
       // the real shape: no import of the writer at all, it arrives as a callback parameter
       [`${PANELS}/plantedDoorCallback.tsx`]:
         `import { useActiveChunk } from './useActiveChunk'\n` +
-        `export function useIt() { const { applyEdit } = useActiveChunk(); return () => applyEdit((fresh, wb) => { wb.replaceRange(fresh.miniRange!, 'x', 'sequencer') }) }`,
-      [`${PANELS}/plantedDoorElement.tsx`]: `import type { Writeback } from '../../codeView'\nexport const f = (wb: Writeback) => wb['insertAt'](0, 'x', 'mixer')`,
-      [`${PANELS}/plantedDoorDestructure.tsx`]: `import type { Writeback } from '../../codeView'\nexport const f = (wb: Writeback) => { const { deleteRange } = wb; return deleteRange }`,
+        `export function useIt() { const { applyEdit } = useActiveChunk(); return () => applyEdit((fresh, wb) => { wb.replaceRanges([{ range: fresh.miniRange!, text: 'x' }], 'seq') }) }`,
+      [`${PANELS}/plantedDoorElement.tsx`]: `import type { Writeback } from '../../codeView'\nexport const f = (wb: Writeback) => wb['beginGesture']()`,
+      [`${PANELS}/plantedDoorDestructure.tsx`]: `import type { Writeback } from '../../codeView'\nexport const f = (wb: Writeback) => { const { currentSource } = wb; return currentSource }`,
       [`${PANELS}/plantedDoorAlias.tsx`]: `import { Writeback as W } from '../../codeView'\nexport const f = (e: never, m: never) => new W(e, m)`,
       [`${PANELS}/plantedDoorPassed.tsx`]: `import { Writeback } from '../../codeView'\nexport const f = (g: (c: unknown) => void) => g(Writeback)`,
       [`${PANELS}/plantedDoorApplyEdits.tsx`]: `import { applyEdits } from '../../codeView'\nexport const f = () => applyEdits('abc', [{ range: [0, 1], text: 'x' }])`,
       [`packages/app/src/components/plantedDoorApp.ts`]: `import { applyEdits } from '@stave/editor'\nexport const f = () => applyEdits('abc', [])`,
       [`packages/app/src/components/plantedDoorNamespace.ts`]: `import * as Ed from '@stave/editor'\nexport const f = () => Ed.applyEdits('abc', [])`,
+      // a raw Monaco document write, behind the door's back (#1914) — on the model, on the
+      // editor, by element access, by destructuring, and from the app
+      [`${PANELS}/plantedRawModel.tsx`]: `import type * as Monaco from 'monaco-editor'\nexport const f = (m: Monaco.editor.ITextModel) => { m.setValue('x'); m.pushEditOperations([], [], () => null); m.applyEdits([]) }`,
+      [`${PANELS}/plantedRawEditor.tsx`]: `import type * as Monaco from 'monaco-editor'\nexport const f = (e: Monaco.editor.IStandaloneCodeEditor) => { e.executeEdits('me', []); e.setValue('x') }`,
+      [`${PANELS}/plantedRawElement.tsx`]: `import type * as Monaco from 'monaco-editor'\nexport const f = (e: Monaco.editor.ICodeEditor) => e['executeCommands']('me', [])`,
+      [`${PANELS}/plantedRawDestructure.tsx`]: `import type * as Monaco from 'monaco-editor'\nexport const f = (m: Monaco.editor.ITextModel) => { const { setValue } = m; return setValue }`,
+      [`packages/app/src/components/plantedRawApp.ts`]: `import type * as Monaco from 'monaco-editor'\nexport const f = (m: Monaco.editor.ITextModel) => m.setValue('x')`,
       // ── must NOT fire ──
+      // Monaco reads, and a form field's own setValue / pushEditOperations
+      [`${PANELS}/plantedRawLookalike.tsx`]:
+        `import type * as Monaco from 'monaco-editor'\nexport const f = (m: Monaco.editor.ITextModel, e: Monaco.editor.ICodeEditor) => [m.getValue(), e.getValue(), e.getModel()]\n` +
+        `class Field { setValue(_v: string): void {} pushEditOperations(): void {} }\nexport const g = () => { const x = new Field(); x.setValue('a'); x.pushEditOperations() }\n` +
+        // the same interface name and method, declared here rather than by Monaco
+        `interface ITextModel { setValue(v: string): void }\nexport const h = (m: ITextModel) => m.setValue('a')`,
       [`${PANELS}/plantedTypeOnly.tsx`]: `import type { Writeback, OffsetEdit } from '../../codeView'\nexport type Apply = (m: (wb: Writeback) => void, e: OffsetEdit) => void`,
       [`${PANELS}/plantedLookalike.tsx`]:
         `class Mine { replaceRanges(): void {} insertAt(): void {} }\nexport const f = () => { const m = new Mine(); m.replaceRanges(); m.insertAt() }\n` +
@@ -162,12 +175,12 @@ describe('the code↔view boundary (#1879)', () => {
     })
 
     it('a direct write is a crossing even with no import of the writer in sight', () => {
-      expect(of('plantedDoorCallback.tsx')).toEqual(['door#Writeback.replaceRange'])
+      expect(of('plantedDoorCallback.tsx')).toEqual(['door#Writeback.replaceRanges'])
     })
 
     it('…and by element access, destructuring, an aliased constructor, the class passed as a value', () => {
-      expect(of('plantedDoorElement.tsx')).toEqual(['door#Writeback.insertAt'])
-      expect(of('plantedDoorDestructure.tsx')).toEqual(['door#Writeback.deleteRange'])
+      expect(of('plantedDoorElement.tsx')).toEqual(['door#Writeback.beginGesture'])
+      expect(of('plantedDoorDestructure.tsx')).toEqual(['door#Writeback.currentSource'])
       expect(of('plantedDoorAlias.tsx')).toEqual(['door#new Writeback'])
       expect(of('plantedDoorPassed.tsx')).toEqual(['door#Writeback as a value'])
     })
@@ -176,6 +189,22 @@ describe('the code↔view boundary (#1879)', () => {
       expect(of('plantedDoorApplyEdits.tsx')).toEqual(['door#applyEdits'])
       expect(of('plantedDoorApp.ts')).toEqual(['door#applyEdits'])
       expect(of('plantedDoorNamespace.ts')).toEqual(['door#applyEdits'])
+    })
+
+    it('a raw Monaco document write is a crossing — model, editor, element access, destructuring, app (#1914)', () => {
+      expect(of('plantedRawModel.tsx')).toEqual([
+        'door#monaco ITextModel.applyEdits',
+        'door#monaco ITextModel.pushEditOperations',
+        'door#monaco ITextModel.setValue',
+      ])
+      expect(of('plantedRawEditor.tsx')).toEqual(['door#monaco ICodeEditor.executeEdits', 'door#monaco ICodeEditor.setValue'])
+      expect(of('plantedRawElement.tsx')).toEqual(['door#monaco ICodeEditor.executeCommands'])
+      expect(of('plantedRawDestructure.tsx')).toEqual(['door#monaco ITextModel.setValue'])
+      expect(of('plantedRawApp.ts')).toEqual(['door#monaco ITextModel.setValue'])
+    })
+
+    it('a Monaco READ is not a write, and a setValue Monaco did not declare is not the door', () => {
+      expect(of('plantedRawLookalike.tsx')).toEqual([])
     })
 
     it('naming the writer as a TYPE is not a write, and a look-alike method on another class is not the door', () => {
@@ -284,7 +313,7 @@ describe('the code↔view boundary (#1879)', () => {
     it('refuses a new reach on an existing entry, and a new file, without an "added" line', () => {
       const more = { ...base.enforced[0], reaches: [...base.enforced[0].reaches, 'codeView/x#new'] }
       expect(shrinkOnlyProblems({ ...base, enforced: [more] }, base)).toHaveLength(1)
-      const other = { file: 'b.ts', reaches: ['door#Writeback.insertAt'], why: 'w', issue: '#1880' }
+      const other = { file: 'b.ts', reaches: ['door#Writeback.replaceRanges'], why: 'w', issue: '#1880' }
       expect(shrinkOnlyProblems({ ...base, enforced: [...base.enforced, other] }, base)).toHaveLength(1)
       expect(shrinkOnlyProblems({ ...base, declared: [...base.declared, { file: 'e.ts', what: 'w', issue: '#1880' }] }, base)).toHaveLength(1)
     })

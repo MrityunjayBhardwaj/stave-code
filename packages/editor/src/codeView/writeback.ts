@@ -10,25 +10,27 @@
  *     This is the whole reason write-back panels edit TEXT and not the IR:
  *     `toStrudel` is a whole-statement canonical regenerator that would
  *     reformat the leaf layer (design doc Appendix A).
- *  2. **Origin-tagged** — while a panel edit is applied, `currentSource` names
- *     it, so the host's `onDidChangeModelContent` listener can tell a panel
- *     edit (re-eval audio, keep panel model) from a typed edit (re-parse the
- *     panel model). Monaco's content-change event carries no source of its
- *     own, so the flag is set synchronously around the edit — the listener
- *     fires inside `pushEditOperations`, while the flag is up.
- *  3. **One undo step** — every call is a single `pushEditOperations`, so even
- *     a multi-cell drag (`replaceRanges`) is one Ctrl-Z.
+ *  2. **Own-edit visible** — while an edit is applied, the writer holds its
+ *     source tag, so a surface's `onDidChangeModelContent` listener can ask
+ *     `isCommitting(writer)` and tell its own write (keep what it shows) from an
+ *     external one (re-read the document). Monaco's content-change event
+ *     carries no source of its own, so the tag is set synchronously around the
+ *     edit — the listener fires inside `pushEditOperations`, while it is up.
+ *     Product code reads only WHETHER a tag is set, never which one (#1914);
+ *     the tag names the surface for a reader of this code, not for a listener.
+ *  3. **One undo step** — every write is a single `pushEditOperations`, so even
+ *     a multi-cell drag is one Ctrl-Z.
  *
  * Range discipline: offsets come from a `ChunkInfo` and are valid ONLY against
- * the exact doc it was detected from. Use `applyFresh` (or call `isChunkFresh`
- * yourself) before every write — stale offsets corrupt unrelated code.
+ * the exact doc it was detected from. A panel re-detects its chunk against the
+ * live document in the same turn it writes; `commitToFile` compares the whole
+ * document instead. Stale offsets corrupt unrelated code.
  *
  * The pure helpers (`formatNumber`, `normalizeEdits`) are string/number math
  * with no Monaco dependency, so they unit-test with plain assertions. The
  * `Writeback` class is the thin Monaco-bound shell, observed in the app.
  */
 import type * as Monaco from 'monaco-editor'
-import { isChunkFresh, type ChunkInfo } from './chunkDetect'
 // One direction only (#1911): this area reads the registry (which editor shows a
 // file, the monaco namespace, the re-eval seam); the registry imports nothing back.
 import {
@@ -45,9 +47,10 @@ import {
 const REEVAL_DEBOUNCE_MS = 120
 
 /**
- * Which panel originated an edit. The host content-change listener switches on
- * this to decide whether to re-parse its model (typed edit) or leave it
- * (panel-originated edit it already knows about).
+ * Which surface originated an edit. Required on every write, and held by the
+ * writer while the edit applies — but product code reads it only as "is a tag
+ * set right now" (`isCommitting`), never by value (#1914). It documents the
+ * caller; no listener switches on it.
  */
 export type WriteSource =
   | 'knob'
@@ -125,7 +128,7 @@ export function normalizeEdits(edits: OffsetEdit[]): OffsetEdit[] {
 
 /**
  * Apply a batch of offset edits to a string and return the result. Pure mirror
- * of what `Writeback.apply` does to a Monaco model — used by callers that edit
+ * of what the writer does to a Monaco model — used by callers that edit
  * plain text (arrangement round-trip / parity tests) and to preview an edit
  * before it touches the document. Edits are validated + sorted by
  * `normalizeEdits`, then spliced from the END so earlier offsets stay valid.
@@ -143,9 +146,12 @@ export function applyEdits(doc: string, edits: OffsetEdit[]): string {
 }
 
 /**
- * Monaco-bound edit sink. One per editor. Construct with the editor instance
- * and the `monaco` namespace (for `Range`). All edits go through `apply`, which
- * keeps the origin flag up across the synchronous content-change event.
+ * Monaco-bound edit sink. Built only by `createWriter`, and driven only by the
+ * functions below it (`commit`, `commitToEditor`, `commitToFile`, `openGesture`,
+ * `closeGesture`, `isCommitting`); outside this area it is a type a surface holds
+ * and hands back, never something it calls (#1914). Every edit goes through
+ * `apply`, which keeps the source tag up across the synchronous content-change
+ * event.
  */
 export class Writeback {
   private writingSource: WriteSource | null = null
@@ -191,17 +197,11 @@ export class Writeback {
   }
 
   /**
-   * The source of the edit currently being applied, or null. The host's
-   * `onDidChangeModelContent` listener reads this synchronously to attribute
-   * the change. It is non-null ONLY for the duration of `apply`.
+   * The source of the edit currently being applied, or null. Non-null ONLY for
+   * the duration of `apply`; `isCommitting` reads it, and only as null or not.
    */
   get currentSource(): WriteSource | null {
     return this.writingSource
-  }
-
-  /** Replace a single offset range. One undo step. */
-  replaceRange(range: [number, number], text: string, source: WriteSource): void {
-    this.apply([{ range, text }], source)
   }
 
   /**
@@ -211,30 +211,6 @@ export class Writeback {
    */
   replaceRanges(edits: OffsetEdit[], source: WriteSource): boolean {
     return this.apply(edits, source)
-  }
-
-  /** Insert text at an offset (zero-width edit). */
-  insertAt(offset: number, text: string, source: WriteSource): void {
-    this.apply([{ range: [offset, offset], text }], source)
-  }
-
-  /** Delete an offset range. */
-  deleteRange(range: [number, number], source: WriteSource): void {
-    this.apply([{ range, text: '' }], source)
-  }
-
-  /**
-   * Freshness-guarded write. Re-reads the live model text and refuses the edit
-   * if the chunk's statement no longer matches what it was detected from
-   * (the doc changed under the panel). Returns true if applied, false if stale.
-   * Prefer this over the raw methods on any path that can race a typed edit.
-   */
-  applyFresh(chunk: ChunkInfo, edits: OffsetEdit[], source: WriteSource): boolean {
-    const model = this.editor.getModel()
-    if (!model) return false
-    if (!isChunkFresh(model.getValue(), chunk)) return false
-    this.apply(edits, source)
-    return true
   }
 
   /** false when there is no document to write to — nothing was applied */

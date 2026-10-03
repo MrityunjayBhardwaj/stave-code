@@ -685,7 +685,7 @@ export {
   docParses,
   isChunkFresh,
   classifyChunk,
-  Writeback,
+  type Writeback,
   formatNumber,
   normalizeEdits,
   applyEdits,
