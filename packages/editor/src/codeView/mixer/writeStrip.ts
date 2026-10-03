@@ -14,7 +14,7 @@
 import type { ChunkInfo } from '../chunkDetect'
 import { readGainState, scaleManagedGain } from './gain'
 import { setNumberCall } from '../chainEdit'
-import { splitMuteMarker } from '../ir/trackId'
+import { splitMuteMarker, isIdentifier } from '../ir/trackId'
 import { detectAllChunks } from '../chunkDetect'
 import { buildStripModels } from './stripModel'
 
@@ -100,7 +100,7 @@ const RESERVED_LABELS = new Set([
  *  UIs can gate/validate keystrokes without re-deriving the rule. */
 export function isValidTrackLabel(name: string): boolean {
   // Any JS identifier (#1683) — `節奏` is as good a label as `drums`.
-  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u.test(name) && !RESERVED_LABELS.has(name)
+  return isIdentifier(name) && !RESERVED_LABELS.has(name)
 }
 
 /**

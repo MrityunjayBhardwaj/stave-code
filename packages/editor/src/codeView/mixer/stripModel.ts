@@ -21,7 +21,7 @@ import { readChainMethod } from '../chainMethod'
 import { trackIdentity } from '../trackColor'
 import { type GainState, readGainState } from './gain'
 import { NON_TRACK_HEADS } from '../ir/statementHeads'
-import { trackIdsFromLabels, isMutedLabel, splitMuteMarker } from '../ir/trackId'
+import { trackIdsFromLabels, isMutedLabel, labelName } from '../ir/trackId'
 import { parseStrudel } from '../ir/parseStrudel'
 
 /** which surface a strip's pattern belongs to (mirrors `ChunkType` + groups). */
@@ -91,16 +91,6 @@ export interface StripModel {
   captureId: string
 }
 
-/**
- * The real name of a statement, or null when it's anonymous. An anonymous
- * Strudel track is written `$: …`, and acorn reports its label as `'$'` (a valid
- * identifier) — NOT null (a bare expression statement has a null label). Both
- * count as anonymous: the strip falls back to a positional id/name and the
- * engine numbers them `$0`, `$1`, … A genuine name (`d1:`, `drums:`) survives.
- */
-function namedLabel(label: string | null): string | null {
-  return label && label !== '$' ? label : null
-}
 
 /** the `_`-prefix mute marker (S3, design §6.4): a statement is muted when its
  * label starts (or, #1679, ends) with `_`. Strudel's engine skips `_`-prefixed/-suffixed ids
@@ -112,13 +102,6 @@ function isMuted(label: string | null): boolean {
   return label != null && isMutedLabel(label)
 }
 
-/** the label with the mute marker removed, then resolved to a real name or null
- * (an anonymous `$`/`_$` → null). This is the strip's STABLE identity across a
- * mute toggle: `_d1`→`d1`, `_$`→null, so muting a named track keeps its id. */
-function bareLabel(label: string | null): string | null {
-  if (label == null) return null
-  return namedLabel(splitMuteMarker(label).bare)
-}
 
 /**
  * Whether a detected chunk is a playable track (→ gets a strip) or a global
@@ -361,7 +344,7 @@ function buildStripModel(
     id,
     index,
     kind,
-    label: bareLabel(chunk.label),
+    label: labelName(chunk.label), // the strip's stable identity across a mute toggle
     name: identity.name,
     headFn: chunk.headFn,
     miniString: chunk.miniString,
@@ -457,7 +440,7 @@ export function buildStripModels(chunks: ChunkInfo[], doc: string): StripModel[]
     }
     ordinal++ // 1-based, counts every track in source order (config already skipped),
     // matching the engine's `d{N}` hap numbering the Timeline displays.
-    const bare = bareLabel(chunk.label)
+    const bare = labelName(chunk.label)
     // Stable identity: name, else position among ALL anonymous tracks (muted
     // included). Invariant across a mute toggle — muting prefixes a `_` but never
     // adds/removes an anonymous statement, so this index never shifts on mute.

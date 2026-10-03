@@ -3517,14 +3517,34 @@ __name(requireObject, "requireObject");
 
 // src/codeView/ir/trackId.ts
 function trackIdFromLabel(label, index) {
-  return namedIdOf(label) ?? `d${index + 1}`;
+  return labelName(label) ?? `d${index + 1}`;
 }
 __name(trackIdFromLabel, "trackIdFromLabel");
-function namedIdOf(label) {
-  const bare = label === void 0 ? void 0 : splitMuteMarker(label).bare;
+var IDENTIFIER = String.raw`[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*`;
+var WHOLE_IDENTIFIER = new RegExp(`^${IDENTIFIER}$`, "u");
+function isIdentifier(text) {
+  return WHOLE_IDENTIFIER.test(text);
+}
+__name(isIdentifier, "isIdentifier");
+var LABEL_HEAD = new RegExp(`^(${IDENTIFIER})\\s*:`, "u");
+function labelName(label) {
+  const bare = label == null ? void 0 : splitMuteMarker(label).bare;
   return bare && bare !== "$" ? bare : null;
 }
-__name(namedIdOf, "namedIdOf");
+__name(labelName, "labelName");
+function sectionNameAt(code, range2) {
+  const [start, end] = range2;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (start < 0 || end > code.length || end <= start) return null;
+  let text = code.slice(start, end).trim();
+  if (text.startsWith("[") && text.endsWith("]")) {
+    const comma = text.indexOf(",");
+    if (comma < 0) return null;
+    text = text.slice(comma + 1, -1).trim();
+  }
+  return isIdentifier(text) ? text : null;
+}
+__name(sectionNameAt, "sectionNameAt");
 function splitMuteMarker(label) {
   const prefix = label.startsWith("_");
   const rest = prefix ? label.slice(1) : label;
@@ -3533,7 +3553,7 @@ function splitMuteMarker(label) {
 }
 __name(splitMuteMarker, "splitMuteMarker");
 function trackIdsFromLabels(labels, commented = []) {
-  const claimed = labels.map(namedIdOf);
+  const claimed = labels.map(labelName);
   const taken = /* @__PURE__ */ new Set();
   for (let i = 0; i < claimed.length; i++) {
     const id = claimed[i];
@@ -7519,19 +7539,10 @@ function readGainState(chunk) {
 __name(readGainState, "readGainState");
 
 // src/codeView/mixer/stripModel.ts
-function namedLabel(label) {
-  return label && label !== "$" ? label : null;
-}
-__name(namedLabel, "namedLabel");
 function isMuted(label) {
   return label != null && isMutedLabel(label);
 }
 __name(isMuted, "isMuted");
-function bareLabel(label) {
-  if (label == null) return null;
-  return namedLabel(splitMuteMarker(label).bare);
-}
-__name(bareLabel, "bareLabel");
 function isTrackChunk(chunk) {
   if (chunk.label !== null) return true;
   return chunk.headFn === null || !NON_TRACK_HEADS.has(chunk.headFn);
@@ -7613,7 +7624,8 @@ function buildStripModel(chunk, index, displayKey, id, captureId) {
     id,
     index,
     kind,
-    label: bareLabel(chunk.label),
+    label: labelName(chunk.label),
+    // the strip's stable identity across a mute toggle
     name: identity.name,
     headFn: chunk.headFn,
     miniString: chunk.miniString,
@@ -7652,7 +7664,7 @@ function buildStripModels(chunks, doc) {
       return;
     }
     ordinal++;
-    const bare = bareLabel(chunk.label);
+    const bare = labelName(chunk.label);
     const id = bare ?? `#${anonAll++}`;
     let captureId;
     if (bare !== null) captureId = bare;
@@ -7845,14 +7857,14 @@ var RESERVED_LABELS = /* @__PURE__ */ new Set([
   "static"
 ]);
 function isValidTrackLabel(name) {
-  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u.test(name) && !RESERVED_LABELS.has(name);
+  return isIdentifier(name) && !RESERVED_LABELS.has(name);
 }
 __name(isValidTrackLabel, "isValidTrackLabel");
 function renameEdit(fresh, newLabel, takenNames) {
   if (fresh.label === null) return null;
   if (!isValidTrackLabel(newLabel)) return null;
-  const { bare: bareLabel2, prefix, suffix } = splitMuteMarker(fresh.label);
-  if (newLabel === bareLabel2) return null;
+  const { bare: bareLabel, prefix, suffix } = splitMuteMarker(fresh.label);
+  if (newLabel === bareLabel) return null;
   if (takenNames.has(newLabel)) return null;
   const start = fresh.statementRange[0] + (prefix ? 1 : 0);
   const end = fresh.statementRange[0] + fresh.label.length - (suffix ? 1 : 0);
@@ -11912,7 +11924,6 @@ function splitArm(doc, call, i, firstWeight) {
   return [{ range: arm.armRange, text: `[${n1}, ${pat}], [${n2}, ${pat}]` }];
 }
 __name(splitArm, "splitArm");
-var IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 var NOT_A_NAME = "__proto__";
 function walk3(node, parent, key2, visit) {
   if (!node || typeof node !== "object") return;
@@ -11961,9 +11972,7 @@ function isBindingIntroduction(parent, key2) {
 __name(isBindingIntroduction, "isBindingIntroduction");
 function armIdentifier(doc, call, i) {
   const arm = call.arms[i];
-  if (!arm) return null;
-  const text = doc.slice(arm.patternRange[0], arm.patternRange[1]).trim();
-  return IDENTIFIER.test(text) ? text : null;
+  return arm ? sectionNameAt(doc, arm.patternRange) : null;
 }
 __name(armIdentifier, "armIdentifier");
 function countSectionArms(doc, call, i) {
@@ -11974,7 +11983,7 @@ function countSectionArms(doc, call, i) {
 }
 __name(countSectionArms, "countSectionArms");
 function renameSection(doc, call, i, newName) {
-  if (!IDENTIFIER.test(newName) || newName === NOT_A_NAME) return [];
+  if (!isIdentifier(newName) || newName === NOT_A_NAME) return [];
   const oldName = armIdentifier(doc, call, i);
   if (oldName == null || oldName === newName) return [];
   const references = analyze(doc, oldName, newName);
@@ -14240,7 +14249,7 @@ function startsTopLevelBlock(trimmed) {
 }
 __name(startsTopLevelBlock, "startsTopLevelBlock");
 function startsNamedTrack(rawLine) {
-  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*\s*:/u.test(rawLine);
+  return LABEL_HEAD.test(rawLine);
 }
 __name(startsNamedTrack, "startsNamedTrack");
 function startsTopLevelBlockRaw(rawLine) {
@@ -14256,7 +14265,7 @@ function scanVizRequestLines(requests, code, vizOptions) {
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const isAnon = raw.trim().startsWith("$:");
-    const namedMatch = isAnon ? null : /^([\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*)\s*:/u.exec(raw);
+    const namedMatch = isAnon ? null : LABEL_HEAD.exec(raw);
     if (!isAnon && !namedMatch) continue;
     const key2 = isAnon ? `$${anonIndex++}` : namedMatch[1];
     const vizId = requests.get(key2);
@@ -36311,8 +36320,8 @@ function PatternTrackChip() {
   if (!strip) return null;
   const customColor = trackMeta.get(strip.name)?.color;
   const dotColor = trackIdentity(strip.name, customColor).color;
-  const bareLabel2 = strip.label ?? "";
-  const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
+  const bareLabel = strip.label ?? "";
+  const renameSeed = bareLabel !== "" && bareLabel !== "$" ? bareLabel : "";
   const commitRename = /* @__PURE__ */ __name((raw) => {
     if (settledRef.current) return;
     settledRef.current = true;
@@ -41605,8 +41614,8 @@ function ChannelStrip({
   const colorPickEnabled = onPickColor !== void 0;
   const muteEnabled = strip.muteable && onMuteToggle !== void 0;
   const [renaming, setRenaming] = React22.useState(false);
-  const bareLabel2 = strip.label ?? "";
-  const renameSeed = bareLabel2 !== "" && bareLabel2 !== "$" ? bareLabel2 : "";
+  const bareLabel = strip.label ?? "";
+  const renameSeed = bareLabel !== "" && bareLabel !== "$" ? bareLabel : "";
   const renameEnabled = onRename !== void 0;
   const settledRef = React22.useRef(false);
   const openRename = /* @__PURE__ */ __name(() => {

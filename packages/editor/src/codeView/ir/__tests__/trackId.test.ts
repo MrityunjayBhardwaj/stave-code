@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { trackIdFromLabel, trackIdsFromLabels, isMutedLabel, splitMuteMarker } from '../trackId'
+import { trackIdFromLabel, trackIdsFromLabels, isMutedLabel, splitMuteMarker, isIdentifier, labelName, labelAtOffset, sectionNameAt, LABEL_HEAD } from '../trackId'
 import { parseStrudel } from '../parseStrudel'
 import type { PatternIR } from '../PatternIR'
 
@@ -263,5 +263,41 @@ describe('isMutedLabel — the other half of the `_` prefix (#1488)', () => {
     expect(isMutedLabel('_drums')).toBe(true)
     expect(trackIdFromLabel('_$', 2)).toBe('d3')
     expect(isMutedLabel('_$')).toBe(true)
+  })
+})
+
+describe('one rule for a name (#1921)', () => {
+  it('any JavaScript identifier is a name — and nothing else is', () => {
+    for (const ok of ['drums', 'd1', '$', '_x', '前奏', 'café', '節奏', 'x‌y']) expect(isIdentifier(ok), ok).toBe(true)
+    for (const no of ['', '1x', 'a b', 'a-b', 'a.b', '"a"', 's("bd")', '[4, a]']) expect(isIdentifier(no), no).toBe(false)
+  })
+
+  it('a label names nothing when it is anonymous, muted or not', () => {
+    expect(labelName('drums')).toBe('drums')
+    expect(labelName('_drums')).toBe('drums')
+    expect(labelName('drums_')).toBe('drums')
+    expect(labelName('$')).toBeNull()
+    expect(labelName('_$')).toBeNull()
+    expect(labelName('_')).toBeNull()
+    expect(labelName(null)).toBeNull()
+    expect(labelName(undefined)).toBeNull()
+  })
+
+  it('the label at a statement offset, through the same rule', () => {
+    const doc = '前奏: s("bd")\n  _bass: s("hh")\n$: s("cp")'
+    expect(labelAtOffset(doc, 0)).toBe('前奏')
+    expect(labelAtOffset(doc, doc.indexOf('\n') + 1)).toBe('bass') // indented and muted
+    expect(labelAtOffset(doc, doc.indexOf('$:'))).toBeNull()
+    expect(labelAtOffset(doc, -1)).toBeNull()
+    expect(LABEL_HEAD.exec('_節奏: s("bd")')?.[1]).toBe('_節奏') // the raw label, marker and all
+  })
+
+  it('a section name: a tuple arm, a bare pattern arm, and an arm with no name', () => {
+    const doc = 'arrange([4, 前奏], [8, s("bd")])'
+    const t1 = doc.indexOf('[4'), t2 = doc.indexOf('[8')
+    expect(sectionNameAt(doc, [t1, doc.indexOf(']', t1) + 1])).toBe('前奏')
+    expect(sectionNameAt(doc, [doc.indexOf('前奏'), doc.indexOf('前奏') + 2])).toBe('前奏')
+    expect(sectionNameAt(doc, [t2, doc.lastIndexOf(']') - 1])).toBeNull()
+    expect(sectionNameAt(doc, [5, 2])).toBeNull()
   })
 })

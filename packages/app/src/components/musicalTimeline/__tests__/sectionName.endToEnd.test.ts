@@ -118,6 +118,13 @@ describe('#1391 — the section name reaches the scene', () => {
     }
   })
 
+  it('a name is any identifier, as it is for a track label (#1921)', () => {
+    // These read `§1`/`§2` and `§1`/`verse` while the section reader tested names
+    // with an ASCII-only regex of its own.
+    expect(sectionNames(`const 前奏 = s("bd")\nconst 主歌 = s("hh")\narrange([4, 前奏], [8, 主歌])`, 12)).toEqual(['前奏', '主歌'])
+    expect(sectionNames(`const café = s("bd")\nconst verse = s("hh")\narrange([4, café], [8, verse])`, 12)).toEqual(['café', 'verse'])
+  })
+
   it('falls back to an ordinal for inline arms, in the same document', () => {
     const mixed = `const verse = s("hh")
 arrange([4, s("bd")], [8, verse])`
