@@ -319,11 +319,11 @@ export function stepHitAt(
   return best
 }
 
-/** The shape of `stepValueEdit` — injected, for the reason `RangeFor` is. */
-export type StepValueEdit = (
+/** The shape of `stepTextEdit` — injected, for the reason `RangeFor` is. */
+export type StepTextEdit = (
   a: SteppedAutomation,
   index: number,
-  value: number,
+  text: string,
 ) => OffsetEdit | null
 
 /**
@@ -331,21 +331,14 @@ export type StepValueEdit = (
  * or into NOTHING (#1463 Stage 3).
  *
  * The ONE place a typed step becomes an edit, so a caller cannot skip a rule by
- * building the number itself. This function owns the TEXT: an empty or
- * non-numeric entry writes nothing. `valueEdit` owns the DOCUMENT: an unchanged
- * value writes nothing, only that step's number moves, and a number the reader
- * could not read back is refused.
- *
- * ⚠ `Number('')` IS 0, and so is `Number('  ')`. Clearing the field and pressing
- * Enter would otherwise write a step of ZERO — a plausible value, so a silent
- * corruption rather than a visible error. `captionEdit` met the same trap first.
+ * building the number itself. This function owns only which step the hit names;
+ * `textEdit` owns the text and the document — an empty or non-numeric entry
+ * writes nothing, an unchanged value writes nothing, only that step's number
+ * moves, and a number the reader could not read back is refused (#1918 moved the
+ * text rule beside the caption's, so the two cannot drift).
  */
-export function stepEdit(hit: StepHit, nextText: string, valueEdit: StepValueEdit): OffsetEdit | null {
-  const raw = nextText.trim()
-  if (raw.length === 0) return null
-  const value = Number(raw)
-  if (!Number.isFinite(value)) return null
-  return valueEdit(hit.entry.automation, hit.index, value)
+export function stepEdit(hit: StepHit, nextText: string, textEdit: StepTextEdit): OffsetEdit | null {
+  return textEdit(hit.entry.automation, hit.index, nextText)
 }
 
 /** One flat run of the staircase — a single step, over song-absolute cycles. */

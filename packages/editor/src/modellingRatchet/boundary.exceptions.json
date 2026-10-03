@@ -13,10 +13,24 @@
     {
       "file": "packages/app/src/components/musicalTimeline/trackLabel.ts",
       "reaches": [
-        "codeView/ir/trackId#splitMuteMarker"
+        "codeView/ir/trackId#labelAtOffset"
       ],
       "why": "Imports the package subpath @stave/editor/trackId, a bundle entry built straight from codeView/ir/trackId.ts so the timeline can read a label without the barrel.",
-      "issue": "#1880"
+      "issue": "#1880",
+      "added": {
+        "codeView/ir/trackId#labelAtOffset": "#1921 reading a label moved into codeView; the timeline calls the owner through the subpath it already used, in place of its own regex"
+      }
+    },
+    {
+      "file": "packages/app/src/components/musicalTimeline/sectionLabel.ts",
+      "reaches": [
+        "codeView/ir/trackId#sectionNameAt"
+      ],
+      "why": "Imports the package subpath @stave/editor/trackId, the same barrel-free entry trackLabel.ts uses, so the timeline reads a section name with the rule a track label uses.",
+      "issue": "#1880",
+      "added": {
+        "codeView/ir/trackId#sectionNameAt": "#1921 the section reader was a second, ASCII-only copy of the name rule; it moved into codeView and the timeline calls it through the subpath"
+      }
     },
     {
       "file": "packages/editor/src/engine/bareCapture.ts",
@@ -30,6 +44,39 @@
       "added": {
         "codeView/mixer/stripModel#bareCaptureIdFor": "#1882 the engine already imported this file; it moved into the area in #1884, so the same dependency now crosses the boundary",
         "codeView/mixer/stripModel#isTrackChunk": "#1882 the engine already imported this file; it moved into the area in #1884, so the same dependency now crosses the boundary"
+      }
+    },
+    {
+      "file": "packages/editor/src/monaco/StrudelMonaco.tsx",
+      "reaches": [
+        "door#monaco ITextModel.setValue"
+      ],
+      "why": "Dead code: nothing has mounted this component since the editors became workspace compositions (32f0e33a) — no importer, not exported, not in the bundle. Its external sync (model.setValue when the code prop differs) therefore never runs. #1915 deletes the file and this entry with it. The live whole-document sync is EditorView's value prop, written by @monaco-editor/react itself, which no symbol rule can see (#1903).",
+      "issue": "#1915",
+      "added": {
+        "door#monaco ITextModel.setValue": "#1914 the door rule learned Monaco's own document writes; this call predates the rule and is the only one outside the writer"
+      }
+    },
+    {
+      "file": "packages/editor/src/engine/vizLineScan.ts",
+      "reaches": [
+        "codeView/ir/trackId#LABEL_HEAD"
+      ],
+      "why": "A line scanner needs only the label rule, which lives in the dependency-free leaf codeView/ir/trackId.ts (the file the app's @stave/editor/trackId subpath is built from, and which a test keeps import-free). Importing it through the entry pulls every codeView module into the engine's graph, and StrudelEngine.test then fails to load: a module evaluating @strudel/core at import time reaches the test's mock before it is initialised.",
+      "issue": "#1880",
+      "added": {
+        "codeView/ir/trackId#LABEL_HEAD": "#1921 the scanner's own copy of the identifier regex became the shared LABEL_HEAD; the entry route broke StrudelEngine.test's collection, so it reads the leaf"
+      }
+    },
+    {
+      "file": "packages/editor/src/visualizers/blockScan.ts",
+      "reaches": [
+        "codeView/ir/trackId#LABEL_HEAD"
+      ],
+      "why": "A line scanner needs only the label rule, which lives in the dependency-free leaf codeView/ir/trackId.ts (the file the app's @stave/editor/trackId subpath is built from, and which a test keeps import-free). Importing it through the entry pulls every codeView module into the engine's graph, and StrudelEngine.test then fails to load: a module evaluating @strudel/core at import time reaches the test's mock before it is initialised.",
+      "issue": "#1880",
+      "added": {
+        "codeView/ir/trackId#LABEL_HEAD": "#1921 the scanner's own copy of the identifier regex became the shared LABEL_HEAD; the entry route broke StrudelEngine.test's collection, so it reads the leaf"
       }
     }
   ],
@@ -61,19 +108,13 @@
     },
     {
       "file": "packages/editor/src/visualEdit/panels/usePatternLength.ts",
-      "what": "drives parse / serialize itself (through the entry, so no rule sees it); reads syntax from user code by hand",
+      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
       "issue": "#1880"
     },
     {
       "file": "packages/editor/src/visualEdit/panels/writtenSteps.ts",
       "what": "drives parse / serialize itself (through the entry, so no rule sees it); reads syntax from user code by hand",
       "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/regionTrim.ts",
-      "what": "builds replacement text for the document",
-      "issue": "#1894",
-      "added": "#1894 it has built the clip-trim edit since before this list was written and the survey missed it; listed so it is counted until its builder moves into the area"
     },
     {
       "file": "packages/app/src/components/StrudelEditorClient.tsx",
@@ -87,21 +128,6 @@
     },
     {
       "file": "packages/app/src/components/musicalTimeline/pitch.ts",
-      "what": "reads syntax from user code by hand",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/app/src/components/musicalTimeline/sectionLabel.ts",
-      "what": "reads syntax from user code by hand",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/app/src/components/musicalTimeline/steppedLane.ts",
-      "what": "decides and batches edits",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/app/src/components/musicalTimeline/trackLabel.ts",
       "what": "reads syntax from user code by hand",
       "issue": "#1880"
     }

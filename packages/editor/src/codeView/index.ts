@@ -20,7 +20,7 @@
  */
 
 // ── read ── the finished models a view draws, and the facts read off the code
-export { readChainMethod } from './chainMethod'
+export { readChainMethod, playingCall, readNumberCall, stringLiteralBody } from './chainMethod'
 export { writtenCps, writtenBpm } from './tempo'
 export {
   detectAllChunks,
@@ -124,7 +124,6 @@ export {
 } from './mixer/stripModel'
 export type { StripModel } from './mixer/stripModel'
 export { isValidTrackLabel } from './mixer/writeStrip'
-export type { StripEdit } from './mixer/writeStrip'
 export type { StepLane, ResizeMode } from './notation'
 export {
   columnCount,
@@ -197,6 +196,7 @@ export {
   filter,
   scaleGain,
   stepValueEdit,
+  stepTextEdit,
   fixedToStepsEdit,
   stepCountEdit,
   previewRepeat,
@@ -214,6 +214,14 @@ export {
   setStringCall,
 } from './chainEdit'
 export type { ChainArgRef } from './chainEdit'
+export {
+  readRegion,
+  readRegionControl,
+  regionTrimEdit,
+  MIN_REGION_SPAN,
+  MULTI_VOICE_HEADS,
+} from './regionTrim'
+export type { RegionControl, RegionTrimRefusal, RegionTrimResult } from './regionTrim'
 export { resizeGrid, resizeRoll } from './notation'
 export { addLane, removeLane } from './notation/lane'
 export { appendEmptyBars, duplicateBar } from './notation/lengthen'
@@ -264,5 +272,8 @@ export {
 export type { PickControl, PickControlArm, PickMethod, PickSectionEntry } from './pickControl'
 
 // ── commit ── an op's edits, through the one writer
-export { Writeback, formatNumber, normalizeEdits, applyEdits, commit, commitToEditor, commitToFile, createWriter, openGesture, closeGesture, isCommitting } from './writeback'
+// the writer is a TYPE outside this area: built by `createWriter`, driven only by the
+// functions here (#1914)
+export type { Writeback } from './writeback'
+export { formatNumber, normalizeEdits, applyEdits, commit, commitToEditor, commitToFile, createWriter, openGesture, closeGesture, isCommitting } from './writeback'
 export type { WriteSource, OffsetEdit, CommitOutcome, WriteOutcome, WriteRefusal } from './writeback'

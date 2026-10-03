@@ -60,12 +60,10 @@ import { parse } from 'acorn'
 import type { OffsetEdit } from '../writeback'
 
 import type { ArrangeCall } from './parse'
+import { isWritableName, sectionNameAt } from '../ir/trackId'
 
 // acorn's node types are intentionally loose; we walk untyped nodes here.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-/** A bare JS identifier, which is all a section name can be. */
-const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 
 /** Never a safe key to introduce, however valid it looks as an identifier. */
 const NOT_A_NAME = '__proto__'
@@ -134,12 +132,11 @@ function isBindingIntroduction(parent: any, key: string | null): boolean {
   return false
 }
 
-/** The arm's name when it is a bare identifier, else null. */
+/** The arm's name when it is a bare identifier, else null — the same reading
+ *  the Song timeline captions the section with (#1921). */
 function armIdentifier(doc: string, call: ArrangeCall, i: number): string | null {
   const arm = call.arms[i]
-  if (!arm) return null
-  const text = doc.slice(arm.patternRange[0], arm.patternRange[1]).trim()
-  return IDENTIFIER.test(text) ? text : null
+  return arm ? sectionNameAt(doc, arm.patternRange) : null
 }
 
 /**
@@ -171,7 +168,7 @@ export function renameSection(
   i: number,
   newName: string,
 ): OffsetEdit[] {
-  if (!IDENTIFIER.test(newName) || newName === NOT_A_NAME) return []
+  if (!isWritableName(newName) || newName === NOT_A_NAME) return []
   const oldName = armIdentifier(doc, call, i)
   if (oldName == null || oldName === newName) return []
 

@@ -39,6 +39,27 @@ describe('renameSection — the arrange spelling', () => {
     )
   })
 
+  it('never renames a section to a reserved word — `const class` does not parse (#1924)', () => {
+    for (const word of ['class', 'return', 'let', 'await', 'yield', 'static']) {
+      expect(renameSection(SONG, call(SONG), 1, word), word).toEqual([])
+    }
+    // control: an ordinary name over the same section does rename
+    expect(renameSection(SONG, call(SONG), 1, 'chorus').length).toBeGreaterThan(0)
+  })
+
+  it('a section named with any identifier renames, to any identifier (#1921)', () => {
+    const doc = 'const 前奏 = s("bd")\nconst verse = s("hh")\n$: arrange([4, 前奏], [8, verse])'
+    expect(countSectionArms(doc, call(doc), 0)).toBe(1)
+    expect(apply(doc, renameSection(doc, call(doc), 0, 'intro'))).toBe(
+      'const intro = s("bd")\nconst verse = s("hh")\n$: arrange([4, intro], [8, verse])',
+    )
+    expect(apply(doc, renameSection(doc, call(doc), 1, 'café'))).toBe(
+      'const 前奏 = s("bd")\nconst café = s("hh")\n$: arrange([4, 前奏], [8, café])',
+    )
+    // still not a name: the rule is "an identifier", not "anything"
+    expect(renameSection(doc, call(doc), 1, 'a b')).toEqual([])
+  })
+
   it('renames a RETURNING section in every arm it occupies', () => {
     // One pattern arranged twice is what a song does when a chorus comes back.
     // These are not two sections that share a name.

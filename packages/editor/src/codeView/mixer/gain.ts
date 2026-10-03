@@ -16,6 +16,7 @@
  */
 import type { ChunkInfo } from '../chunkDetect'
 import { formatNumber } from '../writeback'
+import { playingCall, stringLiteralBody } from '../chainMethod'
 
 /**
  * A per-column `.gain("…")` velocity string the grid authored — flat numeric
@@ -39,10 +40,10 @@ const GAIN_TOKEN = /^(\d+(?:\.\d+)?)(@\d+)?$/
  * signal/identifier, or a token shape we don't manage → hands off).
  */
 export function parseManagedGain(raw: string): ManagedGain | null {
-  const quote = raw[0] === '"' || raw[0] === "'" || raw[0] === '`' ? raw[0] : ''
-  if (!quote || raw[raw.length - 1] !== quote) return null
-  const tokens = raw
-    .slice(1, -1)
+  const body = stringLiteralBody(raw)
+  if (body === null) return null
+  const quote = raw[0]
+  const tokens = body
     .trim()
     .split(/\s+/)
     .filter((t) => t !== '')
@@ -74,7 +75,8 @@ export function scaleManagedGain(mg: ManagedGain, value: number): string {
  *  - `scalar`   — a plain `.gain(n)`; the fader sits at `value`.
  *  - `managed`  — a `.gain("…")` velocity string; the fader sits at `ceiling`
  *                 and a drag rescales all columns (`scaleManagedGain`).
- *  - `foreign`  — a `.gain(sine)` / token shape we don't author; fader disabled.
+ *  - `foreign`  — a `.gain(sine)` / token shape we don't author / a bare
+ *                 `.gain()`; fader disabled.
  *  - `absent`   — no `.gain`; fader at unity, the first drag inserts one (S1).
  */
 export type GainState =
@@ -111,9 +113,9 @@ function hasChildGain(chunk: ChunkInfo): boolean {
  * fader. Pure: a `ChunkInfo` in, a tagged union out, no React, no audio.
  */
 export function readGainState(chunk: ChunkInfo): GainState {
-  const call = chunk.chain.find((c) => c.name === 'gain' && c.args.length >= 1)
-  const arg = call?.args[0]
-  if (!call || !arg) {
+  // the call that plays — a doubled `.gain(.5).gain(.8)` reads 0.8 (#1918)
+  const call = playingCall(chunk, ['gain'])
+  if (!call) {
     // No `.gain` on the outer chain. If this is a `pick*`/combinator group whose
     // SECTIONS carry their own `.gain`, the track is not at unity — reporting
     // `absent` (a fader parked at 1 / 0.0 dB) would lie about a track running at
@@ -122,6 +124,8 @@ export function readGainState(chunk: ChunkInfo): GainState {
     // `absent`: an outer `.gain()` is still a legitimate first-drag insert (S1).
     return hasChildGain(chunk) ? { kind: 'foreign' } : { kind: 'absent' }
   }
+  const arg = call.args[0]
+  if (!arg) return { kind: 'foreign' } // a bare `.gain()` — not a level
   if (arg.numeric !== null) return { kind: 'scalar', value: arg.numeric, range: arg.range }
   const mg = parseManagedGain(arg.raw)
   if (mg) return { kind: 'managed', ceiling: mg.ceiling, mg, range: arg.range }

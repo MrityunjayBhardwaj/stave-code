@@ -4,7 +4,7 @@
  * Each takes a freshly-detected chunk and a target value and returns the single
  * surgical text edit to make (a replace range + text), or null when the control
  * must hand off (a foreign/patterned value it can't safely rewrite). Keeping the
- * decision pure — `ChunkInfo` + value → `StripEdit` — means the fader/pan
+ * decision pure — `ChunkInfo` + value → `OffsetEdit` — means the fader/pan
  * write-back is unit-testable without Monaco; the caller just applies the edit
  * through the tagged `Writeback` inside `applyToStrip` (one undo step).
  *
@@ -14,15 +14,11 @@
 import type { ChunkInfo } from '../chunkDetect'
 import { readGainState, scaleManagedGain } from './gain'
 import { setNumberCall } from '../chainEdit'
-import { splitMuteMarker } from '../ir/trackId'
+import type { OffsetEdit } from '../writeback'
+import { splitMuteMarker, isWritableName } from '../ir/trackId'
 import { detectAllChunks } from '../chunkDetect'
 import { buildStripModels } from './stripModel'
 
-/** a single surgical edit: replace `range` with `text` (insert = zero-width range). */
-export interface StripEdit {
-  range: [number, number]
-  text: string
-}
 
 /**
  * The edit a fader drag makes for `value` (a linear gain):
@@ -31,7 +27,7 @@ export interface StripEdit {
  *  - absent  → append `.gain(value)` at the end of the expression;
  *  - foreign → null (a signal gain — the fader is disabled).
  */
-export function gainEdit(fresh: ChunkInfo, value: number): StripEdit | null {
+export function gainEdit(fresh: ChunkInfo, value: number): OffsetEdit | null {
   const g = readGainState(fresh)
   switch (g.kind) {
     case 'scalar':
@@ -50,7 +46,7 @@ export function gainEdit(fresh: ChunkInfo, value: number): StripEdit | null {
  *  - absent  → append `.pan(value)`;
  *  - patterned/signal → null (hands off).
  */
-export function panEdit(fresh: ChunkInfo, value: number): StripEdit | null {
+export function panEdit(fresh: ChunkInfo, value: number): OffsetEdit | null {
   return setNumberCall(fresh, ['pan'], 'pan', value)
 }
 
@@ -66,7 +62,7 @@ export function panEdit(fresh: ChunkInfo, value: number): StripEdit | null {
  * the marker doesn't apply). Surgical: only the marker changes, so unmute is the
  * exact inverse of mute and round-trips byte-for-byte.
  */
-export function muteEdit(fresh: ChunkInfo, muted: boolean): StripEdit | null {
+export function muteEdit(fresh: ChunkInfo, muted: boolean): OffsetEdit | null {
   if (fresh.label === null) return null // unlabelled — can't carry the marker
   const marker = splitMuteMarker(fresh.label)
   const isMuted = marker.prefix || marker.suffix
@@ -80,27 +76,13 @@ export function muteEdit(fresh: ChunkInfo, muted: boolean): StripEdit | null {
   return { range: [pos, pos + fresh.label.length], text: marker.bare }
 }
 
-/** A JS reserved word can't be a LabeledStatement label (`return: …` is a syntax
- *  error), so a rename to one is rejected. Config heads (`setcps`, `hush`, …) are
- *  NOT here — they're plain identifiers and rename them as a LABEL is valid
- *  (`setcps: s("bd")` parses; the label never invokes the function). */
-const RESERVED_LABELS = new Set([
-  'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default',
-  'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 'finally', 'for',
-  'function', 'if', 'import', 'in', 'instanceof', 'new', 'null', 'return', 'super',
-  'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while',
-  'with', 'yield', 'await', 'let',
-  // strict-mode reserved — Strudel transpiles as a module, so these are syntax
-  // errors AS labels too; reject them rather than write a name that breaks eval.
-  'implements', 'interface', 'package', 'private', 'protected', 'public', 'static',
-])
 
-/** A valid track label: a JS identifier (incl. `$`/`_`) that is not a reserved
- *  word. Mirrors what a `name:` LabeledStatement accepts. Exported so the rename
- *  UIs can gate/validate keystrokes without re-deriving the rule. */
+/** A valid track label: a name the user can write (`isWritableName` — any JS
+ *  identifier that is not a reserved word, the same rule a section rename uses,
+ *  #1924). Exported so the rename UIs can gate/validate keystrokes without
+ *  re-deriving the rule. */
 export function isValidTrackLabel(name: string): boolean {
-  // Any JS identifier (#1683) — `節奏` is as good a label as `drums`.
-  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*$/u.test(name) && !RESERVED_LABELS.has(name)
+  return isWritableName(name)
 }
 
 /**
@@ -133,7 +115,7 @@ export function renameEdit(
   fresh: ChunkInfo,
   newLabel: string,
   takenNames: ReadonlySet<string>,
-): StripEdit | null {
+): OffsetEdit | null {
   if (fresh.label === null) return null // a bare expression has no label slot
   if (!isValidTrackLabel(newLabel)) return null // invalid → caller reverts
   const { bare: bareLabel, prefix, suffix } = splitMuteMarker(fresh.label)
@@ -197,7 +179,7 @@ export function soloMuteEdits(
   doc: string,
   newSolo: ReadonlySet<string>,
   prevSnapshot: ReadonlySet<string> | null,
-): { edits: StripEdit[]; nextSnapshot: ReadonlySet<string> | null } {
+): { edits: OffsetEdit[]; nextSnapshot: ReadonlySet<string> | null } {
   const chunks = detectAllChunks(doc)
   const strips = buildStripModels(chunks, doc)
   const { targetMuted, nextSnapshot } = reconcileSoloMutes(
@@ -205,7 +187,7 @@ export function soloMuteEdits(
     newSolo,
     prevSnapshot,
   )
-  const edits: StripEdit[] = []
+  const edits: OffsetEdit[] = []
   for (const s of strips) {
     if (!s.muteable) continue
     const want = targetMuted.has(s.id)

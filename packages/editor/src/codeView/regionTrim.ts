@@ -9,6 +9,11 @@
  * target value → one surgical edit, or `null` when the control must hand off.
  * The gesture is then unit-testable without a canvas or Monaco.
  *
+ * `begin` and `end` are number controls like `pan`, so the reading and the
+ * writing are the shared ones (#1918): `readNumberCall` and `setNumberCall`,
+ * both landing on the call that plays. What is the region's own is the clamp
+ * against the partner edge and the multi-voice refusal below.
+ *
  * ── WHY THIS IS ITS OWN MODULE AND NOT AN ADD-EFFECT ENTRY ──────────────────
  * `effectCatalog.ts` excludes `begin`/`end` deliberately, and says why:
  * "sample trim (a sample/region concern)". That division of labour is right —
@@ -26,14 +31,10 @@
  * The common case is neither: **544 of those 558 documents write no `.begin` at
  * all**, so the path that runs most is the append.
  */
-import type { ChunkInfo, ChainCall } from '../codeView'
-import { formatNumber } from '../codeView'
-
-/** One surgical edit: replace `range` with `text` (a zero-width range inserts). */
-export interface RegionEdit {
-  range: [number, number]
-  text: string
-}
+import type { ChunkInfo } from './chunkDetect'
+import { formatNumber, type OffsetEdit } from './writeback'
+import { readNumberCall } from './chainMethod'
+import { setNumberCall } from './chainEdit'
 
 /** The two ends of a region, in the order superdough reads them. */
 export type RegionControl = 'begin' | 'end'
@@ -57,32 +58,13 @@ export const REGION_DEFAULT: Readonly<Record<RegionControl, number>> = { begin: 
  */
 export const MIN_REGION_SPAN = 0.01
 
-/** The chain call for a control, or null when the document does not write it. */
-function callFor(chunk: ChunkInfo, control: RegionControl): ChainCall | null {
-  // The LAST spelling wins, which is what the runtime does: each `.begin()` in a
-  // chain overwrites the previous one, so the final call is the value that
-  // plays and therefore the one an edit must land on.
-  let found: ChainCall | null = null
-  for (const c of chunk.chain) if (c.name === control && c.args.length >= 1) found = c
-  return found
-}
-
 /**
- * What the document currently says this control is.
- *
- * `null` means "written, but not as a number" — patterned, computed or bound —
- * which is NOT the same as absent and must not be confused with it: absent is
- * writable (append the call), non-numeric is not (refuse). Returning the
- * default for both would make a `.begin("<0 .5>")` look like a plain 0 and let
- * a drag overwrite a pattern the user wrote on purpose.
+ * What the document currently says this control is: a number, `null` for
+ * written-but-not-a-number (refuse), or `'absent'` (append). See
+ * `readNumberCall` for why those two must stay apart.
  */
-export function readRegionControl(
-  chunk: ChunkInfo,
-  control: RegionControl,
-): number | null | 'absent' {
-  const call = callFor(chunk, control)
-  if (!call) return 'absent'
-  return call.args[0]?.numeric ?? null
+export function readRegionControl(chunk: ChunkInfo, control: RegionControl): number | null | 'absent' {
+  return readNumberCall(chunk, [control])
 }
 
 /** The region a chunk plays today, with absent controls resolved to defaults. */
@@ -94,33 +76,6 @@ export function readRegion(chunk: ChunkInfo): { begin: number; end: number } | n
     begin: b === 'absent' ? REGION_DEFAULT.begin : b,
     end: e === 'absent' ? REGION_DEFAULT.end : e,
   }
-}
-
-/**
- * The edit that sets one region control to `value`:
- *  - numeric literal → replace just that literal;
- *  - absent          → append `.begin(v)` / `.end(v)` at the end of the expression;
- *  - patterned/computed/bound → null, and the caller must decline VISIBLY.
- *
- * `value` is NOT clamped here. Clamping needs the other end (a `begin` may not
- * pass its `end`), and a function that silently repaired an out-of-range value
- * would make the refusal above indistinguishable from a rewrite to something
- * the caller never asked for. `regionTrimEdit` below is the clamping entry
- * point; this one is the primitive it is built from.
- */
-export function regionControlEdit(
-  chunk: ChunkInfo,
-  control: RegionControl,
-  value: number,
-): RegionEdit | null {
-  if (!Number.isFinite(value)) return null
-  const call = callFor(chunk, control)
-  if (!call) {
-    return { range: [chunk.exprRange[1], chunk.exprRange[1]], text: `.${control}(${formatNumber(value)})` }
-  }
-  const arg = call.args[0]
-  if (arg.numeric === null) return null // patterned / computed / bound — hands off
-  return { range: arg.range, text: formatNumber(value) }
 }
 
 /**
@@ -169,7 +124,7 @@ export type RegionTrimRefusal =
 
 export interface RegionTrimResult {
   /** The edit to apply, or null when `refusal` says why there is none. */
-  readonly edit: RegionEdit | null
+  readonly edit: OffsetEdit | null
   readonly refusal: RegionTrimRefusal | null
   /** What the control will read after the edit — already clamped. */
   readonly value: number
@@ -217,7 +172,10 @@ export function regionTrimEdit(
   if (formatNumber(clamped) === formatNumber(before)) {
     return { edit: null, refusal: 'no-change', value: clamped }
   }
-  const edit = regionControlEdit(chunk, control, clamped)
+  // Not clamped by the setter, and it must not be: clamping needs the other end,
+  // and a setter that repaired an out-of-range value would make a refusal look
+  // like a rewrite to something the caller never asked for.
+  const edit = setNumberCall(chunk, [control], control, clamped)
   if (!edit) return { edit: null, refusal: 'not-a-number', value: clamped }
   return { edit, refusal: null, value: clamped }
 }

@@ -16,6 +16,8 @@
  * overruns to EOF, and the inline viz zone re-anchors under an unrelated track.
  * Recognizing the silenced forms here keeps each zone pinned to its own track.
  */
+// the dependency-free leaf, not the entry: see boundary.exceptions.json (#1921)
+import { LABEL_HEAD } from '../codeView/ir/trackId'
 
 /**
  * True when a trimmed source line begins a NEW top-level statement — counting
@@ -65,7 +67,7 @@ export function startsTopLevelBlock(trimmed: string): boolean {
  * reuses the transpiler's AST-based `widgets` offsets (adapter doc §9.1, P5).
  */
 export function startsNamedTrack(rawLine: string): boolean {
-  return /^[\p{ID_Start}$_][\p{ID_Continue}$\u200C\u200D]*\s*:/u.test(rawLine) // any JS identifier (#1683)
+  return LABEL_HEAD.test(rawLine) // any JS identifier (#1683, #1921)
 }
 
 /**
