@@ -69,6 +69,7 @@ export {
   fixedParameters,
   songPeriodOf,
   arrangedRepeatCycles,
+  songEnd,
   parseStrudelStages,
   runPasses,
 } from './ir'

@@ -82,34 +82,33 @@ export interface BounceSizing {
 }
 
 /**
- * The two views of a document a bounce needs, kept apart because they answer
- * DIFFERENT questions from DIFFERENT sources (#1373).
+ * The two views of a document a bounce needs, kept apart because they are read
+ * at DIFFERENT TIMES for DIFFERENT jobs (#1373).
  *
- * ⚠ THEY ARE NOT INTERCHANGEABLE, and treating them as one is the bug this
- * type exists to prevent. Two pipelines build a `PatternIR` from the same
- * source and they disagree about arrangements:
+ * Both are the parser's tree. Since #1558 the published snapshot's final pass
+ * is `parseStrudel`'s own (`strudelPasses.ts`), so the snapshot can say whether
+ * a document has an arrangement. Before that it could not: the staged pipeline
+ * left a top-level `arrange(...)` as an opaque `Code` node, every document read
+ * as a loop, and `measureSongLength`'s `arranged` branch went its whole life
+ * without firing in the running app.
  *
- *   parseStrudel(code)                    ->  Track → Arrange(arms)   measurable
- *   runPasses(IR.code(code), PASSES)      ->  Track → Code            opaque
+ * What still separates them:
  *
- * The published IR snapshot is the SECOND. Its final pass leaves a top-level
- * `arrange(...)` as an opaque `Code` node, so a caller that asks it "does this
- * document have an arrangement" is asking something it structurally cannot
- * answer — and gets `loop` every time. That is how `measureSongLength`'s
- * `arranged` branch went its whole life without firing in the running app.
+ *   structural  the file's text AT THE MOMENT the bounce is sized, parsed then.
+ *               Needs no evaluation, so an arrangement is sized before a note
+ *               has sounded.
+ *   analysis    the LAST PUBLISHED snapshot, and only when this file published
+ *               it. Its lane keys match the runtime accessors the collector is
+ *               threaded with, which is what a measured period needs.
  *
- * It stayed hidden because for a simple arrangement the loop branch lands on
- * the right number anyway: `arrange([4, a], [8, b], [4, c])` has a measured
- * period of 16 cycles, which is also Σ weights. The two only part company when
- * something inside repeats faster than the arrangement does — a song whose bass
- * alternates over 4 cycles reports 4, and a 3:28 song offers an 8-second bounce.
+ * Collapsing them would size an arrangement off whatever was last published,
+ * which can be another tab's document or a revision behind the editor.
  */
 export interface SongIRs {
   /**
-   * STRUCTURE — "does this document have a definite end?" Must come from
-   * `parseStrudel`, the parser that models `arrange`/`cat`/`slowcat`. Needs no
-   * evaluation and no playback, so an arrangement can be sized before a note
-   * has sounded.
+   * STRUCTURE — "does this document have a definite end?" `parseStrudel` of the
+   * file's current text. Needs no evaluation and no playback, so an arrangement
+   * can be sized before a note has sounded.
    */
   readonly structural: PatternIR | null
   /**
@@ -129,7 +128,9 @@ export interface SongCollectorParts {
 
 /** The editor capabilities this module needs, injected — see the header. */
 export interface SongLengthDeps {
-  readonly songExtent: (ir: PatternIR | null) => SongExtent
+  /** `songEnd` — where the document ends, the one reading play-once and the
+   *  timeline also take (#1723, #1936). Injected like the rest. */
+  readonly songEnd: (ir: PatternIR | null) => SongExtent
   readonly analyzeSong: (
     ir: PatternIR | null,
     opts: AnalyzeSongOptions,
@@ -140,36 +141,6 @@ export interface SongLengthDeps {
    *  it is silently the old behaviour, and a bounce dialog quietly back to
    *  "pick a length" is precisely the defect the issue was filed against. */
   readonly signalDimensionsOf: (ir: PatternIR | null) => SignalDimensions
-  /** `arrangedRepeatCycles` — the arrangement's length folded with the period of
-   *  every parameter playing over it (#1580). Injected like the rest so this
-   *  module keeps no second reading of what a song's length is. */
-  readonly arrangedRepeatCycles: (ir: PatternIR | null, arrangedCycles: number) => number
-}
-
-/**
- * Where a document ENDS, when it has an end: its `songExtent`, with an
- * arrangement's length folded with every parameter playing over it (#1580).
- *
- * ⚠ ONE READING FOR EVERY CONSUMER OF "THE END" (#1723). An arrangement is a
- * definite end of the STRUCTURE, but a stepped gain that doesn't divide it keeps
- * moving after the last bar: `arrange([2, a], [1, hh], [1, a])` under
- * `a.gain("<.2 .9>")` is four bars of structure and first comes back round at
- * eight, and bar 7 plays `.9`. The bounce rendered eight and the timeline drew
- * eight while play-once, reading the bare `songExtent`, stopped at four, so the
- * user never heard half of what they could see and edit. The bounce and the
- * transport now both read this; the timeline reaches the same number through
- * `analyzeSong`'s `declaredLength`, which has to stay under its collection cap.
- *
- * Every other kind passes through unchanged, and where no fold can be vouched
- * for, `arrangedRepeatCycles` answers with the arrangement's own length.
- */
-export function songEnd(
-  ir: PatternIR | null,
-  deps: Pick<SongLengthDeps, 'songExtent' | 'arrangedRepeatCycles'>,
-): SongExtent {
-  const extent = deps.songExtent(ir)
-  if (extent.kind !== 'arranged' || !(extent.cycles > 0)) return extent
-  return { ...extent, cycles: deps.arrangedRepeatCycles(ir, extent.cycles) }
 }
 
 /**
@@ -194,17 +165,18 @@ export async function measureSongLength(
 
   // Structure first, off the PARSED source: an arrangement is a definite end,
   // and it does not depend on anything having been evaluated or heard — so this
-  // branch can answer before a note has sounded, and it is asked of the one IR
-  // that can actually contain an `Arrange` (see `SongIRs`).
-  const extent = songEnd(irs.structural, deps)
+  // branch can answer before a note has sounded, and it is asked of the file's
+  // text as it is now (see `SongIRs`).
+  const extent = deps.songEnd(irs.structural)
   if (extent.kind === 'arranged' && extent.cycles > 0) {
     // #1580 — the arrangement is a definite end of the STRUCTURE. A parameter
     // whose period does not divide it keeps moving after the last bar, so the
     // song first repeats at the fold of the two: four bars under a three-step
     // gain repeat at twelve, and a bounce of four would loop `.2 .5 .9 .2`,
     // which is not what the song does. `songEnd` folds it — the same reading
-    // play-once stops at (#1723). Structural, like everything else in this
-    // branch — no evaluation, so it still answers before a note has sounded.
+    // play-once stops at and the timeline spans (#1723, #1936). Structural, like
+    // everything else in this branch — no evaluation, so it still answers before
+    // a note has sounded.
     return { kind: 'arranged', cycles: extent.cycles }
   }
 

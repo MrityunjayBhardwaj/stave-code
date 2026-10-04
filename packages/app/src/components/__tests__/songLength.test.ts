@@ -17,12 +17,11 @@
 import { describe, it, expect } from 'vitest'
 import { IR, type PatternIR } from '../../../../editor/src/codeView/ir/PatternIR'
 import { songExtent } from '../../../../editor/src/codeView/ir/songExtent'
-import { analyzeSong, arrangedRepeatCycles, signalDimensionsOf } from '../../../../editor/src/codeView/ir/songAnalysis'
+import { analyzeSong, signalDimensionsOf, songEnd } from '../../../../editor/src/codeView/ir/songAnalysis'
 import { parseStrudel } from '../../../../editor/src/codeView/ir/parseStrudel'
 import type { IREvent } from '../../../../editor/src/codeView/ir/IREvent'
 import {
   measureSongLength,
-  songEnd,
   songLoopCycles,
   cyclesToSeconds,
   bounceOffers,
@@ -57,10 +56,9 @@ function ev(begin: number, s: string): IREvent {
  */
 function depsWith(onsets: IREvent[]): SongLengthDeps {
   return {
-    songExtent,
+    songEnd,
     analyzeSong,
     signalDimensionsOf,
-    arrangedRepeatCycles,
     createCollector: () => ({
       collectFn: (startCycle, endCycle) =>
         onsets.filter((e) => e.begin >= startCycle && e.begin < endCycle),
@@ -102,9 +100,8 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // Deps whose analyzeSong would throw if reached — the arrangement branch
     // must not depend on anything having been evaluated or heard.
     const deps: SongLengthDeps = {
-      songExtent,
+      songEnd,
       signalDimensionsOf,
-      arrangedRepeatCycles,
       analyzeSong: () => {
         throw new Error('analyzeSong must not be reached for an arrangement')
       },
@@ -124,9 +121,8 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // been evaluated, which is the property the arm above pins.
     const ir = parseStrudel('arrange([2,s("bd*2")],[2,s("hh*4")]).gain("<.2 .5 .9>")')
     const deps: SongLengthDeps = {
-      songExtent,
+      songEnd,
       signalDimensionsOf,
-      arrangedRepeatCycles,
       analyzeSong: () => {
         throw new Error('analyzeSong must not be reached for an arrangement')
       },
@@ -232,7 +228,7 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // extent because a real opaque document is rare and this is the contract.
     const deps: SongLengthDeps = {
       ...depsWith(repeating(64)),
-      songExtent: () => ({ kind: 'opaque' }),
+      songEnd: () => ({ kind: 'opaque' }),
     }
     expect(await measureSongLength(both(bd), deps)).toEqual({
       kind: 'unknown',
@@ -252,31 +248,15 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
   })
 })
 
-describe('songEnd — where a document ends, for every consumer of "the end" (#1723)', () => {
-  const deps = { songExtent, arrangedRepeatCycles }
-
-  it('an arrangement under a stepped gain that outlasts it ends where the song comes back round', () => {
-    const ir = parseStrudel('const a = s("bd*2").gain("<.2 .9>")\narrange([2, a], [1, s("hh*2")], [1, a])')
-    // The structure alone is four bars — the length play-once used to stop at.
-    expect(songExtent(ir)).toEqual({ kind: 'arranged', cycles: 4 })
-    expect(songEnd(ir, deps)).toEqual({ kind: 'arranged', cycles: 8 })
-  })
-
-  it('an arrangement with nothing outlasting it keeps its own length — the control', () => {
-    const ir = parseStrudel('const a = s("bd*2").gain(.5)\narrange([2, a], [1, s("hh*2")], [1, a])')
-    expect(songEnd(ir, deps)).toEqual({ kind: 'arranged', cycles: 4 })
-  })
-
-  it('a document with no arrangement passes through untouched', () => {
-    const ir = parseStrudel('s("bd*2").gain("<.2 .9>")')
-    expect(songEnd(ir, deps)).toEqual(songExtent(ir))
-    expect(songEnd(ir, deps).kind).not.toBe('arranged')
-  })
-
+describe('the bounce sizes an arrangement by the area\'s songEnd (#1723, #1936)', () => {
+  // `songEnd` itself is pinned beside `arrangedRepeatCycles` in the editor; this arm
+  // holds the bounce to it, on the song whose structure (4) and end (8) differ.
   it('the bounce offers exactly what songEnd says', async () => {
     const ir = parseStrudel('const a = s("bd*2").gain("<.2 .9>")\narrange([2, a], [1, s("hh*2")], [1, a])')
+    expect(songExtent(ir)).toEqual({ kind: 'arranged', cycles: 4 })
     const length = await measureSongLength({ structural: ir, analysis: null }, depsWith([]))
-    expect(length).toEqual(songEnd(ir, deps))
+    expect(length).toEqual({ kind: 'arranged', cycles: 8 })
+    expect(length).toEqual(songEnd(ir))
   })
 })
 

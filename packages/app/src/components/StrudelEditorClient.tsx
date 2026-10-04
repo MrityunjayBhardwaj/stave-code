@@ -91,9 +91,8 @@ import {
   getIRSnapshot,
   parseStrudel,
   analyzeSong,
-  songExtent,
   signalDimensionsOf,
-  arrangedRepeatCycles,
+  songEnd,
   listAssetRecords,
   registerAssets,
   type SongExtent,
@@ -103,7 +102,7 @@ import {
 import { reportWriteRefusal } from "../lib/writeRefusal";
 import { effectiveLoopRange, subscribeLoopState } from "../state/loopRange";
 import { createSongCollector } from "./musicalTimeline/songCollector";
-import { measureSongLength, songEnd, type BounceSizing } from "./songLength";
+import { measureSongLength, type BounceSizing } from "./songLength";
 import {
   createEndOfSongWatcher,
   hasDefiniteEnd,
@@ -1289,7 +1288,7 @@ export default function StrudelEditorClient({
       // length the bounce renders and the timeline draws.
       const nextExtent: SongExtent | null =
         evalLanguage !== "sonicpi"
-          ? songEnd(parseStrudel(evaluatedCode), { songExtent, arrangedRepeatCycles })
+          ? songEnd(parseStrudel(evaluatedCode))
           : null;
 
       setRuntimeStates(prev => {
@@ -1998,14 +1997,14 @@ export default function StrudelEditorClient({
         const length = await measureSongLength(
           { structural: structuralIr, analysis: analysisIr },
           {
-            songExtent,
+            // #1580 / #1936 — an arrangement's length folded with the period of
+            // every parameter over it, so a bounce of a four-bar arrangement under
+            // a three-step gain offers the twelve bars the song actually takes.
+            // The same reading play-once stops at and the timeline spans.
+            songEnd,
             analyzeSong,
             // #1465 — read off the IR here because only a caller holds one.
             signalDimensionsOf,
-            // #1580 — an arrangement's length folded with the period of every
-            // parameter over it, so a bounce of a four-bar arrangement under a
-            // three-step gain offers the twelve bars the song actually takes.
-            arrangedRepeatCycles,
             // The SHARED factory the timeline uses, threaded with this file's
             // accessors — not a second collector, whose key space would drift.
             createCollector: (nodeIr) =>

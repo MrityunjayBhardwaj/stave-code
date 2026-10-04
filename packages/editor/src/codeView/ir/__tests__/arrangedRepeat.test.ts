@@ -20,20 +20,21 @@
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../parseStrudel'
-import { arrangedRepeatCycles, songPeriodOf } from '../songAnalysis'
+import { arrangedRepeatCycles, songEnd, songPeriodOf } from '../songAnalysis'
 import { steppedAutomations } from '../steppedAutomation'
 import { songExtent } from '../songExtent'
 
 /** The arrangement both halves of every arm share: two arms of two bars. */
 const ARRANGEMENT = 'arrange([2,s("bd*2")],[2,s("hh*4")])'
 
-/** What the app does: read the extent, then fold. Returns both, so an arm can
- *  show the structure's own answer beside the song's. */
+/** The structure's own answer beside the song's: `songExtent`, then `songEnd`, the
+ *  reading the timeline, play-once and the bounce all take (#1936). */
 function measure(code: string): { extent: number | null; repeat: number | null } {
   const ir = parseStrudel(code)
   const ex = songExtent(ir)
-  if (ex.kind !== 'arranged') return { extent: null, repeat: null }
-  return { extent: ex.cycles, repeat: arrangedRepeatCycles(ir, ex.cycles) }
+  const end = songEnd(ir)
+  if (ex.kind !== 'arranged' || end.kind !== 'arranged') return { extent: null, repeat: null }
+  return { extent: ex.cycles, repeat: end.cycles }
 }
 
 describe('arrangedRepeatCycles (#1580)', () => {
@@ -82,5 +83,36 @@ describe('arrangedRepeatCycles (#1580)', () => {
     const ir = parseStrudel(`${ARRANGEMENT}.gain("<.2 .5 .9>")`)
     const [a] = steppedAutomations(ir)
     expect(songPeriodOf(a)).toBe(3)
+  })
+})
+
+describe('songEnd — where a document ends, for every consumer of "the end" (#1723, #1936)', () => {
+  const SONG = 'const a = s("bd*2").gain("<.2 .9>")\narrange([2, a], [1, s("hh*2")], [1, a])'
+
+  it('an arrangement under a stepped gain that outlasts it ends where the song comes back round', () => {
+    const ir = parseStrudel(SONG)
+    // The structure alone is four bars — the length play-once used to stop at.
+    expect(songExtent(ir)).toEqual({ kind: 'arranged', cycles: 4 })
+    expect(songEnd(ir)).toEqual({ kind: 'arranged', cycles: 8 })
+  })
+
+  it('an arrangement with nothing outlasting it keeps its own length — the control', () => {
+    const ir = parseStrudel('const a = s("bd*2").gain(.5)\narrange([2, a], [1, s("hh*2")], [1, a])')
+    expect(songEnd(ir)).toEqual({ kind: 'arranged', cycles: 4 })
+  })
+
+  it('a document with no arrangement, or an untrusted one, passes through untouched', () => {
+    expect(songEnd(parseStrudel('s("bd*2").gain("<.2 .9>")'))).toEqual({ kind: 'loop' })
+    // An arrangement under a method the parser cannot read: its length is not trusted.
+    expect(songEnd(parseStrudel('arrange([2, s("bd")], [1, s("hh")]).foo(2).gain("<.2 .9>")'))).toEqual({ kind: 'opaque' })
+    expect(songEnd(null)).toEqual({ kind: 'loop' })
+  })
+
+  it('passes its cap and signal periods to the fold', () => {
+    const ir = parseStrudel(SONG)
+    // lcm(4, 2) = 8 is past a cap of 5, so the structure's own end stands.
+    expect(songEnd(ir, 5)).toEqual({ kind: 'arranged', cycles: 4 })
+    // A caller's own reading of the curves (a shape-swap preview) is folded in.
+    expect(songEnd(ir, 256, [3])).toEqual({ kind: 'arranged', cycles: 24 })
   })
 })
