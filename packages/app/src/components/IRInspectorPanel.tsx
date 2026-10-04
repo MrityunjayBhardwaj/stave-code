@@ -49,8 +49,8 @@ const TIMELINE_CAPACITY_MAX = 500;
 const EMPTY_SET: ReadonlySet<string> = Object.freeze(new Set<string>()) as ReadonlySet<string>;
 
 // Phase 20-07 wave γ — module-level CSS injection guard for breakpoint +
-// pulse decoration classes. Mirrors `injectHighlightStyles` at
-// StrudelMonaco.tsx:253-268. Idempotent across multiple panel mounts.
+// pulse decoration classes. Same guard as `ensureBaseHighlightStyle` in
+// the editor's useHighlighting.ts. Idempotent across multiple panel mounts.
 let inspectorBreakpointStylesInjected = false;
 function ensureInspectorBreakpointStyles(): void {
   if (inspectorBreakpointStylesInjected || typeof document === "undefined") return;
