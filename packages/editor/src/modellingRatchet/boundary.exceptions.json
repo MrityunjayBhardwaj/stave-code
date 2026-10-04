@@ -1,5 +1,5 @@
 {
-  "about": "The code↔view boundary (#1879). \"enforced\": every reach across the boundary that exists today, exact per file — one more is a failure, one fewer is stale. \"declared\": files that convert between code and views in ways no structural rule can see; named and counted, not enforced. Both lists only shrink: each new enforced reach needs its own line, \"added\": { \"<reach>\": \"#<issue> <why>\" }, and a newly declared file needs \"added\": \"#<issue> <why>\". See boundary.ts.",
+  "about": "The code↔view boundary (#1879). \"enforced\": every reach across the boundary that exists today, exact per file — one more is a failure, one fewer is stale. \"declared\": files that convert between code and views in ways no structural rule can see; named and counted, not enforced. Because nothing can see them, the declared list is kept by reading code, so a miss is expected: when one is found, it joins with an \"added\" line. Both lists only shrink: each new enforced reach needs its own line, \"added\": { \"<reach>\": \"#<issue> <why>\" }, and a newly declared file needs \"added\": \"#<issue> <why>\". See boundary.ts.",
   "enforced": [
     {
       "file": "packages/editor/src/engine/StrudelEngine.ts",
@@ -25,22 +25,11 @@
       }
     },
     {
-      "file": "packages/editor/src/monaco/StrudelMonaco.tsx",
-      "reaches": [
-        "door#monaco ITextModel.setValue"
-      ],
-      "why": "Dead code: nothing has mounted this component since the editors became workspace compositions (32f0e33a) — no importer, not exported, not in the bundle. Its external sync (model.setValue when the code prop differs) therefore never runs. #1915 deletes the file and this entry with it. The live whole-document sync is EditorView's value prop, written by @monaco-editor/react itself, which no symbol rule can see (#1903).",
-      "issue": "#1915",
-      "added": {
-        "door#monaco ITextModel.setValue": "#1914 the door rule learned Monaco's own document writes; this call predates the rule and is the only one outside the writer"
-      }
-    },
-    {
       "file": "packages/editor/src/engine/vizLineScan.ts",
       "reaches": [
         "codeView/ir/trackId#LABEL_HEAD"
       ],
-      "why": "A line scanner needs only the label rule, which lives in the dependency-free leaf codeView/ir/trackId.ts (the file the app's @stave/editor/trackId subpath is built from, and which a test keeps import-free). Importing it through the entry pulls every codeView module into the engine's graph, and StrudelEngine.test then fails to load: a module evaluating @strudel/core at import time reaches the test's mock before it is initialised.",
+      "why": "A line scanner needs one rule, LABEL_HEAD, and the file that owns it, codeView/ir/trackId.ts, imports nothing (a test keeps it that way). Reaching that leaf adds one dependency-free file to the engine's import graph; the entry would add 44 more codeView modules for one regex (measured 2026-10-04: the engine's graph holds 18 codeView files, the entry's holds 62). A one-rule import from a codeView file that imports nothing is meant to stay (#1880).",
       "issue": "#1880",
       "added": {
         "codeView/ir/trackId#LABEL_HEAD": "#1921 the scanner's own copy of the identifier regex became the shared LABEL_HEAD; the entry route broke StrudelEngine.test's collection, so it reads the leaf"
@@ -51,7 +40,7 @@
       "reaches": [
         "codeView/ir/trackId#LABEL_HEAD"
       ],
-      "why": "A line scanner needs only the label rule, which lives in the dependency-free leaf codeView/ir/trackId.ts (the file the app's @stave/editor/trackId subpath is built from, and which a test keeps import-free). Importing it through the entry pulls every codeView module into the engine's graph, and StrudelEngine.test then fails to load: a module evaluating @strudel/core at import time reaches the test's mock before it is initialised.",
+      "why": "A line scanner needs one rule, LABEL_HEAD, and the file that owns it, codeView/ir/trackId.ts, imports nothing (a test keeps it that way). Reaching that leaf adds one dependency-free file to the engine's import graph; the entry would add 44 more codeView modules for one regex (measured 2026-10-04: the engine's graph holds 18 codeView files, the entry's holds 62). A one-rule import from a codeView file that imports nothing is meant to stay (#1880).",
       "issue": "#1880",
       "added": {
         "codeView/ir/trackId#LABEL_HEAD": "#1921 the scanner's own copy of the identifier regex became the shared LABEL_HEAD; the entry route broke StrudelEngine.test's collection, so it reads the leaf"
@@ -73,6 +62,12 @@
       "file": "packages/editor/src/visualEdit/panels/SequencerGrid.tsx",
       "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
       "issue": "#1880"
+    },
+    {
+      "file": "packages/editor/src/visualEdit/panels/chordLanes.ts",
+      "what": "decides what a step lane's written tokens mean, chord symbols or sound names, outside the area; surfaceRoute and SequencerGrid act on the answer (53 of the 1,772 corpus grids read as chord charts, measured 2026-10-04)",
+      "issue": "#1880",
+      "added": "#1939 missed when the list was written, and found while reading surfaceRoute and SequencerGrid"
     },
     {
       "file": "packages/editor/src/visualEdit/panels/drumVoices.ts",
@@ -103,11 +98,6 @@
     {
       "file": "packages/app/src/components/StrudelEditorClient.tsx",
       "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/app/src/components/irProjection.ts",
-      "what": "reads syntax from user code by hand",
       "issue": "#1880"
     }
   ]
