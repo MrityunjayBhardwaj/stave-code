@@ -27,11 +27,11 @@
  * opened about. So the rule is narrow on purpose: a bare identifier is a name,
  * and everything else is unnamed.
  *
- * Reading the name is the editor's (`sectionNameAt`, in `@stave/editor/trackId`
- * since #1921), so a section and a track agree on what a name is — `前奏` names
- * either. This file keeps only the ordinal fallback.
+ * Reading the name is the editor's (`sectionNameAt`, since #1921), so a section
+ * and a track agree on what a name is — `前奏` names either. This file keeps only
+ * the ordinal fallback.
  */
-import { sectionNameAt } from '@stave/editor/trackId'
+import { sectionNameAt } from '@stave/editor'
 
 /**
  * The name of an arm that has none: an ORDINAL, never a guess at the music.

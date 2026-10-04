@@ -17,8 +17,9 @@ import { join } from 'node:path'
 /**
  * ⚠ A RESOLUTION SHIM, NOT A BEHAVIOURAL STUB — the distinction is the whole
  * point. Production imports the predicate from the `@stave/editor` barrel,
- * which is right for the app bundle and unloadable in jsdom: the barrel drags
- * `gifenc` (CJS) through an ESM resolver that cannot take its named exports.
+ * which is right for the app bundle and was unloadable in jsdom until #1938:
+ * the barrel dragged `gifenc` (CJS) through an ESM resolver that cannot take
+ * its named exports.
  * Every other app test that touches the barrel does it with `import type`,
  * which TypeScript erases, so this is simply the first one to LOAD it.
  *

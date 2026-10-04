@@ -106,7 +106,7 @@ export type {
 export type { IREvent, SourceLocation } from './ir/IREvent'
 export type { IRPattern } from './ir/IRPattern'
 export type { PatternIR } from './ir/PatternIR'
-export { splitMuteMarker } from './ir/trackId'
+export { splitMuteMarker, labelAtOffset, sectionNameAt } from './ir/trackId'
 export {
   detectMasterAll,
   detectMasterAudioAll,

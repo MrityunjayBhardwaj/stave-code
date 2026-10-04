@@ -2,9 +2,9 @@
  * trackColor.drift.test.ts — the Mixer and the Timeline must colour a track
  * IDENTICALLY (V-track-1, issue #579). The canonical algorithm now lives in the
  * editor (`codeView/trackColor.ts`) so the Mixer can import it; the app's
- * `colors.ts` keeps an identical copy because it CANNOT import the editor barrel
- * (it drags `@strudel/draw → gifenc` into vite-node and crashes app unit tests,
- * P172 — the same reason `resolveLaneKey` mirrors `laneKeyOf`).
+ * `colors.ts` keeps an identical copy because it could not import the editor
+ * barrel until #1938 (p5 → `gifenc` crashed app unit tests under vite-node —
+ * the same reason `resolveLaneKey` mirrors `laneKeyOf`).
  *
  * Two copies can drift. This guard deep-imports the editor module directly (pure
  * file, no barrel → gifenc-free) and asserts the two NEVER diverge — palette,
@@ -24,7 +24,7 @@ import {
   trackIdentity,
 } from '../colors'
 // Editor-canonical copy (the Mixer's algorithm), deep-imported to dodge the
-// @stave/editor barrel (gifenc CJS crash under vite-node, P172).
+// @stave/editor barrel (a gifenc CJS crash under vite-node until #1938).
 import {
   TRACK_PALETTE_32 as EDITOR_PALETTE_32,
   trackIndexOf as editorTrackIndexOf,

@@ -23,7 +23,8 @@
 
 /** The viz languages a package file can be (a subset of `WorkspaceLanguage`).
  *  Kept as local literals so this module — and the provider's tests — stay free
- *  of a runtime `@stave/editor` import (which drags heavy viz/`gifenc` deps). */
+ *  of a runtime `@stave/editor` import (which the app's tests could not load
+ *  until #1938). */
 import { BAKED_VIZ_THUMBNAILS } from "./vizThumbnails.data";
 
 export type VizFileLanguage = "glsl" | "p5js" | "hydra";

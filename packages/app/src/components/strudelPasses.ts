@@ -43,9 +43,9 @@
  *
  * Two reasons, and the second is the load-bearing one.
  *
- * 1. A barrel import (`@stave/editor`) into a hermetically unit-tested app
- *    module drags `gifenc` (CJS) and breaks the app's vitest run while
- *    production stays fine — so the real functions are wired at the call site,
+ * 1. Until #1938 a barrel import (`@stave/editor`) into a hermetically
+ *    unit-tested app module broke the app's vitest run (p5 → `gifenc`, CJS)
+ *    while production stayed fine — so the real functions are wired at the call site,
  *    which already imports the barrel. Only `import type` appears here, and
  *    type imports are erased.
  *

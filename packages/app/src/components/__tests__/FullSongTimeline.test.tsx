@@ -21,8 +21,8 @@ import {
 } from '../../state/loopRange'
 
 // FullSongTimeline now pulls the editor runtime (collectCycles/laneKeyOf, via
-// timelineMarks) into its import graph; the real module drags in a CJS dep
-// (gifenc) that breaks vitest's loader. These props never pass a real `ir`, so
+// timelineMarks) into its import graph; until #1938 the real module dragged in
+// a CJS dep (gifenc) that broke vitest's loader. These props never pass a real `ir`, so
 // the stubs are loaded but never called — the mini-note collection path is
 // covered by the Playwright spec against a real song.
 // Trim-gesture fixture (#437): an `arrange` song with TWO bd arms — arm 0 over

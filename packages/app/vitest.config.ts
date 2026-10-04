@@ -45,10 +45,14 @@ export default defineConfig({
     // vite-node — mirror the editor's stub + inline pattern.
     server: {
       deps: {
-        // `gifenc` is a CJS module the editor barrel pulls in (GIF export /
-        // trackColor); inlining lets Vite fix its named-export interop so
-        // tests importing editor runtime (e.g. the settings adapters) load.
-        inline: [/@strudel\//, "gifenc"],
+        // #1938 — p5 is what lets an app test load the editor's main entry.
+        // p5's dist imports `gifenc`, a CommonJS module, and Node's ESM loader
+        // cannot name its exports: `Named export 'GIFEncoder' not found`.
+        // Inlining `gifenc` alone did not fix that (measured: the main-entry
+        // probe still failed), and neither did inlining `@stave/editor`; the
+        // importer has to go through Vite, and the importer is p5. With p5
+        // inlined the full suite passes and the main entry loads.
+        inline: [/@strudel\//, "gifenc", /[\\/]p5[\\/]/],
       },
     },
   },

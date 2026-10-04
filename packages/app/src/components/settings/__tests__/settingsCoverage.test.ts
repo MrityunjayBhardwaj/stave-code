@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 
 // Mock the editor barrel (established pattern — see IRInspectorPanel.test):
-// importing the real SettingsPanel would pull @stave/editor's runtime, which
-// transitively loads the CJS `gifenc` module and fails ESM interop under
+// importing the real SettingsPanel pulls @stave/editor's runtime, which until
+// #1938 loaded the CJS `gifenc` module and failed ESM interop under
 // vitest. The adapter functions are never CALLED here — we only read the
 // module-level ADAPTER_KEYS — so no-op stubs suffice.
 vi.mock("@stave/editor", () => {

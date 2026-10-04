@@ -287,7 +287,7 @@ describe('buildTimelineScene', () => {
 })
 
 // `collectNoteMarks` (timelineMarks.ts) needs the runtime `collectCycles` from
-// `@stave/editor`, whose CJS `gifenc` dep breaks vitest's loader — so it isn't
+// `@stave/editor`, whose CJS `gifenc` dep broke vitest's loader until #1938 — so it isn't
 // unit-tested here (importing it would pull the editor bundle into this suite).
 // Its null-IR guard is trivial; the real collection path is covered by the
 // Playwright spec against a real evaluated song.

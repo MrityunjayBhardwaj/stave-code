@@ -159,7 +159,8 @@ const TAG_COLOR: Record<PatternIR["tag"], string> = {
 
 // summarize / children moved to IRInspectorChrome.ts (Phase 20-04 wave δ)
 // — pure helpers extracted so unit tests can import without pulling the
-// full panel + transitive `gifenc` (CommonJS) dependency chain. Imported
+// full panel + transitive `gifenc` (CommonJS) dependency chain, which the
+// app's tests could not load until #1938. Imported
 // at the top of this file and re-exported alongside the import.
 
 function round(n: number): string {

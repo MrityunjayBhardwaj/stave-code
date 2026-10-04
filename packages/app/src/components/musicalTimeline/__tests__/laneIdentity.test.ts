@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import { resolveLaneKey, DEFAULT_LANE_KEY, containingAnchor } from '../laneIdentity'
 // Authoritative editor definition, deep-imported to dodge the @stave/editor
-// barrel (gifenc CJS crash under vite-node, P172).
+// barrel (a gifenc CJS crash under vite-node until #1938).
 import { laneKeyOf } from '../../../../../editor/src/codeView/ir/songAnalysis'
 
 describe('resolveLaneKey (#498/U1)', () => {
