@@ -7978,20 +7978,28 @@ function soloMuteEdits(doc, newSolo, prevSnapshot) {
 }
 __name(soloMuteEdits, "soloMuteEdits");
 
-// src/codeView/notation/pitch.ts
+// src/engine/noteToMidi.ts
+function noteToMidi(note) {
+  if (typeof note === "number") return Math.round(note);
+  if (typeof note !== "string") return null;
+  const m = note.match(/^([a-gA-G])([#bsf]*)(-?\d*)$/);
+  if (!m) return null;
+  const [, letter, accidentals, octave] = m;
+  if (octave === "-") return null;
+  let offset = 0;
+  for (const a of accidentals) offset += a === "#" || a === "s" ? 1 : -1;
+  const oct = octave === "" ? DEFAULT_OCTAVE : parseInt(octave, 10);
+  return (oct + 1) * 12 + SEMITONE_OF[letter.toLowerCase()] + offset;
+}
+__name(noteToMidi, "noteToMidi");
 var SEMITONE_OF = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
-var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
 var DEFAULT_OCTAVE = 3;
+
+// src/codeView/notation/pitch.ts
+var SHARP_NAMES = ["c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b"];
 function pitchToMidi(token) {
   if (/^-?\d+$/.test(token)) return parseInt(token, 10);
-  const m = token.toLowerCase().match(/^([a-g])(s|#|b)?(-?\d+)?$/);
-  if (!m) return null;
-  const [, letter, accidental, octave] = m;
-  let semitone = SEMITONE_OF[letter];
-  if (accidental === "s" || accidental === "#") semitone += 1;
-  else if (accidental === "b") semitone -= 1;
-  const oct = octave !== void 0 ? parseInt(octave, 10) : DEFAULT_OCTAVE;
-  return (oct + 1) * 12 + semitone;
+  return noteToMidi(token);
 }
 __name(pitchToMidi, "pitchToMidi");
 function midiToPitch(midi) {
@@ -13096,18 +13104,6 @@ function quoteLike(oldToken, name) {
   return q === '"' || q === "'" ? `${q}${name}${q}` : name;
 }
 __name(quoteLike, "quoteLike");
-
-// src/engine/noteToMidi.ts
-function noteToMidi(note) {
-  if (typeof note === "number") return Math.round(note);
-  if (typeof note !== "string") return null;
-  const m = note.toLowerCase().match(/^([a-g])(b|#)?(-?\d+)$/);
-  if (!m) return null;
-  const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
-  const acc = m[2] === "b" ? -1 : m[2] === "#" ? 1 : 0;
-  return (parseInt(m[3]) + 1) * 12 + base[m[1]] + acc;
-}
-__name(noteToMidi, "noteToMidi");
 
 // src/engine/NormalizedHap.ts
 var KNOWN_VALUE_FIELDS = /* @__PURE__ */ new Set([

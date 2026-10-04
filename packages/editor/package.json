@@ -32,6 +32,11 @@
       "types": "./dist/keys/chord.d.ts",
       "import": "./dist/keys/chord.js",
       "require": "./dist/keys/chord.cjs"
+    },
+    "./noteToMidi": {
+      "types": "./dist/engine/noteToMidi.d.ts",
+      "import": "./dist/engine/noteToMidi.js",
+      "require": "./dist/engine/noteToMidi.cjs"
     }
   },
   "files": [
