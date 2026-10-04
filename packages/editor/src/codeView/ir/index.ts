@@ -111,8 +111,8 @@ export { parseStrudel, classifyLiteralRhs } from './parseStrudel'
 // track body. Replaces the four hand-kept `run*Stage` passes (#79).
 export { parseStrudelStages } from './parseStrudelStages'
 export type { NamedStage } from './parseStrudelStages'
-export { buildStrudelPasses, STRUDEL_PASS_DEPS, FINAL_PASS_NAME } from './strudelPasses'
-export type { NamedPass, StrudelPassDeps } from './strudelPasses'
+export { buildStrudelPasses } from './strudelPasses'
+export type { NamedPass } from './strudelPasses'
 export { parseStrudelRecorded } from './parseStrudel'
 export type { TopLevelBody } from './parseStrudel'
 

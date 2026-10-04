@@ -154,11 +154,11 @@ export interface SongLengthDeps {
  * whose header explains the key space.
  */
 export async function measureSongLength(
-  irs: SongSources,
+  sources: SongSources,
   deps: SongLengthDeps,
   signal?: { aborted: boolean },
 ): Promise<SongLength> {
-  if (irs.end == null && irs.analysis == null) {
+  if (sources.end == null && sources.analysis == null) {
     return { kind: 'unknown', why: 'no-document' }
   }
 
@@ -167,7 +167,7 @@ export async function measureSongLength(
   // branch can answer before a note has sounded, and it is asked of the file's
   // text as it is now (see `SongSources`). No text reads as a loop, which is
   // what `songEnd(null)` answered when this took a tree.
-  const extent: SongExtent = irs.end ?? { kind: 'loop' }
+  const extent: SongExtent = sources.end ?? { kind: 'loop' }
   if (extent.kind === 'arranged' && extent.cycles > 0) {
     // #1580 — the arrangement is a definite end of the STRUCTURE. A parameter
     // whose period does not divide it keeps moving after the last bar, so the
@@ -188,19 +188,19 @@ export async function measureSongLength(
   // Everything below measures the EVALUATED document, so it needs the snapshot.
   // A document that has never been evaluated has no period to find — which is a
   // different answer from "we measured it and there was none".
-  if (irs.analysis == null) return { kind: 'unknown', why: 'no-document' }
+  if (sources.analysis == null) return { kind: 'unknown', why: 'no-document' }
 
-  const { collectFn, hasUnheardTrack } = deps.createCollector(irs.analysis)
+  const { collectFn, hasUnheardTrack } = deps.createCollector(sources.analysis)
 
   let analysis: SongAnalysis
   try {
-    analysis = await deps.analyzeSong(irs.analysis, {
+    analysis = await deps.analyzeSong(sources.analysis, {
       signal,
       collectFn,
       hasUnheardTrack,
       // #1465 — this is the dialog the issue was filed against: automating a
       // control with a continuous signal dropped the document to "pick a length".
-      signals: deps.signalDimensionsOf(irs.analysis),
+      signals: deps.signalDimensionsOf(sources.analysis),
     })
   } catch {
     return { kind: 'unknown', why: 'no-period' }

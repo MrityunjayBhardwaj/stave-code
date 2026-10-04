@@ -41,8 +41,8 @@ export type { ShapeSwap } from './codeView'
 // dist/index.cjs. Replaces the four `run*Stage` passes (#79).
 export { parseStrudelStages } from './codeView'
 export type { NamedStage } from './codeView'
-export { buildStrudelPasses, STRUDEL_PASS_DEPS, FINAL_PASS_NAME } from './codeView'
-export type { NamedPass, StrudelPassDeps } from './codeView'
+export { buildStrudelPasses } from './codeView'
+export type { NamedPass } from './codeView'
 
 // Pass runner — runtime-neutral IR→IR transform machinery
 export type { Pass } from './codeView'

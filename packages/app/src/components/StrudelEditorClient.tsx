@@ -113,15 +113,6 @@ import { installAssetProbe } from "../e2e/assetProbe";
 import { warmWaveforms } from "../audio/waveformWarm";
 
 
-// #1387 — the Inspector's three INTERMEDIATE views (RAW, MINI-EXPANDED,
-// CHAIN-APPLIED) come from `parseStrudelStages`, which lays `parseStrudel`'s own
-// record of each top-level track body over its final tree. They used to be a
-// hand-kept copy of the parser run as passes, and #1553 showed that copy could
-// silence a track once the song read it — so #1558 moved the FINAL tab onto
-// `parseStrudel`, and #1387 removed the copy. The tab names are unchanged
-// (IRInspectorPanel persists by name) and there are still four tabs.
-
-
 // Phase 20-12 — the timeline collects across the same cycle window the live
 // monitor displays (WINDOW_CYCLES in musicalTimeline/timeAxis.ts is 2).
 // Duplicated here because chrome (app) and engine (editor) can't import each
