@@ -28,14 +28,15 @@
  * Structure only. A file that reads user code by hand (a regex over the document) or builds
  * replacement text and RETURNS it to a caller crosses no import and touches no door, so no
  * rule here fires. Those files are listed under `declared` — named, counted on every run,
- * and not enforced. The list is kept by reading code, so a miss is expected; one that is
- * found joins with an `added` line (#1932, #1939). A receiver typed `any` is invisible to the door rule for the same reason.
+ * and not enforced. A receiver typed `any` is invisible to the door rule for the same reason.
  * So is a Monaco write that is not a document-write method: `editor.trigger(…, 'type', …)`,
  * undo/redo, or a keystroke — `trigger` also runs every editor action, so naming it would
  * flag the play/stop shortcuts, not writes. And so is a write a LIBRARY makes on a prop's
  * behalf: `EditorView` passes `value={file.content}` to `@monaco-editor/react`, which replaces
  * the whole document itself when that value changes (#1903). It has to be decided and written
  * down; a symbol rule cannot reach it.
+ * The declared list is kept by reading code, so a miss is expected; one that is found joins
+ * with an `added` line (#1932, #1939).
  * The declared list empties as #1880 moves those files in; once nothing outside the area
  * touches the door, text built outside it has no way to reach a document.
  *
