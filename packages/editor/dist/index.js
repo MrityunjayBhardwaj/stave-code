@@ -4,13 +4,13 @@ import { parse as parse$1 } from '@strudel/mini/krill-parser.js';
 import { bjorklund as bjorklund$1 } from '@strudel/core/euclid.mjs';
 import { isControlName, getControlName } from '@strudel/core/controls.mjs';
 import { mini } from '@strudel/mini/mini.mjs';
+import { get } from '@tonaljs/chord';
 import * as React22 from 'react';
 import React22__default, { forwardRef, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore, useImperativeHandle } from 'react';
 import p5 from 'p5';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import MonacoEditorRaw, { loader, DiffEditor as DiffEditor$1 } from '@monaco-editor/react';
 import * as Y3 from 'yjs';
-import { get } from '@tonaljs/chord';
 import { createPortal } from 'react-dom';
 import { getCachedBuffer, getSampleInfo, getSound, getAudioContext, loadBuffer, superdough, samples, soundMap } from '@strudel/webaudio';
 
@@ -9983,6 +9983,11 @@ function tailToken(v) {
   return v.join(":");
 }
 __name(tailToken, "tailToken");
+function sampleNameOf(token) {
+  const colon = token.indexOf(":");
+  return colon === -1 ? token : token.slice(0, colon);
+}
+__name(sampleNameOf, "sampleNameOf");
 function deriveColumn(occ) {
   const atoms = [];
   const spans = [];
@@ -11727,6 +11732,99 @@ function rollSlotState(model, target, canDrawView) {
   );
 }
 __name(rollSlotState, "rollSlotState");
+
+// src/codeView/surface/drumVoices.ts
+var VOICE_FALLBACK_COLOR = "#9ca3af";
+var VOICE_MAP = {
+  bd: { label: "Kick", color: "#e0407f" },
+  kick: { label: "Kick", color: "#e0407f" },
+  sd: { label: "Snare", color: "#f97316" },
+  sn: { label: "Snare", color: "#f97316" },
+  snare: { label: "Snare", color: "#f97316" },
+  rim: { label: "Rim", color: "#f59e0b" },
+  cp: { label: "Clap", color: "#fb7185" },
+  clap: { label: "Clap", color: "#fb7185" },
+  hh: { label: "Hi-Hat", color: "#14b8a6" },
+  hat: { label: "Hi-Hat", color: "#14b8a6" },
+  oh: { label: "Open Hi-Hat", color: "#22d3ee" },
+  cr: { label: "Crash", color: "#38bdf8" },
+  crash: { label: "Crash", color: "#38bdf8" },
+  rd: { label: "Ride", color: "#60a5fa" },
+  ride: { label: "Ride", color: "#60a5fa" },
+  sh: { label: "Shaker", color: "#a855f7" },
+  cb: { label: "Cowbell", color: "#8b5cf6" },
+  lt: { label: "Low Tom", color: "#22c55e" },
+  mt: { label: "Mid Tom", color: "#84cc16" },
+  ht: { label: "High Tom", color: "#a3e635" },
+  perc: { label: "Perc", color: "#10b981" },
+  tb: { label: "Tambourine", color: "#d946ef" }
+};
+function sampleVoice(sound) {
+  const voice = VOICE_MAP[sampleNameOf(sound).toLowerCase()];
+  if (voice) return voice;
+  return { label: sound, color: VOICE_FALLBACK_COLOR };
+}
+__name(sampleVoice, "sampleVoice");
+function isKnownDrumVoice(sound) {
+  return VOICE_MAP[sampleNameOf(sound).toLowerCase()] !== void 0;
+}
+__name(isKnownDrumVoice, "isKnownDrumVoice");
+
+// src/codeView/surface/chordLanes.ts
+function isChordSymbol(token) {
+  if (isKnownDrumVoice(token)) return false;
+  return !get(token).empty;
+}
+__name(isChordSymbol, "isChordSymbol");
+function forcesChordReading(token) {
+  return isChordSymbol(token) && pitchToMidi(token) === null;
+}
+__name(forcesChordReading, "forcesChordReading");
+function chordLanes(laneSounds) {
+  return laneSounds.length > 0 && laneSounds.every(isChordSymbol) && laneSounds.some(forcesChordReading);
+}
+__name(chordLanes, "chordLanes");
+
+// src/codeView/surface/surfaceRoute.ts
+function routeSurface(headFn, mini) {
+  if (headFn === "s" || headFn === "sound") return "step";
+  if (headFn === "note" || headFn === "n") return memoised(headFn, mini, rollUnlessChordChart);
+  return parsePianoRoll(mini).ok ? "roll" : "step";
+}
+__name(routeSurface, "routeSurface");
+var CACHE_CAP = 32;
+var routed = /* @__PURE__ */ new Map();
+function memoised(headFn, mini, compute) {
+  const key2 = `${headFn}\0${mini}`;
+  const hit = routed.get(key2);
+  if (hit !== void 0) return hit;
+  const answer = compute(mini);
+  if (routed.size >= CACHE_CAP) routed.clear();
+  routed.set(key2, answer);
+  return answer;
+}
+__name(memoised, "memoised");
+function rollUnlessChordChart(mini) {
+  const roll = parsePianoRoll(mini);
+  if (roll.ok || roll.gate !== "wrong-surface") return "roll";
+  const grid = parseStepGrid(mini);
+  return grid.ok && chordLanes(grid.model.lanes.map((l) => l.sound)) ? "step" : "roll";
+}
+__name(rollUnlessChordChart, "rollUnlessChordChart");
+function chunkSurface(chunk) {
+  if (!chunk || chunk.miniString === null) return patternKind(chunk);
+  if (!patternKind(chunk) && chunk.miniVia !== "resolver") return null;
+  return routeSurface(chunk.headFn, chunk.miniString);
+}
+__name(chunkSurface, "chunkSurface");
+function opensStepGrid(chunk) {
+  return chunkSurface(chunk) === "step";
+}
+__name(opensStepGrid, "opensStepGrid");
+function opensPianoRoll(chunk) {
+  return chunkSurface(chunk) === "roll";
+}
+__name(opensPianoRoll, "opensPianoRoll");
 var COMBINATORS = /* @__PURE__ */ new Set(["arrange", "cat", "slowcat"]);
 function parseProgram(doc) {
   try {
@@ -35286,100 +35384,6 @@ function useActiveChunk() {
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
-
-// src/visualEdit/panels/drumVoices.ts
-var VOICE_FALLBACK_COLOR = "#9ca3af";
-var VOICE_MAP = {
-  bd: { label: "Kick", color: "#e0407f" },
-  kick: { label: "Kick", color: "#e0407f" },
-  sd: { label: "Snare", color: "#f97316" },
-  sn: { label: "Snare", color: "#f97316" },
-  snare: { label: "Snare", color: "#f97316" },
-  rim: { label: "Rim", color: "#f59e0b" },
-  cp: { label: "Clap", color: "#fb7185" },
-  clap: { label: "Clap", color: "#fb7185" },
-  hh: { label: "Hi-Hat", color: "#14b8a6" },
-  hat: { label: "Hi-Hat", color: "#14b8a6" },
-  oh: { label: "Open Hi-Hat", color: "#22d3ee" },
-  cr: { label: "Crash", color: "#38bdf8" },
-  crash: { label: "Crash", color: "#38bdf8" },
-  rd: { label: "Ride", color: "#60a5fa" },
-  ride: { label: "Ride", color: "#60a5fa" },
-  sh: { label: "Shaker", color: "#a855f7" },
-  cb: { label: "Cowbell", color: "#8b5cf6" },
-  lt: { label: "Low Tom", color: "#22c55e" },
-  mt: { label: "Mid Tom", color: "#84cc16" },
-  ht: { label: "High Tom", color: "#a3e635" },
-  perc: { label: "Perc", color: "#10b981" },
-  tb: { label: "Tambourine", color: "#d946ef" }
-};
-function sampleVoice(sound) {
-  const base = sound.split(":", 1)[0];
-  const voice = VOICE_MAP[base.toLowerCase()];
-  if (voice) return voice;
-  return { label: sound, color: VOICE_FALLBACK_COLOR };
-}
-__name(sampleVoice, "sampleVoice");
-function isKnownDrumVoice(sound) {
-  return VOICE_MAP[sound.split(":", 1)[0].toLowerCase()] !== void 0;
-}
-__name(isKnownDrumVoice, "isKnownDrumVoice");
-
-// src/visualEdit/panels/chordLanes.ts
-function isChordSymbol(token) {
-  if (isKnownDrumVoice(token)) return false;
-  return !get(token).empty;
-}
-__name(isChordSymbol, "isChordSymbol");
-function forcesChordReading(token) {
-  return isChordSymbol(token) && pitchToMidi(token) === null;
-}
-__name(forcesChordReading, "forcesChordReading");
-function chordLanes(laneSounds) {
-  return laneSounds.length > 0 && laneSounds.every(isChordSymbol) && laneSounds.some(forcesChordReading);
-}
-__name(chordLanes, "chordLanes");
-
-// src/visualEdit/panels/surfaceRoute.ts
-function routeSurface(headFn, mini) {
-  if (headFn === "s" || headFn === "sound") return "step";
-  if (headFn === "note" || headFn === "n") return memoised(headFn, mini, rollUnlessChordChart);
-  return parsePianoRoll(mini).ok ? "roll" : "step";
-}
-__name(routeSurface, "routeSurface");
-var CACHE_CAP = 32;
-var routed = /* @__PURE__ */ new Map();
-function memoised(headFn, mini, compute) {
-  const key2 = `${headFn}\0${mini}`;
-  const hit = routed.get(key2);
-  if (hit !== void 0) return hit;
-  const answer = compute(mini);
-  if (routed.size >= CACHE_CAP) routed.clear();
-  routed.set(key2, answer);
-  return answer;
-}
-__name(memoised, "memoised");
-function rollUnlessChordChart(mini) {
-  const roll = parsePianoRoll(mini);
-  if (roll.ok || roll.gate !== "wrong-surface") return "roll";
-  const grid = parseStepGrid(mini);
-  return grid.ok && chordLanes(grid.model.lanes.map((l) => l.sound)) ? "step" : "roll";
-}
-__name(rollUnlessChordChart, "rollUnlessChordChart");
-function chunkSurface(chunk) {
-  if (!chunk || chunk.miniString === null) return patternKind(chunk);
-  if (!patternKind(chunk) && chunk.miniVia !== "resolver") return null;
-  return routeSurface(chunk.headFn, chunk.miniString);
-}
-__name(chunkSurface, "chunkSurface");
-function opensStepGrid(chunk) {
-  return chunkSurface(chunk) === "step";
-}
-__name(opensStepGrid, "opensStepGrid");
-function opensPianoRoll(chunk) {
-  return chunkSurface(chunk) === "roll";
-}
-__name(opensPianoRoll, "opensPianoRoll");
 function VisualEditStandby({
   panel,
   hint,

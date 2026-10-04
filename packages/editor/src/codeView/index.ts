@@ -161,6 +161,12 @@ export { UNREFINED, documentSteps, absorbViewScale } from './notation/viewResolu
 export type { ViewScale } from './notation/viewResolution'
 export { patternKind, isStepChunk, isRollChunk } from './patternKind'
 export type { PatternKind } from './patternKind'
+// which grid a chunk opens in, whether its lanes are a chord chart, and a lane's drum
+// name: what a step lane's written tokens mean (#1941, moved in from visualEdit/panels)
+export { routeSurface, chunkSurface, opensStepGrid, opensPianoRoll } from './surface/surfaceRoute'
+export type { Surface } from './surface/surfaceRoute'
+export { chordLanes } from './surface/chordLanes'
+export { sampleVoice } from './surface/drumVoices'
 export { trackIdentity, TRACK_PALETTE_32 } from './trackColor'
 
 // ── ops ── model → model (or code → edits); offered exactly when the writer can write the result

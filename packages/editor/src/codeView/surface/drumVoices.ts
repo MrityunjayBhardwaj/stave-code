@@ -12,10 +12,12 @@
  *
  * The map is DATA — easy to extend. Any unmapped sound (or a `:variant`'d token
  * whose base isn't known) falls back to its RAW name + a neutral colour, so the
- * underlying mini is never hidden and nothing crashes. The `:variant` (`bd:3`)
- * is stripped for the LABEL/colour lookup only; lanes stay keyed on the full
- * sound elsewhere.
+ * underlying mini is never hidden and nothing crashes. The lookup is by the
+ * token's sample name (`sampleNameOf`, the head of the `s` tuple — `bd` for
+ * `bd:3`); lanes stay keyed on the full sound elsewhere.
  */
+
+import { sampleNameOf } from '../notation/parse'
 
 export interface DrumVoice {
   /** friendly display name, e.g. `Kick` */
@@ -59,13 +61,12 @@ const VOICE_MAP: Record<string, DrumVoice> = {
 }
 
 /**
- * Resolve a lane's sound token to its drum-voice identity. The `:variant`
- * suffix (`bd:3`) is stripped for the lookup; an unmapped base falls back to the
- * RAW token (incl. its variant) as the label, with a neutral colour.
+ * Resolve a lane's sound token to its drum-voice identity, looked up by its sample
+ * name (`bd` for `bd:3`); an unmapped name falls back to the RAW token (incl. its
+ * variant) as the label, with a neutral colour.
  */
 export function sampleVoice(sound: string): DrumVoice {
-  const base = sound.split(':', 1)[0]
-  const voice = VOICE_MAP[base.toLowerCase()]
+  const voice = VOICE_MAP[sampleNameOf(sound).toLowerCase()]
   if (voice) return voice
   return { label: sound, color: VOICE_FALLBACK_COLOR }
 }
@@ -85,5 +86,5 @@ export function sampleVoice(sound: string): DrumVoice {
  * whose two outcomes read the same).
  */
 export function isKnownDrumVoice(sound: string): boolean {
-  return VOICE_MAP[sound.split(':', 1)[0].toLowerCase()] !== undefined
+  return VOICE_MAP[sampleNameOf(sound).toLowerCase()] !== undefined
 }

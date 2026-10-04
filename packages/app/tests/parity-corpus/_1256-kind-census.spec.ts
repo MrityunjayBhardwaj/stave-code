@@ -37,8 +37,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { unitsWithStatus, measureDocs, aggregate, hasKnownContent } from './editCoverage'
-import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
-import { chordLanes } from '../../../editor/src/visualEdit/panels/chordLanes'
+import { chunkSurface } from '../../../editor/src/codeView/surface/surfaceRoute'
+import { chordLanes } from '../../../editor/src/codeView/surface/chordLanes'
 import {
   parseStepGrid,
   parsePianoRoll,

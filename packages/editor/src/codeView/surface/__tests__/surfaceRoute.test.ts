@@ -27,8 +27,8 @@
  */
 import { describe, it, expect } from 'vitest'
 
-import { detectChunk, isChunkFresh } from '../../codeView/chunkDetect'
-import { chunkSurface, routeSurface } from '../panels/surfaceRoute'
+import { detectChunk, isChunkFresh } from '../../chunkDetect'
+import { chunkSurface, routeSurface } from '../surfaceRoute'
 
 describe('the freshness guard follows a cross-statement mini span', () => {
   // `s(drums)` carries no literal of its own; the resolver names the span

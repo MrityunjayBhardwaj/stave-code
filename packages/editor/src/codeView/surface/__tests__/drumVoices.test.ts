@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { sampleVoice, VOICE_FALLBACK_COLOR } from '../drumVoices'
+import { sampleVoice, isKnownDrumVoice, VOICE_FALLBACK_COLOR } from '../drumVoices'
 
 describe('sampleVoice (#471)', () => {
   it('maps standard drum tokens to friendly names', () => {
@@ -28,6 +28,18 @@ describe('sampleVoice (#471)', () => {
   it('strips :variant for the label/colour lookup', () => {
     expect(sampleVoice('bd:3').label).toBe('Kick')
     expect(sampleVoice('bd:3').color).toBe(sampleVoice('bd').color)
+  })
+
+  it('names a variant with a gain by its sample (#1941)', () => {
+    // `bd:5:0.7` is sample, index, gain — Strudel's `s` tuple — and corpus notation.
+    expect(sampleVoice('bd:5:0.7').label).toBe('Kick')
+    expect(isKnownDrumVoice('hh:0:0.25')).toBe(true)
+  })
+
+  it('leaves a scale token unnamed — the control (#1941)', () => {
+    // a scale token's head is a note letter, not a drum
+    expect(isKnownDrumVoice('G:major')).toBe(false)
+    expect(sampleVoice('G:major')).toEqual({ label: 'G:major', color: VOICE_FALLBACK_COLOR })
   })
 
   it('is case-insensitive on the base token', () => {

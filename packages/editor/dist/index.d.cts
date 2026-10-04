@@ -3056,6 +3056,92 @@ type PatternKind = 'step' | 'roll' | null;
  */
 declare function patternKind(chunk: ChunkInfo | null): PatternKind;
 
+/**
+ * surfaceRoute — which grid a chunk's CONTENT belongs to (#1240).
+ *
+ * ── WHY THIS IS NOT IN `patternKind.ts` ──────────────────────────────────
+ * It was, for about an hour, and the editor suite said no. `patternKind` is
+ * imported by `mixer/stripModel.ts`, which the engine reaches through
+ * `bareCapture.ts` — so putting the roll's content check there dragged
+ * `notation/parse.ts`, and with it `@strudel/mini`'s krill parser, into
+ * `StrudelEngine`'s module graph. That test file mocks `@strudel/mini` with a
+ * factory closing over a top-level variable, and the earlier load turned it into
+ * `Cannot access 'MockPattern' before initialization`: the whole 37-test suite
+ * died AT LOAD, four modules from anything this change is about. Both package
+ * typechecks stayed at their exact baselines throughout.
+ *
+ * The split is not a workaround for that failure, it is what the failure
+ * revealed. There are two questions here and they were one question only while
+ * the head was the sole signal:
+ *
+ *   1. WHAT KIND OF HEAD IS THIS?  Pure, cheap, no notation parsing.
+ *      `patternKind` — and the mixer, the engine's graph, wants only this.
+ *   2. WHICH SURFACE SHOULD THIS CONTENT OPEN?  Needs the content parsed,
+ *      because a resolver-supplied span sits on a head that says nothing.
+ *
+ * Question 2 legitimately depends on the notation layer; question 1 must not.
+ * The dependency line IS the boundary, so the modules are split along it.
+ *
+ * ── THE RULE ─────────────────────────────────────────────────────────────
+ * Head first; where the head is silent ask the ROLL, never the grid; and where
+ * a melodic head's own roll declines the CONTENT, ask whether the content is a
+ * chord chart before letting it fall to code (#1243).
+ *
+ * That last clause is narrow on purpose and its bounds are measured, not
+ * guessed — `rollUnlessChordChart` below carries both halves of why. The short
+ * version: of twelve melodic units the roll declines and the grid would take,
+ * seven are declined on CAPACITY rather than content, and of the five declined
+ * on content only one is actually a chord chart. A rule any wider than this one
+ * draws melodies as drum grids.
+ *
+ * The grid has no WORD vocabulary: every word-like token is a sound name, which
+ * is correct for a drum grid where sample names are arbitrary. So it opens for
+ * `"bd sd hh cp"`, `"<Gsus G7 Em7 D7>"` and `"lorem ipsum dolor sit"` alike, and
+ * cannot tell a drum kit from a chord chart from prose. Asking it "is this
+ * yours?" about any word pattern returns yes, so "ask both and take whichever
+ * opens" is not a routing rule but the absence of one (#1238).
+ *
+ * ⚠ IT IS NOT A UNIVERSAL ACCEPTOR, and the earlier claim that it "never returns
+ * `wrong-surface`" was measured only on word-like tokens. It DOES decline
+ * NUMERICS — `"0 1 2"` and `"1*1, 2*2, 3*3"` come back `wrong-surface`, "the
+ * pattern plays numbers, which the piano roll shows". Two consequences, both
+ * load-bearing: the grid's silence is uninformative only ACROSS WORD PATTERNS,
+ * which is still exactly the chord-vs-drums case this rule turns on; and the
+ * grid arm below can REFUSE, so reaching it is not a promise that a view opens.
+ * `"bd 3 hh"` is declined by both surfaces and correctly gets no editor.
+ *
+ * A chord progression drawn as a lane-per-chord-name grid IS a real editable
+ * surface and counts as one — it parses, serialises, and a delete on a chord
+ * lane really does remove that chord. It now also says what it is: the grid
+ * asks `chordLanes` and drops its drum chrome when every lane is a chord
+ * symbol (#1241). That was a labelling gap, and the same predicate turned out
+ * to be what the routing clause above needed too, which is why one exists
+ * rather than two.
+ */
+
+/** A decided surface. `routeSurface` always reaches one, so it never returns null. */
+type Surface = Exclude<PatternKind, null>;
+/**
+ * Which surface a mini string belongs to, given the head that carries it.
+ *
+ * Exported so the coverage harness scores exactly what the panel mounts — a
+ * second copy of a routing rule answers confidently and diverges silently.
+ */
+declare function routeSurface(headFn: string | null, mini: string): Surface;
+/**
+ * The surface for a chunk, or null when it has no editable content.
+ *
+ * Head-routed chunks answer exactly as they always did. A chunk whose span the
+ * RESOLVER named is the new case: pre-#1240 a mini string on a non-content head
+ * could not exist, so `patternKind` returned null and the user got code.
+ *
+ * Scoped to `miniVia === 'resolver'` deliberately. A head-call literal on a
+ * non-content head (`lpf("0 1 2")`) has always landed in standby, and moving it
+ * is a separate decision with its own measurement — this is the wiring of
+ * admission, not a re-route of everything that owns a string.
+ */
+declare function chunkSurface(chunk: ChunkInfo | null): PatternKind;
+
 /** The literal combinator name — round-trip identity (PV122 #3). */
 type ArrangeMode = 'arrange' | 'cat' | 'slowcat';
 /** Per-arm source ranges within a detected combinator call. One arm = one clip. */
@@ -13009,92 +13095,6 @@ declare function runGridGesture(scope: GridScope, id: string, dryRun: boolean): 
  */
 
 declare function PatternPanel(): React.ReactElement;
-
-/**
- * surfaceRoute — which grid a chunk's CONTENT belongs to (#1240).
- *
- * ── WHY THIS IS NOT IN `patternKind.ts` ──────────────────────────────────
- * It was, for about an hour, and the editor suite said no. `patternKind` is
- * imported by `mixer/stripModel.ts`, which the engine reaches through
- * `bareCapture.ts` — so putting the roll's content check there dragged
- * `notation/parse.ts`, and with it `@strudel/mini`'s krill parser, into
- * `StrudelEngine`'s module graph. That test file mocks `@strudel/mini` with a
- * factory closing over a top-level variable, and the earlier load turned it into
- * `Cannot access 'MockPattern' before initialization`: the whole 37-test suite
- * died AT LOAD, four modules from anything this change is about. Both package
- * typechecks stayed at their exact baselines throughout.
- *
- * The split is not a workaround for that failure, it is what the failure
- * revealed. There are two questions here and they were one question only while
- * the head was the sole signal:
- *
- *   1. WHAT KIND OF HEAD IS THIS?  Pure, cheap, no notation parsing.
- *      `patternKind` — and the mixer, the engine's graph, wants only this.
- *   2. WHICH SURFACE SHOULD THIS CONTENT OPEN?  Needs the content parsed,
- *      because a resolver-supplied span sits on a head that says nothing.
- *
- * Question 2 legitimately depends on the notation layer; question 1 must not.
- * The dependency line IS the boundary, so the modules are split along it.
- *
- * ── THE RULE ─────────────────────────────────────────────────────────────
- * Head first; where the head is silent ask the ROLL, never the grid; and where
- * a melodic head's own roll declines the CONTENT, ask whether the content is a
- * chord chart before letting it fall to code (#1243).
- *
- * That last clause is narrow on purpose and its bounds are measured, not
- * guessed — `rollUnlessChordChart` below carries both halves of why. The short
- * version: of twelve melodic units the roll declines and the grid would take,
- * seven are declined on CAPACITY rather than content, and of the five declined
- * on content only one is actually a chord chart. A rule any wider than this one
- * draws melodies as drum grids.
- *
- * The grid has no WORD vocabulary: every word-like token is a sound name, which
- * is correct for a drum grid where sample names are arbitrary. So it opens for
- * `"bd sd hh cp"`, `"<Gsus G7 Em7 D7>"` and `"lorem ipsum dolor sit"` alike, and
- * cannot tell a drum kit from a chord chart from prose. Asking it "is this
- * yours?" about any word pattern returns yes, so "ask both and take whichever
- * opens" is not a routing rule but the absence of one (#1238).
- *
- * ⚠ IT IS NOT A UNIVERSAL ACCEPTOR, and the earlier claim that it "never returns
- * `wrong-surface`" was measured only on word-like tokens. It DOES decline
- * NUMERICS — `"0 1 2"` and `"1*1, 2*2, 3*3"` come back `wrong-surface`, "the
- * pattern plays numbers, which the piano roll shows". Two consequences, both
- * load-bearing: the grid's silence is uninformative only ACROSS WORD PATTERNS,
- * which is still exactly the chord-vs-drums case this rule turns on; and the
- * grid arm below can REFUSE, so reaching it is not a promise that a view opens.
- * `"bd 3 hh"` is declined by both surfaces and correctly gets no editor.
- *
- * A chord progression drawn as a lane-per-chord-name grid IS a real editable
- * surface and counts as one — it parses, serialises, and a delete on a chord
- * lane really does remove that chord. It now also says what it is: the grid
- * asks `chordLanes` and drops its drum chrome when every lane is a chord
- * symbol (#1241). That was a labelling gap, and the same predicate turned out
- * to be what the routing clause above needed too, which is why one exists
- * rather than two.
- */
-
-/** A decided surface. `routeSurface` always reaches one, so it never returns null. */
-type Surface = Exclude<PatternKind, null>;
-/**
- * Which surface a mini string belongs to, given the head that carries it.
- *
- * Exported so the coverage harness scores exactly what the panel mounts — a
- * second copy of a routing rule answers confidently and diverges silently.
- */
-declare function routeSurface(headFn: string | null, mini: string): Surface;
-/**
- * The surface for a chunk, or null when it has no editable content.
- *
- * Head-routed chunks answer exactly as they always did. A chunk whose span the
- * RESOLVER named is the new case: pre-#1240 a mini string on a non-content head
- * could not exist, so `patternKind` returned null and the user got code.
- *
- * Scoped to `miniVia === 'resolver'` deliberately. A head-call literal on a
- * non-content head (`lpf("0 1 2")`) has always landed in standby, and moving it
- * is a separate decision with its own measurement — this is the wiring of
- * admission, not a re-route of everything that owns a string.
- */
-declare function chunkSurface(chunk: ChunkInfo | null): PatternKind;
 
 interface KnobRange {
     min: number;

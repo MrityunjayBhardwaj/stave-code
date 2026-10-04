@@ -22,7 +22,7 @@ import * as React from 'react'
 import { CODE_UNDO_ACTIVE, CODE_UNDO_ATTR } from '../../workspace/codeUndo'
 
 import { useActiveChunk } from './useActiveChunk'
-import { chunkSurface } from './surfaceRoute'
+import { chunkSurface } from '../../codeView'
 import { SequencerGrid } from './SequencerGrid'
 import { PianoRollGrid } from './PianoRollGrid'
 import { MixerPanel } from '../mixer/MixerPanel'

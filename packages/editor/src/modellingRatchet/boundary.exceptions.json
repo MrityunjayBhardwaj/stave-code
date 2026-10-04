@@ -75,16 +75,6 @@
       "issue": "#1880"
     },
     {
-      "file": "packages/editor/src/visualEdit/panels/drumVoices.ts",
-      "what": "reads syntax from user code by hand",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/panels/surfaceRoute.ts",
-      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
-      "issue": "#1880"
-    },
-    {
       "file": "packages/editor/src/visualEdit/panels/useGridModel.ts",
       "what": "drives parse / serialize itself (through the entry, so no rule sees it): the reseed compares a serialized model with the chunk's mini, and every write runs collapse → serialize → absorbViewScale before commit",
       "issue": "#1880",
