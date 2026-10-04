@@ -25,6 +25,7 @@
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 import { bjorklund, rotateEuclid } from '../ir/euclid'
+import { detectPeriod } from '../ir/songAnalysis'
 import { serializeByLeaf, serializeStepGrid, serializePianoRoll } from './serialize'
 import type {
   AltRegion,
@@ -1198,7 +1199,10 @@ const LEAF_PROJECT_BARS: Record<Surface, number> = { grid: 12, roll: 4 }
  * cycles, so a period `p` is only VERIFIED once `2p` cycles were probed. At `p = 16`
  * against a probe of 24, cycles 8–15 are checked against nothing and a period-32
  * pattern masquerades as period-16 — a view that silently stops being true one cycle
- * past its own width, which no onset oracle observes.
+ * past its own width, which no onset oracle observes. The shared `detectPeriod`
+ * (ir/songAnalysis.ts, #1931) holds the same line itself — it never answers above
+ * half the cycles it is given — so a cap set past the bound reads as no period
+ * rather than as a wrong one.
  *
  * DERIVED, NOT RESTATED. This used to be the literal `12` written into a doc comment
  * here and into a test assertion in the app package, while `PERIOD_PROBE` stayed
@@ -1342,24 +1346,35 @@ function refused<M>(
 }
 
 /**
- * The smallest `p ≤ cap` at which the probed cycles repeat, or 0 if none does.
+ * What a pattern plays, bar by bar: the probed cycles up to the period they repeat
+ * at, or the refusal (#1931). The four projections share it and differ only in how a
+ * cycle's onsets are read, how two cycles are compared, and the bar cap.
  *
- * Checks EVERY probed cycle against its representative (`keys[c % p]`), not just
- * the first repeat — a pattern that happens to match at cycle p but diverges at
- * 2p is not period-p, and bar-expanding it would silently drop the divergence.
+ * The period is the area's one rule, `detectPeriod` (ir/songAnalysis.ts — the Song
+ * view asks it too): the smallest `p` at which every probed cycle equals the one `p`
+ * ahead, with two full repeats seen. A pattern that varies at cycle 2p is not
+ * period-p, and bar-expanding it would silently drop the divergence.
+ *
+ * A pattern that plays nothing is refused as `no-note-content` BEFORE the period is
+ * asked: every silent cycle trivially repeats, and saying so would read as a period
+ * rather than as nothing to show. A period above `cap` reads as no period.
  */
-function detectPeriod(keys: string[], cap: number): number {
-  for (let p = 1; p <= cap; p++) {
-    let ok = true
-    for (let c = p; c < keys.length; c++) {
-      if (keys[c] !== keys[c % p]) {
-        ok = false
-        break
-      }
-    }
-    if (ok) return p
+function playedBars<T>(
+  pat: unknown,
+  read: (pat: unknown, cycle: number) => Read<T[]>,
+  key: (onsets: T[]) => string,
+  cap: number,
+): { ok: true; perCycle: T[][] } | { ok: false; gate: Gate } {
+  const cycles: T[][] = []
+  for (let c = 0; c < PERIOD_PROBE; c++) {
+    const cc = read(pat, c)
+    if (!cc.ok) return cc
+    cycles.push(cc.onsets)
   }
-  return 0
+  if (cycles.every((c) => c.length === 0)) return no('no-note-content')
+  const period = detectPeriod(cycles.map(key))
+  if (period === null || period > cap) return no('unstable-period')
+  return { ok: true, perCycle: cycles.slice(0, period) }
 }
 
 /**
@@ -1715,18 +1730,10 @@ function projectStepGrid(src0: string, viewScale: ViewScale = UNREFINED): Projec
   // varies across cycles is no longer refused (#930): each cycle becomes a bar and
   // the source stays the single cycle the user wrote, so an edit re-emits one
   // element as `<b0 b1 …>` and leaves every other byte alone.
-  const cycles: Onset[][] = []
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readGridOnsets(pat, c)
-    if (!cc.ok) return cc
-    cycles.push(cc.onsets)
-  }
-  const bars = detectPeriod(cycles.map(onsetKey), MAX_PROJECT_BARS)
-  if (bars === 0) return no('unstable-period')
-  const perCycle = cycles.slice(0, bars)
-  // A pattern that plays nothing at all is not a grid to offer. Identical to the
-  // old `cyc0.length === 0` refusal when the period is 1.
-  if (perCycle.every((c) => c.length === 0)) return no('no-note-content')
+  const probed = playedBars(pat, readGridOnsets, onsetKey, MAX_PROJECT_BARS)
+  if (!probed.ok) return probed
+  const perCycle = probed.perCycle
+  const bars = perCycle.length
   // a whole-cycle `<…>`: bars are its branches, not a flat sequence's columns. It
   // carries the scale as of #1117 — the branch widths do come from the alternation,
   // but the columns WITHIN a branch come from `perBar`, and that is what a refine
@@ -2149,16 +2156,10 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
   } catch {
     return no('not-a-pattern')
   }
-  const cycles: Onset[][] = []
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readGridOnsets(pat, c)
-    if (!cc.ok) return cc
-    cycles.push(cc.onsets)
-  }
-  const bars = detectPeriod(cycles.map(onsetKey), LEAF_PROJECT_BARS.grid)
-  if (bars === 0) return no('unstable-period')
-  const perCycle = cycles.slice(0, bars)
-  if (perCycle.every((c) => c.length === 0)) return no('no-note-content')
+  const probed = playedBars(pat, readGridOnsets, onsetKey, LEAF_PROJECT_BARS.grid)
+  if (!probed.ok) return probed
+  const perCycle = probed.perCycle
+  const bars = perCycle.length
   let perBar = 1
   for (const o of perCycle.flat()) {
     const d = denom(o.pos)
@@ -3548,17 +3549,11 @@ function projectPianoRoll(
   if (isWholeAlternation(src) && whole === null) return no('element-tiling')
   // What it PLAYS each cycle, and the period it repeats at (#938). A melodic pattern
   // that varies is bar-expanded rather than refused.
-  const cycles: RollOnset[][] = []
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readRollOnsets(pat, c)
-    if (!cc.ok) return cc
-    cycles.push(cc.onsets)
-  }
-  const bars = detectPeriod(cycles.map(rollKey), MAX_PROJECT_BARS)
-  if (bars === 0) return no('unstable-period')
-  const perCycle = cycles.slice(0, bars)
+  const probed = playedBars(pat, readRollOnsets, rollKey, MAX_PROJECT_BARS)
+  if (!probed.ok) return probed
+  const perCycle = probed.perCycle
+  const bars = perCycle.length
   const all = perCycle.flat()
-  if (all.length === 0) return no('no-note-content')
   // mixed numeric/named tokens are rejected like the core — checked across EVERY
   // bar, since a later bar can introduce the token that breaks the convention
   const numeric = all.some((o) => o.numeric)
@@ -3736,17 +3731,11 @@ function projectPianoRollByLeaf(src0: string): Projection<PianoRollModel> {
   } catch {
     return no('not-a-pattern')
   }
-  const cycles: RollOnset[][] = []
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readRollOnsets(pat, c)
-    if (!cc.ok) return cc
-    cycles.push(cc.onsets)
-  }
-  const bars = detectPeriod(cycles.map(rollKey), LEAF_PROJECT_BARS.roll)
-  if (bars === 0) return no('unstable-period')
-  const perCycle = cycles.slice(0, bars)
+  const probed = playedBars(pat, readRollOnsets, rollKey, LEAF_PROJECT_BARS.roll)
+  if (!probed.ok) return probed
+  const perCycle = probed.perCycle
+  const bars = perCycle.length
   const all = perCycle.flat()
-  if (all.length === 0) return no('no-note-content')
   // mixed numeric/named tokens are rejected like the core, across EVERY bar
   const numeric = all.some((o) => o.numeric)
   if (numeric && all.some((o) => !o.numeric)) return no('mixed-pitch-domain')
