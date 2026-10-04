@@ -3,7 +3,8 @@
  *
  * Extracted from IRInspectorPanel.tsx so unit tests can import them
  * without pulling in the full panel + transitive `gifenc` (CommonJS)
- * dependency chain. The panel re-exports both for back-compat.
+ * dependency chain (unloadable in the app's tests until #1938). The panel
+ * re-exports both for back-compat.
  *
  * Phase 20-04 (PV37 / D-05): wrapper-aware summarize + children honour
  * Code-with-via in the developer audience (PV35).

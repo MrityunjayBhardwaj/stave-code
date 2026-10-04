@@ -26,6 +26,10 @@ vi.mock('@stave/editor', async () => ({
   wholeWalkWindow: (await import('./structuralWalkTestStub')).wholeWalkWindow,
   sampleRefOf: (await import('./structuralWalkTestStub')).sampleRefOf,
   laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
+  // The section and track names are read by the REAL owner (#1938 moved the
+  // timeline's import of it onto the barrel this file mocks).
+  sectionNameAt: (await import('../../../../../editor/src/codeView/ir/trackId')).sectionNameAt,
+  labelAtOffset: (await import('../../../../../editor/src/codeView/ir/trackId')).labelAtOffset,
 }))
 
 import { collectNoteMarks } from '../timelineMarks'

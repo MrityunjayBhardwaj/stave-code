@@ -28,8 +28,8 @@
  * sibling would be missing from the collected Map).
  */
 import { describe, it, expect, vi } from 'vitest'
-// Mock @stave/editor BEFORE importing MusicalTimeline — the barrel pulls
-// in @strudel/draw → gifenc which crashes vitest's module loader
+// Mock @stave/editor BEFORE importing MusicalTimeline — until #1938 the
+// barrel's p5 → gifenc chain crashed vitest's module loader
 // (standalone-node env). Same pattern as MusicalTimeline.literalProjection.test.tsx.
 vi.mock('@stave/editor', () => ({
   getActiveEditor: () => null,

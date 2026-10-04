@@ -36,8 +36,8 @@ export interface SoundsProviderDeps {
    * GM family for a `gm_*` soundfont key (or null), and the shared
    * `Soundfonts · <Family>` group label (#807). INJECTED from `@stave/editor`
    * (`gmFamily` / `soundfontGroupLabel`) rather than imported here, so the pure
-   * mapping stays editor-free and unit-testable — importing the editor barrel
-   * would drag its viz/`gifenc` deps into this provider's tests.
+   * mapping stays editor-free and unit-testable — the editor barrel could not
+   * load in this provider's tests until #1938 (retiring this is #1943).
    */
   gmFamily: (name: string) => string | null;
   soundfontGroupLabel: (name: string) => string;

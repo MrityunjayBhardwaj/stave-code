@@ -34,8 +34,8 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 // Phase 20-17 D-1c — mock @stave/editor BEFORE importing MusicalTimeline.
-// MusicalTimeline.tsx imports from '@stave/editor' at module scope; the
-// barrel pulls in @strudel/draw → gifenc which crashes vitest's module
+// MusicalTimeline.tsx imports from '@stave/editor' at module scope; until
+// #1938 the barrel's p5 → gifenc chain crashed vitest's module
 // loader (standalone-node env). The same vi.mock pattern is used by
 // MusicalTimeline.test.tsx — we mirror it here, exposing only the
 // minimal surface our test needs (no snapshot/event channels — we call

@@ -13,7 +13,10 @@ export default defineConfig({
   // dependency-free bundle (`@stave/editor/knobScale`), the same arrangement the
   // worker entry uses for the same reason.
   // A FOURTH (#1679), for the same reason: what a track's label means — its id
-  // and its mute marker — read by the app's timeline without the barrel.
+  // and its mute marker — read by the app's timeline without the barrel. Since
+  // #1938 the timeline imports the main entry and nothing in the app uses this
+  // one; it stays only because the boundary test plants an import of it, and it
+  // is retired with the others in #1943.
   // A FIFTH (#1799), for the same reason: the one chord builder, read by the
   // app's command dispatcher and Shortcuts panel.
   // A SIXTH (#1928), for the same reason: the one note-name reader, read by the

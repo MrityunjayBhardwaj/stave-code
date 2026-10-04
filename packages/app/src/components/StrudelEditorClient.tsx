@@ -128,8 +128,8 @@ import {
 
 /**
  * #1558 — the real wiring for `buildStrudelPasses`. Lives HERE because this
- * file already imports the `@stave/editor` barrel; `strudelPasses.ts` must not,
- * or it drags `gifenc` (CJS) into the app's vitest run.
+ * file already imports the `@stave/editor` barrel; `strudelPasses.ts` did not,
+ * because until #1938 that broke the app's vitest run (p5 → `gifenc`, CJS).
  */
 const STRUDEL_PASS_DEPS: StrudelPassDeps = {
   runStages: parseStrudelStages,

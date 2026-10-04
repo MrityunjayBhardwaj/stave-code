@@ -33,14 +33,15 @@
  * was filed for.
  *
  * ── WHY THE EDITOR FUNCTIONS ARE INJECTED RATHER THAN IMPORTED ───────────────
- * Importing the `@stave/editor` BARREL into an app module breaks that module's
- * vitest run: the barrel re-exports viz code pulling `gifenc`, a CJS module the
- * ESM loader cannot import as named exports. Production is unaffected (Next
- * interops it) so the failure appears only under test. Verified here rather than
- * assumed — a probe importing `analyzeSong` from the barrel fails with exactly
- * `Named export 'GIFEncoder' not found`. `createSongCollector` is injected for
- * the same reason: it is app-local but reaches the barrel through
- * `timelineMarks`. Type-only imports below are erased at runtime and are safe.
+ * Until #1938, importing the `@stave/editor` BARREL into an app module broke
+ * that module's vitest run: p5 imports `gifenc`, a CJS module the ESM loader
+ * cannot import as named exports. Production was unaffected (Next interops it),
+ * so the failure appeared only under test — a probe importing `analyzeSong` from
+ * the barrel failed with exactly `Named export 'GIFEncoder' not found`.
+ * `createSongCollector` is injected for the same reason: it is app-local but
+ * reaches the barrel through `timelineMarks`. The app's test config now inlines
+ * p5, so the injection is no longer forced; #1943 retires it. Type-only imports
+ * below are erased at runtime and are safe.
  */
 import type {
   PatternIR,

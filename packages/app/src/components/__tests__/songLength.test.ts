@@ -7,7 +7,7 @@
  * `analyzeSong`. Stubbing it would leave these arms asserting that a switch
  * statement routes three literals — green with the real decision entirely
  * absent. So the real `songExtent` and the real `analyzeSong` are imported by
- * SOURCE PATH (the barrel pulls `gifenc` and breaks the app's vitest loader —
+ * SOURCE PATH (until #1938 the barrel pulled `gifenc` and broke the app's vitest loader —
  * the same route the corpus tests take) and driven with synthetic onsets.
  *
  * The collector is the one injected stub. Its correctness is already pinned next

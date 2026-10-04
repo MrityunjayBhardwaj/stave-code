@@ -10,8 +10,8 @@
  * shared content-space transform (PV116) — it knows nothing about canvas, DPR,
  * or scroll. `drawTimeline` consumes it; `SongTimelineCanvas` owns the surface.
  *
- * This module is PURE (only TYPE imports from `@stave/editor`, so it stays out
- * of vitest's CJS-`gifenc` trap). The note-mark COLLECTION — which needs the
+ * This module is PURE (only TYPE imports from `@stave/editor`, which kept it out
+ * of vitest's CJS-`gifenc` trap until #1938 removed the trap). The note-mark COLLECTION — which needs the
  * runtime `collectCycles`/`laneKeyOf` — lives in `timelineMarks.ts`; this
  * builder merges its already-collected output as data.
  */

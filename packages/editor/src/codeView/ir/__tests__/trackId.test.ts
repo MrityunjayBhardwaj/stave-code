@@ -20,13 +20,13 @@ function trackIds(ir: PatternIR): string[] {
 }
 
 describe('the owner stays importable from anywhere (#1679)', () => {
-  it('has no imports at all, so the timeline can reach it without the barrel', () => {
-    // `@stave/editor/trackId` is its own bundle entry so the app's timeline can
-    // read what a mute marker is at runtime (`trackLabel.ts`). With
-    // `splitting: false` an import added here would travel into that bundle and
-    // drag its dependency into the app's test loader, where the failure would
-    // surface as a collection error in the other package. Same rule, same arm,
-    // as `knobScale.ts` (#1581).
+  it('has no imports at all, so the engine can reach it without the codeView entry', () => {
+    // The engine's line scanners (`vizLineScan.ts`, `blockScan.ts`) import
+    // `LABEL_HEAD` from this file directly, under named boundary entries, because
+    // the engine's graph must not load the codeView entry. An import added here
+    // would travel into that graph. It is also built as its own bundle entry
+    // (`@stave/editor/trackId`, #1679) until #1943 retires it. Same rule, same
+    // arm, as `knobScale.ts` (#1581).
     const source = readFileSync(path.join(__dirname, '..', 'trackId.ts'), 'utf8')
     const imports = source.match(/^\s*(import\s|export\s+\{[^}]*\}\s*from|.*\brequire\()/gm) ?? []
     expect(imports).toEqual([])

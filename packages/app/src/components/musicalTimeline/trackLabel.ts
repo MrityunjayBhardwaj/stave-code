@@ -22,13 +22,11 @@
  * (no-auto-naming principle, #579). The display resolves a label when present;
  * it never creates one.
  *
- * Reading the label is the editor's (`labelAtOffset`, in `@stave/editor/trackId`
- * since #1921 — the one rule for what a name is, shared with section names, the
- * Mixer and the rename validators). This file keeps only the display fallback.
- * That entry is dependency-free, not the barrel, so this stays out of the vitest
- * CJS-`gifenc` trap (P172).
+ * Reading the label is the editor's (`labelAtOffset`, since #1921 — the one rule
+ * for what a name is, shared with section names, the Mixer and the rename
+ * validators). This file keeps only the display fallback.
  */
-import { labelAtOffset } from '@stave/editor/trackId'
+import { labelAtOffset } from '@stave/editor'
 
 /**
  * A lane's display NAME: the source label when the track is named, else the

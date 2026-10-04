@@ -11,28 +11,6 @@
       "issue": "#1877"
     },
     {
-      "file": "packages/app/src/components/musicalTimeline/trackLabel.ts",
-      "reaches": [
-        "codeView/ir/trackId#labelAtOffset"
-      ],
-      "why": "Imports the package subpath @stave/editor/trackId, a bundle entry built straight from codeView/ir/trackId.ts so the timeline can read a label without the barrel.",
-      "issue": "#1880",
-      "added": {
-        "codeView/ir/trackId#labelAtOffset": "#1921 reading a label moved into codeView; the timeline calls the owner through the subpath it already used, in place of its own regex"
-      }
-    },
-    {
-      "file": "packages/app/src/components/musicalTimeline/sectionLabel.ts",
-      "reaches": [
-        "codeView/ir/trackId#sectionNameAt"
-      ],
-      "why": "Imports the package subpath @stave/editor/trackId, the same barrel-free entry trackLabel.ts uses, so the timeline reads a section name with the rule a track label uses.",
-      "issue": "#1880",
-      "added": {
-        "codeView/ir/trackId#sectionNameAt": "#1921 the section reader was a second, ASCII-only copy of the name rule; it moved into codeView and the timeline calls it through the subpath"
-      }
-    },
-    {
       "file": "packages/editor/src/engine/bareCapture.ts",
       "reaches": [
         "codeView/chunkDetect#detectAllChunks",

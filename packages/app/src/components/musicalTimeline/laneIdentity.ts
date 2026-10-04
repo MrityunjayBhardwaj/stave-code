@@ -11,8 +11,8 @@
  *
  * Why an app-side mirror of the editor's `laneKeyOf` instead of importing it:
  * `laneKeyOf` lives behind the `@stave/editor` barrel, whose runtime surface
- * drags `@strudel/draw → gifenc` (CJS) into vite-node and crashes unit tests
- * (P172). A pure app-side resolver keeps every consumer + its tests barrel-free.
+ * crashed the app's unit tests until #1938 (p5 → `gifenc`, CJS, under
+ * vite-node); #1943 retires this mirror. A pure app-side resolver keeps every consumer + its tests barrel-free.
  * `laneIdentity.test.ts` deep-imports the real `laneKeyOf` and asserts the two
  * never drift — one identity, guarded, not two that can diverge (the P189/P191
  * single-source lesson applied to lane identity).

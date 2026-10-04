@@ -5415,6 +5415,14 @@ function labelName(label) {
   return bare && bare !== "$" ? bare : null;
 }
 __name(labelName, "labelName");
+function labelAtOffset(code, offset) {
+  if (!Number.isFinite(offset) || offset < 0 || offset >= code.length) return null;
+  let i = offset;
+  while (i < code.length && /\s/.test(code[i])) i++;
+  const m = LABEL_HEAD.exec(code.slice(i));
+  return m ? labelName(m[1]) : null;
+}
+__name(labelAtOffset, "labelAtOffset");
 function sectionNameAt(code, range2) {
   const [start, end] = range2;
   if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
@@ -51895,6 +51903,7 @@ exports.isVizLanguage = isVizLanguage;
 exports.isVizPumpSharedCacheEnabled = isVizPumpSharedCacheEnabled;
 exports.isVizWorkerPoolEnabled = isVizWorkerPoolEnabled;
 exports.knobRangeFor = knobRangeFor;
+exports.labelAtOffset = labelAtOffset;
 exports.laneKeyOf = laneKeyOf;
 exports.languageForRenderer = languageForRenderer;
 exports.levenshtein = levenshtein;
@@ -52046,6 +52055,7 @@ exports.sanitizePresetName = sanitizePresetName;
 exports.saveShellState = saveShellState;
 exports.saveSnapshot = saveSnapshot;
 exports.scaleGain = scaleGain;
+exports.sectionNameAt = sectionNameAt;
 exports.seedFromPreset = seedFromPreset;
 exports.seedFromPresetId = seedFromPresetId;
 exports.seedWorkspaceFile = seedWorkspaceFile;

@@ -1,7 +1,7 @@
 /**
  * Test stub for the `structuralWalk` dependency timelineMarks / FullSongTimeline now pull from
- * `@stave/editor`. The app tests mock the whole barrel (it drags CJS `gifenc` into vitest, which
- * breaks the loader — see the mock comments), so they cannot get structuralWalk from it. This
+ * `@stave/editor`. The app tests mock the whole barrel (until #1938 it dragged CJS `gifenc` into
+ * vitest and broke the loader — see the mock comments), so they cannot get structuralWalk from it. This
  * re-exports the REAL walk + reducer straight from source (pure, type-only imports, no gifenc),
  * so the mocks derive lane skeletons the SAME way production does — never a hand-rolled copy of
  * the reducer, which would be a second oracle free to drift (PV192).

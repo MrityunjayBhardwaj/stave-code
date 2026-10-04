@@ -7,8 +7,8 @@
  * pre-mortem #10), and direct stripInnerLate edge cases.
  *
  * Imports parseStrudel from the editor source path directly to avoid
- * the @stave/editor barrel pulling in the p5/gifenc transitive
- * dependencies (vitest's ESM loader can't resolve gifenc).
+ * the @stave/editor barrel, whose p5/gifenc transitive dependencies
+ * vitest's ESM loader could not resolve until #1938.
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel as _parseStrudel } from '../../../../editor/src/codeView/ir/parseStrudel'

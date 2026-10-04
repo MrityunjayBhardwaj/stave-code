@@ -3,8 +3,8 @@
  *
  * ── WHY THE EXTENTS ARE REAL, NOT LITERALS ───────────────────────────────────
  * Every arm below gets its `SongExtent` from the REAL `songExtent` walking a
- * real `PatternIR`, imported by SOURCE PATH (the barrel pulls `gifenc` and
- * breaks the app's vitest loader — the route `songLength.test.ts` takes next
+ * real `PatternIR`, imported by SOURCE PATH (until #1938 the barrel pulled
+ * `gifenc` and broke the app's vitest loader — the route `songLength.test.ts` takes next
  * door). Hand-written `{ kind: 'opaque' }` literals would pin these arms to my
  * idea of the type rather than to what the walk actually produces, and `opaque`
  * is exactly the kind that must not drift: it is the one that would truncate a

@@ -38,8 +38,8 @@ import { laneKeyForHap } from '../timelineMarks'
  * `packages/editor/src/codeView/mixer/stripModel.ts`.
  *
  * ⚠ DELIBERATELY A LITERAL, not an import. Importing the real constant means
- * importing `@stave/editor` in an app test, and the barrel drags gifenc (CJS)
- * in — which is why this file already `vi.mock`s it below. The literal is the
+ * importing `@stave/editor` in an app test, and until #1938 the barrel dragged
+ * gifenc (CJS) in — which is why this file already `vi.mock`s it below. The literal is the
  * price of that mock, so the citation above is the only thing keeping the two
  * sides in step. Re-point it if the rule moves house again.
  */

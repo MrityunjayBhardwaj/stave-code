@@ -8,7 +8,7 @@
  * parses directly — no scale/degree logic needed.
  *
  * `collectNoteMarks` pulls the runtime `collectCycles`/`laneKeyOf` from
- * `@stave/editor` (a CJS-`gifenc`-laden barrel), so — mirroring
+ * `@stave/editor` (a barrel the app's tests could not load until #1938), so — mirroring
  * FullSongTimeline.test.tsx — we mock just those two. The IR events the mock
  * returns deliberately carry a BARE-INTEGER `note` (`"0"`), which is exactly
  * the case the static IR gets wrong; the eval events carry note NAMES. So a

@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import { resolveLaneName } from '../trackLabel'
 // The reader is the editor's since #1921; this file pins the timeline's use of it.
-import { labelAtOffset } from '@stave/editor/trackId'
+import { labelAtOffset } from '@stave/editor'
 
 // The exact mixed doc the live probe used; offsets are the observed dollarPos.
 const SONG =
