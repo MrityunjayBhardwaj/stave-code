@@ -4333,993 +4333,6 @@ function songExtent(ir) {
 }
 __name(songExtent, "songExtent");
 
-// src/codeView/ir/songAnalysis.ts
-function laneKeyOf(ev) {
-  return ev.trackId ?? ev.s ?? "$default";
-}
-__name(laneKeyOf, "laneKeyOf");
-function accumulateLanes(events, horizon) {
-  return accumulateLanesInWindow(events, 0, horizon);
-}
-__name(accumulateLanes, "accumulateLanes");
-function accumulateLanesInWindow(events, originCycle, spanCycles, pinnedLaneKeys) {
-  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
-  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
-  const order = [];
-  const byLane = /* @__PURE__ */ new Map();
-  const ensure = /* @__PURE__ */ __name((key2) => {
-    let counts = byLane.get(key2);
-    if (!counts) {
-      counts = new Array(span).fill(0);
-      byLane.set(key2, counts);
-      order.push(key2);
-    }
-    return counts;
-  }, "ensure");
-  if (pinnedLaneKeys) for (const key2 of pinnedLaneKeys) ensure(key2);
-  for (const ev of events) {
-    const cycle = Math.floor(ev.begin);
-    if (!Number.isFinite(cycle) || cycle < origin || cycle >= origin + span) continue;
-    ensure(laneKeyOf(ev))[cycle - origin] += 1;
-  }
-  return order.map((laneKey) => ({ laneKey, onsetsByCycle: byLane.get(laneKey) }));
-}
-__name(accumulateLanesInWindow, "accumulateLanesInWindow");
-function cycleFingerprints(events, horizon) {
-  const perCycle = Array.from({ length: horizon }, () => []);
-  for (const ev of events) {
-    const cycle = Math.floor(ev.begin);
-    if (!Number.isFinite(cycle) || cycle < 0 || cycle >= horizon) continue;
-    const offset = Math.round((ev.begin - cycle) * 1e6);
-    perCycle[cycle].push(`${laneKeyOf(ev)}@${offset}:${eventValueKey(ev)}`);
-  }
-  return perCycle.map((tokens) => tokens.sort().join("|"));
-}
-__name(cycleFingerprints, "cycleFingerprints");
-function detectPeriod(fingerprints) {
-  const len = fingerprints.length;
-  if (fingerprints.every((fp) => fp === "")) return null;
-  for (let p = 1; p <= Math.floor(len / 2); p++) {
-    let repeats = true;
-    for (let c = 0; c + p < len; c++) {
-      if (fingerprints[c] !== fingerprints[c + p]) {
-        repeats = false;
-        break;
-      }
-    }
-    if (repeats) return p;
-  }
-  return null;
-}
-__name(detectPeriod, "detectPeriod");
-function detectDisplayPeriod(events, horizon) {
-  const byLane = eventsByLane(events);
-  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
-  let maxPeriod = 0;
-  for (const laneEvents of byLane.values()) {
-    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
-    if (p === null) return null;
-    if (p > maxPeriod) maxPeriod = p;
-  }
-  return maxPeriod > 0 ? maxPeriod : null;
-}
-__name(detectDisplayPeriod, "detectDisplayPeriod");
-function eventsByLane(events) {
-  const byLane = /* @__PURE__ */ new Map();
-  for (const ev of events) {
-    const key2 = laneKeyOf(ev);
-    let bucket2 = byLane.get(key2);
-    if (!bucket2) {
-      bucket2 = [];
-      byLane.set(key2, bucket2);
-    }
-    bucket2.push(ev);
-  }
-  return byLane;
-}
-__name(eventsByLane, "eventsByLane");
-var NO_STEPPED_KEYS = /* @__PURE__ */ new Map();
-function lanePeriodsOf(events, horizon, steppedKeys) {
-  const out = [];
-  for (const [laneKey, laneEvents] of eventsByLane(events)) {
-    const periodCycles = detectPeriod(cycleFingerprints(laneEvents, horizon));
-    const keys = steppedKeys.get(laneKey);
-    const restCycles = keys && keys.size > 0 ? detectPeriod(cycleFingerprints(laneEvents.map((ev) => withoutKeys(ev, keys)), horizon)) : periodCycles;
-    out.push({ laneKey, periodCycles, restCycles });
-  }
-  return out;
-}
-__name(lanePeriodsOf, "lanePeriodsOf");
-function repeatOf(periods, cap) {
-  if (periods.length === 0) return null;
-  let repeat = 1;
-  for (const p of periods) {
-    if (p === null) return null;
-    const next = rationalLcm(repeat, p);
-    if (next === null || !Number.isFinite(next) || next > cap) return null;
-    repeat = next;
-  }
-  return repeat;
-}
-__name(repeatOf, "repeatOf");
-function steppedKeysByLane(ir) {
-  const by = /* @__PURE__ */ new Map();
-  for (const a of steppedAutomations(ir)) {
-    let keys = by.get(a.trackId);
-    if (!keys) by.set(a.trackId, keys = /* @__PURE__ */ new Set());
-    keys.add(a.paramKey);
-  }
-  return by;
-}
-__name(steppedKeysByLane, "steppedKeysByLane");
-function previewRepeat(analysis, laneKey, paramPeriods, cap = DEFAULT_CAP) {
-  const mine = analysis.lanePeriods.find((l) => l.laneKey === laneKey);
-  if (!mine) return null;
-  const others = analysis.lanePeriods.filter((l) => l !== mine).map((l) => l.periodCycles);
-  return repeatOf([...others, mine.restCycles, ...paramPeriods], cap);
-}
-__name(previewRepeat, "previewRepeat");
-var PHASE_GRAIN = 1e6;
-var NOISE_SEED_CYCLES = 300;
-async function previewShapeSwap(ir, a, next, opts) {
-  const at = a.spans.shape?.start;
-  const collect2 = opts.collectFn;
-  if (at === void 0 || !collect2) return null;
-  const standIn = standInFor(a, next);
-  if (standIn === null) return null;
-  const standInPeriod = standInPeriodOf(a, next);
-  const pastCap = !hasTruePeriod(next) && standInPeriod !== null && standInPeriod > DEFAULT_CAP;
-  if (!pastCap && sharesItsControl(ir, a)) return null;
-  const key2 = a.paramKey;
-  return analyzeSong(ir, {
-    ...opts,
-    collectFn: /* @__PURE__ */ __name((start, end) => collect2(start, end).map((ev) => laneKeyOf(ev) === a.trackId ? withValue(ev, key2, standIn(ev)) : ev), "collectFn"),
-    signals: signalDimensionsOf(ir, { at, kind: next })
-  });
-}
-__name(previewShapeSwap, "previewShapeSwap");
-function sharesItsControl(ir, a) {
-  if (!ir) return false;
-  const same = /* @__PURE__ */ __name((b) => b.trackId === a.trackId && b.paramKey === a.paramKey, "same");
-  return signalWriters(ir).filter(same).length > 1 || steppedAutomations(ir).some(same);
-}
-__name(sharesItsControl, "sharesItsControl");
-function standInPeriodOf(a, next) {
-  const own = hasTruePeriod(next) ? a.periodCycles : isNoiseKind(next) ? NOISE_SEED_CYCLES * a.periodCycles : null;
-  return own === null ? null : songPeriodOf({ periodCycles: own, placements: a.placements });
-}
-__name(standInPeriodOf, "standInPeriodOf");
-function standInFor(a, next) {
-  const song = standInPeriodOf(a, next);
-  const f = song === null ? null : asFraction(song);
-  if (f === null) return null;
-  const [n, d] = f;
-  const ticks = n * PHASE_GRAIN;
-  return (ev) => {
-    const t = Math.round(ev.begin * d * PHASE_GRAIN);
-    return (t % ticks + ticks) % ticks;
-  };
-}
-__name(standInFor, "standInFor");
-function withValue(ev, key2, value) {
-  const rec = ev;
-  if (rec[key2] !== void 0) return { ...rec, [key2]: value };
-  if (ev.params && key2 in ev.params) return { ...ev, params: { ...ev.params, [key2]: value } };
-  return ev;
-}
-__name(withValue, "withValue");
-function repeatBeside(lanePeriods, cap, period) {
-  if (period === null) return null;
-  const repeat = repeatOf(lanePeriods.map((l) => l.periodCycles), cap);
-  return repeat !== null && repeat % period === 0 ? repeat : null;
-}
-__name(repeatBeside, "repeatBeside");
-var MIN_ABSTAINED_PERIOD = 4;
-function detectDisplayPeriodAtCap(events, horizon) {
-  const byLane = eventsByLane(events);
-  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
-  let maxPeriod = 0;
-  let answered = 0;
-  let abstained = false;
-  for (const laneEvents of byLane.values()) {
-    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
-    if (p === null) {
-      abstained = true;
-      continue;
-    }
-    answered++;
-    if (p > maxPeriod) maxPeriod = p;
-  }
-  if (answered === 0 || maxPeriod <= 0) return null;
-  if (abstained && maxPeriod < MIN_ABSTAINED_PERIOD) return null;
-  return maxPeriod;
-}
-__name(detectDisplayPeriodAtCap, "detectDisplayPeriodAtCap");
-function spanCoversEveryLane(events, period) {
-  const inSpan = /* @__PURE__ */ new Set();
-  const all = /* @__PURE__ */ new Set();
-  for (const ev of events) {
-    const key2 = laneKeyOf(ev);
-    all.add(key2);
-    const cycle = Math.floor(ev.begin);
-    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period) inSpan.add(key2);
-  }
-  for (const key2 of all) if (!inSpan.has(key2)) return false;
-  return true;
-}
-__name(spanCoversEveryLane, "spanCoversEveryLane");
-function signalDimensionsOf(ir, swap) {
-  const audible = audibleTracks(ir);
-  const periods = [];
-  const keys = /* @__PURE__ */ new Set();
-  for (const t of audible) {
-    for (const a of signalAutomations(t)) {
-      const kind = swap !== void 0 && a.spans.shape?.start === swap.at ? swap.kind : a.kind;
-      if (!hasTruePeriod(kind) || !(a.periodCycles > 0)) continue;
-      const song = songPeriodOf(a);
-      if (song !== null) periods.push(song);
-    }
-    for (const k of signalCarryingParamKeys(t)) keys.add(k);
-  }
-  return { keys, periods };
-}
-__name(signalDimensionsOf, "signalDimensionsOf");
-function arrangedRepeatCycles(ir, arrangedCycles, cap = DEFAULT_CAP, signalPeriods = signalDimensionsOf(ir).periods) {
-  if (!(arrangedCycles > 0) || !Number.isFinite(arrangedCycles)) return arrangedCycles;
-  const tracks = audibleTracks(ir);
-  const named2 = tracks.filter((t) => t.tag === "Track" && typeof t.trackId === "string");
-  const audible = named2.length > 0 ? new Set(named2.map((t) => t.trackId)) : null;
-  const periods = [arrangedCycles];
-  for (const a of steppedAutomations(ir)) {
-    if (audible !== null && !audible.has(a.trackId)) continue;
-    const p = songPeriodOf(a);
-    if (p !== null && p > 0) periods.push(p);
-  }
-  for (const p of signalPeriods) if (p > 0) periods.push(p);
-  const repeat = repeatOf(periods, cap);
-  return repeat ?? arrangedCycles;
-}
-__name(arrangedRepeatCycles, "arrangedRepeatCycles");
-function songEnd(ir, cap = DEFAULT_CAP, signalPeriods) {
-  const extent = songExtent(ir ?? null);
-  if (extent.kind !== "arranged" || !(extent.cycles > 0)) return extent;
-  return { ...extent, cycles: arrangedRepeatCycles(ir, extent.cycles, cap, signalPeriods) };
-}
-__name(songEnd, "songEnd");
-function songPeriodOf(a) {
-  let out = null;
-  for (const placement of a.placements) {
-    if (placement.some((w) => isSectionWindow(w) && w.cycles === 0)) continue;
-    let p = a.periodCycles;
-    for (let k = placement.length - 1; k >= 0 && p !== null; k--) {
-      const step = placement[k];
-      if (!isSectionWindow(step)) {
-        p = p * step.per / step.times;
-        continue;
-      }
-      const { cycles, total } = step;
-      const l = rationalLcm(cycles, p);
-      p = l === null ? null : total * l / cycles;
-    }
-    if (p === null) return null;
-    out = out === null ? p : rationalLcm(out, p);
-    if (out === null) return null;
-  }
-  return out;
-}
-__name(songPeriodOf, "songPeriodOf");
-function audibleTracks(ir) {
-  if (!ir) return [];
-  const roots = ir.tag === "Stack" ? ir.tracks : [ir];
-  const tracks = roots.filter((n) => n?.tag === "Track");
-  if (tracks.length === 0) return [ir];
-  return tracks.filter((t) => t.tag !== "Track" || t.muted !== true);
-}
-__name(audibleTracks, "audibleTracks");
-function withoutKeys(ev, keys) {
-  if (keys.size === 0) return ev;
-  const rec = ev;
-  let touched = false;
-  let copy = null;
-  for (const k of keys) {
-    if (rec[k] === void 0) continue;
-    copy ?? (copy = { ...rec });
-    copy[k] = void 0;
-    touched = true;
-  }
-  const params = ev.params;
-  if (params) {
-    let dropped = false;
-    const next = {};
-    for (const [k, v] of Object.entries(params)) {
-      if (keys.has(k)) {
-        dropped = true;
-        continue;
-      }
-      next[k] = v;
-    }
-    if (dropped) {
-      copy ?? (copy = { ...rec });
-      copy.params = next;
-      touched = true;
-    }
-  }
-  return touched && copy ? copy : rec;
-}
-__name(withoutKeys, "withoutKeys");
-var gcdInt = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcdInt(b, a % b), "gcdInt");
-function asFraction(x, maxDen = 1024) {
-  if (!Number.isFinite(x) || x <= 0) return null;
-  for (let d = 1; d <= maxDen; d++) {
-    const n = x * d;
-    if (Math.abs(n - Math.round(n)) < 1e-9) {
-      const num = Math.round(n);
-      const g = gcdInt(num, d);
-      return [num / g, d / g];
-    }
-  }
-  return null;
-}
-__name(asFraction, "asFraction");
-function rationalLcm(x, y) {
-  const fx = asFraction(x);
-  const fy = asFraction(y);
-  if (!fx || !fy) return null;
-  const [a, b] = fx;
-  const [c, d] = fy;
-  const lcmNum = a * c / gcdInt(a, c);
-  return lcmNum / gcdInt(b, d);
-}
-__name(rationalLcm, "rationalLcm");
-function foldWithSignalPeriods(period, periods, cap) {
-  let folded = period;
-  for (const q of periods) {
-    const next = rationalLcm(folded, q);
-    if (next === null || !Number.isFinite(next) || next > cap) return period;
-    folded = next;
-  }
-  return folded;
-}
-__name(foldWithSignalPeriods, "foldWithSignalPeriods");
-function displayPeriodRule(events, horizon, cap, hasUnheardTrack, signals) {
-  const period = horizon >= cap ? detectDisplayPeriodAtCap(events, horizon) : detectDisplayPeriod(events, horizon);
-  if (period !== null) {
-    if (hasUnheardTrack && horizon < cap) return null;
-    if (!spanCoversEveryLane(events, period)) return null;
-    return period;
-  }
-  return signalInformedPeriod(events, horizon, cap, signals);
-}
-__name(displayPeriodRule, "displayPeriodRule");
-function signalInformedPeriod(events, horizon, cap, signals) {
-  if (horizon < cap) return null;
-  if (!signals || signals.keys.size === 0) return null;
-  const stripped = events.map((ev) => withoutKeys(ev, signals.keys));
-  const structural = detectDisplayPeriodAtCap(stripped, horizon);
-  if (structural === null) return null;
-  const folded = foldWithSignalPeriods(structural, signals.periods, cap);
-  if (!spanCoversEveryLane(events, folded)) return null;
-  return folded;
-}
-__name(signalInformedPeriod, "signalInformedPeriod");
-function computeSections(lanes, horizon) {
-  return computeSectionsInWindow(lanes, 0, horizon);
-}
-__name(computeSections, "computeSections");
-function computeSectionsInWindow(lanes, originCycle, spanCycles) {
-  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
-  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
-  if (span <= 0) return [];
-  const signatureAt = /* @__PURE__ */ __name((index) => lanes.filter((l) => (l.onsetsByCycle[index] ?? 0) > 0).map((l) => l.laneKey).sort(), "signatureAt");
-  const sections = [];
-  let start = 0;
-  let sig = signatureAt(0);
-  let sigKey = sig.join("|");
-  for (let i = 1; i < span; i++) {
-    const nextSig = signatureAt(i);
-    const nextKey = nextSig.join("|");
-    if (nextKey !== sigKey) {
-      sections.push({ startCycle: origin + start, endCycle: origin + i, laneKeys: sig });
-      start = i;
-      sig = nextSig;
-      sigKey = nextKey;
-    }
-  }
-  sections.push({ startCycle: origin + start, endCycle: origin + span, laneKeys: sig });
-  return sections;
-}
-__name(computeSectionsInWindow, "computeSectionsInWindow");
-function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn, capCycles = DEFAULT_CAP, steppedKeys = NO_STEPPED_KEYS) {
-  const periodOf = detectPeriodFn ?? ((evs, h) => displayPeriodRule(evs, h, reachedCap ? h : Number.POSITIVE_INFINITY, false));
-  const lanes = accumulateLanes(events, horizon);
-  const periodCycles = periodOf(events, horizon);
-  const sections = computeSections(lanes, horizon);
-  const displaySpan = periodCycles != null ? { kind: "loop", cycles: periodCycles } : { kind: reachedCap ? "capped" : "horizon", cycles: horizon };
-  const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys);
-  const repeatCycles = repeatBeside(lanePeriods, capCycles, periodCycles);
-  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan, repeatCycles, lanePeriods };
-}
-__name(analyzeEvents, "analyzeEvents");
-function spanToDeclaredEnd(measured, events, endCycles) {
-  const horizon = Math.ceil(endCycles);
-  const lanes = accumulateLanes(events, horizon);
-  return {
-    ...measured,
-    horizonCycles: horizon,
-    lanes,
-    sections: computeSections(lanes, horizon),
-    displaySpan: { kind: "arranged", cycles: endCycles }
-  };
-}
-__name(spanToDeclaredEnd, "spanToDeclaredEnd");
-var DEFAULT_HINT = 8;
-var DEFAULT_CAP = 256;
-var DEFAULT_SLICE = 4;
-var DEFAULT_BUDGET_MS = 10;
-function defaultNow() {
-  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
-}
-__name(defaultNow, "defaultNow");
-function defaultYield() {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-__name(defaultYield, "defaultYield");
-async function analyzeSong(ir, opts = {}) {
-  const hint = Math.max(1, Math.floor(opts.hintCycles ?? DEFAULT_HINT));
-  const cap = Math.max(hint, Math.floor(opts.capCycles ?? DEFAULT_CAP));
-  const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE));
-  const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS;
-  const collectFn = opts.collectFn ?? (() => []);
-  const now2 = opts.now ?? defaultNow;
-  const yieldFn = opts.yieldFn ?? defaultYield;
-  const signal = opts.signal;
-  const steppedKeys = steppedKeysByLane(ir);
-  const periodRule = /* @__PURE__ */ __name((evs, h) => opts.detectPeriodFn ? opts.detectPeriodFn(evs, h) : displayPeriodRule(evs, h, cap, opts.hasUnheardTrack ? opts.hasUnheardTrack() : false, opts.signals), "periodRule");
-  const events = [];
-  let collectedTo = 0;
-  let horizon = hint;
-  let lastYield = now2();
-  const collectUpTo = /* @__PURE__ */ __name(async (target) => {
-    while (collectedTo < target) {
-      if (signal?.aborted) return false;
-      const sliceEnd = Math.min(collectedTo + slice, target);
-      events.push(...collectFn(collectedTo, sliceEnd));
-      collectedTo = sliceEnd;
-      if (now2() - lastYield >= budgetMs && collectedTo < target) {
-        await yieldFn();
-        lastYield = now2();
-      }
-    }
-    return true;
-  }, "collectUpTo");
-  const measure = /* @__PURE__ */ __name(async () => {
-    while (true) {
-      const ok = await collectUpTo(horizon);
-      if (!ok) break;
-      if (events.length === 0) {
-        if (horizon >= cap) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys);
-        horizon = Math.min(horizon * 2, cap);
-        continue;
-      }
-      const period = periodRule(events, horizon);
-      if (period !== null) {
-        const lanes = accumulateLanes(events, period);
-        const sections = computeSections(lanes, period);
-        const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys);
-        return {
-          periodCycles: period,
-          horizonCycles: period,
-          lanes,
-          sections,
-          displaySpan: { kind: "loop", cycles: period },
-          // #1599 — over the full collection horizon, where every lane's period was
-          // detected, NOT the trimmed one-loop span (one loop has no repetition).
-          repeatCycles: repeatBeside(lanePeriods, cap, period),
-          lanePeriods
-        };
-      }
-      if (horizon >= cap) {
-        return analyzeEvents(events, cap, true, periodRule, cap, steppedKeys);
-      }
-      horizon = Math.min(horizon * 2, cap);
-    }
-    return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap, steppedKeys);
-  }, "measure");
-  const end = songEnd(ir, cap, opts.signals?.periods);
-  const declaredLength = end.kind === "arranged" && end.cycles > 0 ? end.cycles : null;
-  const declaredEnd = declaredLength !== null && declaredLength > 0 && Math.ceil(declaredLength) <= cap ? declaredLength : null;
-  const measured = await measure();
-  if (declaredEnd === null || signal?.aborted) return measured;
-  if (!await collectUpTo(Math.ceil(declaredEnd))) return measured;
-  return spanToDeclaredEnd(measured, events, declaredEnd);
-}
-__name(analyzeSong, "analyzeSong");
-async function analyzeWindow(originCycle, spanCycles, opts = {}) {
-  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
-  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
-  const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE));
-  const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS;
-  const collectFn = opts.collectFn ?? (() => []);
-  const now2 = opts.now ?? defaultNow;
-  const yieldFn = opts.yieldFn ?? defaultYield;
-  const signal = opts.signal;
-  const events = [];
-  let collectedTo = origin;
-  let lastYield = now2();
-  let complete = true;
-  while (collectedTo < origin + span) {
-    if (signal?.aborted) {
-      complete = false;
-      break;
-    }
-    const sliceEnd = Math.min(collectedTo + slice, origin + span);
-    events.push(...collectFn(collectedTo, sliceEnd));
-    collectedTo = sliceEnd;
-    if (now2() - lastYield >= budgetMs && collectedTo < origin + span) {
-      await yieldFn();
-      lastYield = now2();
-    }
-  }
-  const lanes = accumulateLanesInWindow(events, origin, span, opts.pinnedLaneKeys);
-  const sections = computeSectionsInWindow(lanes, origin, span);
-  return { originCycle: origin, spanCycles: span, lanes, sections, complete };
-}
-__name(analyzeWindow, "analyzeWindow");
-
-// src/codeView/ir/fixedParameters.ts
-var NUMBER2 = /^-?(?:\d+\.?\d*|\.\d+)$/;
-function numberOf(raw) {
-  const t = raw.trim();
-  if (NUMBER2.test(t)) return { text: t, quote: "" };
-  const q = t[0];
-  if ((q === '"' || q === "'" || q === "`") && t.length >= 2 && t.indexOf(q, 1) === t.length - 1) {
-    const inner = t.slice(1, -1).trim();
-    if (NUMBER2.test(inner)) return { text: inner, quote: q };
-  }
-  return null;
-}
-__name(numberOf, "numberOf");
-var DECLINE = /* @__PURE__ */ Symbol("decline");
-function sectionCyclesOf(placements) {
-  let agreed = DECLINE;
-  for (const placement of placements) {
-    if (!placement.every(isSectionWindow)) return DECLINE;
-    const sections = placement;
-    const inner = sections.length > 0 ? sections[sections.length - 1].cycles : null;
-    if (agreed !== DECLINE && agreed !== inner) return DECLINE;
-    agreed = inner;
-  }
-  return agreed;
-}
-__name(sectionCyclesOf, "sectionCyclesOf");
-function fixedParameters(ir) {
-  const out = [];
-  for (const { trackId, param, placements } of playableParameters(ir)) {
-    const num = numberOf(param.rawArgs);
-    if (!num) continue;
-    const sectionCycles = sectionCyclesOf(placements);
-    if (sectionCycles === DECLINE) continue;
-    const call = param.loc?.[0];
-    if (!call) continue;
-    const raw = param.rawArgs;
-    const argStart = call.end - 1 - raw.length + (raw.length - raw.trimStart().length);
-    out.push({
-      trackId,
-      paramKey: param.key,
-      method: param.userMethod ?? param.key,
-      value: Number(num.text),
-      valueText: num.text,
-      argSpan: { start: argStart, end: argStart + raw.trim().length },
-      sectionCycles,
-      offset: Number.isFinite(call.start) ? call.start : null,
-      placements
-    });
-  }
-  return out;
-}
-__name(fixedParameters, "fixedParameters");
-function fixedToStepsEdit(f, steps, source) {
-  if (!Number.isInteger(steps) || steps < 1) return null;
-  const num = numberOf(source.slice(f.argSpan.start, f.argSpan.end));
-  if (!num || num.text !== f.valueText) return null;
-  const q = num.quote || '"';
-  return { range: [f.argSpan.start, f.argSpan.end], text: `${q}<${Array(steps).fill(num.text).join(" ")}>${q}` };
-}
-__name(fixedToStepsEdit, "fixedToStepsEdit");
-
-// src/codeView/ir/stepCount.ts
-var sameStep = /* @__PURE__ */ __name((a, b) => a.value === b.value && a.weight === b.weight, "sameStep");
-function stepCountEdit(a, n, source) {
-  const steps = a.steps;
-  const len = steps.length;
-  if (!Number.isInteger(n) || n < 1 || n === len || len === 0) return null;
-  for (const step of steps) {
-    const text = source.slice(step.valueSpan.start, step.valueSpan.end);
-    if (text === "" || Number(text) !== step.value) return null;
-  }
-  const last = steps[len - 1];
-  const close = source.indexOf(">", last.valueSpan.end);
-  if (close < 0) return null;
-  const texts = steps.map(
-    (step, i) => source.slice(step.valueSpan.start, i + 1 < len ? steps[i + 1].valueSpan.start : close).trimEnd()
-  );
-  const next = Array.from({ length: n }, (_, i) => i % len);
-  const dropsWritten = n < len && steps.slice(n).some((step, k) => !sameStep(step, steps[(n + k) % n]));
-  const keepsSound = n > len ? n % len === 0 : len % n === 0 && !dropsWritten;
-  return {
-    edit: { range: [steps[0].valueSpan.start, close], text: next.map((i) => texts[i]).join(" ") },
-    steps: n,
-    periodCycles: next.reduce((sum, i) => sum + steps[i].weight, 0),
-    keepsSound,
-    dropsWritten
-  };
-}
-__name(stepCountEdit, "stepCountEdit");
-
-// src/codeView/ir/serialize.ts
-var PATTERN_IR_SCHEMA_VERSION = "1.0";
-function patternToJSON(ir, pretty) {
-  const envelope = {
-    $schema: `patternir/${PATTERN_IR_SCHEMA_VERSION}`,
-    tree: ir
-  };
-  return pretty ? JSON.stringify(envelope, null, 2) : JSON.stringify(envelope);
-}
-__name(patternToJSON, "patternToJSON");
-function patternFromJSON(json) {
-  let parsed;
-  try {
-    parsed = JSON.parse(json);
-  } catch (e) {
-    throw new Error(`PatternIR: invalid JSON \u2014 ${String(e)}`);
-  }
-  if (typeof parsed !== "object" || parsed === null) {
-    throw new Error("PatternIR: expected object at root");
-  }
-  const envelope = parsed;
-  if (!("tree" in envelope)) {
-    throw new Error('PatternIR: missing "tree" field');
-  }
-  return validateNode(envelope.tree, "tree");
-}
-__name(patternFromJSON, "patternFromJSON");
-var VALID_TAGS = /* @__PURE__ */ new Set([
-  "Pure",
-  "Seq",
-  "Stack",
-  "Play",
-  "Sleep",
-  "Choice",
-  "Every",
-  "Cycle",
-  "When",
-  "Ramp",
-  "Fast",
-  "Slow",
-  "Range",
-  "Loop",
-  "Code",
-  "Param",
-  "Track",
-  // Phase 20-18 Wave A — Signal/Builder chain-ROOT family (additive).
-  // Every existing entry above stays byte-UNCHANGED; these are appended
-  // members of the literal Set initializer (the only buildable shape
-  // since `VALID_TAGS.has(node.tag)` is the gate at line 71 — without
-  // these, a deserialise of a Signal/Builder node throws "unknown tag").
-  "Signal",
-  "Builder",
-  // Phase 5a (#386) — unified time-sequence node (arrange/cat/slowcat).
-  "Arrange"
-]);
-function validateNode(raw, path) {
-  if (typeof raw !== "object" || raw === null) {
-    throw new Error(`${path}: expected object, got ${typeof raw}`);
-  }
-  const node = raw;
-  if (typeof node.tag !== "string") {
-    throw new Error(`${path}: missing or invalid "tag" field`);
-  }
-  if (!VALID_TAGS.has(node.tag)) {
-    throw new Error(`${path}: unknown tag "${node.tag}"`);
-  }
-  switch (node.tag) {
-    case "Pure":
-      return { tag: "Pure" };
-    case "Seq": {
-      requireArray(node, "children", path);
-      const children = node.children.map(
-        (c, i) => validateNode(c, `${path}.children[${i}]`)
-      );
-      const out = { tag: "Seq", children };
-      if (Array.isArray(node.loc)) out.loc = node.loc;
-      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
-      return out;
-    }
-    case "Stack": {
-      requireArray(node, "tracks", path);
-      const tracks = node.tracks.map(
-        (t, i) => validateNode(t, `${path}.tracks[${i}]`)
-      );
-      return { tag: "Stack", tracks };
-    }
-    case "Play": {
-      requireField(node, "note", ["string", "number"], path);
-      requireField(node, "duration", ["number"], path);
-      requireObject(node, "params", path);
-      return {
-        tag: "Play",
-        note: node.note,
-        duration: node.duration,
-        params: node.params
-      };
-    }
-    case "Sleep": {
-      requireField(node, "duration", ["number"], path);
-      return { tag: "Sleep", duration: node.duration };
-    }
-    case "Choice": {
-      requireField(node, "p", ["number"], path);
-      requireField(node, "then", ["object"], path);
-      requireField(node, "else_", ["object"], path);
-      return {
-        tag: "Choice",
-        p: node.p,
-        then: validateNode(node.then, `${path}.then`),
-        else_: validateNode(node.else_, `${path}.else_`)
-      };
-    }
-    case "Every": {
-      requireField(node, "n", ["number"], path);
-      requireField(node, "body", ["object"], path);
-      const result = {
-        tag: "Every",
-        n: node.n,
-        body: validateNode(node.body, `${path}.body`)
-      };
-      if (node.default_ !== void 0) {
-        result.default_ = validateNode(node.default_, `${path}.default_`);
-      }
-      return result;
-    }
-    case "Cycle": {
-      requireArray(node, "items", path);
-      const items = node.items.map(
-        (item, i) => validateNode(item, `${path}.items[${i}]`)
-      );
-      return { tag: "Cycle", items };
-    }
-    case "When": {
-      requireField(node, "gate", ["string"], path);
-      requireField(node, "body", ["object"], path);
-      return {
-        tag: "When",
-        gate: node.gate,
-        body: validateNode(node.body, `${path}.body`)
-      };
-    }
-    case "Ramp": {
-      requireField(node, "param", ["string"], path);
-      requireField(node, "from", ["number"], path);
-      requireField(node, "to", ["number"], path);
-      requireField(node, "cycles", ["number"], path);
-      requireField(node, "body", ["object"], path);
-      return {
-        tag: "Ramp",
-        param: node.param,
-        from: node.from,
-        to: node.to,
-        cycles: node.cycles,
-        body: validateNode(node.body, `${path}.body`)
-      };
-    }
-    case "Fast": {
-      requireField(node, "factor", ["number"], path);
-      requireField(node, "body", ["object"], path);
-      return {
-        tag: "Fast",
-        factor: node.factor,
-        body: validateNode(node.body, `${path}.body`)
-      };
-    }
-    case "Slow": {
-      requireField(node, "factor", ["number"], path);
-      requireField(node, "body", ["object"], path);
-      return {
-        tag: "Slow",
-        factor: node.factor,
-        body: validateNode(node.body, `${path}.body`)
-      };
-    }
-    case "Range": {
-      requireField(node, "lo", ["number"], path);
-      requireField(node, "hi", ["number"], path);
-      requireField(node, "rawArgs", ["string"], path);
-      requireField(node, "body", ["object"], path);
-      return {
-        tag: "Range",
-        lo: node.lo,
-        hi: node.hi,
-        rawArgs: node.rawArgs,
-        body: validateNode(node.body, `${path}.body`)
-      };
-    }
-    case "Loop": {
-      requireField(node, "body", ["object"], path);
-      return {
-        tag: "Loop",
-        body: validateNode(node.body, `${path}.body`)
-      };
-    }
-    case "Elongate": {
-      requireField(node, "factor", ["number"], path);
-      requireField(node, "body", ["object"], path);
-      return {
-        tag: "Elongate",
-        factor: node.factor,
-        body: validateNode(node.body, `${path}.body`)
-      };
-    }
-    case "Param": {
-      requireField(node, "key", ["string"], path);
-      requireField(node, "rawArgs", ["string"], path);
-      requireField(node, "body", ["object"], path);
-      const v = node.value;
-      let value;
-      if (typeof v === "string" || typeof v === "number") {
-        value = v;
-      } else if (typeof v === "object" && v !== null) {
-        value = validateNode(v, `${path}.value`);
-      } else {
-        throw new Error(`${path}: field "value" must be string|number|object, got ${typeof v}`);
-      }
-      const out = {
-        tag: "Param",
-        key: node.key,
-        value,
-        rawArgs: node.rawArgs,
-        body: validateNode(node.body, `${path}.body`)
-      };
-      if (Array.isArray(node.loc)) out.loc = node.loc;
-      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
-      return out;
-    }
-    case "Track": {
-      requireField(node, "trackId", ["string"], path);
-      requireField(node, "body", ["object"], path);
-      const out = {
-        tag: "Track",
-        trackId: node.trackId,
-        body: validateNode(node.body, `${path}.body`)
-      };
-      if (Array.isArray(node.loc)) out.loc = node.loc;
-      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
-      if (node.muted === true) out.muted = true;
-      if (node.commented === true) out.commented = true;
-      return out;
-    }
-    case "Code": {
-      requireField(node, "code", ["string"], path);
-      const out = { tag: "Code", code: node.code, lang: "strudel" };
-      if (node.via !== void 0 && node.via !== null) {
-        const via = node.via;
-        if (via.literal === true) {
-          if (typeof via.raw !== "string") {
-            throw new Error(`${path}.via: literal arm requires string "raw"`);
-          }
-          out.via = { literal: true, raw: via.raw };
-        } else {
-          requireField(via, "method", ["string"], `${path}.via`);
-          requireField(via, "args", ["string"], `${path}.via`);
-          if (!Array.isArray(via.callSiteRange)) {
-            throw new Error(`${path}.via: field "callSiteRange" must be an array`);
-          }
-          if (typeof via.inner !== "object" || via.inner === null) {
-            throw new Error(`${path}.via: field "inner" must be an object`);
-          }
-          out.via = {
-            method: via.method,
-            args: via.args,
-            callSiteRange: via.callSiteRange,
-            inner: validateNode(via.inner, `${path}.via.inner`)
-          };
-        }
-      }
-      if (Array.isArray(node.loc)) {
-        out.loc = node.loc;
-      }
-      return out;
-    }
-    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family (lossless
-    // round-trip). Mirrors the Param/Track pattern above: requireField
-    // each primitive, recurse into the optional `body` sub-IR, restore
-    // optional metadata. The `kind` literal-union is validated by TS at
-    // construction-site (PatternIR.ts) — the runtime guard accepts any
-    // string and trusts the consumer's narrowing (matches Param.key's
-    // shape). `args` is RAW source verbatim; we DO NOT coerce / trim.
-    case "Signal": {
-      requireField(node, "kind", ["string"], path);
-      const out = {
-        tag: "Signal",
-        kind: node.kind
-      };
-      if (typeof node.args === "string") {
-        out.args = node.args;
-      }
-      if (Array.isArray(node.loc)) out.loc = node.loc;
-      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
-      return out;
-    }
-    case "Builder": {
-      requireField(node, "kind", ["string"], path);
-      requireField(node, "args", ["string"], path);
-      const out = {
-        tag: "Builder",
-        kind: node.kind,
-        args: node.args
-      };
-      if (typeof node.body === "object" && node.body !== null) {
-        out.body = validateNode(node.body, `${path}.body`);
-      }
-      if (Array.isArray(node.loc)) out.loc = node.loc;
-      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
-      return out;
-    }
-    case "Arrange": {
-      requireField(node, "mode", ["string"], path);
-      requireArray(node, "arms", path);
-      const arms = node.arms.map((a, i) => {
-        if (typeof a !== "object" || a === null) {
-          throw new Error(`${path}.arms[${i}]: expected object`);
-        }
-        const arm = a;
-        if (typeof arm.weight !== "number") {
-          throw new Error(`${path}.arms[${i}]: field "weight" must be a number`);
-        }
-        const out2 = {
-          weight: arm.weight,
-          pattern: validateNode(arm.pattern, `${path}.arms[${i}].pattern`)
-        };
-        if (Array.isArray(arm.loc)) out2.loc = arm.loc;
-        return out2;
-      });
-      const out = {
-        tag: "Arrange",
-        mode: node.mode,
-        arms
-      };
-      if (Array.isArray(node.loc)) out.loc = node.loc;
-      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
-      return out;
-    }
-    default:
-      throw new Error(`${path}: unhandled tag "${node.tag}"`);
-  }
-}
-__name(validateNode, "validateNode");
-function requireField(node, key2, types, path) {
-  if (!(key2 in node)) {
-    throw new Error(`${path}: missing field "${key2}"`);
-  }
-  if (!types.includes(typeof node[key2])) {
-    throw new Error(
-      `${path}: field "${key2}" must be ${types.join(" or ")}, got ${typeof node[key2]}`
-    );
-  }
-}
-__name(requireField, "requireField");
-function requireArray(node, key2, path) {
-  if (!(key2 in node) || !Array.isArray(node[key2])) {
-    throw new Error(`${path}: field "${key2}" must be an array`);
-  }
-}
-__name(requireArray, "requireArray");
-function requireObject(node, key2, path) {
-  if (!(key2 in node) || typeof node[key2] !== "object" || node[key2] === null || Array.isArray(node[key2])) {
-    throw new Error(`${path}: field "${key2}" must be an object`);
-  }
-}
-__name(requireObject, "requireObject");
-
 // src/codeView/ir/trackId.ts
 function trackIdFromLabel(label, index) {
   return labelName(label) ?? `d${index + 1}`;
@@ -7241,6 +6254,997 @@ function splitFirstArg(argsStr) {
 }
 __name(splitFirstArg, "splitFirstArg");
 
+// src/codeView/ir/songAnalysis.ts
+function laneKeyOf(ev) {
+  return ev.trackId ?? ev.s ?? "$default";
+}
+__name(laneKeyOf, "laneKeyOf");
+function accumulateLanes(events, horizon) {
+  return accumulateLanesInWindow(events, 0, horizon);
+}
+__name(accumulateLanes, "accumulateLanes");
+function accumulateLanesInWindow(events, originCycle, spanCycles, pinnedLaneKeys) {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
+  const order = [];
+  const byLane = /* @__PURE__ */ new Map();
+  const ensure = /* @__PURE__ */ __name((key2) => {
+    let counts = byLane.get(key2);
+    if (!counts) {
+      counts = new Array(span).fill(0);
+      byLane.set(key2, counts);
+      order.push(key2);
+    }
+    return counts;
+  }, "ensure");
+  if (pinnedLaneKeys) for (const key2 of pinnedLaneKeys) ensure(key2);
+  for (const ev of events) {
+    const cycle = Math.floor(ev.begin);
+    if (!Number.isFinite(cycle) || cycle < origin || cycle >= origin + span) continue;
+    ensure(laneKeyOf(ev))[cycle - origin] += 1;
+  }
+  return order.map((laneKey) => ({ laneKey, onsetsByCycle: byLane.get(laneKey) }));
+}
+__name(accumulateLanesInWindow, "accumulateLanesInWindow");
+function cycleFingerprints(events, horizon) {
+  const perCycle = Array.from({ length: horizon }, () => []);
+  for (const ev of events) {
+    const cycle = Math.floor(ev.begin);
+    if (!Number.isFinite(cycle) || cycle < 0 || cycle >= horizon) continue;
+    const offset = Math.round((ev.begin - cycle) * 1e6);
+    perCycle[cycle].push(`${laneKeyOf(ev)}@${offset}:${eventValueKey(ev)}`);
+  }
+  return perCycle.map((tokens) => tokens.sort().join("|"));
+}
+__name(cycleFingerprints, "cycleFingerprints");
+function detectPeriod(fingerprints) {
+  const len = fingerprints.length;
+  if (fingerprints.every((fp) => fp === "")) return null;
+  for (let p = 1; p <= Math.floor(len / 2); p++) {
+    let repeats = true;
+    for (let c = 0; c + p < len; c++) {
+      if (fingerprints[c] !== fingerprints[c + p]) {
+        repeats = false;
+        break;
+      }
+    }
+    if (repeats) return p;
+  }
+  return null;
+}
+__name(detectPeriod, "detectPeriod");
+function detectDisplayPeriod(events, horizon) {
+  const byLane = eventsByLane(events);
+  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
+  let maxPeriod = 0;
+  for (const laneEvents of byLane.values()) {
+    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
+    if (p === null) return null;
+    if (p > maxPeriod) maxPeriod = p;
+  }
+  return maxPeriod > 0 ? maxPeriod : null;
+}
+__name(detectDisplayPeriod, "detectDisplayPeriod");
+function eventsByLane(events) {
+  const byLane = /* @__PURE__ */ new Map();
+  for (const ev of events) {
+    const key2 = laneKeyOf(ev);
+    let bucket2 = byLane.get(key2);
+    if (!bucket2) {
+      bucket2 = [];
+      byLane.set(key2, bucket2);
+    }
+    bucket2.push(ev);
+  }
+  return byLane;
+}
+__name(eventsByLane, "eventsByLane");
+var NO_STEPPED_KEYS = /* @__PURE__ */ new Map();
+function lanePeriodsOf(events, horizon, steppedKeys) {
+  const out = [];
+  for (const [laneKey, laneEvents] of eventsByLane(events)) {
+    const periodCycles = detectPeriod(cycleFingerprints(laneEvents, horizon));
+    const keys = steppedKeys.get(laneKey);
+    const restCycles = keys && keys.size > 0 ? detectPeriod(cycleFingerprints(laneEvents.map((ev) => withoutKeys(ev, keys)), horizon)) : periodCycles;
+    out.push({ laneKey, periodCycles, restCycles });
+  }
+  return out;
+}
+__name(lanePeriodsOf, "lanePeriodsOf");
+function repeatOf(periods, cap) {
+  if (periods.length === 0) return null;
+  let repeat = 1;
+  for (const p of periods) {
+    if (p === null) return null;
+    const next = rationalLcm(repeat, p);
+    if (next === null || !Number.isFinite(next) || next > cap) return null;
+    repeat = next;
+  }
+  return repeat;
+}
+__name(repeatOf, "repeatOf");
+function steppedKeysByLane(ir) {
+  const by = /* @__PURE__ */ new Map();
+  for (const a of steppedAutomations(ir)) {
+    let keys = by.get(a.trackId);
+    if (!keys) by.set(a.trackId, keys = /* @__PURE__ */ new Set());
+    keys.add(a.paramKey);
+  }
+  return by;
+}
+__name(steppedKeysByLane, "steppedKeysByLane");
+function previewRepeat(analysis, laneKey, paramPeriods, cap = DEFAULT_CAP) {
+  const mine = analysis.lanePeriods.find((l) => l.laneKey === laneKey);
+  if (!mine) return null;
+  const others = analysis.lanePeriods.filter((l) => l !== mine).map((l) => l.periodCycles);
+  return repeatOf([...others, mine.restCycles, ...paramPeriods], cap);
+}
+__name(previewRepeat, "previewRepeat");
+var PHASE_GRAIN = 1e6;
+var NOISE_SEED_CYCLES = 300;
+async function previewShapeSwap(ir, a, next, opts) {
+  const at = a.spans.shape?.start;
+  const collect2 = opts.collectFn;
+  if (at === void 0 || !collect2) return null;
+  const standIn = standInFor(a, next);
+  if (standIn === null) return null;
+  const standInPeriod = standInPeriodOf(a, next);
+  const pastCap = !hasTruePeriod(next) && standInPeriod !== null && standInPeriod > DEFAULT_CAP;
+  if (!pastCap && sharesItsControl(ir, a)) return null;
+  const key2 = a.paramKey;
+  return analyzeSong(ir, {
+    ...opts,
+    collectFn: /* @__PURE__ */ __name((start, end) => collect2(start, end).map((ev) => laneKeyOf(ev) === a.trackId ? withValue(ev, key2, standIn(ev)) : ev), "collectFn"),
+    signals: signalDimensionsOf(ir, { at, kind: next })
+  });
+}
+__name(previewShapeSwap, "previewShapeSwap");
+function sharesItsControl(ir, a) {
+  if (!ir) return false;
+  const same = /* @__PURE__ */ __name((b) => b.trackId === a.trackId && b.paramKey === a.paramKey, "same");
+  return signalWriters(ir).filter(same).length > 1 || steppedAutomations(ir).some(same);
+}
+__name(sharesItsControl, "sharesItsControl");
+function standInPeriodOf(a, next) {
+  const own = hasTruePeriod(next) ? a.periodCycles : isNoiseKind(next) ? NOISE_SEED_CYCLES * a.periodCycles : null;
+  return own === null ? null : songPeriodOf({ periodCycles: own, placements: a.placements });
+}
+__name(standInPeriodOf, "standInPeriodOf");
+function standInFor(a, next) {
+  const song = standInPeriodOf(a, next);
+  const f = song === null ? null : asFraction(song);
+  if (f === null) return null;
+  const [n, d] = f;
+  const ticks = n * PHASE_GRAIN;
+  return (ev) => {
+    const t = Math.round(ev.begin * d * PHASE_GRAIN);
+    return (t % ticks + ticks) % ticks;
+  };
+}
+__name(standInFor, "standInFor");
+function withValue(ev, key2, value) {
+  const rec = ev;
+  if (rec[key2] !== void 0) return { ...rec, [key2]: value };
+  if (ev.params && key2 in ev.params) return { ...ev, params: { ...ev.params, [key2]: value } };
+  return ev;
+}
+__name(withValue, "withValue");
+function repeatBeside(lanePeriods, cap, period) {
+  if (period === null) return null;
+  const repeat = repeatOf(lanePeriods.map((l) => l.periodCycles), cap);
+  return repeat !== null && repeat % period === 0 ? repeat : null;
+}
+__name(repeatBeside, "repeatBeside");
+var MIN_ABSTAINED_PERIOD = 4;
+function detectDisplayPeriodAtCap(events, horizon) {
+  const byLane = eventsByLane(events);
+  if (byLane.size === 0) return detectPeriod(cycleFingerprints(events, horizon));
+  let maxPeriod = 0;
+  let answered = 0;
+  let abstained = false;
+  for (const laneEvents of byLane.values()) {
+    const p = detectPeriod(cycleFingerprints(laneEvents, horizon));
+    if (p === null) {
+      abstained = true;
+      continue;
+    }
+    answered++;
+    if (p > maxPeriod) maxPeriod = p;
+  }
+  if (answered === 0 || maxPeriod <= 0) return null;
+  if (abstained && maxPeriod < MIN_ABSTAINED_PERIOD) return null;
+  return maxPeriod;
+}
+__name(detectDisplayPeriodAtCap, "detectDisplayPeriodAtCap");
+function spanCoversEveryLane(events, period) {
+  const inSpan = /* @__PURE__ */ new Set();
+  const all = /* @__PURE__ */ new Set();
+  for (const ev of events) {
+    const key2 = laneKeyOf(ev);
+    all.add(key2);
+    const cycle = Math.floor(ev.begin);
+    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period) inSpan.add(key2);
+  }
+  for (const key2 of all) if (!inSpan.has(key2)) return false;
+  return true;
+}
+__name(spanCoversEveryLane, "spanCoversEveryLane");
+function signalDimensionsOf(ir, swap) {
+  const audible = audibleTracks(ir);
+  const periods = [];
+  const keys = /* @__PURE__ */ new Set();
+  for (const t of audible) {
+    for (const a of signalAutomations(t)) {
+      const kind = swap !== void 0 && a.spans.shape?.start === swap.at ? swap.kind : a.kind;
+      if (!hasTruePeriod(kind) || !(a.periodCycles > 0)) continue;
+      const song = songPeriodOf(a);
+      if (song !== null) periods.push(song);
+    }
+    for (const k of signalCarryingParamKeys(t)) keys.add(k);
+  }
+  return { keys, periods };
+}
+__name(signalDimensionsOf, "signalDimensionsOf");
+function arrangedRepeatCycles(ir, arrangedCycles, cap = DEFAULT_CAP, signalPeriods = signalDimensionsOf(ir).periods) {
+  if (!(arrangedCycles > 0) || !Number.isFinite(arrangedCycles)) return arrangedCycles;
+  const tracks = audibleTracks(ir);
+  const named2 = tracks.filter((t) => t.tag === "Track" && typeof t.trackId === "string");
+  const audible = named2.length > 0 ? new Set(named2.map((t) => t.trackId)) : null;
+  const periods = [arrangedCycles];
+  for (const a of steppedAutomations(ir)) {
+    if (audible !== null && !audible.has(a.trackId)) continue;
+    const p = songPeriodOf(a);
+    if (p !== null && p > 0) periods.push(p);
+  }
+  for (const p of signalPeriods) if (p > 0) periods.push(p);
+  const repeat = repeatOf(periods, cap);
+  return repeat ?? arrangedCycles;
+}
+__name(arrangedRepeatCycles, "arrangedRepeatCycles");
+function songEnd(ir, cap = DEFAULT_CAP, signalPeriods) {
+  const extent = songExtent(ir ?? null);
+  if (extent.kind !== "arranged" || !(extent.cycles > 0)) return extent;
+  return { ...extent, cycles: arrangedRepeatCycles(ir, extent.cycles, cap, signalPeriods) };
+}
+__name(songEnd, "songEnd");
+function songEndOf(source) {
+  return songEnd(parseStrudel(source));
+}
+__name(songEndOf, "songEndOf");
+function songPeriodOf(a) {
+  let out = null;
+  for (const placement of a.placements) {
+    if (placement.some((w) => isSectionWindow(w) && w.cycles === 0)) continue;
+    let p = a.periodCycles;
+    for (let k = placement.length - 1; k >= 0 && p !== null; k--) {
+      const step = placement[k];
+      if (!isSectionWindow(step)) {
+        p = p * step.per / step.times;
+        continue;
+      }
+      const { cycles, total } = step;
+      const l = rationalLcm(cycles, p);
+      p = l === null ? null : total * l / cycles;
+    }
+    if (p === null) return null;
+    out = out === null ? p : rationalLcm(out, p);
+    if (out === null) return null;
+  }
+  return out;
+}
+__name(songPeriodOf, "songPeriodOf");
+function audibleTracks(ir) {
+  if (!ir) return [];
+  const roots = ir.tag === "Stack" ? ir.tracks : [ir];
+  const tracks = roots.filter((n) => n?.tag === "Track");
+  if (tracks.length === 0) return [ir];
+  return tracks.filter((t) => t.tag !== "Track" || t.muted !== true);
+}
+__name(audibleTracks, "audibleTracks");
+function withoutKeys(ev, keys) {
+  if (keys.size === 0) return ev;
+  const rec = ev;
+  let touched = false;
+  let copy = null;
+  for (const k of keys) {
+    if (rec[k] === void 0) continue;
+    copy ?? (copy = { ...rec });
+    copy[k] = void 0;
+    touched = true;
+  }
+  const params = ev.params;
+  if (params) {
+    let dropped = false;
+    const next = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (keys.has(k)) {
+        dropped = true;
+        continue;
+      }
+      next[k] = v;
+    }
+    if (dropped) {
+      copy ?? (copy = { ...rec });
+      copy.params = next;
+      touched = true;
+    }
+  }
+  return touched && copy ? copy : rec;
+}
+__name(withoutKeys, "withoutKeys");
+var gcdInt = /* @__PURE__ */ __name((a, b) => b === 0 ? a : gcdInt(b, a % b), "gcdInt");
+function asFraction(x, maxDen = 1024) {
+  if (!Number.isFinite(x) || x <= 0) return null;
+  for (let d = 1; d <= maxDen; d++) {
+    const n = x * d;
+    if (Math.abs(n - Math.round(n)) < 1e-9) {
+      const num = Math.round(n);
+      const g = gcdInt(num, d);
+      return [num / g, d / g];
+    }
+  }
+  return null;
+}
+__name(asFraction, "asFraction");
+function rationalLcm(x, y) {
+  const fx = asFraction(x);
+  const fy = asFraction(y);
+  if (!fx || !fy) return null;
+  const [a, b] = fx;
+  const [c, d] = fy;
+  const lcmNum = a * c / gcdInt(a, c);
+  return lcmNum / gcdInt(b, d);
+}
+__name(rationalLcm, "rationalLcm");
+function foldWithSignalPeriods(period, periods, cap) {
+  let folded = period;
+  for (const q of periods) {
+    const next = rationalLcm(folded, q);
+    if (next === null || !Number.isFinite(next) || next > cap) return period;
+    folded = next;
+  }
+  return folded;
+}
+__name(foldWithSignalPeriods, "foldWithSignalPeriods");
+function displayPeriodRule(events, horizon, cap, hasUnheardTrack, signals) {
+  const period = horizon >= cap ? detectDisplayPeriodAtCap(events, horizon) : detectDisplayPeriod(events, horizon);
+  if (period !== null) {
+    if (hasUnheardTrack && horizon < cap) return null;
+    if (!spanCoversEveryLane(events, period)) return null;
+    return period;
+  }
+  return signalInformedPeriod(events, horizon, cap, signals);
+}
+__name(displayPeriodRule, "displayPeriodRule");
+function signalInformedPeriod(events, horizon, cap, signals) {
+  if (horizon < cap) return null;
+  if (!signals || signals.keys.size === 0) return null;
+  const stripped = events.map((ev) => withoutKeys(ev, signals.keys));
+  const structural = detectDisplayPeriodAtCap(stripped, horizon);
+  if (structural === null) return null;
+  const folded = foldWithSignalPeriods(structural, signals.periods, cap);
+  if (!spanCoversEveryLane(events, folded)) return null;
+  return folded;
+}
+__name(signalInformedPeriod, "signalInformedPeriod");
+function computeSections(lanes, horizon) {
+  return computeSectionsInWindow(lanes, 0, horizon);
+}
+__name(computeSections, "computeSections");
+function computeSectionsInWindow(lanes, originCycle, spanCycles) {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
+  if (span <= 0) return [];
+  const signatureAt = /* @__PURE__ */ __name((index) => lanes.filter((l) => (l.onsetsByCycle[index] ?? 0) > 0).map((l) => l.laneKey).sort(), "signatureAt");
+  const sections = [];
+  let start = 0;
+  let sig = signatureAt(0);
+  let sigKey = sig.join("|");
+  for (let i = 1; i < span; i++) {
+    const nextSig = signatureAt(i);
+    const nextKey = nextSig.join("|");
+    if (nextKey !== sigKey) {
+      sections.push({ startCycle: origin + start, endCycle: origin + i, laneKeys: sig });
+      start = i;
+      sig = nextSig;
+      sigKey = nextKey;
+    }
+  }
+  sections.push({ startCycle: origin + start, endCycle: origin + span, laneKeys: sig });
+  return sections;
+}
+__name(computeSectionsInWindow, "computeSectionsInWindow");
+function analyzeEvents(events, horizon, reachedCap = false, detectPeriodFn, capCycles = DEFAULT_CAP, steppedKeys = NO_STEPPED_KEYS) {
+  const periodOf = detectPeriodFn ?? ((evs, h) => displayPeriodRule(evs, h, reachedCap ? h : Number.POSITIVE_INFINITY, false));
+  const lanes = accumulateLanes(events, horizon);
+  const periodCycles = periodOf(events, horizon);
+  const sections = computeSections(lanes, horizon);
+  const displaySpan = periodCycles != null ? { kind: "loop", cycles: periodCycles } : { kind: reachedCap ? "capped" : "horizon", cycles: horizon };
+  const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys);
+  const repeatCycles = repeatBeside(lanePeriods, capCycles, periodCycles);
+  return { periodCycles, horizonCycles: horizon, lanes, sections, displaySpan, repeatCycles, lanePeriods };
+}
+__name(analyzeEvents, "analyzeEvents");
+function spanToDeclaredEnd(measured, events, endCycles) {
+  const horizon = Math.ceil(endCycles);
+  const lanes = accumulateLanes(events, horizon);
+  return {
+    ...measured,
+    horizonCycles: horizon,
+    lanes,
+    sections: computeSections(lanes, horizon),
+    displaySpan: { kind: "arranged", cycles: endCycles }
+  };
+}
+__name(spanToDeclaredEnd, "spanToDeclaredEnd");
+var DEFAULT_HINT = 8;
+var DEFAULT_CAP = 256;
+var DEFAULT_SLICE = 4;
+var DEFAULT_BUDGET_MS = 10;
+function defaultNow() {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+}
+__name(defaultNow, "defaultNow");
+function defaultYield() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+__name(defaultYield, "defaultYield");
+async function analyzeSong(ir, opts = {}) {
+  const hint = Math.max(1, Math.floor(opts.hintCycles ?? DEFAULT_HINT));
+  const cap = Math.max(hint, Math.floor(opts.capCycles ?? DEFAULT_CAP));
+  const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE));
+  const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS;
+  const collectFn = opts.collectFn ?? (() => []);
+  const now2 = opts.now ?? defaultNow;
+  const yieldFn = opts.yieldFn ?? defaultYield;
+  const signal = opts.signal;
+  const steppedKeys = steppedKeysByLane(ir);
+  const periodRule = /* @__PURE__ */ __name((evs, h) => opts.detectPeriodFn ? opts.detectPeriodFn(evs, h) : displayPeriodRule(evs, h, cap, opts.hasUnheardTrack ? opts.hasUnheardTrack() : false, opts.signals), "periodRule");
+  const events = [];
+  let collectedTo = 0;
+  let horizon = hint;
+  let lastYield = now2();
+  const collectUpTo = /* @__PURE__ */ __name(async (target) => {
+    while (collectedTo < target) {
+      if (signal?.aborted) return false;
+      const sliceEnd = Math.min(collectedTo + slice, target);
+      events.push(...collectFn(collectedTo, sliceEnd));
+      collectedTo = sliceEnd;
+      if (now2() - lastYield >= budgetMs && collectedTo < target) {
+        await yieldFn();
+        lastYield = now2();
+      }
+    }
+    return true;
+  }, "collectUpTo");
+  const measure = /* @__PURE__ */ __name(async () => {
+    while (true) {
+      const ok = await collectUpTo(horizon);
+      if (!ok) break;
+      if (events.length === 0) {
+        if (horizon >= cap) return analyzeEvents([], 0, false, periodRule, cap, steppedKeys);
+        horizon = Math.min(horizon * 2, cap);
+        continue;
+      }
+      const period = periodRule(events, horizon);
+      if (period !== null) {
+        const lanes = accumulateLanes(events, period);
+        const sections = computeSections(lanes, period);
+        const lanePeriods = lanePeriodsOf(events, horizon, steppedKeys);
+        return {
+          periodCycles: period,
+          horizonCycles: period,
+          lanes,
+          sections,
+          displaySpan: { kind: "loop", cycles: period },
+          // #1599 — over the full collection horizon, where every lane's period was
+          // detected, NOT the trimmed one-loop span (one loop has no repetition).
+          repeatCycles: repeatBeside(lanePeriods, cap, period),
+          lanePeriods
+        };
+      }
+      if (horizon >= cap) {
+        return analyzeEvents(events, cap, true, periodRule, cap, steppedKeys);
+      }
+      horizon = Math.min(horizon * 2, cap);
+    }
+    return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap, steppedKeys);
+  }, "measure");
+  const end = songEnd(ir, cap, opts.signals?.periods);
+  const declaredLength = end.kind === "arranged" && end.cycles > 0 ? end.cycles : null;
+  const declaredEnd = declaredLength !== null && declaredLength > 0 && Math.ceil(declaredLength) <= cap ? declaredLength : null;
+  const measured = await measure();
+  if (declaredEnd === null || signal?.aborted) return measured;
+  if (!await collectUpTo(Math.ceil(declaredEnd))) return measured;
+  return spanToDeclaredEnd(measured, events, declaredEnd);
+}
+__name(analyzeSong, "analyzeSong");
+async function analyzeWindow(originCycle, spanCycles, opts = {}) {
+  const origin = Math.max(0, Math.floor(Number.isFinite(originCycle) ? originCycle : 0));
+  const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
+  const slice = Math.max(1, Math.floor(opts.sliceCycles ?? DEFAULT_SLICE));
+  const budgetMs = opts.sliceBudgetMs ?? DEFAULT_BUDGET_MS;
+  const collectFn = opts.collectFn ?? (() => []);
+  const now2 = opts.now ?? defaultNow;
+  const yieldFn = opts.yieldFn ?? defaultYield;
+  const signal = opts.signal;
+  const events = [];
+  let collectedTo = origin;
+  let lastYield = now2();
+  let complete = true;
+  while (collectedTo < origin + span) {
+    if (signal?.aborted) {
+      complete = false;
+      break;
+    }
+    const sliceEnd = Math.min(collectedTo + slice, origin + span);
+    events.push(...collectFn(collectedTo, sliceEnd));
+    collectedTo = sliceEnd;
+    if (now2() - lastYield >= budgetMs && collectedTo < origin + span) {
+      await yieldFn();
+      lastYield = now2();
+    }
+  }
+  const lanes = accumulateLanesInWindow(events, origin, span, opts.pinnedLaneKeys);
+  const sections = computeSectionsInWindow(lanes, origin, span);
+  return { originCycle: origin, spanCycles: span, lanes, sections, complete };
+}
+__name(analyzeWindow, "analyzeWindow");
+
+// src/codeView/ir/fixedParameters.ts
+var NUMBER2 = /^-?(?:\d+\.?\d*|\.\d+)$/;
+function numberOf(raw) {
+  const t = raw.trim();
+  if (NUMBER2.test(t)) return { text: t, quote: "" };
+  const q = t[0];
+  if ((q === '"' || q === "'" || q === "`") && t.length >= 2 && t.indexOf(q, 1) === t.length - 1) {
+    const inner = t.slice(1, -1).trim();
+    if (NUMBER2.test(inner)) return { text: inner, quote: q };
+  }
+  return null;
+}
+__name(numberOf, "numberOf");
+var DECLINE = /* @__PURE__ */ Symbol("decline");
+function sectionCyclesOf(placements) {
+  let agreed = DECLINE;
+  for (const placement of placements) {
+    if (!placement.every(isSectionWindow)) return DECLINE;
+    const sections = placement;
+    const inner = sections.length > 0 ? sections[sections.length - 1].cycles : null;
+    if (agreed !== DECLINE && agreed !== inner) return DECLINE;
+    agreed = inner;
+  }
+  return agreed;
+}
+__name(sectionCyclesOf, "sectionCyclesOf");
+function fixedParameters(ir) {
+  const out = [];
+  for (const { trackId, param, placements } of playableParameters(ir)) {
+    const num = numberOf(param.rawArgs);
+    if (!num) continue;
+    const sectionCycles = sectionCyclesOf(placements);
+    if (sectionCycles === DECLINE) continue;
+    const call = param.loc?.[0];
+    if (!call) continue;
+    const raw = param.rawArgs;
+    const argStart = call.end - 1 - raw.length + (raw.length - raw.trimStart().length);
+    out.push({
+      trackId,
+      paramKey: param.key,
+      method: param.userMethod ?? param.key,
+      value: Number(num.text),
+      valueText: num.text,
+      argSpan: { start: argStart, end: argStart + raw.trim().length },
+      sectionCycles,
+      offset: Number.isFinite(call.start) ? call.start : null,
+      placements
+    });
+  }
+  return out;
+}
+__name(fixedParameters, "fixedParameters");
+function fixedToStepsEdit(f, steps, source) {
+  if (!Number.isInteger(steps) || steps < 1) return null;
+  const num = numberOf(source.slice(f.argSpan.start, f.argSpan.end));
+  if (!num || num.text !== f.valueText) return null;
+  const q = num.quote || '"';
+  return { range: [f.argSpan.start, f.argSpan.end], text: `${q}<${Array(steps).fill(num.text).join(" ")}>${q}` };
+}
+__name(fixedToStepsEdit, "fixedToStepsEdit");
+
+// src/codeView/ir/stepCount.ts
+var sameStep = /* @__PURE__ */ __name((a, b) => a.value === b.value && a.weight === b.weight, "sameStep");
+function stepCountEdit(a, n, source) {
+  const steps = a.steps;
+  const len = steps.length;
+  if (!Number.isInteger(n) || n < 1 || n === len || len === 0) return null;
+  for (const step of steps) {
+    const text = source.slice(step.valueSpan.start, step.valueSpan.end);
+    if (text === "" || Number(text) !== step.value) return null;
+  }
+  const last = steps[len - 1];
+  const close = source.indexOf(">", last.valueSpan.end);
+  if (close < 0) return null;
+  const texts = steps.map(
+    (step, i) => source.slice(step.valueSpan.start, i + 1 < len ? steps[i + 1].valueSpan.start : close).trimEnd()
+  );
+  const next = Array.from({ length: n }, (_, i) => i % len);
+  const dropsWritten = n < len && steps.slice(n).some((step, k) => !sameStep(step, steps[(n + k) % n]));
+  const keepsSound = n > len ? n % len === 0 : len % n === 0 && !dropsWritten;
+  return {
+    edit: { range: [steps[0].valueSpan.start, close], text: next.map((i) => texts[i]).join(" ") },
+    steps: n,
+    periodCycles: next.reduce((sum, i) => sum + steps[i].weight, 0),
+    keepsSound,
+    dropsWritten
+  };
+}
+__name(stepCountEdit, "stepCountEdit");
+
+// src/codeView/ir/serialize.ts
+var PATTERN_IR_SCHEMA_VERSION = "1.0";
+function patternToJSON(ir, pretty) {
+  const envelope = {
+    $schema: `patternir/${PATTERN_IR_SCHEMA_VERSION}`,
+    tree: ir
+  };
+  return pretty ? JSON.stringify(envelope, null, 2) : JSON.stringify(envelope);
+}
+__name(patternToJSON, "patternToJSON");
+function patternFromJSON(json) {
+  let parsed;
+  try {
+    parsed = JSON.parse(json);
+  } catch (e) {
+    throw new Error(`PatternIR: invalid JSON \u2014 ${String(e)}`);
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    throw new Error("PatternIR: expected object at root");
+  }
+  const envelope = parsed;
+  if (!("tree" in envelope)) {
+    throw new Error('PatternIR: missing "tree" field');
+  }
+  return validateNode(envelope.tree, "tree");
+}
+__name(patternFromJSON, "patternFromJSON");
+var VALID_TAGS = /* @__PURE__ */ new Set([
+  "Pure",
+  "Seq",
+  "Stack",
+  "Play",
+  "Sleep",
+  "Choice",
+  "Every",
+  "Cycle",
+  "When",
+  "Ramp",
+  "Fast",
+  "Slow",
+  "Range",
+  "Loop",
+  "Code",
+  "Param",
+  "Track",
+  // Phase 20-18 Wave A — Signal/Builder chain-ROOT family (additive).
+  // Every existing entry above stays byte-UNCHANGED; these are appended
+  // members of the literal Set initializer (the only buildable shape
+  // since `VALID_TAGS.has(node.tag)` is the gate at line 71 — without
+  // these, a deserialise of a Signal/Builder node throws "unknown tag").
+  "Signal",
+  "Builder",
+  // Phase 5a (#386) — unified time-sequence node (arrange/cat/slowcat).
+  "Arrange"
+]);
+function validateNode(raw, path) {
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error(`${path}: expected object, got ${typeof raw}`);
+  }
+  const node = raw;
+  if (typeof node.tag !== "string") {
+    throw new Error(`${path}: missing or invalid "tag" field`);
+  }
+  if (!VALID_TAGS.has(node.tag)) {
+    throw new Error(`${path}: unknown tag "${node.tag}"`);
+  }
+  switch (node.tag) {
+    case "Pure":
+      return { tag: "Pure" };
+    case "Seq": {
+      requireArray(node, "children", path);
+      const children = node.children.map(
+        (c, i) => validateNode(c, `${path}.children[${i}]`)
+      );
+      const out = { tag: "Seq", children };
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
+    }
+    case "Stack": {
+      requireArray(node, "tracks", path);
+      const tracks = node.tracks.map(
+        (t, i) => validateNode(t, `${path}.tracks[${i}]`)
+      );
+      return { tag: "Stack", tracks };
+    }
+    case "Play": {
+      requireField(node, "note", ["string", "number"], path);
+      requireField(node, "duration", ["number"], path);
+      requireObject(node, "params", path);
+      return {
+        tag: "Play",
+        note: node.note,
+        duration: node.duration,
+        params: node.params
+      };
+    }
+    case "Sleep": {
+      requireField(node, "duration", ["number"], path);
+      return { tag: "Sleep", duration: node.duration };
+    }
+    case "Choice": {
+      requireField(node, "p", ["number"], path);
+      requireField(node, "then", ["object"], path);
+      requireField(node, "else_", ["object"], path);
+      return {
+        tag: "Choice",
+        p: node.p,
+        then: validateNode(node.then, `${path}.then`),
+        else_: validateNode(node.else_, `${path}.else_`)
+      };
+    }
+    case "Every": {
+      requireField(node, "n", ["number"], path);
+      requireField(node, "body", ["object"], path);
+      const result = {
+        tag: "Every",
+        n: node.n,
+        body: validateNode(node.body, `${path}.body`)
+      };
+      if (node.default_ !== void 0) {
+        result.default_ = validateNode(node.default_, `${path}.default_`);
+      }
+      return result;
+    }
+    case "Cycle": {
+      requireArray(node, "items", path);
+      const items = node.items.map(
+        (item, i) => validateNode(item, `${path}.items[${i}]`)
+      );
+      return { tag: "Cycle", items };
+    }
+    case "When": {
+      requireField(node, "gate", ["string"], path);
+      requireField(node, "body", ["object"], path);
+      return {
+        tag: "When",
+        gate: node.gate,
+        body: validateNode(node.body, `${path}.body`)
+      };
+    }
+    case "Ramp": {
+      requireField(node, "param", ["string"], path);
+      requireField(node, "from", ["number"], path);
+      requireField(node, "to", ["number"], path);
+      requireField(node, "cycles", ["number"], path);
+      requireField(node, "body", ["object"], path);
+      return {
+        tag: "Ramp",
+        param: node.param,
+        from: node.from,
+        to: node.to,
+        cycles: node.cycles,
+        body: validateNode(node.body, `${path}.body`)
+      };
+    }
+    case "Fast": {
+      requireField(node, "factor", ["number"], path);
+      requireField(node, "body", ["object"], path);
+      return {
+        tag: "Fast",
+        factor: node.factor,
+        body: validateNode(node.body, `${path}.body`)
+      };
+    }
+    case "Slow": {
+      requireField(node, "factor", ["number"], path);
+      requireField(node, "body", ["object"], path);
+      return {
+        tag: "Slow",
+        factor: node.factor,
+        body: validateNode(node.body, `${path}.body`)
+      };
+    }
+    case "Range": {
+      requireField(node, "lo", ["number"], path);
+      requireField(node, "hi", ["number"], path);
+      requireField(node, "rawArgs", ["string"], path);
+      requireField(node, "body", ["object"], path);
+      return {
+        tag: "Range",
+        lo: node.lo,
+        hi: node.hi,
+        rawArgs: node.rawArgs,
+        body: validateNode(node.body, `${path}.body`)
+      };
+    }
+    case "Loop": {
+      requireField(node, "body", ["object"], path);
+      return {
+        tag: "Loop",
+        body: validateNode(node.body, `${path}.body`)
+      };
+    }
+    case "Elongate": {
+      requireField(node, "factor", ["number"], path);
+      requireField(node, "body", ["object"], path);
+      return {
+        tag: "Elongate",
+        factor: node.factor,
+        body: validateNode(node.body, `${path}.body`)
+      };
+    }
+    case "Param": {
+      requireField(node, "key", ["string"], path);
+      requireField(node, "rawArgs", ["string"], path);
+      requireField(node, "body", ["object"], path);
+      const v = node.value;
+      let value;
+      if (typeof v === "string" || typeof v === "number") {
+        value = v;
+      } else if (typeof v === "object" && v !== null) {
+        value = validateNode(v, `${path}.value`);
+      } else {
+        throw new Error(`${path}: field "value" must be string|number|object, got ${typeof v}`);
+      }
+      const out = {
+        tag: "Param",
+        key: node.key,
+        value,
+        rawArgs: node.rawArgs,
+        body: validateNode(node.body, `${path}.body`)
+      };
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
+    }
+    case "Track": {
+      requireField(node, "trackId", ["string"], path);
+      requireField(node, "body", ["object"], path);
+      const out = {
+        tag: "Track",
+        trackId: node.trackId,
+        body: validateNode(node.body, `${path}.body`)
+      };
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      if (node.muted === true) out.muted = true;
+      if (node.commented === true) out.commented = true;
+      return out;
+    }
+    case "Code": {
+      requireField(node, "code", ["string"], path);
+      const out = { tag: "Code", code: node.code, lang: "strudel" };
+      if (node.via !== void 0 && node.via !== null) {
+        const via = node.via;
+        if (via.literal === true) {
+          if (typeof via.raw !== "string") {
+            throw new Error(`${path}.via: literal arm requires string "raw"`);
+          }
+          out.via = { literal: true, raw: via.raw };
+        } else {
+          requireField(via, "method", ["string"], `${path}.via`);
+          requireField(via, "args", ["string"], `${path}.via`);
+          if (!Array.isArray(via.callSiteRange)) {
+            throw new Error(`${path}.via: field "callSiteRange" must be an array`);
+          }
+          if (typeof via.inner !== "object" || via.inner === null) {
+            throw new Error(`${path}.via: field "inner" must be an object`);
+          }
+          out.via = {
+            method: via.method,
+            args: via.args,
+            callSiteRange: via.callSiteRange,
+            inner: validateNode(via.inner, `${path}.via.inner`)
+          };
+        }
+      }
+      if (Array.isArray(node.loc)) {
+        out.loc = node.loc;
+      }
+      return out;
+    }
+    // Phase 20-18 Wave A — Signal/Builder chain-ROOT family (lossless
+    // round-trip). Mirrors the Param/Track pattern above: requireField
+    // each primitive, recurse into the optional `body` sub-IR, restore
+    // optional metadata. The `kind` literal-union is validated by TS at
+    // construction-site (PatternIR.ts) — the runtime guard accepts any
+    // string and trusts the consumer's narrowing (matches Param.key's
+    // shape). `args` is RAW source verbatim; we DO NOT coerce / trim.
+    case "Signal": {
+      requireField(node, "kind", ["string"], path);
+      const out = {
+        tag: "Signal",
+        kind: node.kind
+      };
+      if (typeof node.args === "string") {
+        out.args = node.args;
+      }
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
+    }
+    case "Builder": {
+      requireField(node, "kind", ["string"], path);
+      requireField(node, "args", ["string"], path);
+      const out = {
+        tag: "Builder",
+        kind: node.kind,
+        args: node.args
+      };
+      if (typeof node.body === "object" && node.body !== null) {
+        out.body = validateNode(node.body, `${path}.body`);
+      }
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
+    }
+    case "Arrange": {
+      requireField(node, "mode", ["string"], path);
+      requireArray(node, "arms", path);
+      const arms = node.arms.map((a, i) => {
+        if (typeof a !== "object" || a === null) {
+          throw new Error(`${path}.arms[${i}]: expected object`);
+        }
+        const arm = a;
+        if (typeof arm.weight !== "number") {
+          throw new Error(`${path}.arms[${i}]: field "weight" must be a number`);
+        }
+        const out2 = {
+          weight: arm.weight,
+          pattern: validateNode(arm.pattern, `${path}.arms[${i}].pattern`)
+        };
+        if (Array.isArray(arm.loc)) out2.loc = arm.loc;
+        return out2;
+      });
+      const out = {
+        tag: "Arrange",
+        mode: node.mode,
+        arms
+      };
+      if (Array.isArray(node.loc)) out.loc = node.loc;
+      if (typeof node.userMethod === "string") out.userMethod = node.userMethod;
+      return out;
+    }
+    default:
+      throw new Error(`${path}: unhandled tag "${node.tag}"`);
+  }
+}
+__name(validateNode, "validateNode");
+function requireField(node, key2, types, path) {
+  if (!(key2 in node)) {
+    throw new Error(`${path}: missing field "${key2}"`);
+  }
+  if (!types.includes(typeof node[key2])) {
+    throw new Error(
+      `${path}: field "${key2}" must be ${types.join(" or ")}, got ${typeof node[key2]}`
+    );
+  }
+}
+__name(requireField, "requireField");
+function requireArray(node, key2, path) {
+  if (!(key2 in node) || !Array.isArray(node[key2])) {
+    throw new Error(`${path}: field "${key2}" must be an array`);
+  }
+}
+__name(requireArray, "requireArray");
+function requireObject(node, key2, path) {
+  if (!(key2 in node) || typeof node[key2] !== "object" || node[key2] === null || Array.isArray(node[key2])) {
+    throw new Error(`${path}: field "${key2}" must be an object`);
+  }
+}
+__name(requireObject, "requireObject");
+
 // src/codeView/ir/parseStrudelStages.ts
 function parseStrudelStages(code) {
   const { ir, bodies } = parseStrudelRecorded(code);
@@ -7264,6 +7268,17 @@ function withBodies(ir, bodies, pick) {
   return ir;
 }
 __name(withBodies, "withBodies");
+
+// src/codeView/ir/strudelPasses.ts
+var STRUDEL_PASS_DEPS = {
+  runStages: parseStrudelStages,
+  parse: parseStrudel
+};
+var FINAL_PASS_NAME = "Parsed";
+function buildStrudelPasses(code, deps = STRUDEL_PASS_DEPS) {
+  return [...deps.runStages(code), { name: FINAL_PASS_NAME, ir: deps.parse(code) }];
+}
+__name(buildStrudelPasses, "buildStrudelPasses");
 
 // src/codeView/ir/passes.ts
 function runPasses(input, passes) {
@@ -51565,6 +51580,6 @@ function isPersistableTab(t) {
 __name(isPersistableTab, "isPersistableTab");
 //   /* @license  CC BY-NC-SA (https://creativecommons.org/licenses/…/4.0/)
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, songEnd, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useGridMode, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, BottomPanel, BreakpointStore, BufferedScheduler, CODE_UNDO_ATTR, DARK_THEME_TOKENS, DEFAULT_VIZ_CONFIG, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DEFAULT_VIZ_QUALITY, DemoEngine, EPHEMERAL_ID_PREFIX, EditorView, ErrorBoundary, FALLBACK_ASSET_NAME, FINAL_PASS_NAME, FSCOPE_P5_CODE, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapStream, HistoryPanel, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IR, Knob, LIGHT_THEME_TOKENS, LiveCodingEditor, LiveCodingRuntime, LiveRecorder, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, Mixer, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, PatternPanel, PianoRollGrid, PreviewView, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_PASS_DEPS, STRUDEL_RUNTIME, SequencerGrid, SignalBus, SilentCaptureError, SonicPiEngine, SplitPane, StorageFullError, StrudelEditor, StrudelEngine, TAKE_NAME_PREFIX, UI_ICON_SIZE_VAR, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, VizDropdown, VizEditor, VizPanel, VizPicker, VizPresetStore, WORDFALL_P5_CODE, WavEncoder, WorkerBusFeed, WorkerVizRenderer, WorkspaceShell, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, buildStrudelPasses, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createVizConfig, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, deriveVizQuality, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizConfig, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm, insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, labelAtOffset, laneKeyOf, languageForRenderer, levenshtein, listSectionParts as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, noteToMidi, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms2 as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm2 as pickInsertArm, insertSilenceArm2 as pickInsertSilenceArm, listSectionParts2 as pickListSectionParts, removeArm2 as pickRemoveArm, renameSection2 as pickRenameSection, reorderArm2 as pickReorderArm, setArmHead as pickSetArmHead, setWeight2 as pickSetWeight, silenceArm2 as pickSilenceArm, splitArm2 as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm, removeAssetRecord, renameSection as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, sectionNameAt, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizConfig, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm, songEnd, songEndOf, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, updateVizConfig, useGridMode, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

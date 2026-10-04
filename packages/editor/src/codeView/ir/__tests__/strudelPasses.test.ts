@@ -34,10 +34,13 @@ import { describe, it, expect, vi } from "vitest";
 import {
   buildStrudelPasses,
   FINAL_PASS_NAME,
+  STRUDEL_PASS_DEPS,
   type NamedPass,
   type StrudelPassDeps,
 } from "../strudelPasses";
-import type { PatternIR } from "@stave/editor";
+import type { PatternIR } from "../PatternIR";
+import { parseStrudel } from "../parseStrudel";
+import { parseStrudelStages } from "../parseStrudelStages";
 
 /** Two trees that are trivially distinguishable — unlike the real ones. */
 const FROM_STAGES = { tag: "Code", code: "STAGED" } as unknown as PatternIR;
@@ -83,6 +86,15 @@ describe("#1558 — the final pass is the parser's, not the staged pipeline's", 
     // The Inspector's intermediate tabs still come from `runStages` — this
     // change does not bypass the debugger, it stops the song depending on it.
     expect(passes.slice(0, 3).every((p) => p.ir === FROM_STAGES)).toBe(true);
+  });
+
+  it("hands every caller the real parsers unless a test passes its own (#1940)", () => {
+    // The wiring the app used to hold. Identity, not equality: the sentinel arms
+    // above prove the seam is honoured, and this proves what fills it by default.
+    expect(STRUDEL_PASS_DEPS.parse).toBe(parseStrudel);
+    expect(STRUDEL_PASS_DEPS.runStages).toBe(parseStrudelStages);
+    const code = '$: note("c e g").sound("piano")';
+    expect(buildStrudelPasses(code)).toEqual(buildStrudelPasses(code, STRUDEL_PASS_DEPS));
   });
 
   it("keeps the name the Inspector persists by", () => {

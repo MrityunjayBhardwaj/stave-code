@@ -54,7 +54,7 @@ import {
   statementOffsetForSource,
   resolveAlias,
   publishIRSnapshot,
-  parseStrudelStages,
+  buildStrudelPasses,
   STRUDEL_DOCS_INDEX,
   SONICPI_DOCS_INDEX,
   type DocsIndex,
@@ -89,10 +89,9 @@ import {
   readPersistedOpen,
   readPersistedActiveTabId,
   getIRSnapshot,
-  parseStrudel,
   analyzeSong,
   signalDimensionsOf,
-  songEnd,
+  songEndOf,
   listAssetRecords,
   registerAssets,
   type SongExtent,
@@ -112,10 +111,6 @@ import { PIANOROLL_HYDRA_CODE, seedMissingPresetFiles } from "../templates";
 import { installBounceProbe } from "../e2e/bounceProbe";
 import { installAssetProbe } from "../e2e/assetProbe";
 import { warmWaveforms } from "../audio/waveformWarm";
-import {
-  buildStrudelPasses,
-  type StrudelPassDeps,
-} from "./strudelPasses";
 
 
 // #1387 — the Inspector's three INTERMEDIATE views (RAW, MINI-EXPANDED,
@@ -126,15 +121,6 @@ import {
 // `parseStrudel`, and #1387 removed the copy. The tab names are unchanged
 // (IRInspectorPanel persists by name) and there are still four tabs.
 
-/**
- * #1558 — the real wiring for `buildStrudelPasses`. Lives HERE because this
- * file already imports the `@stave/editor` barrel; `strudelPasses.ts` did not,
- * because until #1938 that broke the app's vitest run (p5 → `gifenc`, CJS).
- */
-const STRUDEL_PASS_DEPS: StrudelPassDeps = {
-  runStages: parseStrudelStages,
-  parse: parseStrudel,
-};
 
 // Phase 20-12 — the timeline collects across the same cycle window the live
 // monitor displays (WINDOW_CYCLES in musicalTimeline/timeAxis.ts is 2).
@@ -209,10 +195,10 @@ function captureAndPublishSnapshot(
   try {
     // #1387 — four tabs from one document; finalIR is the `ir` alias — the
     // Inspector's IR tree, source-fresh (PV27).
-    const passes = buildStrudelPasses(fileNow.content, STRUDEL_PASS_DEPS);
+    const passes = buildStrudelPasses(fileNow.content);
     // #1558 — the FINAL tree is the PARSER's, not the staged pipeline's, so a
     // bug in the (unreachable) Inspector's data source cannot silence a track.
-    // The rule, the measurements and why the deps are injected: strudelPasses.ts.
+    // The rule and the measurements: codeView/ir/strudelPasses.ts in the editor.
     // `finalIR` stays the `ir` alias that IRSnapshot requires.
     const finalIR = passes[passes.length - 1].ir;
     // #982 — events = the runtime's evaluated haps (queryArc), not collect, so
@@ -1277,18 +1263,18 @@ export default function StrudelEditorClient({
       // just evaluated, not a fresh `getFile()` read: that content is a lagging
       // snapshot racing the next eval, and an extent measured from the wrong
       // revision would stop the song at the previous arrangement's length.
-      // Language-gated exactly like the bounce's structural parse — `parseStrudel`
+      // Language-gated exactly like the bounce's — the parser behind `songEndOf`
       // reads its input as JS, so pointing it at a Sonic Pi buffer could in
       // principle find an `arrange(...)` that means nothing there.
       // Cheap enough to do per eval (pure, on a source string) and NOT done in
       // the watcher's poll loop, which runs ~20x a second.
       const evalLanguage = getFile(fileId)?.language;
-      // #1723 — `songEnd`, not the bare `songExtent`: an arrangement under a
+      // #1723 — `songEndOf`, not the bare `songExtent`: an arrangement under a
       // parameter that outlasts it ends where the song comes back round, the
       // length the bounce renders and the timeline draws.
       const nextExtent: SongExtent | null =
         evalLanguage !== "sonicpi"
-          ? songEnd(parseStrudel(evaluatedCode))
+          ? songEndOf(evaluatedCode)
           : null;
 
       setRuntimeStates(prev => {
@@ -1965,23 +1951,23 @@ export default function StrudelEditorClient({
       songSizing: async (signal) => {
         const fid = activeFileIdRef.current;
         const rt = fid ? (runtimesRef.current.get(fid) ?? null) : null;
-        // ⚠ TWO IRs, TWO QUESTIONS (#1373). "Does this document END?" and
-        // "what does it REPEAT at?" come from different pipelines, and only one
-        // of them can answer each. See `SongIRs` for the measured divergence.
+        // ⚠ TWO READINGS, TWO QUESTIONS (#1373). "Does this document END?" and
+        // "what does it REPEAT at?" are read at different times, and only one
+        // of them can answer each. See `SongSources` in songLength.ts.
 
-        // STRUCTURE, from this file's own text. The published snapshot cannot
-        // answer it: its final pass leaves a top-level `arrange(...)` as an
-        // opaque `Code`, so it returned `loop` for every document ever bounced
-        // and the `arranged` branch never fired in the running app.
-        // `parseStrudel` is pure and cheap on the source, and falls back to a
-        // Code node rather than throwing.
-        // Language-gated like `publishIRSnapshot` does: `parseStrudel` reads
-        // its input as JS, so pointing it at a Sonic Pi buffer could in
+        // STRUCTURE, from this file's own text as it is now — not the published
+        // snapshot, which can be another tab's or a revision behind the editor.
+        // #1580 / #1936: `songEndOf` folds an arrangement's length with the
+        // period of every parameter over it, so a four-bar arrangement under a
+        // three-step gain offers the twelve bars the song actually takes — the
+        // same reading play-once stops at and the timeline spans.
+        // Language-gated like `publishIRSnapshot` does: the parser behind it
+        // reads its input as JS, so pointing it at a Sonic Pi buffer could in
         // principle find an `arrange(...)` that means nothing there.
         const fileNow = fid ? getFile(fid) : null;
-        const structuralIr =
+        const end =
           fileNow && fileNow.language !== "sonicpi"
-            ? parseStrudel(fileNow.content)
+            ? songEndOf(fileNow.content)
             : null;
 
         // MEASUREMENT, from the snapshot — its lane keys match the runtime
@@ -1995,13 +1981,8 @@ export default function StrudelEditorClient({
         const snap = getIRSnapshot();
         const analysisIr = snap && fid && snap.source === fid ? snap.ir : null;
         const length = await measureSongLength(
-          { structural: structuralIr, analysis: analysisIr },
+          { end, analysis: analysisIr },
           {
-            // #1580 / #1936 — an arrangement's length folded with the period of
-            // every parameter over it, so a bounce of a four-bar arrangement under
-            // a three-step gain offers the twelve bars the song actually takes.
-            // The same reading play-once stops at and the timeline spans.
-            songEnd,
             analyzeSong,
             // #1465 — read off the IR here because only a caller holds one.
             signalDimensionsOf,

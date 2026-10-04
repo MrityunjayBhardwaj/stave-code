@@ -88,7 +88,7 @@ export type { FixedParameter } from './fixedParameters'
 // #1602 — change a stepped parameter's step count, and preview the song's length first.
 export { stepCountEdit } from './stepCount'
 export type { StepCountEdit } from './stepCount'
-export { previewRepeat, songPeriodOf, arrangedRepeatCycles, songEnd } from './songAnalysis'
+export { previewRepeat, songPeriodOf, arrangedRepeatCycles, songEnd, songEndOf } from './songAnalysis'
 export type { LanePeriod } from './songAnalysis'
 // #1611 — a shape swap across periodicity, and the song it would give.
 export { previewShapeSwap } from './songAnalysis'
@@ -111,6 +111,8 @@ export { parseStrudel, classifyLiteralRhs } from './parseStrudel'
 // track body. Replaces the four hand-kept `run*Stage` passes (#79).
 export { parseStrudelStages } from './parseStrudelStages'
 export type { NamedStage } from './parseStrudelStages'
+export { buildStrudelPasses, STRUDEL_PASS_DEPS, FINAL_PASS_NAME } from './strudelPasses'
+export type { NamedPass, StrudelPassDeps } from './strudelPasses'
 export { parseStrudelRecorded } from './parseStrudel'
 export type { TopLevelBody } from './parseStrudel'
 

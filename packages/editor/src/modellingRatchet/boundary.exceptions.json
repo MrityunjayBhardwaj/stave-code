@@ -101,11 +101,6 @@
       "issue": "#1880"
     },
     {
-      "file": "packages/app/src/components/StrudelEditorClient.tsx",
-      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
-      "issue": "#1880"
-    },
-    {
       "file": "packages/app/src/components/irProjection.ts",
       "what": "reads syntax from user code by hand",
       "issue": "#1880"
