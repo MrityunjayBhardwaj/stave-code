@@ -9911,20 +9911,19 @@ function refused(surface, core, gate, src) {
   return { ok: false, reason: gateReason(gate, surface), gate };
 }
 __name(refused, "refused");
-function detectPeriod2(keys, cap) {
-  for (let p = 1; p <= cap; p++) {
-    let ok = true;
-    for (let c = p; c < keys.length; c++) {
-      if (keys[c] !== keys[c % p]) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok) return p;
+function playedBars(pat, read5, key2, cap) {
+  const cycles = [];
+  for (let c = 0; c < PERIOD_PROBE; c++) {
+    const cc = read5(pat, c);
+    if (!cc.ok) return cc;
+    cycles.push(cc.onsets);
   }
-  return 0;
+  if (cycles.every((c) => c.length === 0)) return no("no-note-content");
+  const period = detectPeriod(cycles.map(key2));
+  if (period === null || period > cap) return no("unstable-period");
+  return { ok: true, perCycle: cycles.slice(0, period) };
 }
-__name(detectPeriod2, "detectPeriod");
+__name(playedBars, "playedBars");
 function isWholeAlternation(src) {
   let ast;
   try {
@@ -10042,16 +10041,10 @@ function projectStepGrid(src0, viewScale = UNREFINED) {
   }
   const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null;
   if (isWholeAlternation(src) && whole === null) return no("element-tiling");
-  const cycles = [];
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readGridOnsets(pat, c);
-    if (!cc.ok) return cc;
-    cycles.push(cc.onsets);
-  }
-  const bars = detectPeriod2(cycles.map(onsetKey), MAX_PROJECT_BARS);
-  if (bars === 0) return no("unstable-period");
-  const perCycle = cycles.slice(0, bars);
-  if (perCycle.every((c) => c.length === 0)) return no("no-note-content");
+  const probed = playedBars(pat, readGridOnsets, onsetKey, MAX_PROJECT_BARS);
+  if (!probed.ok) return probed;
+  const perCycle = probed.perCycle;
+  const bars = perCycle.length;
   if (whole !== null) {
     return bars > 1 ? projectAltBars(src, whole, perCycle, bars, viewScale) : no("element-tiling");
   }
@@ -10279,16 +10272,10 @@ function projectStepGridByLeaf(src0) {
   } catch {
     return no("not-a-pattern");
   }
-  const cycles = [];
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readGridOnsets(pat, c);
-    if (!cc.ok) return cc;
-    cycles.push(cc.onsets);
-  }
-  const bars = detectPeriod2(cycles.map(onsetKey), LEAF_PROJECT_BARS.grid);
-  if (bars === 0) return no("unstable-period");
-  const perCycle = cycles.slice(0, bars);
-  if (perCycle.every((c) => c.length === 0)) return no("no-note-content");
+  const probed = playedBars(pat, readGridOnsets, onsetKey, LEAF_PROJECT_BARS.grid);
+  if (!probed.ok) return probed;
+  const perCycle = probed.perCycle;
+  const bars = perCycle.length;
   let perBar2 = 1;
   for (const o of perCycle.flat()) {
     const d = denom(o.pos);
@@ -10958,17 +10945,11 @@ function projectPianoRoll(src0, viewScale = UNREFINED) {
   }
   const whole = isWholeAlternation(src) ? unwrapAlternation(src) : null;
   if (isWholeAlternation(src) && whole === null) return no("element-tiling");
-  const cycles = [];
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readRollOnsets(pat, c);
-    if (!cc.ok) return cc;
-    cycles.push(cc.onsets);
-  }
-  const bars = detectPeriod2(cycles.map(rollKey), MAX_PROJECT_BARS);
-  if (bars === 0) return no("unstable-period");
-  const perCycle = cycles.slice(0, bars);
+  const probed = playedBars(pat, readRollOnsets, rollKey, MAX_PROJECT_BARS);
+  if (!probed.ok) return probed;
+  const perCycle = probed.perCycle;
+  const bars = perCycle.length;
   const all = perCycle.flat();
-  if (all.length === 0) return no("no-note-content");
   const numeric = all.some((o) => o.numeric);
   if (numeric && all.some((o) => !o.numeric)) return no("mixed-pitch-domain");
   if (whole !== null) {
@@ -11099,17 +11080,11 @@ function projectPianoRollByLeaf(src0) {
   } catch {
     return no("not-a-pattern");
   }
-  const cycles = [];
-  for (let c = 0; c < PERIOD_PROBE; c++) {
-    const cc = readRollOnsets(pat, c);
-    if (!cc.ok) return cc;
-    cycles.push(cc.onsets);
-  }
-  const bars = detectPeriod2(cycles.map(rollKey), LEAF_PROJECT_BARS.roll);
-  if (bars === 0) return no("unstable-period");
-  const perCycle = cycles.slice(0, bars);
+  const probed = playedBars(pat, readRollOnsets, rollKey, LEAF_PROJECT_BARS.roll);
+  if (!probed.ok) return probed;
+  const perCycle = probed.perCycle;
+  const bars = perCycle.length;
   const all = perCycle.flat();
-  if (all.length === 0) return no("no-note-content");
   const numeric = all.some((o) => o.numeric);
   if (numeric && all.some((o) => !o.numeric)) return no("mixed-pitch-domain");
   let perBar2 = 1;
