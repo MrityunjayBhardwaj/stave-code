@@ -16,6 +16,11 @@ declare module '@strudel/core' {
   }
 
   export function register(name: string, fn: unknown): void
+
+  /** util.mjs: note name → MIDI, octave 3 when none is written; throws on a non-note. */
+  export function noteToMidi(note: string, defaultOctave?: number): number
+  /** util.mjs: is this string a note name (letter, `#bsf` accidentals, optional octave)? */
+  export function isNote(name: string): boolean
 }
 
 declare module '@strudel/webaudio' {

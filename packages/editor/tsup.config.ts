@@ -16,12 +16,15 @@ export default defineConfig({
   // and its mute marker — read by the app's timeline without the barrel.
   // A FIFTH (#1799), for the same reason: the one chord builder, read by the
   // app's command dispatcher and Shortcuts panel.
+  // A SIXTH (#1928), for the same reason: the one note-name reader, read by the
+  // app's timeline pitch axis.
   entry: [
     'src/index.ts',
     'src/visualizers/worker/index.ts',
     'src/visualEdit/panels/knobScale.ts',
     'src/codeView/ir/trackId.ts',
     'src/keys/chord.ts',
+    'src/engine/noteToMidi.ts',
   ],
   format: ['esm', 'cjs'],
   dts: true,
