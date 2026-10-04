@@ -35,6 +35,8 @@
  * behalf: `EditorView` passes `value={file.content}` to `@monaco-editor/react`, which replaces
  * the whole document itself when that value changes (#1903). It has to be decided and written
  * down; a symbol rule cannot reach it.
+ * The declared list is kept by reading code, so a miss is expected; one that is found joins
+ * with an `added` line (#1932, #1939).
  * The declared list empties as #1880 moves those files in; once nothing outside the area
  * touches the door, text built outside it has no way to reach a document.
  *
