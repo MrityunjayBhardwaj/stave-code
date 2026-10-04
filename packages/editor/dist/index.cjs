@@ -4606,6 +4606,12 @@ function arrangedRepeatCycles(ir, arrangedCycles, cap = DEFAULT_CAP, signalPerio
   return repeat ?? arrangedCycles;
 }
 __name(arrangedRepeatCycles, "arrangedRepeatCycles");
+function songEnd(ir, cap = DEFAULT_CAP, signalPeriods) {
+  const extent = songExtent(ir ?? null);
+  if (extent.kind !== "arranged" || !(extent.cycles > 0)) return extent;
+  return { ...extent, cycles: arrangedRepeatCycles(ir, extent.cycles, cap, signalPeriods) };
+}
+__name(songEnd, "songEnd");
 function songPeriodOf(a) {
   let out = null;
   for (const placement of a.placements) {
@@ -4845,8 +4851,8 @@ async function analyzeSong(ir, opts = {}) {
     }
     return analyzeEvents(events, Math.min(horizon, collectedTo), false, periodRule, cap, steppedKeys);
   }, "measure");
-  const extent = songExtent(ir);
-  const declaredLength = extent.kind === "arranged" && extent.cycles > 0 ? arrangedRepeatCycles(ir, extent.cycles, cap, (opts.signals ?? signalDimensionsOf(ir)).periods) : null;
+  const end = songEnd(ir, cap, opts.signals?.periods);
+  const declaredLength = end.kind === "arranged" && end.cycles > 0 ? end.cycles : null;
   const declaredEnd = declaredLength !== null && declaredLength > 0 && Math.ceil(declaredLength) <= cap ? declaredLength : null;
   const measured = await measure();
   if (declaredEnd === null || signal?.aborted) return measured;
@@ -52095,6 +52101,7 @@ exports.signalCarryingParamKeys = signalCarryingParamKeys;
 exports.signalDimensionsOf = signalDimensionsOf;
 exports.signalTimeAt = signalTimeAt;
 exports.silenceArm = silenceArm;
+exports.songEnd = songEnd;
 exports.songExtent = songExtent;
 exports.songPeriodOf = songPeriodOf;
 exports.soundNameFromFilename = soundNameFromFilename;

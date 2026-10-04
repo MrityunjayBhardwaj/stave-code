@@ -656,6 +656,106 @@ declare function shapeAlternatives(kind: SignalKind): readonly SignalKind[];
 declare function crossClassShapes(kind: SignalKind): readonly SignalKind[];
 
 /**
+ * How long is the document — structurally, off the IR, with no evaluation and
+ * no window.
+ *
+ * WHY THIS IS NOT `SongAnalysis.displaySpan`. That span answers "what should the
+ * timeline SHOW", and it is measured over the evaluated event stream against a
+ * progressive horizon. Three shapes make it wrong for a bounce, all measured
+ * (#1359): a period-4 loop with 400 cycles of content reports `{loop, 4}`; an
+ * aperiodic 400-cycle document reports `{capped, 256}` and truncates 144 cycles;
+ * and — the one that surprises — an aperiodic document only 40 cycles long ALSO
+ * reports `{capped, 256}`, because a song that ends still grows to the cap. A
+ * bounce driven off it renders six times more silence than music.
+ *
+ * WHY IT IS NOT `SceneClip.endCycle` EITHER. Those cycles are song-absolute, but
+ * the LAST clip of every lane is flushed at `originCycle + nCycles`
+ * unconditionally, so `max(endCycle)` hands the visible window straight back.
+ *
+ * THE DATUM IS `ArrangeArm.weight`, which `PatternIR` already states outright:
+ * "the whole node's period is `Σ weight`". This module is the one place that
+ * reads it AS AN EXTENT. The three existing `Σ weight` reduces in
+ * `structuralWalk.ts` are deliberately left alone — they compute a period in
+ * order to modulo into it and SELECT an arm, which is a different job.
+ *
+ * THE ANSWER IS TYPED, NOT A NUMBER, for the same reason `DisplaySpan` refuses to
+ * collapse `capped` into `horizon`: the cases mean different things and a bare
+ * number erases which one answered. A caller that gets `0` cannot tell "this
+ * document ends immediately" from "this document never ends".
+ */
+
+type SongExtent = 
+/** A definite end. `cycles` is `Σ weight` over the longest arrangement, scaled
+ *  by any time-scaling above it. Safe to bounce whole. */
+{
+    readonly kind: 'arranged';
+    readonly cycles: number;
+}
+/** No arrangement anywhere — the document loops, and a loop has no end. NOT a
+ *  failure: this is the correct answer for 96.7% of real documents (#1359).
+ *  The caller pairs it with `SongAnalysis.periodCycles` to offer repeats. */
+ | {
+    readonly kind: 'loop';
+}
+/** An arrangement IS present but something unparsed sits above it, so its
+ *  length cannot be trusted. Distinct from `loop` so the UI can say so rather
+ *  than quietly presenting an arrangement as a loop. */
+ | {
+    readonly kind: 'opaque';
+};
+/**
+ * The document's extent.
+ *
+ * WALK RULES, and each is load-bearing:
+ *
+ * - `Arrange` → `Σ weight`, and **the arms are not descended into**. An arm
+ *   spans `n` WHOLE cycles at the pattern's natural rate, so a longer inner
+ *   arrangement is TRUNCATED by its arm, not extended by it. Taking a max that
+ *   descended would over-report exactly the documents most likely to be nested.
+ * - `NamedPick` whose selector is a WEIGHTED `Cycle` → `Σ` slot weights, slots
+ *   without an `Elongate` counting 1, entries not descended into (#1427). The
+ *   second spelling of an arrangement; the case body says why the RECEIVER, not
+ *   the weighting alone, is what keeps it narrow.
+ * - `Stack` → the MAX over tracks, never the sum. Tracks are parallel. That is
+ *   also the answer for a song whose tracks carry DIFFERENT section timelines:
+ *   the piece is as long as its longest track, never their sum.
+ * - `Track` / `Loop` → transparent.
+ * - `Param` → transparent (#1644). A control sets a value ON events and cannot
+ *   move one; see the case body for the census that says no corpus document
+ *   changes verdict.
+ * - `Fast` / `Slow` → scale what is below them.
+ * - `Code` → TAINT. A `Code` node is either an opaque wrapper around a
+ *   `.method(args)` Stave could not parse (with the real receiver at
+ *   `via.inner`) or a whole parse failure. Either way an unknown transform sits
+ *   between the arrangement and the output, and it may be a time-scaling one —
+ *   measured on the real corpus, 3 of the 5 arranged documents have a `Code` on
+ *   the path, and one of those three also has a `Slow`. So the receiver is still
+ *   walked (to learn WHETHER an arrangement exists) but any arrangement found
+ *   under it is reported as `opaque` rather than measured.
+ *
+ * ⚠ WHAT THE WALK DELIBERATELY DOES NOT FOLLOW. Only `body`, `Stack.tracks` and
+ * `Code.via.inner` are traversed — not `Seq.children`, `Cycle.items`,
+ * `Choice.then`/`else_`, or the `Pick` selector. Every one of those
+ * constructs repeats once per cycle (a `Seq` is fastcat, which COMPRESSES its
+ * children into a single cycle; a `Cycle` alternates between them), so a
+ * document whose only arrangement sits inside one still loops forever and `loop`
+ * is the correct verdict, not a miss. Checked rather than assumed: a probe
+ * walking EVERY object field finds arrangements in the same 5 corpus documents
+ * this walk classifies, so the narrower traversal loses nothing on real code.
+ * ⚠ ONE EXCEPTION SINCE #1427: a `NamedPick`'s selector is READ for its weights,
+ * though still not walked into — reading a shape is not traversing it.
+ * `Sleep.duration` is likewise unmodelled — it contributes time that this
+ * function does not count.
+ *
+ * ⚠ TAINT IS DOCUMENT-WIDE ONCE ANY ARRANGEMENT IS TAINTED, deliberately. The
+ * result is a MAX, so one unmeasurable arm invalidates the maximum — the
+ * untrusted arrangement could be the longest. Being wrong towards `opaque` costs
+ * nothing (the UI treats `opaque` and `loop` alike, asking for a length); being
+ * wrong towards `arranged` silently truncates someone's bounce.
+ */
+declare function songExtent(ir: PatternIR | null): SongExtent;
+
+/**
  * songAnalysis — full-song analysis for the navigable timeline (#385).
  *
  * Re-expresses the reference editor's `analyze`/`attribute` capabilities on
@@ -749,13 +849,13 @@ interface SongSection {
  * The first three kinds are the three the view already distinguished by hand;
  * the fourth is the one answer that is READ rather than measured:
   *   `arranged` — the document DECLARES its length (`songExtent` → `arranged`,
- *               #1721) and it fits under the cap. `cycles` is the length the
- *               bounce renders — `arrangedRepeatCycles`, the arrangement's
- *               `Σ weight` folded with any parameter that outlasts it (#1580), or
- *               the bare `Σ weight` where no fold can be vouched for — and the
- *               lanes span exactly it. It is also where playback's `once` stops
- *               (#1723 — the app's `songEnd` reads the same fold), so what the
- *               lanes show, the bounce renders and `once` plays are one length.
+ *               #1721) and it fits under the cap. `cycles` is `songEnd`: the
+ *               arrangement's `Σ weight` folded with any parameter that outlasts
+ *               it (#1580), or the bare `Σ weight` where no fold can be vouched
+ *               for — and the lanes span exactly it. The bounce renders it and
+ *               playback's `once` stops at it, both by asking `songEnd` too
+ *               (#1723, #1936), so what the lanes show, the bounce renders and
+ *               `once` plays are one length.
  *               Detection could not give it: it is bounded by `cap / 2` and
  *               takes the first period that
  *               fits, so it drew a 187-bar song at 256 bars and a 150-bar one
@@ -1078,6 +1178,23 @@ declare function signalDimensionsOf(ir: PatternIR | null | undefined, swap?: Sha
  */
 declare function arrangedRepeatCycles(ir: PatternIR | null | undefined, arrangedCycles: number, cap?: number, signalPeriods?: readonly number[]): number;
 /**
+ * Where a document ENDS, when it has an end: its `songExtent`, with an arrangement's
+ * length folded with every parameter playing over it (`arrangedRepeatCycles`, #1580).
+ *
+ * ⚠ ONE READING FOR EVERY CONSUMER OF "THE END" (#1723, #1936). An arrangement is a
+ * definite end of the STRUCTURE, but a stepped gain that doesn't divide it keeps
+ * moving after the last bar: `arrange([2, a], [1, hh], [1, a])` under
+ * `a.gain("<.2 .9>")` is four bars of structure and first comes back round at eight,
+ * and bar 7 plays `.9`. Play-once once read the bare `songExtent` and stopped at four
+ * while the bounce rendered eight and the timeline drew eight. The timeline
+ * (`analyzeSong`), play-once and the bounce now all ask this.
+ *
+ * Every other kind passes through unchanged, and where no fold can be vouched for the
+ * answer is the arrangement's own length. `cap` and `signalPeriods` are
+ * `arrangedRepeatCycles`'s, passed through.
+ */
+declare function songEnd(ir: PatternIR | null | undefined, cap?: number, signalPeriods?: readonly number[]): SongExtent;
+/**
  * How many SONG cycles a curve's value takes to come back round (#1590), or null
  * when that cannot be said.
  *
@@ -1283,106 +1400,6 @@ interface AnalyzeWindowOptions {
  * repeat" half of #1108.
  */
 declare function analyzeWindow(originCycle: number, spanCycles: number, opts?: AnalyzeWindowOptions): Promise<WindowAnalysis>;
-
-/**
- * How long is the document — structurally, off the IR, with no evaluation and
- * no window.
- *
- * WHY THIS IS NOT `SongAnalysis.displaySpan`. That span answers "what should the
- * timeline SHOW", and it is measured over the evaluated event stream against a
- * progressive horizon. Three shapes make it wrong for a bounce, all measured
- * (#1359): a period-4 loop with 400 cycles of content reports `{loop, 4}`; an
- * aperiodic 400-cycle document reports `{capped, 256}` and truncates 144 cycles;
- * and — the one that surprises — an aperiodic document only 40 cycles long ALSO
- * reports `{capped, 256}`, because a song that ends still grows to the cap. A
- * bounce driven off it renders six times more silence than music.
- *
- * WHY IT IS NOT `SceneClip.endCycle` EITHER. Those cycles are song-absolute, but
- * the LAST clip of every lane is flushed at `originCycle + nCycles`
- * unconditionally, so `max(endCycle)` hands the visible window straight back.
- *
- * THE DATUM IS `ArrangeArm.weight`, which `PatternIR` already states outright:
- * "the whole node's period is `Σ weight`". This module is the one place that
- * reads it AS AN EXTENT. The three existing `Σ weight` reduces in
- * `structuralWalk.ts` are deliberately left alone — they compute a period in
- * order to modulo into it and SELECT an arm, which is a different job.
- *
- * THE ANSWER IS TYPED, NOT A NUMBER, for the same reason `DisplaySpan` refuses to
- * collapse `capped` into `horizon`: the cases mean different things and a bare
- * number erases which one answered. A caller that gets `0` cannot tell "this
- * document ends immediately" from "this document never ends".
- */
-
-type SongExtent = 
-/** A definite end. `cycles` is `Σ weight` over the longest arrangement, scaled
- *  by any time-scaling above it. Safe to bounce whole. */
-{
-    readonly kind: 'arranged';
-    readonly cycles: number;
-}
-/** No arrangement anywhere — the document loops, and a loop has no end. NOT a
- *  failure: this is the correct answer for 96.7% of real documents (#1359).
- *  The caller pairs it with `SongAnalysis.periodCycles` to offer repeats. */
- | {
-    readonly kind: 'loop';
-}
-/** An arrangement IS present but something unparsed sits above it, so its
- *  length cannot be trusted. Distinct from `loop` so the UI can say so rather
- *  than quietly presenting an arrangement as a loop. */
- | {
-    readonly kind: 'opaque';
-};
-/**
- * The document's extent.
- *
- * WALK RULES, and each is load-bearing:
- *
- * - `Arrange` → `Σ weight`, and **the arms are not descended into**. An arm
- *   spans `n` WHOLE cycles at the pattern's natural rate, so a longer inner
- *   arrangement is TRUNCATED by its arm, not extended by it. Taking a max that
- *   descended would over-report exactly the documents most likely to be nested.
- * - `NamedPick` whose selector is a WEIGHTED `Cycle` → `Σ` slot weights, slots
- *   without an `Elongate` counting 1, entries not descended into (#1427). The
- *   second spelling of an arrangement; the case body says why the RECEIVER, not
- *   the weighting alone, is what keeps it narrow.
- * - `Stack` → the MAX over tracks, never the sum. Tracks are parallel. That is
- *   also the answer for a song whose tracks carry DIFFERENT section timelines:
- *   the piece is as long as its longest track, never their sum.
- * - `Track` / `Loop` → transparent.
- * - `Param` → transparent (#1644). A control sets a value ON events and cannot
- *   move one; see the case body for the census that says no corpus document
- *   changes verdict.
- * - `Fast` / `Slow` → scale what is below them.
- * - `Code` → TAINT. A `Code` node is either an opaque wrapper around a
- *   `.method(args)` Stave could not parse (with the real receiver at
- *   `via.inner`) or a whole parse failure. Either way an unknown transform sits
- *   between the arrangement and the output, and it may be a time-scaling one —
- *   measured on the real corpus, 3 of the 5 arranged documents have a `Code` on
- *   the path, and one of those three also has a `Slow`. So the receiver is still
- *   walked (to learn WHETHER an arrangement exists) but any arrangement found
- *   under it is reported as `opaque` rather than measured.
- *
- * ⚠ WHAT THE WALK DELIBERATELY DOES NOT FOLLOW. Only `body`, `Stack.tracks` and
- * `Code.via.inner` are traversed — not `Seq.children`, `Cycle.items`,
- * `Choice.then`/`else_`, or the `Pick` selector. Every one of those
- * constructs repeats once per cycle (a `Seq` is fastcat, which COMPRESSES its
- * children into a single cycle; a `Cycle` alternates between them), so a
- * document whose only arrangement sits inside one still loops forever and `loop`
- * is the correct verdict, not a miss. Checked rather than assumed: a probe
- * walking EVERY object field finds arrangements in the same 5 corpus documents
- * this walk classifies, so the narrower traversal loses nothing on real code.
- * ⚠ ONE EXCEPTION SINCE #1427: a `NamedPick`'s selector is READ for its weights,
- * though still not walked into — reading a shape is not traversing it.
- * `Sleep.duration` is likewise unmodelled — it contributes time that this
- * function does not count.
- *
- * ⚠ TAINT IS DOCUMENT-WIDE ONCE ANY ARRANGEMENT IS TAINTED, deliberately. The
- * result is a MAX, so one unmeasurable arm invalidates the maximum — the
- * untrusted arrangement could be the longest. Being wrong towards `opaque` costs
- * nothing (the UI treats `opaque` and `loop` alike, asking for a length); being
- * wrong towards `arranged` silently truncates someone's bounce.
- */
-declare function songExtent(ir: PatternIR | null): SongExtent;
 
 /**
  * writeback — chunk → document.
@@ -13835,4 +13852,4 @@ declare function codeEditorForFocus(el: Element | null | undefined): MonacoEdito
  */
 declare function codeUndoForFocus(el: Element | null | undefined, which: 'undo' | 'redo'): boolean;
 
-export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type AnalyzeWindowOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AssetDigest, type AssetImportInput, type AssetImportPlan, type AssetOrigin, type AssetRecord, type AudioFrame, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, type BootStepFailure, BottomPanel, type BottomPanelTab, type BouncedStem, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, CODE_UNDO_ATTR, type CapabilityEnv, type CaptionFieldKind, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type CollectResult, type Commit, type CommitKind, type CouldNotCheckReason, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DisplaySpan, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EncodeOptions, type EngineAliasMap, type EngineAliasValue, EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, type FixedMarker, type FixedParameter, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, type GmFamily, type GridGestureDef, type GridGestureId, type GridKeyMatcher, type GridMode, type GridScope, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IREvent, IRPattern, type IRSnapshot, type ImportAssetDeps, type ImportAssetResult, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, type LaneItem, type LanePeriod, type LaneSkeleton, LiveCodingEditor, type LiveCodingEditorProps, LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterScalar, Mixer, type NamedStage, type NormalizedHap, type NoteColorMode, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, PatternIR, type PatternKind, PatternPanel, PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PickSectionEntry, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type PutAssetResult, type RegionControl, type RegionTrimRefusal, type RegionTrimResult, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplePeaks, type SampleRef, type SamplerInputs, type SectionStats, type SectionWindow, SequencerGrid, type ShapeSwap, type ShellSnapshot, type SignalAliasMap, type SignalAutomation, SignalBus, type SignalDimensions, type SignalFrame, type SignalKind, type SignalReading, type SignalSpans, type SignalTransportReader, type SignalTransportWriter, SilentCaptureError, type SkippedSounds, type SnapshotMeta, type SongAnalysis, type SongExtent, type SongSection, SonicPiEngine, type SoundMapDict, SourceLocation, SplitPane, type StemOutcome, type StepCountEdit, type StepGridModel, type StepLane, type SteppedAutomation, type SteppedStep, StorageFullError, type StorageStatus, type StoredAsset, type StoredAssetMeta, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, type StrudelTheme, type Surface, TAKE_NAME_PREFIX, type TierFlags, type TierName, type TimeStep, type TimeWarp, type TimelineCaptureEntry, type TrackDisplay, type TrackEnvelopeAccess, type TrackEnvelopeStatus, type TrackEnvelopeView, type TrackMeta, UI_ICON_SIZE_VAR, type UnboundedSignalKind, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizPreviewSpec, VizQualityLevel, VizRenderer, type VizRendererKind, VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, type WalkWindow, WavEncoder, type WindowAnalysis, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteOutcome, type WriteRefusal, type WriteSource, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms$1 as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, insertSilenceArm$1 as insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts$1 as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, insertSilenceArm as pickInsertSilenceArm, listSectionParts as pickListSectionParts, removeArm as pickRemoveArm, renameSection as pickRenameSection, reorderArm as pickReorderArm, setArmHead as pickSetArmHead, setWeight as pickSetWeight, silenceArm as pickSilenceArm, splitArm as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm$1 as removeArm, removeAssetRecord, renameSection$1 as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm$1 as silenceArm, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, useGridMode, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };
+export { ALIAS_MAP, ASSET_DB_NAME, AUDITION_DUR_S, AUDITION_ENVELOPE, AUTO_SNAPSHOT_PREFIX, type ActiveEventSummary, type AnalyserBytes, type AnalyzeSongOptions, type AnalyzeWindowOptions, type ArrangeArmRange, type ArrangeCall, type ArrangeMode, type AssetDigest, type AssetImportInput, type AssetImportPlan, type AssetOrigin, type AssetRecord, type AudioFrame, type AudioPayload, type AudioReading, type AudioSourceRef, type AuditionHandle, BACKDROP_BLUR_VAR, BOTTOM_PANEL_ACTIVE_TAB_KEY, BOTTOM_PANEL_HEIGHT_DEFAULT, BOTTOM_PANEL_HEIGHT_KEY, BOTTOM_PANEL_HEIGHT_MAX, BOTTOM_PANEL_HEIGHT_MIN, BOTTOM_PANEL_OPEN_KEY, BUILTIN_ALIASES, BUNDLED_PREFIX, type BackdropQuality, type BackdropVizSpan, type BootStepFailure, BottomPanel, type BottomPanelTab, type BouncedStem, type BranchRef, type BreakpointMeta, BreakpointStore, BufferedScheduler, type BumpSummary, type BusAnalyser, type BusHapEvent, CODE_UNDO_ATTR, type CapabilityEnv, type CaptionFieldKind, type ChainArg, type ChainCall, type ChromeContext, type ChromeForTab, type ChunkInfo, type ChunkType, type CollectResult, type Commit, type CommitKind, type CouldNotCheckReason, type CropRegion, DARK_THEME_TOKENS, DEFAULT_VIZ_DESCRIPTORS, DEFAULT_VIZ_ENGINE, DemoEngine, type DisplaySpan, type DocKind, type DocsIndex, type DrumMachineManifest, EPHEMERAL_ID_PREFIX, type EditorTheme, EditorView, type EncodeOptions, type EngineAliasMap, type EngineAliasValue, EngineComponents, ErrorBoundary, type ErrorBoundaryProps, FALLBACK_ASSET_NAME, FSCOPE_P5_CODE, type FixedMarker, type FixedParameter, type FormatOptions, type FrameChannel, type FrameStats, type FriendlyErrorParts, type FuzzyMatch, GLSL_VIZ, GM_FAMILY_KEY_COUNT, GM_FAMILY_ORDER, GRID_GESTURE, GRID_GESTURES, GRID_SCOPE, GRID_SCOPE_LABEL, type GmFamily, type GridGestureDef, type GridGestureId, type GridKeyMatcher, type GridMode, type GridScope, HYDRA_DOCS_INDEX, HYDRA_VIZ, HapEvent, HapStream, HistoryPanel, type HistoryPanelProps, type HydraPatternFn, HydraVizRenderer, IDB_SYNC_TIMEOUT_MS, INLINE_VIZ_ACTION_SIZE_VAR, IREvent, IRPattern, type IRSnapshot, type ImportAssetDeps, type ImportAssetResult, type InjectedGlobal, Knob, LIGHT_THEME_TOKENS, type LaneActivity, type LaneItem, type LanePeriod, type LaneSkeleton, LiveCodingEditor, type LiveCodingEditorProps, LiveCodingEngine, LiveCodingRuntime, type LiveCodingRuntime$1 as LiveCodingRuntimeInterface, type LiveCodingRuntimeProvider, LiveRecorder, type LiveSpec, type LogEntry, type LogLevel, type LogSuggestion, MASTER_KEY, MASTER_UNITY_GAIN, MIN_REGION_SPAN, MIXER_CONSOLE_TAB_ID, MIXER_TAB_ID, MULTI_VOICE_HEADS, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX, MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN, MainSignalSampler, type MasterAll, type MasterArray, type MasterGainState, type MasterScalar, Mixer, type NamedStage, type NormalizedHap, type NoteColorMode, type OffsetEdit, type OpenHistoryTabRequest, P5VizRenderer, P5_DOCS_INDEX, P5_VIZ, PATTERN_IR_SCHEMA_VERSION, PATTERN_TAB_ID, PIANOROLL_P5_CODE, PIANO_ROLL_TAB_ID, PITCHWHEEL_P5_CODE, type ParseResult, type Pass, PatternIR, type PatternKind, PatternPanel, PatternScheduler, type PerfSnapshot, type PersistedEditorTab, type PersistedGroup, type PersistedShellState, PianoRollGrid, type PianoRollModel, type PickControl, type PickControlArm, type PickMethod, type PickSectionEntry, type PreviewContext, type PreviewProvider, PreviewView, type ProjectDocInitResult, type ProjectHistory, type ProjectMeta, type PutAssetResult, type RegionControl, type RegionTrimRefusal, type RegionTrimResult, type ResizeMode, type ResolvedTheme, type RollNote, type RuntimeDoc, type RuntimeId, SAMPLE_SOUND_LABEL, SAMPLE_SOUND_SOURCE_ID, SCOPE_P5_CODE, SEQUENCER_TAB_ID, SHELL_STATE_KEY_PREFIX, SHELL_STATE_VERSION, SIGNALS_BACKDROP_P5_CODE, SIGNALS_SPECTRUM_P5_CODE, SILENCE_FLOOR, SONG_LEVEL_STEM, SONG_LEVEL_STEM_NAME, SONICPI_DOCS_INDEX, SONICPI_RUNTIME, SOUND_ALIASES, SPECTRUM_P5_CODE, SPIRAL_P5_CODE, STRUDEL_DOCS_INDEX, STRUDEL_RUNTIME, type SamplePeaks, type SampleRef, type SamplerInputs, type SectionStats, type SectionWindow, SequencerGrid, type ShapeSwap, type ShellSnapshot, type SignalAliasMap, type SignalAutomation, SignalBus, type SignalDimensions, type SignalFrame, type SignalKind, type SignalReading, type SignalSpans, type SignalTransportReader, type SignalTransportWriter, SilentCaptureError, type SkippedSounds, type SnapshotMeta, type SongAnalysis, type SongExtent, type SongSection, SonicPiEngine, type SoundMapDict, SourceLocation, SplitPane, type StemOutcome, type StepCountEdit, type StepGridModel, type StepLane, type SteppedAutomation, type SteppedStep, StorageFullError, type StorageStatus, type StoredAsset, type StoredAssetMeta, type StoredSignalAliases, StrudelEditor, type StrudelEditorProps, StrudelEngine, type StrudelTheme, type Surface, TAKE_NAME_PREFIX, type TierFlags, type TierName, type TimeStep, type TimeWarp, type TimelineCaptureEntry, type TrackDisplay, type TrackEnvelopeAccess, type TrackEnvelopeStatus, type TrackEnvelopeView, type TrackMeta, UI_ICON_SIZE_VAR, type UnboundedSignalKind, type UseWorkspaceFileResult, VISUAL_EDIT_TABS, VIZ_FLAG_KEYS, VIZ_LANGUAGES, VisualEditStandby, type VisualEditStandbyProps, type VisualEditTabDef, VizDescriptor, VizDropdown, VizEditor, type VizEditorProps, type VizEngine, type VizLanguage, VizPanel, VizPicker, type VizPreset, VizPresetStore, type VizPreviewSpec, VizQualityLevel, VizRenderer, type VizRendererKind, VizRendererSource, type VizTransport, type VizWorkerFactory, WORDFALL_P5_CODE, type WalkWindow, WavEncoder, type WindowAnalysis, WorkerBusFeed, type WorkerVizCapabilities, WorkerVizRenderer, type WorkspaceAudioBus, type WorkspaceFile, type WorkspaceGroupState, type WorkspaceLanguage, WorkspaceShell, type WorkspaceShellHandle, type WorkspaceShellProps, type WorkspaceTab, type WriteOutcome, type WriteRefusal, type WriteSource, Writeback, accumulateLanes, accumulateLanesInWindow, adaptMasterChunk, addAssetRecord, aggregateLaneItems, analyzeEvents, analyzeSong, analyzeWindow, applyEdits, applyEvalSourceTransform, applyPersistedAdaptivePerf, applyPersistedBackdropBlur, applyPersistedInlineVizActionSize, applyPersistedPerfEnabled, applyPersistedTheme, applyPersistedUiIconSize, applyPersistedVizQuality, applyTheme, armSourceSpan, arrangedRepeatCycles, auditionSound, backdropQualityFactor, banksFromDrumMachineManifest, bridgeAudioExtensions, buildAliasSuffix, buildDefaultSnapshot, bumpEditorFontSize, bundledPresetId, canOpenAudioFrame, canRedo, canUndo, captionEdit, captureSnapshot, chunkSurface, classifyChunk, classifyLiteralRhs, clearCapture, clearIRSnapshot, clearLog, clearShellState, codeEditorForFocus, codeUndoForFocus, collectUnusedSounds, commitToFile, commitWorkspace, compilePreset, computeSections, computeSectionsInWindow, countSectionArms$1 as countArrangeSectionArms, createBranchAt, createPostMessageReader, createPostMessageWriter, createProject, createWorkspaceFile, crossClassShapes, cycleEditorTheme, cycleFingerprints, deleteAsset, deleteProject, deleteSnapshot, deleteWorkspaceFile, describeSkipped, detectAllArrangeCalls, detectAllChunks, detectAllPickControls, detectArrangeAt, detectBarePattern, detectChunk, detectMasterAll, detectMasterAudioAll, detectPeriod, detectPickControlAt, detectWorkerVizCapabilities, docParses, dropLegacyBackgroundCrop, duplicateProject, emitFixed, emitLog, emptyFrame, enterRuntimeView, exitRuntimeView, extractReferenceIdentifier, fileHistory, filter, fixedParameters, fixedToStepsEdit, flushToPreset, formatFriendlyError, formatNumber, formatStaveInputs, frameTransferables, fuzzyMatch, generateUniquePresetId, getActiveEditor, getActiveFileId, getActiveHistoryFile, getActiveProjectId, getAdaptivePerfEnabled, getAsset, getBackdropOpacity, getBackdropQuality, getBackdropVizSpan, getBottomPanelTab, getCaptureBuffer, getCaptureCapacity, getChildOrder, getCommit, getCurrentBranch, getCurrentHistory, getEditorBackdropBlur, getEditorFontSize, getEditorMinimap, getEditorTheme, getEditorUiIconSize, getFile, getFileContentAt, getFileHistoryTarget, getFixedMarkers, getFolderOrder, getGridMode, getIRSnapshot, getInlineVizActionSize, getInlineVizResolution, getInlineVizTeardownEnabled, getInlineVizTeardownMs, getLastOpenedProject, getLogHistory, getModifiedFileIdsSinceHead, getMusicalTimelineSubRowHeight, getNamedViz, getNoteColorMode, getPerfEnabled, getPlayVizOnHoverEnabled, getPresetIdForFile, getPreviewProviderForExtension, getPreviewProviderForLanguage, getProject, getResolvedTheme, getRuntimeProviderForExtension, getRuntimeProviderForLanguage, getSignalAliases, getStorageStatus, getStoredSignalAliases, getSubfolderOrder, getTierFlags, getTrackColourBarsEnabled, getTrackMeta, getTrackMetaMapSnapshot, getViewedCommit, getViewedContent, getViewedFileIds, getVizInputsLiveValuesEnabled, getVizMaxDprOverride, getVizMaxFpsOverride, getVizQuality, getVizWorkerFactory, getVizWorkerOverride, getZoneCropOverride, getZoneHeightOverride, gmFamily, groupDrumKits, groupSoundCatalog, hasKnownKnobRange, holdTabPresence, hydraKaleidoscope, hydraPianoroll, hydraScope, hydrateSnapshot, importAsset, initHistory, initProjectDoc, initProjectDocSync, injectedGlobalByToken, injectedGlobals, insertArm$1 as insertArm, insertSilenceArm$1 as insertSilenceArm, installEngineLogMarkers, installGlobalErrorCatch, isBlackKey, isBootStepFailure, isBundledPresetId, isChunkFresh, isDocReady, isEphemeralProjectId, isFileModifiedSinceHead, isP5DirectCanvasEnabled, isQuotaError, isRollChunk, isSampleSoundPlaying, isStepChunk, isValidTrackLabel, isViewing, isVizGovernorEnabled, isVizLanguage, isVizPumpSharedCacheEnabled, isVizWorkerPoolEnabled, knobRangeFor, laneKeyOf, languageForRenderer, levenshtein, listSectionParts$1 as listArrangeSectionParts, listAssetRecords, listAssets, listBottomPanelTabs, listBranches, listCommits, listNamedVizEntries, listNamedVizNames, listProjects, listSnapshots, listTiers, listWorkspaceFiles, liveCodingRuntimeRegistry, loadShellState, makeFixedKey, masterGainEdit, masterMuteEdit, masterVizEdit, materializeBareDelete, materializeBareSplit, merge, midiToPitch, mountVizPreview, mountVizRenderer, nextTakeName, normalizeEdits, normalizeStrudelHap, notifyDrumKitChanged, notifySoundCatalogChanged, offlineContextInFrame, onActiveEditorChange, onAdaptivePerfChange, onBackdropOpacityChange, onBackdropQualityChange, onBackdropVizSpanChange, onInlineVizActionSizeChange, onInlineVizResolutionChange, onInlineVizTeardownChange, onMusicalTimelineSubRowHeightChange, onNamedVizChanged, onPerfEnabledChange, onPlayVizOnHoverChange, onSignalAliasesChange, onThemeChange, onTrackColourBarsChange, onUiIconSizeChange, onVizInputsLiveValuesChange, onVizQualityChange, openAudioFrame, otherTrackNames, parseMessageLocation, parseMini, parsePianoRoll, parseStackLocation, parseStepGrid, parseStrudel, parseStrudelStages, parseTopLevel, patternFromJSON, patternKind, patternToJSON, peaksForSample, peekAssetUrl, perf, countSectionArms as pickCountSectionArms, duplicateArm as pickDuplicateArm, insertArm as pickInsertArm, insertSilenceArm as pickInsertSilenceArm, listSectionParts as pickListSectionParts, removeArm as pickRemoveArm, renameSection as pickRenameSection, reorderArm as pickReorderArm, setArmHead as pickSetArmHead, setWeight as pickSetWeight, silenceArm as pickSilenceArm, splitArm as pickSplitArm, pitchToMidi, placeNote, planAssetImport, playedSoundName, previewProviderRegistry, previewRepeat, previewShapeSwap, pruneEphemeralArtifacts, pruneTrackMetaForCode, pruneZoneOverrides, publishIRSnapshot, purgeLegacyMasterGain, putAsset, rateEditable, readCurrentCycle, readMasterGain, readMasterMute, readMasterViz, readPersistedActiveTabId, readPersistedOpen, readRegion, readRegionControl, redo, regionTrimEdit, registerAsset, registerAssets, registerBottomPanelTab, registerEvalSourceTransform, registerNamedViz, registerPresetAsNamedViz, registerPreviewProvider, registerReevalHandler, registerRuntimeProvider, releaseAllAssets, releaseAsset, removeArm$1 as removeArm, removeAssetRecord, renameSection$1 as renameArrangeSection, renameAssetRecord, renameEdit, renameProject, renameWorkspaceFile, rendererForLanguage, reorderArm$1 as reorderArm, requestReeval, resetFileStore, resetHistoryState, resetUndoManager, resizeGrid, resizeRoll, resolveAlias, resolveAliasesForEngine, resolveAsset, resolveDescriptor, resolveSampleUrl, restoreFileToCommit, restoreProject, restoreSnapshot, retryDocSave, revealLineInFile, revealOffsetInFile, revertFileToSeed, rootStackArms, routeSurface, runGridGesture, runPasses, sampleRefOf, sanitizePresetName, saveShellState, saveSnapshot, scaleGain, seedFromPreset, seedFromPresetId, seedWorkspaceFile, serializePianoRoll, serializeShellState, serializeStepGrid, setActiveHistoryFile, setAdaptivePerfEnabled, setArmPattern, setBackdropOpacity, setBackdropQuality, setBackdropVizSpan, setCaptureCapacity, setChildOrder, setContent, setCurrentCycleAccessor, setDrumKitAccessor, setEditorBackdropBlur, setEditorFontSize, setEditorTheme, setEditorUiIconSize, setFileHistoryTarget, setFolderOrder, setGridKeyMatcher, setGridMode, setInlineVizActionSize, setInlineVizResolution, setInlineVizTeardownEnabled, setMusicalTimelineSubRowHeight, setNoteColorMode, setPerfEnabled, setPlayVizOnHoverEnabled, setSignalAliases, setSoundCatalogAccessor, setSubfolderOrder, setTierFlag, setTrackColourBarsEnabled, setTrackMeta, setVizInputsLiveValuesEnabled, setVizQuality, setVizWorkerFactory, setWeight$1 as setWeight, setZoneCropOverride, setZoneHeightOverride, sha256Hex, shapeAlternatives, shapeEdit, shapeOptions, shellStateKeyFor, signalAutomations, signalCarryingParamKeys, signalDimensionsOf, signalTimeAt, silenceArm$1 as silenceArm, songEnd, songExtent, songPeriodOf, soundNameFromFilename, soundfontGroupLabel, splitArm$1 as splitArm, startAudition, startHistoryDriver, startSampleSound, statementOffsetForSource, stepCountEdit, stepIndexAtCycle, stepTextEdit, stepValueEdit, steppedAutomations, stopSampleSound, structuralWalk, subscribeCapture, subscribeFixed, subscribeIRSnapshot, subscribeLog, subscribeNoteColorMode, subscribeStorageStatus, subscribeToAssets, subscribeToBottomPanelTabs, subscribeToDocUpdate, subscribeToFileList, subscribeToFolderOrder, subscribeToHistory, subscribeToRuntimeView, subscribeToTrackMeta, subscribeToUndoState, subscribe as subscribeToWorkspaceFile, subscribeToZoneOverrides, switchProject, switchToBranch, timestretch, toStrudel, toggleAdaptivePerfEnabled, toggleEditorMinimap, togglePerfEnabled, touchProject, transpose, undo, uniqueSoundName, unregisterAsset, unregisterBottomPanelTab, unregisterNamedViz, useGridMode, useNoteColorMode, usePopoutPreview, useSilencedTrackNames, useTrackMetaMap, useWorkspaceFile, validatePersistedState, warmMonaco, warmSamplePeaks, wholeWalkWindow, withAudioFrame, withSoundRefsLock, withStructBatch, workspaceAudioBus, workspaceFileIdForPreset, wrapBare };

@@ -63,7 +63,7 @@ import { eventValueKey } from './eventValueKey'
 import { signalAutomations, signalCarryingParamKeys, signalWriters, hasTruePeriod, isNoiseKind, type SignalAutomation, type SignalKind } from './signalAutomation'
 import { isSectionWindow, type TimeStep } from './parameterRoutes'
 import { steppedAutomations } from './steppedAutomation'
-import { songExtent } from './songExtent'
+import { songExtent, type SongExtent } from './songExtent'
 
 /**
  * Lane (row) key for an event. Mirrors `groupEventsByTrack`'s key so analysis
@@ -105,13 +105,13 @@ export interface SongSection {
  * The first three kinds are the three the view already distinguished by hand;
  * the fourth is the one answer that is READ rather than measured:
   *   `arranged` — the document DECLARES its length (`songExtent` → `arranged`,
- *               #1721) and it fits under the cap. `cycles` is the length the
- *               bounce renders — `arrangedRepeatCycles`, the arrangement's
- *               `Σ weight` folded with any parameter that outlasts it (#1580), or
- *               the bare `Σ weight` where no fold can be vouched for — and the
- *               lanes span exactly it. It is also where playback's `once` stops
- *               (#1723 — the app's `songEnd` reads the same fold), so what the
- *               lanes show, the bounce renders and `once` plays are one length.
+ *               #1721) and it fits under the cap. `cycles` is `songEnd`: the
+ *               arrangement's `Σ weight` folded with any parameter that outlasts
+ *               it (#1580), or the bare `Σ weight` where no fold can be vouched
+ *               for — and the lanes span exactly it. The bounce renders it and
+ *               playback's `once` stops at it, both by asking `songEnd` too
+ *               (#1723, #1936), so what the lanes show, the bounce renders and
+ *               `once` plays are one length.
  *               Detection could not give it: it is bounded by `cap / 2` and
  *               takes the first period that
  *               fits, so it drew a 187-bar song at 256 bars and a 150-bar one
@@ -937,6 +937,32 @@ export function arrangedRepeatCycles(
 }
 
 /**
+ * Where a document ENDS, when it has an end: its `songExtent`, with an arrangement's
+ * length folded with every parameter playing over it (`arrangedRepeatCycles`, #1580).
+ *
+ * ⚠ ONE READING FOR EVERY CONSUMER OF "THE END" (#1723, #1936). An arrangement is a
+ * definite end of the STRUCTURE, but a stepped gain that doesn't divide it keeps
+ * moving after the last bar: `arrange([2, a], [1, hh], [1, a])` under
+ * `a.gain("<.2 .9>")` is four bars of structure and first comes back round at eight,
+ * and bar 7 plays `.9`. Play-once once read the bare `songExtent` and stopped at four
+ * while the bounce rendered eight and the timeline drew eight. The timeline
+ * (`analyzeSong`), play-once and the bounce now all ask this.
+ *
+ * Every other kind passes through unchanged, and where no fold can be vouched for the
+ * answer is the arrangement's own length. `cap` and `signalPeriods` are
+ * `arrangedRepeatCycles`'s, passed through.
+ */
+export function songEnd(
+  ir: PatternIR | null | undefined,
+  cap: number = DEFAULT_CAP,
+  signalPeriods?: readonly number[],
+): SongExtent {
+  const extent = songExtent(ir ?? null)
+  if (extent.kind !== 'arranged' || !(extent.cycles > 0)) return extent
+  return { ...extent, cycles: arrangedRepeatCycles(ir, extent.cycles, cap, signalPeriods) }
+}
+
+/**
  * How many SONG cycles a curve's value takes to come back round (#1590), or null
  * when that cannot be said.
  *
@@ -1578,18 +1604,14 @@ export async function analyzeSong(
   // #1721 — the length the document declares, when there is one the view can span.
   // An arrangement (`songExtent`) is a definite end of the STRUCTURE; a parameter
   // whose period does not divide it keeps moving after the last bar, so the song
-  // first comes back round at the fold of the two (#1580) — `arrangedRepeatCycles`,
-  // the same reading the bounce renders. Spanning the bare `Σ weight` there would
-  // hide every pass after the first: a section stepping `<.2 .9>` per appearance
-  // plays .9 on bar 7 of an 8-bar song whose structure is 4 bars (#1585). Where no
-  // fold can be vouched for it IS the arrangement's own length. Past the cap one
-  // collection cannot reach it, and the song keeps the measured span (capped, then
-  // paged).
-  const extent = songExtent(ir)
-  const declaredLength =
-    extent.kind === 'arranged' && extent.cycles > 0
-      ? arrangedRepeatCycles(ir, extent.cycles, cap, (opts.signals ?? signalDimensionsOf(ir)).periods)
-      : null
+  // first comes back round at the fold of the two (#1580). `songEnd` is that
+  // reading, the one play-once stops at and the bounce renders (#1936). Spanning the
+  // bare `Σ weight` there would hide every pass after the first: a section stepping
+  // `<.2 .9>` per appearance plays .9 on bar 7 of an 8-bar song whose structure is 4
+  // bars (#1585). Past the cap one collection cannot reach it, and the song keeps the
+  // measured span (capped, then paged).
+  const end = songEnd(ir, cap, opts.signals?.periods)
+  const declaredLength = end.kind === 'arranged' && end.cycles > 0 ? end.cycles : null
   const declaredEnd =
     declaredLength !== null && declaredLength > 0 && Math.ceil(declaredLength) <= cap ? declaredLength : null
 
