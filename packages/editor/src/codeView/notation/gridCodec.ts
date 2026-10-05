@@ -47,7 +47,15 @@ export interface NotationCodec<M> {
   applyGain?: (model: M, gain: ChunkGain) => M
   /** model → what to do with the `.gain` method (write / clear / skip) */
   serializeGain?: (model: M) => GainWrite
-  /** a model drawn at a finer view, at the document's own resolution, or null (#1057) */
+  /**
+   * Express a model drawn at a finer view at the DOCUMENT's own resolution, or
+   * `null` when the edit really used a column the document does not have (#1057).
+   *
+   * A write consults this FIRST, so that only a write which NEEDS the finer
+   * spelling respells the file. Omitting it restores the previous behaviour —
+   * every write spells what was drawn — which is what keeps a caller that never
+   * refines behaving exactly as it did.
+   */
   collapseToDocument?: (model: M) => M | null
 }
 
