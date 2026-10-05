@@ -60,10 +60,10 @@
  * to be what the routing clause above needed too, which is why one exists
  * rather than two.
  */
-import type { ChunkInfo } from '../../codeView'
-import { parsePianoRoll, parseStepGrid } from '../../codeView'
+import type { ChunkInfo } from '../chunkDetect'
+import { parsePianoRoll, parseStepGrid } from '../notation/parse'
 import { chordLanes } from './chordLanes'
-import { patternKind, type PatternKind } from '../../codeView'
+import { patternKind, type PatternKind } from '../patternKind'
 
 /** A decided surface. `routeSurface` always reaches one, so it never returns null. */
 export type Surface = Exclude<PatternKind, null>

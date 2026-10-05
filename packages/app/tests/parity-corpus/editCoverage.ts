@@ -26,7 +26,7 @@ import {
 } from '../../../editor/src/codeView/chunkDetect'
 import { parseStepGrid, parsePianoRoll } from '../../../editor/src/codeView/notation/parse'
 import { hasStructure } from '../../../editor/src/codeView/notation/model'
-import { chunkSurface } from '../../../editor/src/visualEdit/panels/surfaceRoute'
+import { chunkSurface } from '../../../editor/src/codeView/surface/surfaceRoute'
 import { detectAllArrangeCalls } from '../../../editor/src/codeView/arrange/parse'
 import { detectAllPickControls } from '../../../editor/src/codeView/pickControl/parse'
 import { detectMasterAll } from '../../../editor/src/codeView/mixer/masterEdit'

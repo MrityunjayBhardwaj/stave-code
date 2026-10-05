@@ -33,7 +33,7 @@ import {
 import { pitchToMidi, midiToPitch, noteDisplayName, isBlackKey, cLabel } from '../../codeView'
 import { VisualEditStandby } from './VisualEditStandby'
 import { PIANO_ROLL_TAB_ID } from './tabs'
-import { opensPianoRoll } from './surfaceRoute'
+import { opensPianoRoll } from '../../codeView'
 import { useGridModel } from './useGridModel'
 import { onLiveGraph } from '../../engine/offlineGraph'
 import { emitLog } from '../../engine/engineLog'

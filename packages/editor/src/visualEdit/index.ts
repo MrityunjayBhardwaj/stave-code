@@ -104,7 +104,7 @@ export { patternKind, isStepChunk, isRollChunk } from '../codeView'
 export type { PatternKind } from '../codeView'
 // #1240 — the CONTENT-aware router. Kept out of `patternKind` so that module
 // stays free of the notation parser (see both files' headers).
-export { chunkSurface, routeSurface, type Surface } from './panels/surfaceRoute'
+export { chunkSurface, routeSurface, type Surface } from '../codeView'
 export { useActiveChunk } from './panels/useActiveChunk'
 export type { ActiveChunk } from './panels/useActiveChunk'
 export { useGridModel } from './panels/useGridModel'

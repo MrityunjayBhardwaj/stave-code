@@ -1492,6 +1492,26 @@ export function tailToken(v: unknown[]): string | null {
 }
 
 /**
+ * The sample a lane token names: the head of the tuple `tailToken` joined (#1941).
+ *
+ * Strudel registers `s` as the tuple `['s', 'n', 'gain']` (`@strudel/core`
+ * controls.mjs, `registerControl(['s', 'n', 'gain'], 'sound')`), so `bd:3` plays
+ * sample `bd`, index 3, and `bd:5:0.7` adds a gain. Krill builds that tuple: its
+ * `:` operator starts an array and appends to it (mini.mjs, `case 'tail'`), and no
+ * member can contain a `:`, because `step_char` does not admit one (krill.pegjs).
+ * So the text before the first `:` IS the tuple's head, for every token
+ * `tailToken` can produce, and a token with no `:` is its own sample name.
+ *
+ * It answers only "which sample would this play as an `s` value". A token in a
+ * lane that is not a sound (`G:major`, `0.5:0.01:0.5`) still has a head, and it
+ * is the caller's lookup that decides whether that head means anything.
+ */
+export function sampleNameOf(token: string): string {
+  const colon = token.indexOf(':')
+  return colon === -1 ? token : token.slice(0, colon)
+}
+
+/**
  * ONE hap that sounded at a column — the whole of what the engine said about it.
  *
  * WHY THIS EXISTS RATHER THAN MORE PARALLEL ARRAYS (#1034). The column used to be
