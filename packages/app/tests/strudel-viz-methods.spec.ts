@@ -263,6 +263,34 @@ test('pitchwheel tracks pitch (reactive) — note-name haps decode, not freeze o
   expect(Math.max(...valid) - Math.min(...valid)).toBeGreaterThan(15)
 })
 
+test('pitchwheel draws cs3, g and ef3 where Strudel plays them (#1929)', async ({ page }) => {
+  // The built-in sketches used to parse note names with their own grammar, which
+  // has no pitch for a sharp written `s`, a name with no octave, or a flat written
+  // `f`: the pitchwheel skipped those notes. They now read the pitch the engine
+  // computed with Strudel's grammar. One held note per run, so the active line is
+  // still while it plays; the bright line's centroid says where it points.
+  const lineAt = async (note: string) => {
+    await setCode(page, `$: note("${note}").s("sawtooth").viz("pitchwheel")`)
+    await runCode(page)
+    await expect(page.locator('[data-viz-zone-track] canvas').first()).toBeVisible({ timeout: 6000 })
+    const samples: number[] = []
+    for (let k = 0; k < 3; k++) {
+      samples.push((await vizPixelStats(page, '[data-viz-zone-track] canvas', { bMin: 181 })).meanX)
+      await page.waitForTimeout(200)
+    }
+    return samples.sort((a, b) => a - b)[1] // median; -1 when no line was drawn
+  }
+  const sharp = await lineAt('c#3')
+  expect(sharp, 'c#3 draws a line (control: the old grammar read it)').toBeGreaterThanOrEqual(0)
+  // Control: the measure tracks pitch, so a semitone below lands elsewhere.
+  expect(Math.abs((await lineAt('c3')) - sharp), 'c3 vs c#3').toBeGreaterThan(5)
+  expect(Math.abs((await lineAt('cs3')) - sharp), 'cs3 lands where c#3 does').toBeLessThan(2)
+  const g3 = await lineAt('g3')
+  expect(Math.abs((await lineAt('g')) - g3), 'g lands where g3 does').toBeLessThan(2)
+  const eb3 = await lineAt('eb3')
+  expect(Math.abs((await lineAt('ef3')) - eb3), 'ef3 lands where eb3 does').toBeLessThan(2)
+})
+
 test('inline crop resolves the preset by name AND renderer — scope.p5 not scope.hydra (#217)', async ({ page }) => {
   // `scope` exists for both renderers; a name-only preset lookup pointed the
   // crop popup at the hydra preset. The action bar's data-preset-id (what the

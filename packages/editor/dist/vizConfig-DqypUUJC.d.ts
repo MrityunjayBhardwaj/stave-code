@@ -27,8 +27,22 @@ interface IREvent {
     endClipped: number;
     /** Note — MIDI number, note name string, or null */
     note: number | string | null;
-    /** Frequency in Hz (derivable from note, pre-computed for performance) */
+    /**
+     * Frequency in Hz when the code WROTE one (Strudel's `freq` control,
+     * `controls.mjs` `registerControl('freq')`), which overrides the note; null
+     * otherwise. It is not filled in from `note`: for a pitch either way, read
+     * `midi` below. (Example sources that build events by hand set both.)
+     */
     freq: number | null;
+    /**
+     * The pitch as a MIDI number, in the order Strudel's `valueToMidi` reads a hap
+     * (`@strudel/core` util.mjs): a written `freq`, else the note name through the
+     * one note reader (`engine/noteToMidi.ts`), else a note number. Set by
+     * `normalizeStrudelHap` when the hap has a pitch; absent when it has none (a
+     * drum sample) or the name is not a note. A sketch reads this instead of
+     * parsing note names itself, since it runs sandboxed and cannot import (#1929).
+     */
+    midi?: number;
     /** Instrument/sample name */
     s: string | null;
     /**
