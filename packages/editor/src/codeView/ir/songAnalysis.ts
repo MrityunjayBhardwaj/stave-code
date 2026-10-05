@@ -64,6 +64,7 @@ import { signalAutomations, signalCarryingParamKeys, signalWriters, hasTruePerio
 import { isSectionWindow, type TimeStep } from './parameterRoutes'
 import { steppedAutomations } from './steppedAutomation'
 import { songExtent, type SongExtent } from './songExtent'
+import { parseStrudel } from './parseStrudel'
 
 /**
  * Lane (row) key for an event. Mirrors `groupEventsByTrack`'s key so analysis
@@ -960,6 +961,16 @@ export function songEnd(
   const extent = songExtent(ir ?? null)
   if (extent.kind !== 'arranged' || !(extent.cycles > 0)) return extent
   return { ...extent, cycles: arrangedRepeatCycles(ir, extent.cycles, cap, signalPeriods) }
+}
+
+/**
+ * `songEnd` of a document's source (#1940): the parse and the reading together, so
+ * a caller holding only the text asks one question instead of running the parser
+ * itself. Play-once and the bounce both start from text — the code just evaluated,
+ * and the file as it is when the bounce is sized.
+ */
+export function songEndOf(source: string): SongExtent {
+  return songEnd(parseStrudel(source))
 }
 
 /**

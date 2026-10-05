@@ -39,25 +39,21 @@
  * difference between the CHAIN-APPLIED and Parsed tabs — in the debugger, where
  * it belongs, instead of silently in a song.
  *
- * ## Why everything is injected
+ * ## Why the parsers can be handed in
  *
- * Two reasons, and the second is the load-bearing one.
+ * ⚠ PROVENANCE IS NOT OBSERVABLE FROM THE OUTPUT, SO IT HAS TO BE INJECTED TO BE
+ * TESTED. Measured over all 558 archive documents: the two final trees are
+ * byte-identical (corpus parity has been 0/558 since #1553 and #1476), and
+ * NEITHER carries any of the five stage-only fields — `unresolvedChain`,
+ * `chainOffset`, `dollarStart`, `dollarEnd`, `trackLabel` — 0 of 558 on both
+ * sides. There is therefore no assertion over the tree that can tell which
+ * implementation produced it. Without a seam, this module could silently revert
+ * to the staged tree and every test would still pass. The test hands in
+ * sentinels and checks which one came back, and pins `STRUDEL_PASS_DEPS` to the
+ * real parsers, which every caller gets by default.
  *
- * 1. Until #1938 a barrel import (`@stave/editor`) into a hermetically
- *    unit-tested app module broke the app's vitest run (p5 → `gifenc`, CJS)
- *    while production stayed fine — so the real functions are wired at the call site,
- *    which already imports the barrel. Only `import type` appears here, and
- *    type imports are erased.
- *
- * 2. ⚠ PROVENANCE IS NOT OBSERVABLE FROM THE OUTPUT, SO IT HAS TO BE INJECTED
- *    TO BE TESTED. Measured over all 558 archive documents: the two final trees
- *    are byte-identical (corpus parity has been 0/558 since #1553 and #1476),
- *    and NEITHER carries any of the five stage-only fields — `unresolvedChain`,
- *    `chainOffset`, `dollarStart`, `dollarEnd`, `trackLabel` — 0 of 558 on both
- *    sides. There is therefore no assertion over the tree that can tell which
- *    implementation produced it. Without a seam, this module could silently
- *    revert to the staged tree and every test would still pass. The test hands
- *    in sentinels and checks which one came back.
+ * This file lived in the app until #1940, which took its parsers from the call
+ * site because the app's tests could not load the editor's main entry (#1938).
  *
  * ## Cost, measured over 558 documents
  *
@@ -65,20 +61,28 @@
  * 0.951ms/doc — once per
  * successful eval, on an already-debounced path.
  */
-import type { PatternIR } from "@stave/editor";
+import type { PatternIR } from './PatternIR'
+import { parseStrudel } from './parseStrudel'
+import { parseStrudelStages } from './parseStrudelStages'
 
 /** One `{name, ir}` entry, matching `IRSnapshot.passes[]`. */
-export type NamedPass = { readonly name: string; readonly ir: PatternIR };
+export type NamedPass = { readonly name: string; readonly ir: PatternIR }
 
 export interface StrudelPassDeps {
   /** The Inspector's INTERMEDIATE views — RAW, MINI-EXPANDED, CHAIN-APPLIED — in order. */
-  readonly runStages: (code: string) => readonly NamedPass[];
+  readonly runStages: (code: string) => readonly NamedPass[]
   /** The parser. Never throws — falls back to a whole-program Code node. */
-  readonly parse: (code: string) => PatternIR;
+  readonly parse: (code: string) => PatternIR
+}
+
+/** The real parsers — what every caller gets unless a test hands in its own. */
+export const STRUDEL_PASS_DEPS: StrudelPassDeps = {
+  runStages: parseStrudelStages,
+  parse: parseStrudel,
 }
 
 /** The name of the final tab. Unchanged — IRInspectorPanel persists by name. */
-export const FINAL_PASS_NAME = "Parsed";
+export const FINAL_PASS_NAME = 'Parsed'
 
 /**
  * Build the four passes for one document. The last entry is always the
@@ -86,10 +90,7 @@ export const FINAL_PASS_NAME = "Parsed";
  */
 export function buildStrudelPasses(
   code: string,
-  deps: StrudelPassDeps,
+  deps: StrudelPassDeps = STRUDEL_PASS_DEPS,
 ): NamedPass[] {
-  return [
-    ...deps.runStages(code),
-    { name: FINAL_PASS_NAME, ir: deps.parse(code) },
-  ];
+  return [...deps.runStages(code), { name: FINAL_PASS_NAME, ir: deps.parse(code) }]
 }

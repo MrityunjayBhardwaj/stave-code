@@ -70,7 +70,9 @@ export {
   songPeriodOf,
   arrangedRepeatCycles,
   songEnd,
+  songEndOf,
   parseStrudelStages,
+  buildStrudelPasses,
   runPasses,
 } from './ir'
 export type {
@@ -101,6 +103,7 @@ export type {
   LanePeriod,
   ShapeSwap,
   NamedStage,
+  NamedPass,
   Pass,
 } from './ir'
 export type { IREvent, SourceLocation } from './ir/IREvent'

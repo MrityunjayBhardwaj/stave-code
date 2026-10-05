@@ -20,7 +20,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { parseStrudel } from '../parseStrudel'
-import { arrangedRepeatCycles, songEnd, songPeriodOf } from '../songAnalysis'
+import { arrangedRepeatCycles, songEnd, songEndOf, songPeriodOf } from '../songAnalysis'
 import { steppedAutomations } from '../steppedAutomation'
 import { songExtent } from '../songExtent'
 
@@ -114,5 +114,12 @@ describe('songEnd — where a document ends, for every consumer of "the end" (#1
     expect(songEnd(ir, 5)).toEqual({ kind: 'arranged', cycles: 4 })
     // A caller's own reading of the curves (a shape-swap preview) is folded in.
     expect(songEnd(ir, 256, [3])).toEqual({ kind: 'arranged', cycles: 24 })
+  })
+
+  it('songEndOf reads the same end straight from the source (#1940)', () => {
+    // Play-once and the bounce hold text, not a tree; this is their question.
+    expect(songEndOf(SONG)).toEqual({ kind: 'arranged', cycles: 8 })
+    expect(songEndOf('s("bd*2").gain("<.2 .9>")')).toEqual({ kind: 'loop' })
+    expect(songEndOf('arrange([2, s("bd")], [1, s("hh")]).foo(2).gain("<.2 .9>")')).toEqual({ kind: 'opaque' })
   })
 })

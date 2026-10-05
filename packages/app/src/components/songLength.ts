@@ -83,11 +83,11 @@ export interface BounceSizing {
 }
 
 /**
- * The two views of a document a bounce needs, kept apart because they are read
+ * The two readings of a document a bounce needs, kept apart because they are read
  * at DIFFERENT TIMES for DIFFERENT jobs (#1373).
  *
- * Both are the parser's tree. Since #1558 the published snapshot's final pass
- * is `parseStrudel`'s own (`strudelPasses.ts`), so the snapshot can say whether
+ * Both come from the parser. Since #1558 the published snapshot's final pass
+ * is `parseStrudel`'s own (`codeView/ir/strudelPasses.ts`), so the snapshot can say whether
  * a document has an arrangement. Before that it could not: the staged pipeline
  * left a top-level `arrange(...)` as an opaque `Code` node, every document read
  * as a loop, and `measureSongLength`'s `arranged` branch went its whole life
@@ -95,9 +95,9 @@ export interface BounceSizing {
  *
  * What still separates them:
  *
- *   structural  the file's text AT THE MOMENT the bounce is sized, parsed then.
- *               Needs no evaluation, so an arrangement is sized before a note
- *               has sounded.
+ *   end         where the file's text AT THE MOMENT the bounce is sized ends —
+ *               `songEndOf` of that text, read then. Needs no evaluation, so an
+ *               arrangement is sized before a note has sounded.
  *   analysis    the LAST PUBLISHED snapshot, and only when this file published
  *               it. Its lane keys match the runtime accessors the collector is
  *               threaded with, which is what a measured period needs.
@@ -105,17 +105,18 @@ export interface BounceSizing {
  * Collapsing them would size an arrangement off whatever was last published,
  * which can be another tab's document or a revision behind the editor.
  */
-export interface SongIRs {
+export interface SongSources {
   /**
-   * STRUCTURE — "does this document have a definite end?" `parseStrudel` of the
-   * file's current text. Needs no evaluation and no playback, so an arrangement
-   * can be sized before a note has sounded.
+   * STRUCTURE — "does this document have a definite end?" `songEndOf` of the
+   * file's current text (#1940: the area reads it, so this module never runs the
+   * parser). Needs no evaluation and no playback, so an arrangement can be sized
+   * before a note has sounded. `null` when there is no Strudel text to read.
    */
-  readonly structural: PatternIR | null
+  readonly end: SongExtent | null
   /**
    * MEASUREMENT — "what period does this document repeat at?" Must come from
    * the published snapshot, whose lane keys match the runtime accessors the
-   * collector is threaded with. Substituting the structural IR here would
+   * collector is threaded with. Substituting a fresh parse here would
    * re-key the collector and silently change what the period path measures.
    */
   readonly analysis: PatternIR | null
@@ -129,9 +130,6 @@ export interface SongCollectorParts {
 
 /** The editor capabilities this module needs, injected — see the header. */
 export interface SongLengthDeps {
-  /** `songEnd` — where the document ends, the one reading play-once and the
-   *  timeline also take (#1723, #1936). Injected like the rest. */
-  readonly songEnd: (ir: PatternIR | null) => SongExtent
   readonly analyzeSong: (
     ir: PatternIR | null,
     opts: AnalyzeSongOptions,
@@ -156,19 +154,20 @@ export interface SongLengthDeps {
  * whose header explains the key space.
  */
 export async function measureSongLength(
-  irs: SongIRs,
+  sources: SongSources,
   deps: SongLengthDeps,
   signal?: { aborted: boolean },
 ): Promise<SongLength> {
-  if (irs.structural == null && irs.analysis == null) {
+  if (sources.end == null && sources.analysis == null) {
     return { kind: 'unknown', why: 'no-document' }
   }
 
-  // Structure first, off the PARSED source: an arrangement is a definite end,
+  // Structure first, off the source's own end: an arrangement is a definite end,
   // and it does not depend on anything having been evaluated or heard — so this
   // branch can answer before a note has sounded, and it is asked of the file's
-  // text as it is now (see `SongIRs`).
-  const extent = deps.songEnd(irs.structural)
+  // text as it is now (see `SongSources`). No text reads as a loop, which is
+  // what `songEnd(null)` answered when this took a tree.
+  const extent: SongExtent = sources.end ?? { kind: 'loop' }
   if (extent.kind === 'arranged' && extent.cycles > 0) {
     // #1580 — the arrangement is a definite end of the STRUCTURE. A parameter
     // whose period does not divide it keeps moving after the last bar, so the
@@ -189,19 +188,19 @@ export async function measureSongLength(
   // Everything below measures the EVALUATED document, so it needs the snapshot.
   // A document that has never been evaluated has no period to find — which is a
   // different answer from "we measured it and there was none".
-  if (irs.analysis == null) return { kind: 'unknown', why: 'no-document' }
+  if (sources.analysis == null) return { kind: 'unknown', why: 'no-document' }
 
-  const { collectFn, hasUnheardTrack } = deps.createCollector(irs.analysis)
+  const { collectFn, hasUnheardTrack } = deps.createCollector(sources.analysis)
 
   let analysis: SongAnalysis
   try {
-    analysis = await deps.analyzeSong(irs.analysis, {
+    analysis = await deps.analyzeSong(sources.analysis, {
       signal,
       collectFn,
       hasUnheardTrack,
       // #1465 — this is the dialog the issue was filed against: automating a
       // control with a continuous signal dropped the document to "pick a length".
-      signals: deps.signalDimensionsOf(irs.analysis),
+      signals: deps.signalDimensionsOf(sources.analysis),
     })
   } catch {
     return { kind: 'unknown', why: 'no-period' }

@@ -17,7 +17,7 @@
 import { describe, it, expect } from 'vitest'
 import { IR, type PatternIR } from '../../../../editor/src/codeView/ir/PatternIR'
 import { songExtent } from '../../../../editor/src/codeView/ir/songExtent'
-import { analyzeSong, signalDimensionsOf, songEnd } from '../../../../editor/src/codeView/ir/songAnalysis'
+import { analyzeSong, signalDimensionsOf, songEnd, songEndOf } from '../../../../editor/src/codeView/ir/songAnalysis'
 import { parseStrudel } from '../../../../editor/src/codeView/ir/parseStrudel'
 import type { IREvent } from '../../../../editor/src/codeView/ir/IREvent'
 import {
@@ -30,7 +30,7 @@ import {
   MAX_OFFLINE_BOUNCE_SECONDS,
   type SongLengthDeps,
   type BounceSizing,
-  type SongIRs,
+  type SongSources,
 } from '../songLength'
 
 const bd = IR.play('bd')
@@ -56,7 +56,6 @@ function ev(begin: number, s: string): IREvent {
  */
 function depsWith(onsets: IREvent[]): SongLengthDeps {
   return {
-    songEnd,
     analyzeSong,
     signalDimensionsOf,
     createCollector: () => ({
@@ -68,11 +67,11 @@ function depsWith(onsets: IREvent[]): SongLengthDeps {
 }
 
 /**
- * The same IR for both views — the shape every pre-#1373 caller assumed.
+ * Both readings of the same IR — the shape every pre-#1373 caller assumed.
  * Only tests about the STRUCTURE/MEASUREMENT split pass the two apart.
  */
-function both(ir: PatternIR): SongIRs {
-  return { structural: ir, analysis: ir }
+function both(ir: PatternIR): SongSources {
+  return { end: songEnd(ir), analysis: ir }
 }
 
 /** `n` cycles of the SAME sound — fingerprints repeat, so a period is findable. */
@@ -89,7 +88,7 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
   it('a document with no IR is `no-document`, not a zero-length song', async () => {
     // The same distinction `songExtent` is typed for, one layer up: a bounce
     // must not read "nothing to measure" as "measured zero".
-    expect(await measureSongLength({ structural: null, analysis: null }, depsWith([]))).toEqual({
+    expect(await measureSongLength({ end: null, analysis: null }, depsWith([]))).toEqual({
       kind: 'unknown',
       why: 'no-document',
     })
@@ -100,14 +99,13 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // Deps whose analyzeSong would throw if reached — the arrangement branch
     // must not depend on anything having been evaluated or heard.
     const deps: SongLengthDeps = {
-      songEnd,
       signalDimensionsOf,
       analyzeSong: () => {
         throw new Error('analyzeSong must not be reached for an arrangement')
       },
       createCollector: () => ({ collectFn: undefined, hasUnheardTrack: undefined }),
     }
-    expect(await measureSongLength({ structural: ir, analysis: null }, deps)).toEqual({
+    expect(await measureSongLength({ end: songEnd(ir), analysis: null }, deps)).toEqual({
       kind: 'arranged',
       cycles: 28,
     })
@@ -119,22 +117,21 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // `.2 .5 .9 .2`. Still without consulting the analysis — the fold is read
     // off the parsed document, so this branch keeps answering before a note has
     // been evaluated, which is the property the arm above pins.
-    const ir = parseStrudel('arrange([2,s("bd*2")],[2,s("hh*4")]).gain("<.2 .5 .9>")')
+    const end = songEndOf('arrange([2,s("bd*2")],[2,s("hh*4")]).gain("<.2 .5 .9>")')
     const deps: SongLengthDeps = {
-      songEnd,
       signalDimensionsOf,
       analyzeSong: () => {
         throw new Error('analyzeSong must not be reached for an arrangement')
       },
       createCollector: () => ({ collectFn: undefined, hasUnheardTrack: undefined }),
     }
-    expect(await measureSongLength({ structural: ir, analysis: null }, deps)).toEqual({
+    expect(await measureSongLength({ end, analysis: null }, deps)).toEqual({
       kind: 'arranged',
       cycles: 12,
     })
     // The control, same document, a period that divides: the offer must NOT move.
-    const divides = parseStrudel('arrange([2,s("bd*2")],[2,s("hh*4")]).gain("<.2 .5>")')
-    expect(await measureSongLength({ structural: divides, analysis: null }, deps)).toEqual({
+    const divides = songEndOf('arrange([2,s("bd*2")],[2,s("hh*4")]).gain("<.2 .5>")')
+    expect(await measureSongLength({ end: divides, analysis: null }, deps)).toEqual({
       kind: 'arranged',
       cycles: 4,
     })
@@ -154,7 +151,7 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // was offered an 8-second bounce.
     const arranged = IR.arrange('arrange', [arm(4), arm(8), arm(16)])
     const result = await measureSongLength(
-      { structural: arranged, analysis: bd },
+      { end: songEnd(arranged), analysis: bd },
       depsWith(repeating(64)),
     )
     expect(result).toEqual({ kind: 'arranged', cycles: 28 })
@@ -166,7 +163,7 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // same as no document.
     const arranged = IR.arrange('arrange', [arm(2), arm(2)])
     expect(
-      await measureSongLength({ structural: arranged, analysis: null }, depsWith([])),
+      await measureSongLength({ end: songEnd(arranged), analysis: null }, depsWith([])),
     ).toEqual({ kind: 'arranged', cycles: 4 })
   })
 
@@ -174,7 +171,7 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // The period path genuinely needs the snapshot. Absent it there is nothing
     // to measure, which is not the same as measuring and hearing nothing.
     expect(
-      await measureSongLength({ structural: bd, analysis: null }, depsWith([])),
+      await measureSongLength({ end: songEnd(bd), analysis: null }, depsWith([])),
     ).toEqual({ kind: 'unknown', why: 'no-document' })
   })
 
@@ -226,11 +223,7 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // `songExtent` keeps `opaque` separate precisely so a caller cannot present
     // an arrangement of unknown length as an endless loop. Pinned with a stub
     // extent because a real opaque document is rare and this is the contract.
-    const deps: SongLengthDeps = {
-      ...depsWith(repeating(64)),
-      songEnd: () => ({ kind: 'opaque' }),
-    }
-    expect(await measureSongLength(both(bd), deps)).toEqual({
+    expect(await measureSongLength({ end: { kind: 'opaque' }, analysis: bd }, depsWith(repeating(64)))).toEqual({
       kind: 'unknown',
       why: 'no-period',
     })
@@ -252,9 +245,11 @@ describe('the bounce sizes an arrangement by the area\'s songEnd (#1723, #1936)'
   // `songEnd` itself is pinned beside `arrangedRepeatCycles` in the editor; this arm
   // holds the bounce to it, on the song whose structure (4) and end (8) differ.
   it('the bounce offers exactly what songEnd says', async () => {
-    const ir = parseStrudel('const a = s("bd*2").gain("<.2 .9>")\narrange([2, a], [1, s("hh*2")], [1, a])')
+    const source = 'const a = s("bd*2").gain("<.2 .9>")\narrange([2, a], [1, s("hh*2")], [1, a])'
+    const ir = parseStrudel(source)
     expect(songExtent(ir)).toEqual({ kind: 'arranged', cycles: 4 })
-    const length = await measureSongLength({ structural: ir, analysis: null }, depsWith([]))
+    // What the bounce hands in: `songEndOf` of the file's text (#1940).
+    const length = await measureSongLength({ end: songEndOf(source), analysis: null }, depsWith([]))
     expect(length).toEqual({ kind: 'arranged', cycles: 8 })
     expect(length).toEqual(songEnd(ir))
   })
