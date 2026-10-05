@@ -12899,6 +12899,26 @@ function appendEmptyBars(mini, bars, add) {
   return why === null ? { ok: true, mini: next } : { ok: false, reason: why };
 }
 __name(appendEmptyBars, "appendEmptyBars");
+var VELOCITY_STRING = "its velocities are written per column, and the velocity lane can't follow a longer pattern yet";
+var GRID_CANT_SHOW = "the grid couldn't show the longer pattern";
+function lengthenOffers(parse6, mini, bars, gain) {
+  return {
+    duplicate: readsBack(parse6, duplicateBar(mini, bars), bars + 1, gain),
+    append: appendBarsOffer(parse6, mini, bars, 1, gain)
+  };
+}
+__name(lengthenOffers, "lengthenOffers");
+function appendBarsOffer(parse6, mini, bars, add, gain) {
+  return readsBack(parse6, appendEmptyBars(mini, bars, add), bars + add, gain);
+}
+__name(appendBarsOffer, "appendBarsOffer");
+function readsBack(parse6, r, wantBars, gain) {
+  if (!r.ok) return r;
+  if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING };
+  const read5 = parse6(r.mini, UNREFINED);
+  return read5.ok && (read5.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
+}
+__name(readsBack, "readsBack");
 var PICK_METHODS2 = /* @__PURE__ */ new Set(["pick", "pickRestart", "pickReset"]);
 function parseProgram4(doc) {
   try {
@@ -37008,36 +37028,19 @@ function setGridMode(mode) {
   listeners11.forEach((l) => l());
 }
 __name(setGridMode, "setGridMode");
-var VELOCITY_STRING = "its velocities are written per column, and the velocity lane can't follow a longer pattern yet";
-var GRID_CANT_SHOW = "the grid couldn't show the longer pattern";
-function hasVelocityString(chunk) {
-  return readChunkGain(chunk).mini !== null;
-}
-__name(hasVelocityString, "hasVelocityString");
 function usePatternLength(chunk, model, parse6, writeMini) {
   const mini = model ? chunk?.miniString ?? null : null;
   const bars = model?.bars ?? 1;
-  const velocity = chunk ? hasVelocityString(chunk) : false;
+  const gain = chunk ? readChunkGain(chunk) : null;
+  const velocity = gain?.mini != null;
   const parseRef = React22.useRef(parse6);
   parseRef.current = parse6;
-  const check = /* @__PURE__ */ __name((r, wantBars) => {
-    if (!r.ok) return r;
-    if (velocity) return { ok: false, reason: VELOCITY_STRING };
-    const read5 = parseRef.current(r.mini, UNREFINED);
-    return read5.ok && (read5.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW };
-  }, "check");
   const cache3 = React22.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
-    if (mini === null) return null;
+    if (mini === null || gain === null) return null;
     const key2 = `${bars}|${velocity}|${mini}`;
     if (cache3.current?.key !== key2) {
-      cache3.current = {
-        key: key2,
-        verdict: {
-          duplicate: check(duplicateBar(mini, bars), bars + 1),
-          append: check(appendEmptyBars(mini, bars, 1), bars + 1)
-        }
-      };
+      cache3.current = { key: key2, verdict: lengthenOffers(parseRef.current, mini, bars, gain) };
     }
     return cache3.current.verdict;
   }, "verdict");
@@ -37048,8 +37051,8 @@ function usePatternLength(chunk, model, parse6, writeMini) {
     else report("Couldn't add a bar that continues the pattern", r.reason);
   }, "onDuplicate");
   const onAddBars = /* @__PURE__ */ __name((n) => {
-    if (mini === null || n < 1) return;
-    const r = check(appendEmptyBars(mini, bars, n), bars + n);
+    if (mini === null || gain === null || n < 1) return;
+    const r = appendBarsOffer(parseRef.current, mini, bars, n, gain);
     if (r.ok) writeMini(r.mini);
     else report(`Couldn't add ${n === 1 ? "a bar" : `${n} bars`}`, r.reason);
   }, "onAddBars");

@@ -235,8 +235,8 @@ export {
 export type { RegionControl, RegionTrimRefusal, RegionTrimResult } from './regionTrim'
 export { resizeGrid, resizeRoll } from './notation'
 export { addLane, removeLane } from './notation/lane'
-export { appendEmptyBars, duplicateBar } from './notation/lengthen'
-export type { LengthenResult } from './notation/lengthen'
+export { appendEmptyBars, duplicateBar, lengthenOffers, appendBarsOffer } from './notation/lengthen'
+export type { LengthenResult, LengthenOffers } from './notation/lengthen'
 export { applyRollGain, applyStepGain } from './notation/parse'
 export { drawnLayout, drawnAt, lcmOf } from './notation/perBar'
 export {

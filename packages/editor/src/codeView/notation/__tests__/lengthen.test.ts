@@ -9,7 +9,9 @@
 import { describe, it, expect } from 'vitest'
 import { mini } from '@strudel/mini/mini.mjs'
 
-import { appendEmptyBars, duplicateBar } from '../lengthen'
+import { appendEmptyBars, duplicateBar, lengthenOffers, appendBarsOffer } from '../lengthen'
+import { parsePianoRoll, parseStepGrid } from '../parse'
+import type { ChunkGain } from '../model'
 
 /** onsets of `bars` cycles as `value@start` — what the pattern plays */
 function plays(m: string, bars: number): string[] {
@@ -142,5 +144,44 @@ describe('appendEmptyBars — drag +: silent bars after the pattern', () => {
 
   it('REFUSES a pattern that changes from cycle to cycle', () => {
     expect(appendEmptyBars('c3 <e3 g3>', 2, 1).ok).toBe(false)
+  })
+})
+
+describe("the `+` handle's offers: Strudel, then the velocity string, then the grid (#1942)", () => {
+  const NO_GAIN: ChunkGain = { mini: null, numeric: null, foreign: false }
+
+  it('offers both choices when Strudel and the grid both read them back', () => {
+    const o = lengthenOffers(parsePianoRoll, 'c3 e3', 1, NO_GAIN)
+    expect(o.duplicate).toEqual({ ok: true, mini: '<[c3 e3] [c3 e3]>' })
+    expect(o.append).toEqual({ ok: true, mini: '<[c3 e3] ~>' })
+    expect(appendBarsOffer(parsePianoRoll, 'c3 e3', 1, 3, NO_GAIN)).toEqual({ ok: true, mini: '<[c3 e3] ~ ~ ~>' })
+  })
+
+  it("Strudel's refusal comes through unchanged", () => {
+    expect(lengthenOffers(parsePianoRoll, 'c3 e3', 1, NO_GAIN).duplicate).toEqual(duplicateBar('c3 e3', 1))
+    const refused = duplicateBar('c3 <e3 g3>', 2)
+    expect(refused.ok).toBe(false)
+    expect(lengthenOffers(parsePianoRoll, 'c3 <e3 g3>', 2, NO_GAIN).duplicate).toEqual(refused)
+  })
+
+  it('a per-column .gain string refuses both, even where Strudel would agree', () => {
+    const o = lengthenOffers(parsePianoRoll, 'c3 e3', 1, { mini: '0.5 1', numeric: null, foreign: false })
+    expect(o.duplicate).toEqual({ ok: false, reason: expect.stringContaining('velocity lane') })
+    expect(o.append).toEqual({ ok: false, reason: expect.stringContaining('velocity lane') })
+    // CONTROL: a scalar .gain is not a per-column string, and does not refuse
+    expect(lengthenOffers(parsePianoRoll, 'c3 e3', 1, { mini: null, numeric: 0.5, foreign: false }).duplicate.ok).toBe(true)
+  })
+
+  it("a rewrite the grid can't show at the new length is refused", () => {
+    const opensAtOneBar = (m: string, s: number) => {
+      const r = parseStepGrid(m, s)
+      return r.ok ? { ...r, model: { ...r.model, bars: 1 } } : r
+    }
+    expect(lengthenOffers(opensAtOneBar, 'bd sn', 1, NO_GAIN).duplicate).toEqual({
+      ok: false,
+      reason: "the grid couldn't show the longer pattern",
+    })
+    // CONTROL: the real parser does show it
+    expect(lengthenOffers(parseStepGrid, 'bd sn', 1, NO_GAIN).duplicate.ok).toBe(true)
   })
 })

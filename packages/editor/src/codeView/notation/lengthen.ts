@@ -26,6 +26,9 @@
  */
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 
+import type { ChunkGain, ParseResult } from './model'
+import { UNREFINED, type ViewScale } from './viewResolution'
+
 export type LengthenResult = { ok: true; mini: string } | { ok: false; reason: string }
 
 /** inner text when the trimmed string is exactly one `<…>` alternation */
@@ -203,4 +206,70 @@ export function appendEmptyBars(mini: string, bars: number, add: number): Length
   const next = `<${entriesOf(mini)}${' ~'.repeat(add)}>`
   const why = playsAsIntended(old, next, bars + add, (b) => (b < bars ? b : null))
   return why === null ? { ok: true, mini: next } : { ok: false, reason: why }
+}
+
+/* ── what the grid's `+` handle offers (#1824, #1942) ─────────────────────── */
+
+/**
+ * A per-column `.gain("…")` is managed only while each bar is one column, so a
+ * longer melody would silently lock its velocity lane. Refused until that lane can
+ * follow a multi-bar pattern.
+ */
+const VELOCITY_STRING =
+  "its velocities are written per column, and the velocity lane can't follow a longer pattern yet"
+
+const GRID_CANT_SHOW = "the grid couldn't show the longer pattern"
+
+/** a grid's parser — `stepGridCodec.parse` / `pianoRollCodec.parse` */
+type GridParse<M> = (mini: string, viewScale: ViewScale) => ParseResult<M>
+
+export interface LengthenOffers {
+  /** click: add one bar that continues the pattern — or why not */
+  duplicate: LengthenResult
+  /** drag: can empty bars be appended at all — or why not */
+  append: LengthenResult
+}
+
+/**
+ * Both rewrites, each asked of Strudel and then of the grid that will draw the result.
+ * `gain` is the chunk's `.gain` (`readChunkGain`); `bars` how many bars the grid draws.
+ */
+export function lengthenOffers<M extends { bars?: number }>(
+  parse: GridParse<M>,
+  mini: string,
+  bars: number,
+  gain: ChunkGain,
+): LengthenOffers {
+  return {
+    duplicate: readsBack(parse, duplicateBar(mini, bars), bars + 1, gain),
+    append: appendBarsOffer(parse, mini, bars, 1, gain),
+  }
+}
+
+/** `add` empty bars, asked the same way as {@link lengthenOffers}' `append` */
+export function appendBarsOffer<M extends { bars?: number }>(
+  parse: GridParse<M>,
+  mini: string,
+  bars: number,
+  add: number,
+  gain: ChunkGain,
+): LengthenResult {
+  return readsBack(parse, appendEmptyBars(mini, bars, add), bars + add, gain)
+}
+
+/**
+ * The last gate is the grid itself: a rewrite Strudel plays correctly but the grid
+ * would open at a different length — or not at all — is refused, or the click would
+ * send the panel to standby.
+ */
+function readsBack<M extends { bars?: number }>(
+  parse: GridParse<M>,
+  r: LengthenResult,
+  wantBars: number,
+  gain: ChunkGain,
+): LengthenResult {
+  if (!r.ok) return r
+  if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING }
+  const read = parse(r.mini, UNREFINED)
+  return read.ok && (read.model.bars ?? 1) === wantBars ? r : { ok: false, reason: GRID_CANT_SHOW }
 }
