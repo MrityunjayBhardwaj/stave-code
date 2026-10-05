@@ -77,7 +77,7 @@ export function startsNamedTrack(rawLine: string): boolean {
 
 /**
  * Boundary predicate over a RAW line: true when the line starts a NEW top-level
- * block — the anonymous / `setcps` / soloed forms (over the trimmed line) OR a
+ * block — the anonymous / tempo-setter / soloed forms (over the trimmed line) OR a
  * named track (over the raw line). The single source of truth for "where does
  * one top-level block end?" once named tracks are in scope; keeps the engine's
  * `scanVizRequestLines` and the editor's re-anchor in agreement (#569).
