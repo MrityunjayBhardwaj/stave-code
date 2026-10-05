@@ -54,11 +54,6 @@
       "issue": "#1880"
     },
     {
-      "file": "packages/editor/src/visualEdit/panels/usePatternLength.ts",
-      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
-      "issue": "#1880"
-    },
-    {
       "file": "packages/editor/src/visualEdit/panels/writtenSteps.ts",
       "what": "drives parse / serialize itself (through the entry, so no rule sees it); reads syntax from user code by hand",
       "issue": "#1880"
