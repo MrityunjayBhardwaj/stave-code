@@ -21,6 +21,8 @@ declare module '@strudel/core' {
   export function noteToMidi(note: string, defaultOctave?: number): number
   /** util.mjs: is this string a note name (letter, `#bsf` accidentals, optional octave)? */
   export function isNote(name: string): boolean
+  /** util.mjs: a hap value's pitch as MIDI — `freq`, else a note name, else a note number; throws when none. */
+  export function valueToMidi(value: { freq?: unknown; note?: unknown }, fallbackValue?: number): number
 }
 
 declare module '@strudel/webaudio' {

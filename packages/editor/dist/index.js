@@ -13392,6 +13392,16 @@ function declaredLocationKeys(miniLocations) {
   return keys;
 }
 __name(declaredLocationKeys, "declaredLocationKeys");
+function hapMidi(value) {
+  if (!value || typeof value !== "object") return null;
+  const v = value;
+  if (typeof v.freq === "number") return 12 * Math.log(v.freq / 440) / Math.LN2 + 69;
+  const note = v.note ?? v.n;
+  if (typeof note === "string") return noteToMidi(note);
+  if (typeof note === "number") return note;
+  return null;
+}
+__name(hapMidi, "hapMidi");
 function normalizeStrudelHap(hap, trackId, irNodeLocLookup, declaredLocations) {
   const begin = Number(hap.whole?.begin ?? 0);
   const end = Number(hap.whole?.end ?? begin + 0.25);
@@ -13409,6 +13419,8 @@ function normalizeStrudelHap(hap, trackId, irNodeLocLookup, declaredLocations) {
     color: value?.color ?? null
   };
   if (value?.n != null) event.n = value.n;
+  const midi = hapMidi(value);
+  if (midi !== null) event.midi = midi;
   const extracted = extractLoc(hap);
   const loc = extracted && declaredLocations ? declaredOnly(extracted, declaredLocations) : extracted;
   if (loc) event.loc = loc;
@@ -17695,6 +17707,7 @@ function summariseRawHap(e) {
     endClipped: e.endClipped ?? end,
     note: e.note ?? null,
     freq: e.freq ?? null,
+    midi: e.midi ?? null,
     s: e.s ?? null,
     gain: e.gain ?? 1,
     velocity: e.velocity ?? 1,
@@ -23230,28 +23243,16 @@ function isDrum(s) {
   return DRUM_PREFIXES.some(p => s === p || (s.startsWith(p) && /\\d/.test(s[p.length] || '')))
 }
 
-// Note NAME \u2192 MIDI. Returns null for unparseable names (octaveless or
-// sample names) \u2014 the caller folds those onto string lanes instead.
-function noteToMidi(n) {
-  if (typeof n === 'number') return Math.round(n)
-  if (typeof n !== 'string') return null
-  const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
-  if (!m) return null
-  const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
-  const acc = m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0
-  return (parseInt(m[3]) + 1) * 12 + base + acc
-}
-
 // Fold-grouping key: a MIDI number for pitched haps, a "_sound" string for
-// unpitched ones. Priority mirrors how Strudel fills a hap (freq is
-// pre-computed from note, so note("c e g") resolves via freq, never NaN).
+// unpitched ones. Priority mirrors Strudel's piano roll: a written freq, then the
+// note. A note NAME's pitch is h.midi, read by the engine with Strudel's own
+// grammar (cs3, g, ef3 included) \u2014 a sketch runs sandboxed and cannot import a
+// parser, so it never reads names itself (#1929). A name that is not a note folds
+// onto its own string lane.
 function valueOf(h) {
   if (typeof h.freq === 'number') return Math.round(12 * Math.log2(h.freq / 440) + 69)
   if (typeof h.note === 'number') return h.note
-  if (typeof h.note === 'string') {
-    const mi = noteToMidi(h.note)
-    return mi !== null ? mi : '_' + h.note
-  }
+  if (typeof h.note === 'string') return typeof h.midi === 'number' ? h.midi : '_' + h.note
   if (h.s) return '_' + h.s
   return 0
 }
@@ -23461,19 +23462,12 @@ function setup() {
   createCanvas(stave.width, stave.height)
   noStroke()
 }
-// Hz from a hap \u2014 Strudel leaves note as a NAME string and freq null until
-// superdough renders, so parse the note name to MIDI ourselves.
+// Hz from a hap: a written freq, else the pitch the engine read from the note
+// (h.midi, Strudel's own note grammar \u2014 a sketch cannot import a parser, #1929).
 function hapFreq(h) {
   if (typeof h.freq === 'number') return h.freq
-  let n = h.note
-  if (typeof n === 'string') {
-    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
-    if (!m) return null
-    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
-    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
-  }
-  if (typeof n !== 'number') return null
-  return 440 * pow(2, (n - 69) / 12)
+  if (typeof h.midi === 'number') return 440 * pow(2, (h.midi - 69) / 12)
+  return null
 }
 function draw() {
   clear()
@@ -23534,19 +23528,12 @@ function setup() {
   pixelDensity(1); noStroke()
   _ensureBuf(width, height)
 }
-// Hz from a hap \u2014 Strudel leaves note as a NAME string and freq null until
-// superdough renders, so parse the note name to MIDI ourselves.
+// Hz from a hap: a written freq, else the pitch the engine read from the note
+// (h.midi, Strudel's own note grammar \u2014 a sketch cannot import a parser, #1929).
 function hapFreq(h) {
   if (typeof h.freq === 'number') return h.freq
-  let n = h.note
-  if (typeof n === 'string') {
-    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
-    if (!m) return null
-    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
-    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
-  }
-  if (typeof n !== 'number') return null
-  return 440 * pow(2, (n - 69) / 12)
+  if (typeof h.midi === 'number') return 440 * pow(2, (h.midi - 69) / 12)
+  return null
 }
 function draw() {
   _ensureBuf(width, height)
@@ -23645,20 +23632,12 @@ function circPos(cx, cy, r, a) {
   const rad = a * TWO_PI
   return [sin(rad) * r + cx, cos(rad) * r + cy]
 }
-// Hz from a hap. Strudel leaves note as a NAME string and freq null until
-// superdough renders, so parse the note name to MIDI ourselves (h.freq is null
-// here \u2014 relying on it leaves every note stuck at the default pitch).
+// Hz from a hap: a written freq, else the pitch the engine read from the note
+// (h.midi, Strudel's own note grammar \u2014 a sketch cannot import a parser, #1929).
 function hapFreq(h) {
   if (typeof h.freq === 'number') return h.freq
-  let n = h.note
-  if (typeof n === 'string') {
-    const m = n.toLowerCase().match(/^([a-g])(b|#)?(-?\\d+)$/)
-    if (!m) return null
-    const base = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 }[m[1]]
-    n = (parseInt(m[3]) + 1) * 12 + base + (m[2] === 'b' ? -1 : m[2] === '#' ? 1 : 0)
-  }
-  if (typeof n !== 'number') return null
-  return 440 * pow(2, (n - 69) / 12)
+  if (typeof h.midi === 'number') return 440 * pow(2, (h.midi - 69) / 12)
+  return null
 }
 function draw() {
   clear()
