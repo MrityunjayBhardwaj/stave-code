@@ -90,7 +90,6 @@ import {
   readPersistedActiveTabId,
   getIRSnapshot,
   analyzeSong,
-  signalDimensionsOf,
   songEndOf,
   listAssetRecords,
   registerAssets,
@@ -1975,8 +1974,6 @@ export default function StrudelEditorClient({
           { end, analysis: analysisIr },
           {
             analyzeSong,
-            // #1465 — read off the IR here because only a caller holds one.
-            signalDimensionsOf,
             // The SHARED factory the timeline uses, threaded with this file's
             // accessors — not a second collector, whose key space would drift.
             createCollector: (nodeIr) =>

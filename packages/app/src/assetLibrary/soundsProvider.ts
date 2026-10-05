@@ -16,6 +16,7 @@
  * `startAudition` (@stave/editor) and `onInsert` to the shell's cursor writer.
  */
 
+import { gmFamily, soundfontGroupLabel } from "@stave/editor";
 import type { Asset, AssetPreviewHandle } from "./types";
 
 /** The minimal shape read off a superdough soundMap entry (mirrors the editor's
@@ -32,19 +33,7 @@ export interface SoundsProviderDeps {
   startPreview: (sound: string) => AssetPreviewHandle;
   /** Round-trip the sound into code at the cursor (assign or insert). */
   onInsert: (sound: string) => void;
-  /**
-   * GM family for a `gm_*` soundfont key (or null), and the shared
-   * `Soundfonts · <Family>` group label (#807). INJECTED from `@stave/editor`
-   * (`gmFamily` / `soundfontGroupLabel`) rather than imported here, so the pure
-   * mapping stays editor-free and unit-testable — the editor barrel could not
-   * load in this provider's tests until #1938 (retiring this is #1943).
-   */
-  gmFamily: (name: string) => string | null;
-  soundfontGroupLabel: (name: string) => string;
 }
-
-/** The soundfont-grouping fns `classify` needs (a subset of the deps). */
-type SoundfontGrouping = Pick<SoundsProviderDeps, "gmFamily" | "soundfontGroupLabel">;
 
 /** Title-case a bare id: `sawtooth` → `Sawtooth`. */
 function titleCase(name: string): string {
@@ -73,7 +62,7 @@ interface Classified {
  * bank; melodic sounds split by type. Unknown types fall through to "Samples"
  * (include-by-default — never silently drop a new upstream type, the P254 rule).
  */
-function classify(name: string, data: SoundMapEntry["data"], sf: SoundfontGrouping): Classified {
+function classify(name: string, data: SoundMapEntry["data"]): Classified {
   const type = data?.type;
   if (data?.tag === "drum-machines") {
     const i = name.lastIndexOf("_");
@@ -88,10 +77,10 @@ function classify(name: string, data: SoundMapEntry["data"], sf: SoundfontGroupi
       // (`Soundfonts · Strings`, `· Brass`, …) instead of one flat group; the
       // family name is also a search tag so "strings" finds them. Bare/unmapped
       // soundfonts fall back to the flat "Soundfonts" label.
-      const family = sf.gmFamily(name);
+      const family = gmFamily(name);
       const tags = ["soundfont", "gm", name];
       if (family) tags.push(family.toLowerCase());
-      return { group: sf.soundfontGroupLabel(name), label: soundfontLabel(name), tags };
+      return { group: soundfontGroupLabel(name), label: soundfontLabel(name), tags };
     }
     case "wavetable":
       return { group: "Wavetables", label: titleCase(name), tags: ["wavetable", name] };
@@ -110,7 +99,7 @@ function classify(name: string, data: SoundMapEntry["data"], sf: SoundfontGroupi
  */
 export function soundMapToAssets(
   dict: SoundMapDict | null | undefined,
-  deps: Pick<SoundsProviderDeps, "startPreview" | "onInsert" | "gmFamily" | "soundfontGroupLabel">,
+  deps: Pick<SoundsProviderDeps, "startPreview" | "onInsert">,
 ): Asset[] {
   if (!dict) return [];
   const assets: Asset[] = [];
@@ -118,7 +107,7 @@ export function soundMapToAssets(
     if (name.startsWith("_")) continue;
     const data = dict[name]?.data;
     if (data?.type === "input") continue;
-    const { group, label, tags } = classify(name, data, deps);
+    const { group, label, tags } = classify(name, data);
     assets.push({
       type: "sound",
       id: name, // the exact string written into s("…") — stable + unique
