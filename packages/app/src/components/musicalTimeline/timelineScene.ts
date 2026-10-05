@@ -19,7 +19,7 @@
 import type { SampleRef, SongAnalysis, SongSection } from '@stave/editor'
 import type { SongWindow } from './songAxis'
 import type { SampleRegion } from './waveformLane'
-import { trackIdentity } from './colors'
+import { trackIdentity } from '@stave/editor'
 import { containingAnchor } from './laneIdentity'
 import { resolveLaneName } from './trackLabel'
 import { resolveSectionName } from './sectionLabel'

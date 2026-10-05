@@ -30,6 +30,8 @@ vi.mock('@stave/editor', async () => ({
   // timeline's import of it onto the barrel this file mocks).
   sectionNameAt: (await import('../../../../../editor/src/codeView/ir/trackId')).sectionNameAt,
   labelAtOffset: (await import('../../../../../editor/src/codeView/ir/trackId')).labelAtOffset,
+  // #1943 — the lane colour is the editor's `trackIdentity` now (the app's copy retired).
+  trackIdentity: (await import('../../../../../editor/src/codeView/trackColor')).trackIdentity,
 }))
 
 import { collectNoteMarks } from '../timelineMarks'

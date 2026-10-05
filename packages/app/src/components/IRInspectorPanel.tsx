@@ -132,7 +132,7 @@ const TAG_COLOR: Record<PatternIR["tag"], string> = {
   Param:    "var(--ir-param, #fb923c)",
   // Phase 20-11 wave γ-3 — Track tag (musician-track-identity wrapper).
   // Slate-400 (#94a3b8) placeholder; the per-track 32-palette
-  // (paletteForTrack/trackIndexOf in musicalTimeline/colors.ts) is the
+  // (the editor's `trackIdentity`, codeView/trackColor.ts) is the
   // identity color in MusicalTimeline. TAG_COLOR is the Inspector-tag chip
   // colour only — a structural neutral that doesn't compete with FX's
   // pink (#ec4899) or Param's orange (#fb923c). 20-12 design-system pass

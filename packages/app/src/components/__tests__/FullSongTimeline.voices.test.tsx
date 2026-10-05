@@ -46,7 +46,11 @@ vi.mock('@stave/editor', async () => {
   // #1602 — the lane's step-count chip builds its options and its edit from these.
   const { stepCountEdit } = await import('../../../../editor/src/codeView/ir/stepCount')
   const { previewRepeat, songPeriodOf } = await import('../../../../editor/src/codeView/ir/songAnalysis')
+  // #1943 — the lane colour is the editor's `trackIdentity` now (the app's copy
+  // retired). Real, from source: a pure palette lookup.
+  const { trackIdentity } = await import('../../../../editor/src/codeView/trackColor')
   return {
+    trackIdentity,
     signalAutomations,
     signalTimeAt,
     shapeAlternatives,
