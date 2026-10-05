@@ -4331,3 +4331,39 @@ function rollStackSource(
   if (rebuilt !== parts.join(',')) return null
   return { source: { prefix: '', suffix: '', parts: out } }
 }
+
+/**
+ * The regions of a whole bar written as ONE `[…]` element (#1855, #1942): the content
+ * inside the brackets, read as a step grid, or null.
+ *
+ * `<[bd ~ bd ~] [bd ~ ~ bd]>` spells each bar as one bracketed element, because an entry
+ * of `<…>` is one bar; the Pattern tab draws that bar's steps the way its content is cut.
+ * Whether `raw` IS one bracketed sequence is krill's answer, not its first and last
+ * characters: exactly one element, a `[…]` sequence (`fastcat`), weight 1, no `*`, `!`,
+ * `?` or other op. Then the content must read as one flat part, with no prefix, suffix
+ * or bars of its own.
+ */
+export function bracketedBarRegions(
+  raw: string,
+): NonNullable<StepGridModel['source']>['parts'][number]['regions'] | null {
+  const text = raw.trim()
+  let ast: KPattern
+  try {
+    ast = krillParse('"' + text + '"') as KPattern
+  } catch {
+    return null
+  }
+  if (ast.source_.length !== 1) return null
+  const el = ast.source_[0]
+  if (isAtom(el.source_) || el.source_.arguments_?.alignment !== 'fastcat') return null
+  const o = el.options_ ?? {}
+  if ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0 || !el.location_) return null
+  // the element's bytes (offsets are into the QUOTED string, hence − 1), less its brackets
+  const start = el.location_.start.offset - 1
+  const end = el.location_.end.offset - 1
+  const inner = parseStepGrid(text.slice(start + 1, end - 1))
+  if (!inner.ok) return null
+  const src = inner.model.source
+  if (!src || src.parts.length !== 1 || src.prefix || src.suffix || inner.model.bars) return null
+  return src.parts[0].regions
+}

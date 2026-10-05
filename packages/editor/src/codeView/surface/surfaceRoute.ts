@@ -63,7 +63,7 @@
 import type { ChunkInfo } from '../chunkDetect'
 import { parsePianoRoll, parseStepGrid } from '../notation/parse'
 import { chordLanes } from './chordLanes'
-import { patternKind, type PatternKind } from '../patternKind'
+import { isRollChunk, patternKind, type PatternKind } from '../patternKind'
 
 /** A decided surface. `routeSurface` always reaches one, so it never returns null. */
 export type Surface = Exclude<PatternKind, null>
@@ -209,4 +209,20 @@ export function opensStepGrid(chunk: ChunkInfo): boolean {
 /** Sibling of `opensStepGrid` — see its header for why these exist. */
 export function opensPianoRoll(chunk: ChunkInfo): boolean {
   return chunkSurface(chunk) === 'roll'
+}
+
+/**
+ * The column shape of the roll under the cursor, read straight off its mini (no model
+ * state, a pure parse), or null when it isn't a grid-editable melody (#432, #1942). The
+ * Pattern inspector's Snap picker turns it into steps per bar to grey out divisions the
+ * roll can't snap to.
+ */
+export function rollShape(
+  chunk: ChunkInfo | null,
+): { steps: number; bars?: number; barSteps?: readonly number[] } | null {
+  if (!chunk || chunk.miniString === null || !isRollChunk(chunk)) return null
+  const parsed = parsePianoRoll(chunk.miniString)
+  if (!parsed.ok) return null
+  const { steps, bars, barSteps } = parsed.model
+  return { steps, bars, barSteps }
 }
