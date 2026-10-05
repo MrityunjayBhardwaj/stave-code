@@ -11573,6 +11573,7 @@ __name(canScalePianoRollTo, "canScalePianoRollTo");
 var clampInt = /* @__PURE__ */ __name((v, lo, hi) => Math.max(lo, Math.min(hi, v)), "clampInt");
 var bucket = /* @__PURE__ */ __name((c, from, to) => clampInt(Math.round(c * to / from), 0, to - 1), "bucket");
 var NO_EFFECT = { lengthened: 0, snapped: 0, merged: 0 };
+var EFFECT_EPS = 1e-9;
 var COARSEN_FLOOR = 1;
 function quantizeStepGridToWithEffect(model, target) {
   const unchanged = { model, effect: NO_EFFECT };
@@ -11630,30 +11631,38 @@ function stepResolutionEffect(model, target) {
   return quantizeStepGridToWithEffect(model, target).effect;
 }
 __name(stepResolutionEffect, "stepResolutionEffect");
-function quantizePianoRollTo(model, target) {
-  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model;
+function quantizePianoRollToWithEffect(model, target) {
+  const unchanged = { model, effect: NO_EFFECT };
+  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return unchanged;
   if ((model.bars ?? 1) > 1) {
-    if (target <= model.steps) return scalePianoRollTo(model, target);
-    if (!isPow2(target / model.steps)) return model;
-    let cur = model;
-    while (cur.steps < target) {
-      cur = { ...cur, steps: cur.steps * 2, notes: cur.notes.map((n) => ({ ...n, start: n.start * 2 })) };
-    }
-    return ifRollSpellable(model, cur);
+    const next2 = quantizeMultiBarRoll(model, target);
+    return next2 === model ? unchanged : { model: next2, effect: NO_EFFECT };
   }
   const from = model.steps;
   const addingSlots = target > from;
-  const q = model.notes.map((n) => ({
-    pitch: n.pitch,
-    start: bucket(n.start, from, target),
-    duration: addingSlots ? Math.max(1, n.duration) : Math.max(1, Math.round(n.duration * target / from)),
-    gain: n.gain ?? 1
-  })).sort((a, b) => a.start - b.start);
+  let snapped = 0;
+  let merged = 0;
+  let lengthened = 0;
+  const q = model.notes.map((n) => {
+    const start = bucket(n.start, from, target);
+    if (Math.abs(start - n.start * target / from) > EFFECT_EPS) snapped++;
+    const exact = addingSlots ? n.duration : n.duration * target / from;
+    return {
+      pitch: n.pitch,
+      start,
+      duration: addingSlots ? Math.max(1, n.duration) : Math.max(1, Math.round(exact)),
+      exact,
+      gain: n.gain ?? 1
+    };
+  }).sort((a, b) => a.start - b.start);
   const byCol = /* @__PURE__ */ new Map();
   for (const n of q) {
     const grp = byCol.get(n.start) ?? [];
-    if (grp.some((m) => m.pitch === n.pitch)) continue;
-    grp.push({ pitch: n.pitch, duration: n.duration, gain: n.gain });
+    if (grp.some((m) => m.pitch === n.pitch)) {
+      merged++;
+      continue;
+    }
+    grp.push({ pitch: n.pitch, duration: n.duration, exact: n.exact, gain: n.gain });
     byCol.set(n.start, grp);
   }
   const starts = [...byCol.keys()].sort((a, b) => a - b);
@@ -11663,11 +11672,33 @@ function quantizePianoRollTo(model, target) {
     const grp = byCol.get(start);
     const duration = clampInt(Math.min(...grp.map((m) => m.duration)), 1, limit);
     const gain = Math.max(...grp.map((m) => m.gain));
-    for (const m of grp) notes.push({ pitch: m.pitch, start, duration, gain });
+    for (const m of grp) {
+      if (duration - m.exact > EFFECT_EPS) lengthened++;
+      notes.push({ pitch: m.pitch, start, duration, gain });
+    }
   });
-  return ifRollSpellable(model, { ...model, steps: target, notes });
+  const next = ifRollSpellable(model, { ...model, steps: target, notes });
+  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged } };
+}
+__name(quantizePianoRollToWithEffect, "quantizePianoRollToWithEffect");
+function quantizeMultiBarRoll(model, target) {
+  if (target <= model.steps) return scalePianoRollTo(model, target);
+  if (!isPow2(target / model.steps)) return model;
+  let cur = model;
+  while (cur.steps < target) {
+    cur = { ...cur, steps: cur.steps * 2, notes: cur.notes.map((n) => ({ ...n, start: n.start * 2 })) };
+  }
+  return ifRollSpellable(model, cur);
+}
+__name(quantizeMultiBarRoll, "quantizeMultiBarRoll");
+function quantizePianoRollTo(model, target) {
+  return quantizePianoRollToWithEffect(model, target).model;
 }
 __name(quantizePianoRollTo, "quantizePianoRollTo");
+function rollResolutionEffect(model, target) {
+  return quantizePianoRollToWithEffect(model, target).effect;
+}
+__name(rollResolutionEffect, "rollResolutionEffect");
 function freeZoneScale(docSteps, target) {
   if (!Number.isInteger(docSteps) || docSteps < 1) return null;
   if (target < docSteps || target % docSteps !== 0) return null;
@@ -38567,7 +38598,10 @@ function PianoRollGrid({
     model?.steps ?? null,
     (t) => model ? rollSlotState(model, t, canDrawView) : "disabled",
     scaleToSlots,
-    onResolution
+    onResolution,
+    // #1933 — what the press would cost, asked of the op `scaleToSlots` runs. A
+    // free-zone target never reaches the op, so it reports nothing.
+    (t) => model && rollSlotState(model, t, canDrawView) !== "view" ? rollResolutionEffect(model, t) : { lengthened: 0, snapped: 0, merged: 0 }
   );
   const rows = [];
   for (let m = range2.hi; m >= range2.lo; m--) rows.push(m);

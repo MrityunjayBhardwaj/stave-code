@@ -158,6 +158,7 @@ export {
   RESOLUTION_PRESETS,
   stepSlotState,
   stepResolutionEffect,
+  rollResolutionEffect,
 } from './notation/resolution'
 export type { GridResolutionEffect, SlotState } from './notation/resolution'
 export { UNREFINED, documentSteps, absorbViewScale } from './notation/viewResolution'
