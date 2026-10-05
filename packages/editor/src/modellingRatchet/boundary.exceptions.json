@@ -38,12 +38,14 @@
     {
       "file": "packages/editor/src/visualizers/blockScan.ts",
       "reaches": [
+        "codeView/ir/statementHeads#TEMPO_SETTERS",
         "codeView/ir/trackId#LABEL_HEAD"
       ],
-      "why": "A line scanner needs one rule, LABEL_HEAD, and the file that owns it, codeView/ir/trackId.ts, imports nothing (a test keeps it that way). Reaching that leaf adds one dependency-free file to the engine's import graph; the entry would add 44 more codeView modules for one regex (measured 2026-10-04: the engine's graph holds 18 codeView files, the entry's holds 62). A one-rule import from a codeView file that imports nothing is meant to stay (#1880).",
+      "why": "A line scanner needs two rules, LABEL_HEAD and TEMPO_SETTERS, and the files that own them, codeView/ir/trackId.ts and codeView/ir/statementHeads.ts, import nothing (a test keeps each that way). Reaching those leaves adds two dependency-free files to the engine's import graph; the entry would add dozens more codeView modules for two names (measured 2026-10-04: the engine's graph holds 18 codeView files, the entry's holds 62). A one-rule import from a codeView file that imports nothing is meant to stay (#1880).",
       "issue": "#1880",
       "added": {
-        "codeView/ir/trackId#LABEL_HEAD": "#1921 the scanner's own copy of the identifier regex became the shared LABEL_HEAD; the entry route broke StrudelEngine.test's collection, so it reads the leaf"
+        "codeView/ir/trackId#LABEL_HEAD": "#1921 the scanner's own copy of the identifier regex became the shared LABEL_HEAD; the entry route broke StrudelEngine.test's collection, so it reads the leaf",
+        "codeView/ir/statementHeads#TEMPO_SETTERS": "#1927 a tempo setter line ends a block, and the scanner knew only setcps of the four names; it now reads the shared list from codeView/ir/statementHeads.ts, which imports nothing (a test keeps it that way)"
       }
     }
   ],

@@ -16,8 +16,12 @@
  * overruns to EOF, and the inline viz zone re-anchors under an unrelated track.
  * Recognizing the silenced forms here keeps each zone pinned to its own track.
  */
-// the dependency-free leaf, not the entry: see boundary.exceptions.json (#1921)
+// the dependency-free leaves, not the entry: see boundary.exceptions.json (#1921, #1927)
 import { LABEL_HEAD } from '../codeView/ir/trackId'
+import { TEMPO_SETTERS } from '../codeView/ir/statementHeads'
+
+/** A tempo setter call at the head of the line, by whole name: `setcpm(` yes, `setcpsfoo(` no. */
+const TEMPO_SETTER_HEAD = new RegExp(`^(?:${TEMPO_SETTERS.join('|')})\\s*\\(`)
 
 /**
  * True when a trimmed source line begins a NEW top-level statement — counting
@@ -27,7 +31,8 @@ import { LABEL_HEAD } from '../codeView/ir/trackId'
  *   `$: …`      audible anonymous track
  *   `_$: …`     muted / soloed-out anonymous track (`_`-prefix mute idiom)
  *   `$_: …`     the same, suffix spelling — Strudel mutes `x_` too (#1679)
- *   `setcps(…)` transport statement — its own top-level block
+ *   `setcps(…)` transport statement — its own top-level block; likewise
+ *               `setCps`, `setcpm`, `setCpm`, the same setter (`TEMPO_SETTERS`)
  *   `all(x=>…)` master-bus statement — stacks every `$:`/named pattern and
  *               applies the transform (master fader / global backdrop, #792).
  *               A top-level statement in its own right, so it MUST end the
@@ -43,7 +48,7 @@ import { LABEL_HEAD } from '../codeView/ir/trackId'
 export function startsTopLevelBlock(trimmed: string): boolean {
   return (
     /^_?\$_?:/.test(trimmed) || // `$:`, `_$:`, and `$_:` — Strudel mutes `x_` too (#1679)
-    trimmed.startsWith('setcps') ||
+    TEMPO_SETTER_HEAD.test(trimmed) || // all four names Strudel gives the setter (#1927)
     /^all\s*\(/.test(trimmed) ||
     trimmed.startsWith('/*')
   )
@@ -72,7 +77,7 @@ export function startsNamedTrack(rawLine: string): boolean {
 
 /**
  * Boundary predicate over a RAW line: true when the line starts a NEW top-level
- * block — the anonymous / `setcps` / soloed forms (over the trimmed line) OR a
+ * block — the anonymous / tempo-setter / soloed forms (over the trimmed line) OR a
  * named track (over the raw line). The single source of truth for "where does
  * one top-level block end?" once named tracks are in scope; keeps the engine's
  * `scanVizRequestLines` and the editor's re-anchor in agreement (#569).

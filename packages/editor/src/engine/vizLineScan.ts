@@ -51,7 +51,7 @@ export function scanVizRequestLines(
     if (!vizId) continue
 
     // Last line of this block: forward to the next top-level block start
-    // (anonymous / setcps / soloed OR another named track). Blank + comment
+    // (anonymous / tempo setter / soloed OR another named track). Blank + comment
     // lines inside the block are allowed.
     let lastLineIdx = i
     for (let j = i + 1; j < lines.length; j++) {
