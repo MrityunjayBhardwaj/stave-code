@@ -176,6 +176,35 @@ test('inline viz zone anchors ABOVE a master all(x=>…) line and stays put when
   expect(after!.zoneContentTop).toBeLessThan(after!.line5Top)
 })
 
+// Strudel registers four tempo setters as one (`repl.mjs`: `setCps`/`setcps`,
+// `setCpm`/`setcpm`), so each one ends the block above it, exactly as `all()`
+// does in #797. `setcps` is the control that already held; the other three used
+// to be read as part of the block, and the zone anchored below them (#1927).
+for (const setter of ['setcps(0.5)', 'setCps(0.5)', 'setcpm(30)', 'setCpm(30)']) {
+  test(`inline viz zone anchors ABOVE a following ${setter} line (#1927)`, async ({ page }) => {
+    await setCode(
+      page,
+      `$: stack(\n  note("c e g").s("sawtooth"),\n  note("e g b").s("sawtooth")\n).viz("spectrum")\n${setter}`,
+    )
+    await runCode(page)
+    await expect(page.locator('[data-viz-zone-track]').first()).toBeVisible({ timeout: 6000 })
+    // Computed layout, as in #797: line 5 may be virtualized out under a tall zone.
+    const at = await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ed = (window as any).monaco?.editor?.getEditors?.()?.[0]
+      const zoneEl = document.querySelector('[data-viz-zone-track]')
+      const linesContent = document.querySelector('.lines-content')
+      if (!ed || !zoneEl || !linesContent) return null
+      return {
+        zoneContentTop: zoneEl.getBoundingClientRect().top - linesContent.getBoundingClientRect().top,
+        line5Top: ed.getTopForLineNumber(5),
+      }
+    })
+    expect(at, 'editor + zone must be present').not.toBeNull()
+    expect(at!.zoneContentTop, `the zone sits above the ${setter} line`).toBeLessThan(at!.line5Top)
+  })
+}
+
 test('underscore ._punchcard() and ._tscope() render inline with no error and no fullscreen canvas', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(String(e)))

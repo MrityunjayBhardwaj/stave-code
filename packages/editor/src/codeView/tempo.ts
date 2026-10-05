@@ -20,14 +20,19 @@
  * This module is pure.
  */
 import { parseTopLevel } from './astParse'
+import type { TEMPO_SETTERS } from './ir/statementHeads'
 
-/** The setter family, and what each one's argument is measured in. */
+/**
+ * The setter family, and what each one's argument is measured in. The names are
+ * the shared `TEMPO_SETTERS`: leaving one out, or adding a name that isn't on that
+ * list, fails to compile (#1927).
+ */
 const SETTERS: Readonly<Record<string, 'cps' | 'cpm'>> = {
   setcps: 'cps',
   setCps: 'cps',
   setcpm: 'cpm',
   setCpm: 'cpm',
-}
+} satisfies Record<(typeof TEMPO_SETTERS)[number], 'cps' | 'cpm'>
 
 /**
  * The cycles per second the document sets:
