@@ -199,6 +199,16 @@ export { planVizAssignment } from './assign/vizAssign'
 export { assignmentEdit } from './assign/soundAssign'
 export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './automation/captionEdit'
 export { gridWriteEdits, readChunkGain, gainUnchanged } from './notation/gainEdit'
+export {
+  stepGridCodec,
+  pianoRollCodec,
+  gainWritable,
+  slotPress,
+  slotPressCost,
+  reconcileGrid,
+  gridWritePlan,
+} from './notation/gridCodec'
+export type { NotationCodec, ResolutionOps, GridCodec, SlotPress } from './notation/gridCodec'
 export type { CaptionFieldKind } from './automation/captionEdit'
 export {
   merge,
@@ -235,8 +245,8 @@ export {
 export type { RegionControl, RegionTrimRefusal, RegionTrimResult } from './regionTrim'
 export { resizeGrid, resizeRoll } from './notation'
 export { addLane, removeLane } from './notation/lane'
-export { appendEmptyBars, duplicateBar } from './notation/lengthen'
-export type { LengthenResult } from './notation/lengthen'
+export { appendEmptyBars, duplicateBar, lengthenOffers, appendBarsOffer } from './notation/lengthen'
+export type { LengthenResult, LengthenOffers } from './notation/lengthen'
 export { applyRollGain, applyStepGain } from './notation/parse'
 export { drawnLayout, drawnAt, lcmOf } from './notation/perBar'
 export {
