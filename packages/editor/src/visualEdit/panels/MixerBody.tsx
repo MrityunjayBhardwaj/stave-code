@@ -34,8 +34,7 @@ import { FAVORITES, isEffectActive, effectNames, type Effect } from './effectCat
 import { AddEffectMenu } from './AddEffectMenu'
 import { SoundPickerMenu } from './SoundPickerMenu'
 import { ResolutionControl, type ResolutionControlProps } from './ResolutionControl'
-import { patternKind, isRollChunk } from '../../codeView'
-import { parsePianoRoll } from '../../codeView'
+import { patternKind, rollShape } from '../../codeView'
 import { type Division, DIVISIONS, isRepresentable, stepsPerBar } from './division'
 import { readChainMethod } from '../../codeView'
 import { INSTRUMENTS, DRUM_KITS } from './soundCatalog'
@@ -126,15 +125,13 @@ export function knobsFromChunk(chunk: ChunkInfo, includeGain = false): KnobEntry
 
 
 /**
- * Columns-per-bar of the roll under the cursor, read straight off the chunk's
- * mini (no model state — a pure parse), or null when it isn't a grid-editable
- * melody. The division picker uses it to grey out divisions this grid can't
- * snap to (#432 Slice 2).
+ * Columns-per-bar of the roll under the cursor, or null when it isn't a grid-editable
+ * melody. The division picker uses it to grey out divisions this grid can't snap to
+ * (#432 Slice 2). The shape is read by `rollShape` (#1942).
  */
 function rollStepsPerBar(chunk: ChunkInfo | null): number | null {
-  if (!chunk || chunk.miniString === null || !isRollChunk(chunk)) return null
-  const parsed = parsePianoRoll(chunk.miniString)
-  return parsed.ok ? stepsPerBar(parsed.model.steps, parsed.model.bars, parsed.model.barSteps) : null
+  const shape = rollShape(chunk)
+  return shape ? stepsPerBar(shape.steps, shape.bars, shape.barSteps) : null
 }
 
 /**

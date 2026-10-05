@@ -28,7 +28,7 @@
 import { describe, it, expect } from 'vitest'
 
 import { detectChunk, isChunkFresh } from '../../chunkDetect'
-import { chunkSurface, routeSurface } from '../surfaceRoute'
+import { chunkSurface, routeSurface, rollShape } from '../surfaceRoute'
 
 describe('the freshness guard follows a cross-statement mini span', () => {
   // `s(drums)` carries no literal of its own; the resolver names the span
@@ -193,5 +193,19 @@ describe('a melodic head falls through to the grid ONLY for a chord chart', () =
   it('a note-headed MELODY still reaches the roll through chunkSurface', () => {
     const doc = '$: note("c3 e3 g3").s("piano")'
     expect(chunkSurface(detectChunk(doc, doc.indexOf('note'))!)).toBe('roll')
+  })
+})
+
+describe('rollShape — the roll under the cursor, read off its mini (#1942)', () => {
+  it("gives a melody's column shape", () => {
+    const doc = '$: note("c3 e3 g3 a3")'
+    expect(rollShape(detectChunk(doc, doc.indexOf('e3')))).toEqual({ steps: 4, bars: undefined, barSteps: undefined })
+    const alt = '$: note("<[c3 e3] [g3 a3 b3 c4]>")'
+    expect(rollShape(detectChunk(alt, alt.indexOf('e3')))?.bars).toBe(2)
+  })
+  it('is null for a drum pattern, an unreadable melody, and no chunk', () => {
+    const drums = '$: s("bd sn")'
+    expect(rollShape(detectChunk(drums, drums.indexOf('bd')))).toBeNull()
+    expect(rollShape(null)).toBeNull()
   })
 })

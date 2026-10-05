@@ -11459,6 +11459,28 @@ function rollStackSource(parts, models) {
   return { source: { prefix: "", suffix: "", parts: out } };
 }
 __name(rollStackSource, "rollStackSource");
+function bracketedBarRegions(raw) {
+  const text = raw.trim();
+  let ast;
+  try {
+    ast = krillParser_js.parse('"' + text + '"');
+  } catch {
+    return null;
+  }
+  if (ast.source_.length !== 1) return null;
+  const el = ast.source_[0];
+  if (isAtom2(el.source_) || el.source_.arguments_?.alignment !== "fastcat") return null;
+  const o = el.options_ ?? {};
+  if ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0 || !el.location_) return null;
+  const start = el.location_.start.offset - 1;
+  const end = el.location_.end.offset - 1;
+  const inner = parseStepGrid(text.slice(start + 1, end - 1));
+  if (!inner.ok) return null;
+  const src = inner.model.source;
+  if (!src || src.parts.length !== 1 || src.prefix || src.suffix || inner.model.bars) return null;
+  return src.parts[0].regions;
+}
+__name(bracketedBarRegions, "bracketedBarRegions");
 
 // src/codeView/notation/resolution.ts
 var MAX_RESOLUTION_STEPS = 256;
@@ -11897,6 +11919,14 @@ function opensPianoRoll(chunk) {
   return chunkSurface(chunk) === "roll";
 }
 __name(opensPianoRoll, "opensPianoRoll");
+function rollShape(chunk) {
+  if (!chunk || chunk.miniString === null || !isRollChunk(chunk)) return null;
+  const parsed = parsePianoRoll(chunk.miniString);
+  if (!parsed.ok) return null;
+  const { steps, bars, barSteps } = parsed.model;
+  return { steps, bars, barSteps };
+}
+__name(rollShape, "rollShape");
 var COMBINATORS = /* @__PURE__ */ new Set(["arrange", "cat", "slowcat"]);
 function parseProgram(doc) {
   try {
@@ -36893,13 +36923,8 @@ function regionStepStarts(r) {
 }
 __name(regionStepStarts, "regionStepStarts");
 function wholeBarStepStarts(r) {
-  const text = r.raw.trim();
-  if (!text.startsWith("[") || !text.endsWith("]")) return null;
-  const inner = parseStepGrid(text.slice(1, -1));
-  if (!inner.ok) return null;
-  const src = inner.model.source;
-  if (!src || src.parts.length !== 1 || src.prefix || src.suffix || inner.model.bars) return null;
-  const regions = src.parts[0].regions;
+  const regions = bracketedBarRegions(r.raw);
+  if (!regions) return null;
   const cols = regions[regions.length - 1]?.to;
   if (!cols) return null;
   const starts = regions.flatMap(regionStepStarts).map((c) => r.from + c * (r.to - r.from) / cols);
@@ -41108,9 +41133,8 @@ function knobsFromChunk(chunk, includeGain = false) {
 }
 __name(knobsFromChunk, "knobsFromChunk");
 function rollStepsPerBar(chunk) {
-  if (!chunk || chunk.miniString === null || !isRollChunk(chunk)) return null;
-  const parsed = parsePianoRoll(chunk.miniString);
-  return parsed.ok ? stepsPerBar(parsed.model.steps, parsed.model.bars, parsed.model.barSteps) : null;
+  const shape = rollShape(chunk);
+  return shape ? stepsPerBar(shape.steps, shape.bars, shape.barSteps) : null;
 }
 __name(rollStepsPerBar, "rollStepsPerBar");
 function DivisionSelect({
