@@ -111,9 +111,9 @@ export function useLiftResolution(
   onScaleTo: (target: number) => void,
   onResolution?: (r: ResolutionControlProps | null) => void,
   /**
-   * LAST AND OPTIONAL because it is a surface's offer, not an obligation (#1061). The
-   * grid has a sub-column floor to declare; the piano roll carries duration natively and
-   * has none, so it passes nothing and the copy falls back to the mechanism alone.
+   * LAST AND OPTIONAL because it is a surface's offer, not an obligation (#1061). Both
+   * grids pass one (the roll since #1933); a surface that passes nothing gets copy that
+   * falls back to the mechanism alone.
    * Held behind the same ref as the other two so it always reads the CURRENT model —
    * the lift re-fires on a `steps` change, and a plain closure would keep answering
    * about the model the grid had when it last resized.
@@ -128,7 +128,7 @@ export function useLiftResolution(
   effectRef.current = effect
   const stableSlotState = React.useCallback((t: number) => slotStateRef.current(t), [])
   const stableScaleTo = React.useCallback((t: number) => onScaleToRef.current(t), [])
-  // `undefined` has to survive the wrapper, or the roll would advertise an effect
+  // `undefined` has to survive the wrapper, or a surface that passes none would advertise an effect
   // reporter that answers with zeros — a claim of "no consequence" where the truth is
   // "not asked". The two must stay distinguishable at the prop.
   const hasEffect = effect !== undefined
@@ -215,9 +215,8 @@ export interface ResolutionControlProps {
    * coarsening can keep timing and still lengthen notes, or move timing and lengthen
    * nothing. Folding both into one label would hide whichever the user cared about.
    *
-   * Optional, and the copy degrades to the mechanism alone without it: the piano roll
-   * carries note duration natively, so it has no sub-column floor to report. Supplying
-   * it is what a surface does when it has an effect to declare, not a requirement.
+   * Optional, and the copy degrades to the mechanism alone without it. The step grid
+   * and the piano roll (#1933) both supply it.
    */
   effect?: (target: number) => GridResolutionEffect
 }

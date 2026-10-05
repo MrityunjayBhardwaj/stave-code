@@ -53,6 +53,7 @@ import { PatternTrackChip } from './PatternTrackChip'
 import {
   rollSlotState,
   quantizePianoRollTo,
+  rollResolutionEffect,
   freeZoneScale,
   collapsePianoRollToDocument,
 } from '../../codeView'
@@ -1029,6 +1030,12 @@ export function PianoRollGrid({
     (t) => (model ? rollSlotState(model, t, canDrawView) : 'disabled'),
     scaleToSlots,
     onResolution,
+    // #1933 — what the press would cost, asked of the op `scaleToSlots` runs. A
+    // free-zone target never reaches the op, so it reports nothing.
+    (t) =>
+      model && rollSlotState(model, t, canDrawView) !== 'view'
+        ? rollResolutionEffect(model, t)
+        : { lengthened: 0, snapped: 0, merged: 0 },
   )
 
   // Rows top to bottom (high pitch first) — the render draws exactly these.

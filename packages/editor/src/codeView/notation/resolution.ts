@@ -290,6 +290,12 @@ export interface GridResolutionEffect {
 const NO_EFFECT: GridResolutionEffect = { lengthened: 0, snapped: 0, merged: 0 }
 
 /**
+ * The roll compares positions and lengths computed as `x * target / from`, which can
+ * miss an exact whole number by a rounding error. Below this, the two are equal.
+ */
+const EFFECT_EPS = 1e-9
+
+/**
  * THE COARSENING FLOOR (#1061). Below one column the grid has no spelling for a
  * length, and until now the whole op declined there — correct about the notation and
  * wrong as a product: a user typing `bd ~ ~ ~ sn ~ ~ ~` and asking for 4 slots is
@@ -413,49 +419,55 @@ export function stepResolutionEffect(model: StepGridModel, target: number): Grid
  * ADDING slots there is conservative too (#607 — each start doubles, duration
  * kept), REDUCING keeps the lossless ×2 halve. Returns the model unchanged for
  * the current count or an unreachable target.
+ *
+ * Reports what it did the way {@link quantizeStepGridToWithEffect} does (#1933): each
+ * count is taken in the step that causes it, and a declined op reports `NO_EFFECT`.
  */
-export function quantizePianoRollTo(model: PianoRollModel, target: number): PianoRollModel {
-  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return model
+export function quantizePianoRollToWithEffect(
+  model: PianoRollModel,
+  target: number,
+): { model: PianoRollModel; effect: GridResolutionEffect } {
+  const unchanged = { model, effect: NO_EFFECT }
+  if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return unchanged
   if ((model.bars ?? 1) > 1) {
-    // Multi-bar `<…>`: only power-of-2 targets are offered (slotState disables
-    // the rest — an off-bar count can't serialize). ADDING slots is conservative
-    // like the single-bar path (#607): each note's start doubles (keeping the
-    // columns-per-bar integral) but its DURATION is kept, so a 1-slot note stays
-    // 1 slot. REDUCING keeps the lossless ×2 halve.
-    if (target <= model.steps) return scalePianoRollTo(model, target)
-    if (!isPow2(target / model.steps)) return model
-    let cur = model
-    while (cur.steps < target) {
-      cur = { ...cur, steps: cur.steps * 2, notes: cur.notes.map((n) => ({ ...n, start: n.start * 2 })) }
-    }
-    // This branch KEEPS each duration while doubling the starts (#607), so a note can end
-    // up spanning less of the widened grid than the next start allows — and on a multi-bar
-    // `<…>` the result is not always spellable. Gated like every other op rather than
-    // trusted: it was the one path in this file still returning unchecked (found by the
-    // op-admissibility sweep, 52 unwritable results, all from here).
-    return ifRollSpellable(model, cur)
+    // Neither multi-bar path costs anything the control reports: the reduce is the
+    // lossless halve, and the add doubles every start exactly and keeps each length.
+    const next = quantizeMultiBarRoll(model, target)
+    return next === model ? unchanged : { model: next, effect: NO_EFFECT }
   }
   const from = model.steps
   const addingSlots = target > from
+  let snapped = 0
+  let merged = 0
+  let lengthened = 0
   // 1. map each note onto the target grid: the START snaps proportionally; the
   //    DURATION keeps its slot-count when ADDING slots (conservative, #607 — no
   //    stretch) and scales down proportionally when REDUCING (stays in range).
   const q = model.notes
-    .map((n) => ({
-      pitch: n.pitch,
-      start: bucket(n.start, from, target),
-      duration: addingSlots
-        ? Math.max(1, n.duration)
-        : Math.max(1, Math.round((n.duration * target) / from)),
-      gain: n.gain ?? 1,
-    }))
+    .map((n) => {
+      const start = bucket(n.start, from, target)
+      // the onset's exact proportional position; any distance from it is timing moved
+      if (Math.abs(start - (n.start * target) / from) > EFFECT_EPS) snapped++
+      // the length the new grid gives this note before any rounding, floor or clamp
+      const exact = addingSlots ? n.duration : (n.duration * target) / from
+      return {
+        pitch: n.pitch,
+        start,
+        duration: addingSlots ? Math.max(1, n.duration) : Math.max(1, Math.round(exact)),
+        exact,
+        gain: n.gain ?? 1,
+      }
+    })
     .sort((a, b) => a.start - b.start)
   // 2. group by start column, dropping a same-pitch collision (keep the first)
-  const byCol = new Map<number, { pitch: string; duration: number; gain: number }[]>()
+  const byCol = new Map<number, { pitch: string; duration: number; exact: number; gain: number }[]>()
   for (const n of q) {
     const grp = byCol.get(n.start) ?? []
-    if (grp.some((m) => m.pitch === n.pitch)) continue
-    grp.push({ pitch: n.pitch, duration: n.duration, gain: n.gain })
+    if (grp.some((m) => m.pitch === n.pitch)) {
+      merged++
+      continue
+    }
+    grp.push({ pitch: n.pitch, duration: n.duration, exact: n.exact, gain: n.gain })
     byCol.set(n.start, grp)
   }
   // 3. emit, clamping each group's shared duration to the next start (no overlap)
@@ -466,9 +478,49 @@ export function quantizePianoRollTo(model: PianoRollModel, target: number): Pian
     const grp = byCol.get(start)!
     const duration = clampInt(Math.min(...grp.map((m) => m.duration)), 1, limit)
     const gain = Math.max(...grp.map((m) => m.gain)) // a chord shares one gain
-    for (const m of grp) notes.push({ pitch: m.pitch, start, duration, gain })
+    for (const m of grp) {
+      // Counted on the length the note is EMITTED with: the floor and the rounding can
+      // lengthen it, and the clamp to the next start can take that back.
+      if (duration - m.exact > EFFECT_EPS) lengthened++
+      notes.push({ pitch: m.pitch, start, duration, gain })
+    }
   })
-  return ifRollSpellable(model, { ...model, steps: target, notes })
+  const next = ifRollSpellable(model, { ...model, steps: target, notes })
+  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged } }
+}
+
+/**
+ * Multi-bar `<…>`: only power-of-2 targets are offered (slotState disables the rest — an
+ * off-bar count can't serialize). ADDING slots is conservative like the single-bar path
+ * (#607): each note's start doubles (keeping the columns-per-bar integral) but its
+ * DURATION is kept, so a 1-slot note stays 1 slot. REDUCING keeps the lossless ×2 halve.
+ */
+function quantizeMultiBarRoll(model: PianoRollModel, target: number): PianoRollModel {
+  if (target <= model.steps) return scalePianoRollTo(model, target)
+  if (!isPow2(target / model.steps)) return model
+  let cur = model
+  while (cur.steps < target) {
+    cur = { ...cur, steps: cur.steps * 2, notes: cur.notes.map((n) => ({ ...n, start: n.start * 2 })) }
+  }
+  // This branch KEEPS each duration while doubling the starts (#607), so a note can end
+  // up spanning less of the widened grid than the next start allows — and on a multi-bar
+  // `<…>` the result is not always spellable. Gated like every other op rather than
+  // trusted: it was the one path in this file still returning unchecked (found by the
+  // op-admissibility sweep, 52 unwritable results, all from here).
+  return ifRollSpellable(model, cur)
+}
+
+/** the plain projection of {@link quantizePianoRollToWithEffect} — the model it produced */
+export function quantizePianoRollTo(model: PianoRollModel, target: number): PianoRollModel {
+  return quantizePianoRollToWithEffect(model, target).model
+}
+
+/**
+ * What pressing `target` would cost on the piano roll, asked of the op the press runs —
+ * the roll's {@link stepResolutionEffect} (#1933).
+ */
+export function rollResolutionEffect(model: PianoRollModel, target: number): GridResolutionEffect {
+  return quantizePianoRollToWithEffect(model, target).effect
 }
 
 /* ── the free zone: a finer target is a VIEW change, not a rewrite (#1057) ── */

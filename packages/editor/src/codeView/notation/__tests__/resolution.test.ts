@@ -22,6 +22,7 @@ import {
   quantizeStepGridTo,
   quantizePianoRollTo,
   stepResolutionEffect,
+  rollResolutionEffect,
   stepSlotState,
   rollSlotState,
   RESOLUTION_PRESETS,
@@ -400,6 +401,53 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
   it('piano roll: a non-power-of-2 reduce snaps notes and always serializes', () => {
     // 3 → 4 (finer, non-divisor): each note snaps onto the 4-grid
     expect(serializePianoRoll(quantizePianoRollTo(roll('c3 e3 g3'), 4))).not.toBeNull()
+  })
+
+  // #1933 — the roll's Slots control asks the same question the step grid's does: what will
+  // this press cost? The answer comes from the op the press runs, counted where it happens.
+  it('piano roll: a non-power-of-2 reduce reports the onsets it moves and the notes it lengthens', () => {
+    // 5 → 4: four of the five onsets fall between the new columns, and every 4/5-column
+    // length is held at one column. g3 and a3 share a column as a chord: different
+    // pitches, so that is not a merge.
+    const m5 = roll('c3 e3 g3 a3 b3')
+    expect(serializePianoRoll(quantizePianoRollTo(m5, 4))).toBe('c3 e3 [g3,a3] b3')
+    expect(rollResolutionEffect(m5, 4)).toEqual({ lengthened: 5, snapped: 4, merged: 0 })
+  })
+
+  it('piano roll: a reduce that moves no onset reports length only', () => {
+    // every note already sits on a column of the 4-grid; each half-column length is held
+    // at one, so this target keeps timing and makes notes longer
+    const m8 = roll('c3 ~ e3 ~ g3 ~ a3 ~')
+    expect(serializePianoRoll(quantizePianoRollTo(m8, 4))).toBe('c3 e3 g3 a3')
+    expect(rollResolutionEffect(m8, 4)).toEqual({ lengthened: 4, snapped: 0, merged: 0 })
+  })
+
+  it('piano roll: two notes of one pitch landing on one column are a merge', () => {
+    const m = roll('c3 c3 e3 e3')
+    expect(serializePianoRoll(quantizePianoRollTo(m, 2))).toBe('c3 [c3,e3]')
+    expect(rollResolutionEffect(m, 2)).toEqual({ lengthened: 3, snapped: 2, merged: 1 })
+  })
+
+  it('piano roll: refining keeps each slot count, so it can move onsets but lengthens nothing', () => {
+    expect(rollResolutionEffect(roll('c3 e3 g3'), 4)).toEqual({ lengthened: 0, snapped: 2, merged: 0 })
+  })
+
+  it('piano roll: a quantize that moves nothing reports nothing, and still writes', () => {
+    // 6 → 4 is not a power-of-2 ratio, so it is a quantize; but both onsets and both
+    // lengths land on whole columns of the new grid. The write is asserted, so the zeros
+    // are a measurement and not a declined op.
+    const m = roll('c3@3 e3@3')
+    expect(rollSlotState(m, 4)).toBe('quantize')
+    const out = quantizePianoRollTo(m, 4)
+    expect(out).not.toBe(m)
+    expect(serializePianoRoll(out)).toBe('c3@2 e3@2')
+    expect(rollResolutionEffect(m, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0 })
+  })
+
+  it('piano roll: a declined op reports nothing', () => {
+    const m = roll('c3 e3 g3 a3')
+    expect(quantizePianoRollTo(m, 4)).toBe(m)
+    expect(rollResolutionEffect(m, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0 })
   })
 
   it('piano roll: REDUCES the long 64-step choir melody to 16 without dropping the write', () => {
