@@ -54,22 +54,6 @@
       "issue": "#1880"
     },
     {
-      "file": "packages/editor/src/visualEdit/panels/PianoRollGrid.tsx",
-      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/panels/SequencerGrid.tsx",
-      "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
-      "issue": "#1880"
-    },
-    {
-      "file": "packages/editor/src/visualEdit/panels/useGridModel.ts",
-      "what": "drives parse / serialize itself (through the entry, so no rule sees it): the reseed compares a serialized model with the chunk's mini, and every write runs collapse → serialize → absorbViewScale before commit",
-      "issue": "#1880",
-      "added": "#1932 left the list in #1893 when its text-building moved into codeView, but it still drives parse / serialize the way usePatternLength does, so the count read one short"
-    },
-    {
       "file": "packages/editor/src/visualEdit/panels/usePatternLength.ts",
       "what": "drives parse / serialize itself (through the entry, so no rule sees it)",
       "issue": "#1880"

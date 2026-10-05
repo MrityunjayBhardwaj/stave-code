@@ -12415,6 +12415,68 @@ function gridWriteEdits(fresh, mini, gain) {
 }
 __name(gridWriteEdits, "gridWriteEdits");
 
+// src/codeView/notation/gridCodec.ts
+var stepGridCodec = {
+  parse: parseStepGrid,
+  serialize: serializeStepGrid,
+  applyGain: applyStepGain,
+  serializeGain: serializeStepGain,
+  collapseToDocument: collapseStepGridToDocument,
+  slotState: stepSlotState,
+  quantizeTo: quantizeStepGridTo,
+  resolutionEffect: stepResolutionEffect
+};
+var pianoRollCodec = {
+  parse: parsePianoRoll,
+  serialize: serializePianoRoll,
+  applyGain: applyRollGain,
+  serializeGain: serializeRollGain,
+  collapseToDocument: collapsePianoRollToDocument,
+  slotState: rollSlotState,
+  quantizeTo: quantizePianoRollTo,
+  resolutionEffect: rollResolutionEffect
+};
+function gainWritable(codec, model) {
+  return codec.serializeGain ? codec.serializeGain(model).kind !== "skip" : false;
+}
+__name(gainWritable, "gainWritable");
+function slotPress(ops, model, target, canDrawView) {
+  if (ops.slotState(model, target, canDrawView) !== "view") return { kind: "write" };
+  const scale = freeZoneScale(documentSteps(model), target);
+  return scale === null ? { kind: "none" } : { kind: "view", scale };
+}
+__name(slotPress, "slotPress");
+var NO_COST = { lengthened: 0, snapped: 0, merged: 0 };
+function slotPressCost(ops, model, target, canDrawView) {
+  return ops.slotState(model, target, canDrawView) !== "view" ? ops.resolutionEffect(model, target) : NO_COST;
+}
+__name(slotPressCost, "slotPressCost");
+function reconcileGrid(codec, mini, chunkGain, viewScale, prev, prevScale) {
+  const parsed = codec.parse(mini, viewScale);
+  if (!parsed.ok) return null;
+  const fresh = codec.applyGain ? codec.applyGain(parsed.model, chunkGain) : parsed.model;
+  const asWritten = prev == null ? null : codec.collapseToDocument?.(prev) ?? prev;
+  const sameMini = asWritten != null && codec.serialize(asWritten) === mini;
+  const sameGain = prev == null || !codec.serializeGain ? true : gainUnchanged(codec.serializeGain(prev), chunkGain);
+  const sameScale = prevScale === viewScale;
+  return { read: parsed.model, model: prev && sameMini && sameGain && sameScale ? prev : fresh };
+}
+__name(reconcileGrid, "reconcileGrid");
+function gridWritePlan(codec, next) {
+  const atDocument = codec.collapseToDocument ? codec.collapseToDocument(next) : null;
+  const spellsRefinement = atDocument === null;
+  const toWrite = atDocument ?? next;
+  const mini = codec.serialize(toWrite);
+  if (mini == null) return null;
+  return {
+    mini,
+    gain: codec.serializeGain ? codec.serializeGain(toWrite) : null,
+    written: spellsRefinement ? absorbViewScale(next) : next,
+    spellsRefinement
+  };
+}
+__name(gridWritePlan, "gridWritePlan");
+
 // src/codeView/regionTrim.ts
 var REGION_DEFAULT = { begin: 0, end: 1 };
 var MIN_REGION_SPAN = 0.01;
@@ -35530,42 +35592,36 @@ function useGridModel(opts) {
       setRead(null);
       return;
     }
-    const parsed = o.parse(chunk.miniString, viewScale);
-    if (!parsed.ok) {
+    const held2 = reconcileGrid(
+      o,
+      chunk.miniString,
+      readChunkGain(chunk),
+      viewScale,
+      modelRef.current,
+      modelScaleRef.current
+    );
+    if (!held2) {
       modelRef.current = null;
       setModel(null);
       setRead(null);
       return;
     }
-    setRead(parsed.model);
-    const chunkGain = readChunkGain(chunk);
-    const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain) : parsed.model;
-    const prev = modelRef.current;
-    const asWritten = prev == null ? null : o.collapseToDocument?.(prev) ?? prev;
-    const sameMini = asWritten != null && o.serialize(asWritten) === chunk.miniString;
-    const sameGain = prev == null || !o.serializeGain ? true : gainUnchanged(o.serializeGain(prev), chunkGain);
-    const sameScale = modelScaleRef.current === viewScale;
-    const next = prev && sameMini && sameGain && sameScale ? prev : fresh;
+    setRead(held2.read);
     modelScaleRef.current = viewScale;
-    modelRef.current = next;
-    setModel(next);
+    modelRef.current = held2.model;
+    setModel(held2.model);
   }, [chunk, viewScale]);
   const writeModel = React22__namespace.useCallback(
     (next) => {
       const o = optsRef.current;
-      const atDocument = o.collapseToDocument ? o.collapseToDocument(next) : null;
-      const spellsRefinement = atDocument === null;
-      const toWrite = atDocument ?? next;
-      const mini = o.serialize(toWrite);
-      if (mini == null) return;
-      const written = spellsRefinement ? absorbViewScale(next) : next;
-      if (spellsRefinement) modelScaleRef.current = UNREFINED;
-      modelRef.current = written;
-      setModel(written);
-      if (spellsRefinement) o.onViewScaleConsumed?.();
+      const plan = gridWritePlan(o, next);
+      if (plan == null) return;
+      if (plan.spellsRefinement) modelScaleRef.current = UNREFINED;
+      modelRef.current = plan.written;
+      setModel(plan.written);
+      if (plan.spellsRefinement) o.onViewScaleConsumed?.();
       applyEdit((fresh, wb) => {
-        const edits = gridWriteEdits(fresh, mini, o.serializeGain ? o.serializeGain(toWrite) : null);
-        commit(wb, edits, o.source);
+        commit(wb, gridWriteEdits(fresh, plan.mini, plan.gain), o.source);
       });
     },
     [applyEdit]
@@ -37442,17 +37498,13 @@ __name(reportRefusal, "reportRefusal");
 function SequencerGrid({ onResolution } = {}) {
   const [viewScale, setViewScale] = React22__namespace.useState(UNREFINED);
   const { chunk, model, read: read5, mutate, writeMini, beginGesture, endGesture } = useGridModel({
+    ...stepGridCodec,
     source: "seq",
     eligible: opensStepGrid,
-    parse: parseStepGrid,
-    serialize: serializeStepGrid,
-    applyGain: applyStepGain,
-    serializeGain: serializeStepGain,
     viewScale,
-    onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed"),
-    collapseToDocument: collapseStepGridToDocument
+    onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
-  const length = usePatternLength(chunk, model, parseStepGrid, writeMini);
+  const length = usePatternLength(chunk, model, stepGridCodec.parse, writeMini);
   const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
   React22__namespace.useEffect(() => {
     setViewScale(UNREFINED);
@@ -37466,7 +37518,7 @@ function SequencerGrid({ onResolution } = {}) {
   const [colorMode] = useNoteColorMode();
   const gridMode = useGridMode();
   const gestureRef = React22__namespace.useRef(null);
-  const gainScoped = React22__namespace.useMemo(() => model ? serializeStepGain(model).kind !== "skip" : false, [model]);
+  const gainScoped = React22__namespace.useMemo(() => model ? gainWritable(stepGridCodec, model) : false, [model]);
   const laneKey = model ? model.lanes.map((l) => l.sound).join("\0") : "";
   const isChordChart = React22__namespace.useMemo(
     () => chordLanes(laneKey === "" ? [] : laneKey.split("\0")),
@@ -37551,29 +37603,26 @@ function SequencerGrid({ onResolution } = {}) {
     },
     [mutate]
   );
-  const canDrawView = useViewProver(chunk?.miniString, parseStepGrid);
+  const canDrawView = useViewProver(chunk?.miniString, stepGridCodec.parse);
   const scaleToSlots = React22__namespace.useCallback(
     (target) => {
       if (!model) return;
-      if (stepSlotState(model, target, canDrawView) === "view") {
-        const scale = freeZoneScale(documentSteps(model), target);
-        if (scale !== null) setViewScale(scale);
-        return;
-      }
-      mutate((prev) => quantizeStepGridTo(prev, target));
+      const press = slotPress(stepGridCodec, model, target, canDrawView);
+      if (press.kind === "view") setViewScale(press.scale);
+      else if (press.kind === "write") mutate((prev) => stepGridCodec.quantizeTo(prev, target));
     },
     [model, canDrawView, mutate]
   );
   useLiftResolution(
     model?.steps ?? null,
-    (t) => model ? stepSlotState(model, t, canDrawView) : "disabled",
+    (t) => model ? stepGridCodec.slotState(model, t, canDrawView) : "disabled",
     scaleToSlots,
     onResolution,
     // #1061 — what the press would COST, asked of the very op `scaleToSlots` runs, so
     // the sentence in the tooltip and the write the user gets are the same computation.
     // A free-zone target never reaches the op, and reports nothing, which is correct:
     // looking closer costs nothing.
-    (t) => model && stepSlotState(model, t, canDrawView) !== "view" ? stepResolutionEffect(model, t) : { lengthened: 0, snapped: 0, merged: 0 }
+    (t) => model ? slotPressCost(stepGridCodec, model, t, canDrawView) : { lengthened: 0, snapped: 0, merged: 0 }
   );
   React22__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
@@ -38277,17 +38326,13 @@ function PianoRollGrid({
   const [viewScale, setViewScale] = React22__namespace.useState(UNREFINED);
   const [declinedCell, setDeclinedCell] = React22__namespace.useState(null);
   const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel({
+    ...pianoRollCodec,
     source: "roll",
     eligible: opensPianoRoll,
-    parse: parsePianoRoll,
-    serialize: serializePianoRoll,
-    applyGain: applyRollGain,
-    serializeGain: serializeRollGain,
     viewScale,
-    onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed"),
-    collapseToDocument: collapsePianoRollToDocument
+    onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
-  const length = usePatternLength(chunk, model, parsePianoRoll, writeMini);
+  const length = usePatternLength(chunk, model, pianoRollCodec.parse, writeMini);
   const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
   React22__namespace.useEffect(() => {
     setViewScale(UNREFINED);
@@ -38354,8 +38399,8 @@ function PianoRollGrid({
   const placesNotes = React22__namespace.useMemo(() => model ? viewPlacesNotes(model) : false, [model]);
   const resizable = React22__namespace.useMemo(() => model ? resizableNotes(model) : null, [model]);
   const cols = model ? columnCount(model) : 0;
-  const gainWritable = React22__namespace.useMemo(
-    () => model ? serializeRollGain(model).kind !== "skip" : false,
+  const gainWritable2 = React22__namespace.useMemo(
+    () => model ? gainWritable(pianoRollCodec, model) : false,
     [model]
   );
   React22__namespace.useEffect(() => {
@@ -38584,24 +38629,21 @@ function PianoRollGrid({
     });
     if (pasteRefused) reportRefusal2("Couldn't paste that note");
   }, "pasteClip");
-  const canDrawView = useViewProver(chunk?.miniString, parsePianoRoll);
+  const canDrawView = useViewProver(chunk?.miniString, pianoRollCodec.parse);
   const scaleToSlots = /* @__PURE__ */ __name((target) => {
     if (!model) return;
-    if (rollSlotState(model, target, canDrawView) === "view") {
-      const scale = freeZoneScale(documentSteps(model), target);
-      if (scale !== null) setViewScale(scale);
-      return;
-    }
-    mutate((prev) => quantizePianoRollTo(prev, target));
+    const press = slotPress(pianoRollCodec, model, target, canDrawView);
+    if (press.kind === "view") setViewScale(press.scale);
+    else if (press.kind === "write") mutate((prev) => pianoRollCodec.quantizeTo(prev, target));
   }, "scaleToSlots");
   useLiftResolution(
     model?.steps ?? null,
-    (t) => model ? rollSlotState(model, t, canDrawView) : "disabled",
+    (t) => model ? pianoRollCodec.slotState(model, t, canDrawView) : "disabled",
     scaleToSlots,
     onResolution,
     // #1933 — what the press would cost, asked of the op `scaleToSlots` runs. A
     // free-zone target never reaches the op, so it reports nothing.
-    (t) => model && rollSlotState(model, t, canDrawView) !== "view" ? rollResolutionEffect(model, t) : { lengthened: 0, snapped: 0, merged: 0 }
+    (t) => model ? slotPressCost(pianoRollCodec, model, t, canDrawView) : { lengthened: 0, snapped: 0, merged: 0 }
   );
   const rows = [];
   for (let m = range2.hi; m >= range2.lo; m--) rows.push(m);
@@ -39164,7 +39206,7 @@ function PianoRollGrid({
                         /* @__PURE__ */ jsxRuntime.jsxs(
                           "span",
                           {
-                            title: gainWritable ? void 0 : VELOCITY_READ_ONLY,
+                            title: gainWritable2 ? void 0 : VELOCITY_READ_ONLY,
                             style: {
                               width: 36,
                               fontSize: 9,
@@ -39173,7 +39215,7 @@ function PianoRollGrid({
                             },
                             children: [
                               "vel",
-                              gainWritable ? "" : " \xB7"
+                              gainWritable2 ? "" : " \xB7"
                             ]
                           }
                         ),
@@ -39185,9 +39227,9 @@ function PianoRollGrid({
                             "div",
                             {
                               "data-vel-col": col,
-                              "data-vel-readonly": gainWritable ? void 0 : "true",
-                              title: gainWritable ? void 0 : VELOCITY_READ_ONLY,
-                              onPointerDown: covering && gainWritable ? (e) => {
+                              "data-vel-readonly": gainWritable2 ? void 0 : "true",
+                              title: gainWritable2 ? void 0 : VELOCITY_READ_ONLY,
+                              onPointerDown: covering && gainWritable2 ? (e) => {
                                 e.preventDefault();
                                 onBarDown(covering.start, e);
                               } : void 0,
@@ -39198,7 +39240,7 @@ function PianoRollGrid({
                                 height: "100%",
                                 borderRadius: 2,
                                 background: "var(--background-elevated, #26262c)",
-                                cursor: covering && gainWritable ? "ns-resize" : "default"
+                                cursor: covering && gainWritable2 ? "ns-resize" : "default"
                               },
                               children: split ? split.map((grp) => {
                                 const gg = gainAtStart(model, grp.start);

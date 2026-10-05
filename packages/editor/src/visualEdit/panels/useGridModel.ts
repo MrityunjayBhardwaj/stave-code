@@ -25,23 +25,30 @@
  * not decided here: `gridWriteEdits` (`codeView/notation/gainEdit`, #1887) builds
  * the edit list and this hook hands it to `commit` (#1909).
  *
+ * Nor are keep-or-reseed and the write plan: `reconcileGrid` and `gridWritePlan`
+ * (`codeView/notation/gridCodec`, #1942) answer both. This hook holds the state,
+ * the refs, the gesture and the `commit` call.
+ *
  * Built on `useActiveChunk` (the active-editor → chunk layer).
  */
 import * as React from 'react'
 
 import type { ChunkInfo } from '../../codeView'
-import type { ChunkGain, GainWrite, ParseResult } from '../../codeView'
-import { UNREFINED, absorbViewScale, type ViewScale } from '../../codeView'
+import type { NotationCodec } from '../../codeView'
+import { UNREFINED, type ViewScale } from '../../codeView'
 import { commit, type WriteSource } from '../../codeView'
-import { gridWriteEdits, readChunkGain, gainUnchanged } from '../../codeView'
+import { gridWriteEdits, readChunkGain, reconcileGrid, gridWritePlan } from '../../codeView'
 import { useActiveChunk } from './useActiveChunk'
 
-export interface GridModelOptions<M> {
+/**
+ * The panel's codec (`stepGridCodec` / `pianoRollCodec`, #1942) plus what only the
+ * panel knows: its source tag, which chunks are its own, and its view scale.
+ */
+export interface GridModelOptions<M> extends NotationCodec<M> {
   /** writeback source tag for this panel's edits */
   source: WriteSource
   /** does this chunk belong to this panel? (head function / shape gate) */
   eligible: (chunk: ChunkInfo) => boolean
-  parse: (mini: string, viewScale: ViewScale) => ParseResult<M>
   /**
    * How finely to DRAW the chunk (#1057). A change here re-parses at the new scale
    * and writes nothing — that is the free zone's whole mechanism. Defaults to the
@@ -57,25 +64,6 @@ export interface GridModelOptions<M> {
    * view must stay where they put it (see `collapseToDocument`).
    */
   onViewScaleConsumed?: () => void
-  /**
-   * Express a model drawn at a finer view at the DOCUMENT's own resolution, or
-   * `null` when the edit really used a column the document does not have (#1057).
-   *
-   * A write consults this FIRST, so that only a write which NEEDS the finer
-   * spelling respells the file. Omitting it restores the previous behaviour —
-   * every write spells what was drawn — which is what keeps a caller that never
-   * refines behaving exactly as it did.
-   */
-  collapseToDocument?: (model: M) => M | null
-  /** model → mini, or null when the model can't be expressed in the subset */
-  serialize: (model: M) => string | null
-  /**
-   * Read an existing `.gain` (scalar or per-column) onto the freshly-parsed
-   * model. Omit to opt the panel out of velocity entirely.
-   */
-  applyGain?: (model: M, gain: ChunkGain) => M
-  /** model → what to do with the `.gain` method (write / clear / skip) */
-  serializeGain?: (model: M) => GainWrite
 }
 
 export interface GridModel<M> {
@@ -150,37 +138,27 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
       setRead(null)
       return
     }
-    const parsed = o.parse(chunk.miniString, viewScale)
-    if (!parsed.ok) {
+    // Keep the in-progress model only when the mini, the `.gain` AND the scale it
+    // was drawn at all still match; any external change to either — or any change
+    // to how finely we are drawing — reseeds. Decided by `reconcileGrid`.
+    const held = reconcileGrid(
+      o,
+      chunk.miniString,
+      readChunkGain(chunk),
+      viewScale,
+      modelRef.current,
+      modelScaleRef.current,
+    )
+    if (!held) {
       modelRef.current = null
       setModel(null)
       setRead(null)
       return
     }
-    setRead(parsed.model)
-    const chunkGain = readChunkGain(chunk)
-    const fresh = o.applyGain ? o.applyGain(parsed.model, chunkGain) : parsed.model
-
-    // Keep the in-progress model only when the mini, the `.gain` AND the scale it
-    // was drawn at all still match; any external change to either — or any change
-    // to how finely we are drawing — reseeds.
-    const prev = modelRef.current
-    // ASKED THE WAY THE WRITE ASKS IT. A refined model does not serialize to the
-    // document's bytes — it serializes to the drawn spelling — so comparing it
-    // directly would call every refined model "changed" and reseed on every frame
-    // of a velocity drag. The honest question is the one `mutate` answers: what
-    // would this model WRITE? (#1057)
-    const asWritten = prev == null ? null : (o.collapseToDocument?.(prev) ?? prev)
-    const sameMini = asWritten != null && o.serialize(asWritten) === chunk.miniString
-    const sameGain =
-      prev == null || !o.serializeGain
-        ? true
-        : gainUnchanged(o.serializeGain(prev), chunkGain)
-    const sameScale = modelScaleRef.current === viewScale
-    const next = prev && sameMini && sameGain && sameScale ? prev : fresh
+    setRead(held.read)
     modelScaleRef.current = viewScale
-    modelRef.current = next
-    setModel(next)
+    modelRef.current = held.model
+    setModel(held.model)
   }, [chunk, viewScale])
 
   /**
@@ -192,32 +170,19 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
   const writeModel = React.useCallback(
     (next: M): void => {
       const o = optsRef.current
-      // WHAT RESOLUTION SHOULD THIS WRITE SPELL? Only an edit that used a column
-      // the document does not have needs the finer one; a velocity drag does not,
-      // and respelling for it rewrites the file to record how closely someone was
-      // looking (#1057). Asked once, here, rather than per op — and asked of the
-      // real ÷k guard rather than predicted, the same discipline `slotState` uses.
-      const atDocument = o.collapseToDocument ? o.collapseToDocument(next) : null
-      const spellsRefinement = atDocument === null
-      const toWrite = atDocument ?? next
-      const mini = o.serialize(toWrite)
-      if (mini == null) return // inexpressible — leave the document untouched
-      // The refinement is absorbed ONLY when the write actually spelled it. When
-      // the write went out at the document's own resolution the file's spelling
-      // did not change, so the marker and the panel's scale both stay put — and
-      // the model on screen stays the one the user is looking at.
-      const written = spellsRefinement ? absorbViewScale(next) : next
-      if (spellsRefinement) modelScaleRef.current = UNREFINED
-      modelRef.current = written
-      setModel(written)
-      if (spellsRefinement) o.onViewScaleConsumed?.()
+      // Which resolution this write spells, its bytes, and the model kept on screen:
+      // `gridWritePlan` decides all three (#1057, #1942).
+      const plan = gridWritePlan(o, next)
+      if (plan == null) return // inexpressible — leave the document untouched
+      // The refinement is absorbed ONLY when the write actually spelled it, so the
+      // panel's scale is dropped only then.
+      if (plan.spellsRefinement) modelScaleRef.current = UNREFINED
+      modelRef.current = plan.written
+      setModel(plan.written)
+      if (plan.spellsRefinement) o.onViewScaleConsumed?.()
       applyEdit((fresh, wb) => {
-        // ⚠ THE SAME MODEL as the mini. These read `next` and `toWrite` separately
-        // once, and the gain mini was widened to the drawn column count while the
-        // notation was not — two ranges disagreeing about the document's resolution.
-        const edits = gridWriteEdits(fresh, mini, o.serializeGain ? o.serializeGain(toWrite) : null)
         // One commit → the mini and its `.gain` are one undo step.
-        commit(wb, edits, o.source)
+        commit(wb, gridWriteEdits(fresh, plan.mini, plan.gain), o.source)
       })
     },
     [applyEdit],

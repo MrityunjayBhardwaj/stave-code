@@ -26,8 +26,7 @@
  */
 import * as React from 'react'
 
-import { parseStepGrid, applyStepGain } from '../../codeView'
-import { serializeStepGrid, serializeStepGain } from '../../codeView'
+import { stepGridCodec, gainWritable, slotPress, slotPressCost } from '../../codeView'
 import { columnCount, isCellOn, laneCoverage } from '../../codeView'
 import type { StepGridModel } from '../../codeView'
 import { drawnLayout } from '../../codeView'
@@ -43,14 +42,7 @@ import { sampleVoice, chordLanes } from '../../codeView'
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
-import {
-  stepSlotState,
-  stepResolutionEffect,
-  quantizeStepGridTo,
-  freeZoneScale,
-  collapseStepGridToDocument,
-} from '../../codeView'
-import { UNREFINED, documentSteps, type ViewScale } from '../../codeView'
+import { UNREFINED, type ViewScale } from '../../codeView'
 import { setColumnGain } from './inspector'
 import { ExtendHandle } from './ExtendHandle'
 import {
@@ -123,18 +115,14 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // it (`useGridModel` → `absorbViewScale`).
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
   const { chunk, model, read, mutate, writeMini, beginGesture, endGesture } = useGridModel<StepGridModel>({
+    ...stepGridCodec,
     source: 'seq',
     eligible: opensStepGrid,
-    parse: parseStepGrid,
-    serialize: serializeStepGrid,
-    applyGain: applyStepGain,
-    serializeGain: serializeStepGain,
     viewScale,
     onViewScaleConsumed: () => setViewScale(UNREFINED),
-    collapseToDocument: collapseStepGridToDocument,
   })
   // The `+` past the last column: add a bar that continues the pattern, or drag in empty bars (#1824).
-  const length = usePatternLength(chunk, model, parseStepGrid, writeMini)
+  const length = usePatternLength(chunk, model, stepGridCodec.parse, writeMini)
 
   // A refinement belongs to the pattern it was made on. Dropping it when the cursor
   // moves keeps a leftover zoom from deciding whether the NEXT pattern opens at all —
@@ -175,7 +163,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     paintValue: boolean
   } | null>(null)
 
-  // Velocity is offered where the WRITER will write it — asked of `serializeStepGain`
+  // Velocity is offered where the WRITER will write it — `gainWritable` asks `serializeStepGain`
   // itself, the way the roll's `gainWritable` asks `serializeRollGain` (#1089), not
   // predicted beside it (#1839). The prediction that lived here copied the writer's
   // foreign/bars/parts lines and missed its leaf line, so on every leaf-read grid a
@@ -184,7 +172,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // Asked of the CURRENT model: the writer's skips are shape (foreign `.gain`, bars,
   // parts, leaf, unspellable columns), which a gain edit does not move. Memoized on
   // the model, as `mutate` fires every pointermove of the drag it gates.
-  const gainScoped = React.useMemo(() => (model ? serializeStepGain(model).kind !== 'skip' : false), [model])
+  const gainScoped = React.useMemo(() => (model ? gainWritable(stepGridCodec, model) : false), [model])
 
 
   // Is this a CHORD CHART rather than a drum kit (#1241)? Asked of the lane
@@ -394,7 +382,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // clickable and inert — the defect #1010 P4c had to repair once already.
   // Memoized per mini: the control asks once per preset per render, and a real
   // parse per ask is a per-gesture cost charged at a per-frame rate.
-  const canDrawView = useViewProver(chunk?.miniString, parseStepGrid)
+  const canDrawView = useViewProver(chunk?.miniString, stepGridCodec.parse)
 
   // Grid resolution (#479, #1057): a target in the free zone changes only how
   // finely we DRAW — the document is left byte-identical. Everything else keeps
@@ -402,18 +390,15 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // hits onto the new grid, with a no-op target returning the same model so
   // `useGridModel` skips the write.
   //
-  // The verdict comes from `stepSlotState` — the SAME call that renders the
+  // The verdict comes from `slotPress`, which asks `stepSlotState` — the SAME call that renders the
   // button — so a target cannot be drawn as a view change and then written, or
   // shown as a write and then silently absorbed. One authority, asked twice.
   const scaleToSlots = React.useCallback(
     (target: number): void => {
       if (!model) return
-      if (stepSlotState(model, target, canDrawView) === 'view') {
-        const scale = freeZoneScale(documentSteps(model), target)
-        if (scale !== null) setViewScale(scale)
-        return
-      }
-      mutate((prev) => quantizeStepGridTo(prev, target))
+      const press = slotPress(stepGridCodec, model, target, canDrawView)
+      if (press.kind === 'view') setViewScale(press.scale)
+      else if (press.kind === 'write') mutate((prev) => stepGridCodec.quantizeTo(prev, target))
     },
     [model, canDrawView, mutate],
   )
@@ -422,17 +407,14 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // grid's resolution state to it instead of rendering it in the grid header.
   useLiftResolution(
     model?.steps ?? null,
-    (t) => (model ? stepSlotState(model, t, canDrawView) : 'disabled'),
+    (t) => (model ? stepGridCodec.slotState(model, t, canDrawView) : 'disabled'),
     scaleToSlots,
     onResolution,
     // #1061 — what the press would COST, asked of the very op `scaleToSlots` runs, so
     // the sentence in the tooltip and the write the user gets are the same computation.
     // A free-zone target never reaches the op, and reports nothing, which is correct:
     // looking closer costs nothing.
-    (t) =>
-      model && stepSlotState(model, t, canDrawView) !== 'view'
-        ? stepResolutionEffect(model, t)
-        : { lengthened: 0, snapped: 0, merged: 0 },
+    (t) => (model ? slotPressCost(stepGridCodec, model, t, canDrawView) : { lengthened: 0, snapped: 0, merged: 0 }),
   )
 
   React.useEffect(() => {
