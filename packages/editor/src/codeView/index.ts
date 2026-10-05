@@ -199,6 +199,16 @@ export { planVizAssignment } from './assign/vizAssign'
 export { assignmentEdit } from './assign/soundAssign'
 export { captionEdit, shapeEdit, shapeOptions, rateEditable } from './automation/captionEdit'
 export { gridWriteEdits, readChunkGain, gainUnchanged } from './notation/gainEdit'
+export {
+  stepGridCodec,
+  pianoRollCodec,
+  gainWritable,
+  slotPress,
+  slotPressCost,
+  reconcileGrid,
+  gridWritePlan,
+} from './notation/gridCodec'
+export type { NotationCodec, ResolutionOps, GridCodec, SlotPress } from './notation/gridCodec'
 export type { CaptionFieldKind } from './automation/captionEdit'
 export {
   merge,

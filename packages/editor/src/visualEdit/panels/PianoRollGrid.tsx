@@ -18,8 +18,7 @@
  */
 import * as React from 'react'
 
-import { parsePianoRoll, applyRollGain } from '../../codeView'
-import { serializePianoRoll, serializeRollGain } from '../../codeView'
+import { pianoRollCodec, gainWritable as gainWritableOn, slotPress, slotPressCost } from '../../codeView'
 import type { PianoRollModel, RollNote, ColumnOverlap } from '../../codeView'
 import { drawnLayout } from '../../codeView'
 import {
@@ -50,14 +49,7 @@ import {
 import { useNoteColorMode, velocityColor } from './noteColor'
 import { useLiftResolution, useViewProver, type ResolutionControlProps } from './ResolutionControl'
 import { PatternTrackChip } from './PatternTrackChip'
-import {
-  rollSlotState,
-  quantizePianoRollTo,
-  rollResolutionEffect,
-  freeZoneScale,
-  collapsePianoRollToDocument,
-} from '../../codeView'
-import { UNREFINED, documentSteps, type ViewScale } from '../../codeView'
+import { UNREFINED, type ViewScale } from '../../codeView'
 import { type SelectedNote, gainAtStart, setGroupGain } from './inspector'
 import { type Division, DEFAULT_DIVISION, stepsPerBar, snapInterval, snapColumn } from './division'
 import { setNoteClip, getNoteClip } from './clipboard'
@@ -355,18 +347,14 @@ export function PianoRollGrid({
    */
   const [declinedCell, setDeclinedCell] = React.useState<string | null>(null)
   const { chunk, model, read, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel<PianoRollModel>({
+    ...pianoRollCodec,
     source: 'roll',
     eligible: opensPianoRoll,
-    parse: parsePianoRoll,
-    serialize: serializePianoRoll,
-    applyGain: applyRollGain,
-    serializeGain: serializeRollGain,
     viewScale,
     onViewScaleConsumed: () => setViewScale(UNREFINED),
-    collapseToDocument: collapsePianoRollToDocument,
   })
   // The `+` past the last column: add a bar that continues the pattern, or drag in empty bars (#1824).
-  const length = usePatternLength(chunk, model, parsePianoRoll, writeMini)
+  const length = usePatternLength(chunk, model, pianoRollCodec.parse, writeMini)
 
   // A refinement belongs to the pattern it was made on — see `SequencerGrid` for
   // why carrying it across a cursor move could send an editable pattern to standby.
@@ -557,7 +545,7 @@ export function PianoRollGrid({
    * edit does not move, so the two answers never differ (0 of 2950 corpus columns).
    */
   const gainWritable = React.useMemo(
-    () => (model ? serializeRollGain(model).kind !== 'skip' : false),
+    () => (model ? gainWritableOn(pianoRollCodec, model) : false),
     [model],
   )
 
@@ -1003,7 +991,7 @@ export function PianoRollGrid({
   // PROVE, DON'T PREDICT — ask `parsePianoRoll` whether it really draws this
   // pattern at `scale`, never infer it from the arithmetic (#1117 refuses four).
   // Memoized per mini; the roll's parse is the dearer of the two (1.74ms/ask).
-  const canDrawView = useViewProver(chunk?.miniString, parsePianoRoll)
+  const canDrawView = useViewProver(chunk?.miniString, pianoRollCodec.parse)
 
   // Grid resolution (#479, #1057): a free-zone target changes only how finely we
   // DRAW and leaves the document byte-identical. Everything else is unchanged —
@@ -1013,12 +1001,9 @@ export function PianoRollGrid({
   // renders the button, so the control and the click cannot disagree.
   const scaleToSlots = (target: number): void => {
     if (!model) return
-    if (rollSlotState(model, target, canDrawView) === 'view') {
-      const scale = freeZoneScale(documentSteps(model), target)
-      if (scale !== null) setViewScale(scale)
-      return
-    }
-    mutate((prev) => quantizePianoRollTo(prev, target))
+    const press = slotPress(pianoRollCodec, model, target, canDrawView)
+    if (press.kind === 'view') setViewScale(press.scale)
+    else if (press.kind === 'write') mutate((prev) => pianoRollCodec.quantizeTo(prev, target))
   }
 
   // The "Slots" control now lives in the Pattern inspector (#601) — lift this
@@ -1027,15 +1012,12 @@ export function PianoRollGrid({
   // ref-backed so the lift stays loop-free.)
   useLiftResolution(
     model?.steps ?? null,
-    (t) => (model ? rollSlotState(model, t, canDrawView) : 'disabled'),
+    (t) => (model ? pianoRollCodec.slotState(model, t, canDrawView) : 'disabled'),
     scaleToSlots,
     onResolution,
     // #1933 — what the press would cost, asked of the op `scaleToSlots` runs. A
     // free-zone target never reaches the op, so it reports nothing.
-    (t) =>
-      model && rollSlotState(model, t, canDrawView) !== 'view'
-        ? rollResolutionEffect(model, t)
-        : { lengthened: 0, snapped: 0, merged: 0 },
+    (t) => (model ? slotPressCost(pianoRollCodec, model, t, canDrawView) : { lengthened: 0, snapped: 0, merged: 0 }),
   )
 
   // Rows top to bottom (high pitch first) — the render draws exactly these.
