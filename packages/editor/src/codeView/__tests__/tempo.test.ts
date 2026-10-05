@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { writtenCps, writtenBpm } from '../tempo'
+import { TEMPO_SETTERS } from '../ir/statementHeads'
 
 describe('writtenCps — what the code sets (#1925)', () => {
   it('reads the whole setter family, cpm as per minute', () => {
@@ -13,6 +14,14 @@ describe('writtenCps — what the code sets (#1925)', () => {
     expect(writtenCps('setCps(0.5)')).toBe(0.5)
     expect(writtenCps('setcpm(30)\n$: s("bd")')).toBe(0.5) // the scheduler ran this at 0.50
     expect(writtenCps('setCpm(120/4)')).toBe(0.5)
+  })
+
+  it('reads every name on the shared setter list, and nothing else (#1927)', () => {
+    // blockScan ends a block on the same list; a name this reader lacked would be a
+    // block boundary with no tempo, and the play bar would show nothing for it.
+    for (const name of TEMPO_SETTERS) expect(writtenCps(`${name}(30)`), name).not.toBeNull()
+    expect(writtenCps('setcpsfoo(30)')).toBeNull()
+    expect(writtenCps('setbpm(120)')).toBeNull() // on the non-track list, but not a grounded setter
   })
 
   it('reads literal arithmetic, the way tempos are written', () => {

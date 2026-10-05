@@ -104,6 +104,17 @@
  */
 
 /**
+ * Strudel's tempo setters: one setter under four names (`repl.mjs` defines `setCps`
+ * and `setCpm` and exports each with a lowercase alias; see the table above).
+ *
+ * Read by `tempo.ts` (what a setter's argument means) and by
+ * `visualizers/blockScan.ts` (a setter line ends the block above it). The scanner is
+ * in the engine's import graph, which is one more reason this file imports nothing
+ * (#1927).
+ */
+export const TEMPO_SETTERS = ['setcps', 'setCps', 'setcpm', 'setCpm'] as const
+
+/**
  * Head names whose top-level statement configures or loads rather than plays.
  *
  * Read by BOTH sides of the track population — `parseStrudel` via
@@ -115,10 +126,7 @@
 export const NON_TRACK_HEADS: ReadonlySet<string> = new Set([
   'all',
   'samples',
-  'setcps',
-  'setCps',
-  'setcpm',
-  'setCpm',
+  ...TEMPO_SETTERS,
   'setbpm',
   'setBpm',
   'hush',

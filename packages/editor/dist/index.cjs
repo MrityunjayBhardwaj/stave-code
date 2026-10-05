@@ -4486,13 +4486,11 @@ function isMutedLabel(label) {
 __name(isMutedLabel, "isMutedLabel");
 
 // src/codeView/ir/statementHeads.ts
+var TEMPO_SETTERS = ["setcps", "setCps", "setcpm", "setCpm"];
 var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
   "all",
   "samples",
-  "setcps",
-  "setCps",
-  "setcpm",
-  "setCpm",
+  ...TEMPO_SETTERS,
   "setbpm",
   "setBpm",
   "hush",
@@ -14610,9 +14608,11 @@ function createLiveTriggerDrain() {
 __name(createLiveTriggerDrain, "createLiveTriggerDrain");
 
 // src/visualizers/blockScan.ts
+var TEMPO_SETTER_HEAD = new RegExp(`^(?:${TEMPO_SETTERS.join("|")})\\s*\\(`);
 function startsTopLevelBlock(trimmed) {
   return /^_?\$_?:/.test(trimmed) || // `$:`, `_$:`, and `$_:` — Strudel mutes `x_` too (#1679)
-  trimmed.startsWith("setcps") || /^all\s*\(/.test(trimmed) || trimmed.startsWith("/*");
+  TEMPO_SETTER_HEAD.test(trimmed) || // all four names Strudel gives the setter (#1927)
+  /^all\s*\(/.test(trimmed) || trimmed.startsWith("/*");
 }
 __name(startsTopLevelBlock, "startsTopLevelBlock");
 function startsNamedTrack(rawLine) {
