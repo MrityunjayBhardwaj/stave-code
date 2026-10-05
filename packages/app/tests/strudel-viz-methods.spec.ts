@@ -242,9 +242,9 @@ test('preset p5 viz draws on a TRANSPARENT surface — a backdrop shows through 
 })
 
 test('pitchwheel tracks pitch (reactive) — note-name haps decode, not freeze on c4 (#216)', async ({ page }) => {
-  // Haps carry note as a NAME string with freq=null; pitchwheel must parse the
-  // name (hapFreq) or the active-note indicator stays pinned to the root every
-  // frame. Reactive ⇒ the bright-blue indicator centroid x must vary over time.
+  // Haps carry note as a NAME string with freq=null (freq is only a written
+  // `.freq()`); pitchwheel must take the pitch from `h.midi` (#1929) or the
+  // active-note indicator stays pinned to the root every frame. Reactive ⇒ the bright-blue indicator centroid x must vary over time.
   await setCode(page, `setcps(0.7)\n$: note("c4 e4 g4 b4 c5 e5 g5 b5").s("sawtooth").viz("pitchwheel")`)
   await runCode(page)
   const canvas = page.locator('[data-viz-zone-track] canvas').first()
