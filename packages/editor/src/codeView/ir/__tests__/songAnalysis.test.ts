@@ -37,6 +37,9 @@ describe('laneKeyOf', () => {
     expect(laneKeyOf({ ...ev(0, 'bd'), trackId: undefined })).toBe('bd')
     expect(laneKeyOf({ ...ev(0, 'bd'), trackId: undefined, s: null })).toBe('$default')
   })
+  it('treats an empty-string trackId as present (?? only falls through on null/undefined)', () => {
+    expect(laneKeyOf({ ...ev(0, 'bd'), trackId: '' })).toBe('')
+  })
 })
 
 describe('accumulateLanes', () => {

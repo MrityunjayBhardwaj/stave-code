@@ -72,9 +72,9 @@ import {
   setMusicalTimelineSubRowHeight,
   MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MIN,
   MUSICAL_TIMELINE_SUB_ROW_HEIGHT_MAX,
+  trackIdentity,
 } from '@stave/editor'
 import { SongTimelineLiveOverlay } from './SongTimelineLiveOverlay'
-import { paletteForTrack, trackIndexOf } from './musicalTimeline/colors'
 import { rowHeightForEdge } from './musicalTimeline/rowEdgeResize'
 import { attachEnvelopes, buildTimelineScene, clipAtCycle, envelopeNotices, envelopeTrackIds, markAudioLanes, markBarsLanes, sampleKey, type SceneActivity } from './musicalTimeline/timelineScene'
 import {
@@ -3372,7 +3372,7 @@ export function FullSongTimeline(props: FullSongTimelineProps): React.ReactEleme
               // the lane has no scene entry (defensive — should always match).
               const lane = laneByKey.get(box.laneKey)
               const displayName = lane?.displayName ?? box.laneKey
-              const dotColor = lane?.color ?? paletteForTrack(trackIndexOf(box.laneKey), box.laneKey)
+              const dotColor = lane?.color ?? trackIdentity(box.laneKey).color
               const headerName = subRows ? `${displayName} · ${subRows[0].label}` : displayName
               // Inline rename (#580, Phase C): renameable when a write handler is
               // wired AND the lane has a statement anchor. The seed is the current
