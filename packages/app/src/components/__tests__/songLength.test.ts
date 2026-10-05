@@ -17,7 +17,7 @@
 import { describe, it, expect } from 'vitest'
 import { IR, type PatternIR } from '../../../../editor/src/codeView/ir/PatternIR'
 import { songExtent } from '../../../../editor/src/codeView/ir/songExtent'
-import { analyzeSong, signalDimensionsOf, songEnd, songEndOf } from '../../../../editor/src/codeView/ir/songAnalysis'
+import { analyzeSong, songEnd, songEndOf } from '../../../../editor/src/codeView/ir/songAnalysis'
 import { parseStrudel } from '../../../../editor/src/codeView/ir/parseStrudel'
 import type { IREvent } from '../../../../editor/src/codeView/ir/IREvent'
 import {
@@ -57,7 +57,6 @@ function ev(begin: number, s: string): IREvent {
 function depsWith(onsets: IREvent[]): SongLengthDeps {
   return {
     analyzeSong,
-    signalDimensionsOf,
     createCollector: () => ({
       collectFn: (startCycle, endCycle) =>
         onsets.filter((e) => e.begin >= startCycle && e.begin < endCycle),
@@ -99,7 +98,6 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // Deps whose analyzeSong would throw if reached — the arrangement branch
     // must not depend on anything having been evaluated or heard.
     const deps: SongLengthDeps = {
-      signalDimensionsOf,
       analyzeSong: () => {
         throw new Error('analyzeSong must not be reached for an arrangement')
       },
@@ -119,7 +117,6 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     // been evaluated, which is the property the arm above pins.
     const end = songEndOf('arrange([2,s("bd*2")],[2,s("hh*4")]).gain("<.2 .5 .9>")')
     const deps: SongLengthDeps = {
-      signalDimensionsOf,
       analyzeSong: () => {
         throw new Error('analyzeSong must not be reached for an arrangement')
       },
@@ -237,6 +234,24 @@ describe('measureSongLength — the three answers a bounce can act on', () => {
     expect(await measureSongLength(both(bd), deps)).toEqual({
       kind: 'unknown',
       why: 'no-period',
+    })
+  })
+})
+
+describe('the source says which controls are modulated (#1465)', () => {
+  // `signalDimensionsOf` used to be handed in, required, so a caller could not drop
+  // it; it is imported now (#1943), so this arm is what notices if the call goes.
+  // The issue's own example: one lane, the same every cycle, under a 4-cycle gain
+  // LFO. The swept gain makes every cycle's fingerprint differ, so without the
+  // source's word the song reads as aperiodic.
+  it('a loop under a swept control is offered the period its audio repeats at', async () => {
+    const ir = parseStrudel('$: s("bd").gain(sine.slow(4).range(0.05, 1))')
+    // Past the analysis cap: the source's word only applies once the horizon has
+    // stopped growing (a null below the cap is what buys the next doubling).
+    const onsets = repeating(300).map((e, i) => ({ ...e, gain: 0.1 + i / 1000 }))
+    expect(await measureSongLength({ end: null, analysis: ir }, depsWith(onsets))).toEqual({
+      kind: 'loop',
+      periodCycles: 4,
     })
   })
 })

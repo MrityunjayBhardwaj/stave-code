@@ -32,24 +32,23 @@
  * continuously modulated control — which is the defect this file's own dialog
  * was filed for.
  *
- * ── WHY THE EDITOR FUNCTIONS ARE INJECTED RATHER THAN IMPORTED ───────────────
- * Until #1938, importing the `@stave/editor` BARREL into an app module broke
- * that module's vitest run: p5 imports `gifenc`, a CJS module the ESM loader
- * cannot import as named exports. Production was unaffected (Next interops it),
- * so the failure appeared only under test — a probe importing `analyzeSong` from
- * the barrel failed with exactly `Named export 'GIFEncoder' not found`.
- * `createSongCollector` is injected for the same reason: it is app-local but
- * reaches the barrel through `timelineMarks`. The app's test config now inlines
- * p5, so the injection is no longer forced; #1943 retires it. Type-only imports
- * below are erased at runtime and are safe.
+ * ── WHY TWO EDITOR FUNCTIONS ARE STILL HANDED IN ──────────────────────────────
+ * Until #1938 the app's tests could not load the `@stave/editor` main entry, so
+ * every editor function this file used was injected. #1943 imports what the tests
+ * never replace (`signalDimensionsOf`) and keeps a seam only where a test hands in
+ * its own:
+ *   - `createCollector` — the tests feed fixed onsets through it; production passes
+ *     the timeline's shared factory, so a second collector cannot drift from it.
+ *   - `analyzeSong` — two arms pass one that THROWS, to prove an arrangement is
+ *     answered from its end without reaching the analysis at all.
  */
+import { signalDimensionsOf } from '@stave/editor'
 import type {
   PatternIR,
   IREvent,
   SongAnalysis,
   SongExtent,
   AnalyzeSongOptions,
-  SignalDimensions,
 } from '@stave/editor'
 
 /** What the document says about its own length. Never a bare number. */
@@ -135,11 +134,6 @@ export interface SongLengthDeps {
     opts: AnalyzeSongOptions,
   ) => Promise<SongAnalysis>
   readonly createCollector: (ir: PatternIR) => SongCollectorParts
-  /** #1465 — the source-informed facts the period rule needs. Injected for the
-   *  same barrel reason as the rest, and REQUIRED rather than optional: omitting
-   *  it is silently the old behaviour, and a bounce dialog quietly back to
-   *  "pick a length" is precisely the defect the issue was filed against. */
-  readonly signalDimensionsOf: (ir: PatternIR | null) => SignalDimensions
 }
 
 /**
@@ -200,7 +194,7 @@ export async function measureSongLength(
       hasUnheardTrack,
       // #1465 — this is the dialog the issue was filed against: automating a
       // control with a continuous signal dropped the document to "pick a length".
-      signals: deps.signalDimensionsOf(sources.analysis),
+      signals: signalDimensionsOf(sources.analysis),
     })
   } catch {
     return { kind: 'unknown', why: 'no-period' }
