@@ -12459,7 +12459,7 @@ function reconcileGrid(codec, mini, chunkGain, viewScale, prev, prevScale) {
   const fresh = codec.applyGain ? codec.applyGain(parsed.model, chunkGain) : parsed.model;
   const asWritten = prev == null ? null : codec.collapseToDocument?.(prev) ?? prev;
   const sameMini = asWritten != null && codec.serialize(asWritten) === mini;
-  const sameGain = prev == null || !codec.serializeGain ? true : gainUnchanged(codec.serializeGain(prev), chunkGain);
+  const sameGain = asWritten == null || !codec.serializeGain ? true : gainUnchanged(codec.serializeGain(asWritten), chunkGain);
   const sameScale = prevScale === viewScale;
   return { read: parsed.model, model: prev && sameMini && sameGain && sameScale ? prev : fresh };
 }
