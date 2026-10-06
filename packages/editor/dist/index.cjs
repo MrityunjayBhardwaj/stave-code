@@ -11622,7 +11622,6 @@ function quantizeStepGridToWithEffect(model, target) {
       if (b !== c * target / from) snapped++;
       const exact = addingSlots ? cell.duration : cell.duration * (target / from);
       const scaled2 = addingSlots ? exact : Math.max(COARSEN_FLOOR, exact);
-      if (scaled2 !== exact) lengthened++;
       const prev = cells[b];
       if (isCellOn(prev)) merged++;
       else keptExact[b] = exact;
@@ -11631,7 +11630,9 @@ function quantizeStepGridToWithEffect(model, target) {
     const clamped = clampLane(cells, target);
     clamped.forEach((cell, b) => {
       const exact = keptExact[b];
-      if (isCellOn(cell) && exact !== void 0 && exact - cell.duration > EFFECT_EPS) shortened++;
+      if (!isCellOn(cell) || exact === void 0) return;
+      if (cell.duration - exact > EFFECT_EPS) lengthened++;
+      if (exact - cell.duration > EFFECT_EPS) shortened++;
     });
     return { ...lane, cells: clamped };
   });

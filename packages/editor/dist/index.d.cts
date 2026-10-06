@@ -3103,15 +3103,17 @@ declare function resizeRoll(model: PianoRollModel, nextSteps: number, mode: Resi
  * longer existed, and widening a single verdict until the arithmetic comes out buries
  * the very distinction the user needs.
  *
- * Every field is counted inside the loop that causes it, so a caller cannot describe a
- * write the op did not make. A DECLINED op reports `NO_RESOLUTION_EFFECT` — nothing happened, so
+ * Every field is counted inside the op, at the step that decides it — the two length
+ * counts after the merge and the clamp, on the note that is written — so a caller cannot
+ * describe a write the op did not make. A DECLINED op reports `NO_RESOLUTION_EFFECT` — nothing happened, so
  * nothing is claimed.
  */
 interface GridResolutionEffect {
     /**
      * notes held at one column because scaling would have put them BELOW one, and the
      * grid has no spelling for half a column. These sound LONGER than they did — the
-     * length grows to the coarsest thing the new grid can say (#1061).
+     * length grows to the coarsest thing the new grid can say (#1061). Counted on the note
+     * a column KEEPS, like `shortened`: a floored note that merged away is `merged` (#1968).
      */
     lengthened: number;
     /** notes whose onset moved off its exact proportional position — i.e. timing changed */
