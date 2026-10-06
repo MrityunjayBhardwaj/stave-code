@@ -22,6 +22,9 @@
 // ── read ── the finished models a view draws, and the facts read off the code
 export { readChainMethod, playingCall, readNumberCall, stringLiteralBody } from './chainMethod'
 export { writtenCps, writtenBpm } from './tempo'
+// The four names Strudel registers one tempo setter under — the block scanner and the
+// editor's tokenizer read this one list (#1927, #1954).
+export { TEMPO_SETTERS } from './ir/statementHeads'
 export {
   detectAllChunks,
   detectChunk,
