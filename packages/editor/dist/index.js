@@ -128,6 +128,24 @@ function writtenBpm(doc) {
 }
 __name(writtenBpm, "writtenBpm");
 
+// src/codeView/ir/statementHeads.ts
+var TEMPO_SETTERS = ["setcps", "setCps", "setcpm", "setCpm"];
+var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
+  "all",
+  "samples",
+  ...TEMPO_SETTERS,
+  "setbpm",
+  "setBpm",
+  "hush",
+  "useRNG",
+  "setVoicingRange",
+  "initAudio",
+  "aliasBank"
+]);
+var NON_TRACK_HEAD_RE = new RegExp(
+  `^[ \\t]*(?:${[...NON_TRACK_HEADS].sort((a, b) => b.length - a.length).join("|")})\\s*\\(`
+);
+
 // src/codeView/miniSource/spanRole.ts
 var NOTE_OVERRIDE = /* @__PURE__ */ new Set(["note", "n"]);
 function walk(node, parent, ctx) {
@@ -4458,24 +4476,6 @@ function isMutedLabel(label) {
   return prefix || suffix;
 }
 __name(isMutedLabel, "isMutedLabel");
-
-// src/codeView/ir/statementHeads.ts
-var TEMPO_SETTERS = ["setcps", "setCps", "setcpm", "setCpm"];
-var NON_TRACK_HEADS = /* @__PURE__ */ new Set([
-  "all",
-  "samples",
-  ...TEMPO_SETTERS,
-  "setbpm",
-  "setBpm",
-  "hush",
-  "useRNG",
-  "setVoicingRange",
-  "initAudio",
-  "aliasBank"
-]);
-var NON_TRACK_HEAD_RE = new RegExp(
-  `^[ \\t]*(?:${[...NON_TRACK_HEADS].sort((a, b) => b.length - a.length).join("|")})\\s*\\(`
-);
 function tagMeta(method, callSiteRange) {
   const [start, end] = callSiteRange;
   return {
@@ -12459,7 +12459,7 @@ function reconcileGrid(codec, mini, chunkGain, viewScale, prev, prevScale) {
   const fresh = codec.applyGain ? codec.applyGain(parsed.model, chunkGain) : parsed.model;
   const asWritten = prev == null ? null : codec.collapseToDocument?.(prev) ?? prev;
   const sameMini = asWritten != null && codec.serialize(asWritten) === mini;
-  const sameGain = prev == null || !codec.serializeGain ? true : gainUnchanged(codec.serializeGain(prev), chunkGain);
+  const sameGain = asWritten == null || !codec.serializeGain ? true : gainUnchanged(codec.serializeGain(asWritten), chunkGain);
   const sameScale = prevScale === viewScale;
   return { read: parsed.model, model: prev && sameMini && sameGain && sameScale ? prev : fresh };
 }
@@ -28314,6 +28314,7 @@ var JS_KEYWORDS = [
 ];
 
 // src/monaco/language.ts
+var TEMPO_SETTER_TOKEN = new RegExp(TEMPO_SETTERS.map((n) => `\\b${n}\\b`).join("|"));
 function registerSonicPiLanguage(monaco) {
   const langs = monaco.languages.getLanguages();
   if (langs.some((l) => l.id === "sonicpi")) return;
@@ -28458,8 +28459,8 @@ function registerStrudelLanguage(monaco) {
       root: [
         // $: pattern-start marker
         [/\$\s*:/, "strudel.pattern-start"],
-        // setcps / setCps tempo
-        [/\bsetcps\b|\bsetCps\b/, "strudel.tempo"],
+        // tempo: setcps / setCps / setcpm / setCpm, from the one list (#1954)
+        [TEMPO_SETTER_TOKEN, "strudel.tempo"],
         // Note names: c3, eb4, f#2, C#5
         [/\b[a-gA-G][b#]?\d\b/, "strudel.note"],
         // Comments — before the call/identifier rules so a `// gain(0.5)` line
