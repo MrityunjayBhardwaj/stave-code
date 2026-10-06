@@ -20,18 +20,9 @@ import { describe, it, expect, vi } from 'vitest'
 // Same barrel mock as the stack-arms harness next door: no IR events, so lane
 // structure comes from the REAL `structuralWalk` over the REAL IR rather than
 // from collect's events. That is the path that has to carry `armRanges`.
-vi.mock('@stave/editor', async () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   collectCycles: () => [],
-  structuralWalk: (await import('./structuralWalkTestStub')).structuralWalk,
-  wholeWalkWindow: (await import('./structuralWalkTestStub')).wholeWalkWindow,
-  sampleRefOf: (await import('./structuralWalkTestStub')).sampleRefOf,
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
-  // The section and track names are read by the REAL owner (#1938 moved the
-  // timeline's import of it onto the barrel this file mocks).
-  sectionNameAt: (await import('../../../../../editor/src/codeView/ir/trackId')).sectionNameAt,
-  labelAtOffset: (await import('../../../../../editor/src/codeView/ir/trackId')).labelAtOffset,
-  // #1943 — the lane colour is the editor's `trackIdentity` now (the app's copy retired).
-  trackIdentity: (await import('../../../../../editor/src/codeView/trackColor')).trackIdentity,
 }))
 
 import { collectNoteMarks } from '../timelineMarks'

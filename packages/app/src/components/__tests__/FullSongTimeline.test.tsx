@@ -20,11 +20,9 @@ import {
   __resetLoopStateForTests,
 } from '../../state/loopRange'
 
-// FullSongTimeline now pulls the editor runtime (collectCycles/laneKeyOf, via
-// timelineMarks) into its import graph; until #1938 the real module dragged in
-// a CJS dep (gifenc) that broke vitest's loader. These props never pass a real `ir`, so
-// the stubs are loaded but never called — the mini-note collection path is
-// covered by the Playwright spec against a real song.
+// The mock below is the REAL `@stave/editor` with only the collect events and the lane
+// structure swapped for fixtures (#1943). The mini-note collection path on a real song is
+// covered by the Playwright spec.
 // Trim-gesture fixture (#437): an `arrange` song with TWO bd arms — arm 0 over
 // cycles [0,2), arm 1 over [2,4). The events carry `armIndex` + `loc` so
 // collectNoteMarks builds real clips (armIndex ≥ 0 = trimmable). Returned only
@@ -56,73 +54,20 @@ const { TRIM_EVENTS, BARE_EVENTS, NESTED_EVENTS } = vi.hoisted(() => ({
     { begin: 2, end: 3, s: 'hh', trackId: 'song', armIndex: 1, loc: [{ start: 0, end: 58 }] },
   ],
 }))
-vi.mock('@stave/editor', async () => {
-  // #974 — the timeline derives lane STRUCTURE from `structuralWalk`, not collect events. Reduce
-  // the SAME fixture events the collect mock returns, through the REAL production reducer (from
-  // source, no gifenc), so structure + marks stay in sync and the stub can't drift (PV192).
-  // Only vi.hoisted values (the fixtures) are safe to reference here — the factory is hoisted
+vi.mock('@stave/editor', async (importOriginal) => {
+  // Everything is the REAL module except the fixtures below (#1943): the collect
+  // events, and the lane STRUCTURE (#974) reduced from those SAME events through
+  // the real reducer, so structure and marks stay in sync. Only vi.hoisted
+  // values (the fixtures) are safe to reference here — the factory is hoisted
   // above every top-level const, so `eventsForIr` lives inside it.
-  const { skeletonsFromEvents, wholeWalkWindow, sampleRefOf } = await import(
-    '../musicalTimeline/__tests__/structuralWalkTestStub'
-  )
-  // #1489 moved this reader into the editor, so the barrel mock has to carry it
-  // or the component gets `undefined` and every case here dies in a useMemo —
-  // the exact trap the `wholeWalkWindow` note below already describes. Real
-  // function, from source: it is a pure IR walk, so there is nothing to stub.
-  // #1464 — the caption's shape menu reads its options from `shapeAlternatives`.
-  // #1611 — and its cross-class options from `crossClassShapes`.
-  const { signalAutomations, signalTimeAt, shapeAlternatives, crossClassShapes } = await import('../../../../editor/src/codeView/ir/signalAutomation')
-  // #1886 — what a caption field WRITES is the editor's now; the caption's layout
-  // reads `rateEditable` from it too. Real, from source: pure functions of an automation.
-  const { captionEdit, shapeEdit, shapeOptions, rateEditable } = await import('../../../../editor/src/codeView/automation/captionEdit')
-  // #1463 Stage 2 — the same trap, twice more: the component now reads stepped
-  // automation and resolves each one's axis. Both real, from source (the knob
-  // table imports nothing but its own control list).
-  // Stage 3 adds the write: a press on a step commits through `stepTextEdit`
-  // (typed text → `stepValueEdit`, #1918).
-  // #1585 adds the read: each lane entry carries `stepIndexAtCycle`.
-  const { steppedAutomations, stepTextEdit, stepIndexAtCycle } = await import('../../../../editor/src/codeView/ir/steppedAutomation')
-  const { knobRangeFor, hasKnownKnobRange } = await import('../../../../editor/src/visualEdit/panels/knobRanges')
-  // #1601 — the lane's automate menu reads fixed values and writes them as steps.
-  const { fixedParameters, fixedToStepsEdit } = await import('../../../../editor/src/codeView/ir/fixedParameters')
-  // #1602 — the lane's step-count chip builds its options and its edit from these.
-  const { stepCountEdit } = await import('../../../../editor/src/codeView/ir/stepCount')
-  const { previewRepeat, songPeriodOf } = await import('../../../../editor/src/codeView/ir/songAnalysis')
-  // #1943 — the lane colour is the editor's `trackIdentity` now (the app's copy
-  // retired), so this mock carries it too. Real, from source: a pure palette lookup.
-  const { trackIdentity } = await import('../../../../editor/src/codeView/trackColor')
+  const { skeletonsFromEvents } = await import('../musicalTimeline/__tests__/structuralWalkTestStub')
   const eventsForIr = (ir: { bare?: boolean; nested?: boolean } | null) =>
     ir?.bare ? BARE_EVENTS : ir?.nested ? NESTED_EVENTS : ir ? TRIM_EVENTS : []
   return {
-    trackIdentity,
-    signalAutomations,
-    signalTimeAt,
-    shapeAlternatives,
-    crossClassShapes,
-    captionEdit,
-    shapeEdit,
-    shapeOptions,
-    rateEditable,
-    steppedAutomations,
-    stepTextEdit,
-    stepIndexAtCycle,
-    knobRangeFor,
-    hasKnownKnobRange,
-    fixedParameters,
-    fixedToStepsEdit,
-    stepCountEdit,
-    previewRepeat,
-    songPeriodOf,
+    ...(await importOriginal<typeof import('@stave/editor')>()),
     collectCycles: (ir: { bare?: boolean; nested?: boolean } | null) => eventsForIr(ir),
     structuralWalk: (ir: { bare?: boolean; nested?: boolean } | null, window: { originCycle: number; spanCycles: number }) =>
       skeletonsFromEvents(eventsForIr(ir), window),
-    // Production calls this (the bare-song probe). A barrel mock that omits it
-    // hands the component `undefined` — invisible to tsc, because a vi.mock
-    // factory is untyped.
-    wholeWalkWindow,
-    // #1764 — every mark names its file through the real one, from source.
-    sampleRefOf,
-    laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
     // #459 — Song view now reads the shared timeline row-height setting. Mock it
     // to 22 (the height these layout assertions were written for) + a no-op
     // subscribe, mirroring MusicalTimeline.test's mock.

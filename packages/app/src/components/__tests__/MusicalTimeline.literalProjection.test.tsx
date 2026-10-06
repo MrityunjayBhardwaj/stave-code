@@ -40,7 +40,8 @@ import { describe, it, expect, vi } from 'vitest'
 // MusicalTimeline.test.tsx — we mirror it here, exposing only the
 // minimal surface our test needs (no snapshot/event channels — we call
 // `__test_collectTrackBodies` directly on a hand-built IR).
-vi.mock('@stave/editor', () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   getActiveEditor: () => null,
   getActiveFileId: () => null,
   onActiveEditorChange: () => () => {},

@@ -31,7 +31,8 @@ import { describe, it, expect, vi } from 'vitest'
 // Mock @stave/editor BEFORE importing MusicalTimeline — until #1938 the
 // barrel's p5 → gifenc chain crashed vitest's module loader
 // (standalone-node env). Same pattern as MusicalTimeline.literalProjection.test.tsx.
-vi.mock('@stave/editor', () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   getActiveEditor: () => null,
   getActiveFileId: () => null,
   onActiveEditorChange: () => () => {},

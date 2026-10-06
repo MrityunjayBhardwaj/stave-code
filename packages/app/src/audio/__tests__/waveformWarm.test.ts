@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // here while the suite still runs green.
 const warmSamplePeaks = vi.fn<[readonly string[]], Promise<string[]>>()
 
-vi.mock('@stave/editor', () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   warmSamplePeaks: (names: readonly string[]) => warmSamplePeaks(names),
 }))
 
