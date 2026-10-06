@@ -13,7 +13,7 @@
  * commands (layering).
  */
 
-import { chordFromEvent, chordMatches } from "@stave/editor/chord";
+import { chordFromEvent, chordMatches } from "@stave/editor";
 import { executeCommand, listCommands, getCommand, type Command } from "./registry";
 
 const STORAGE_KEY = "stave:keybindings";

@@ -8,8 +8,8 @@
  * for every product file outside the area:
  *
  *   import — it imports something in `codeView/` other than the entry, `codeView/index.ts`
- *            (a package subpath such as `@stave/editor/trackId` counts: it is a bundle
- *            entry that points into the area)
+ *            (a package subpath counts when its bundle entry is built from a file in
+ *            the area — `package.json` `exports` is read for that)
  *   owner  — it imports krill, `@strudel/mini` or acorn (`engine/` is exempt: it runs Strudel)
  *   door   — it touches the write door: a member of `Writeback`, the class as a value,
  *            or `applyEdits` — or it writes the document behind the door's back, through
@@ -107,9 +107,12 @@ function walk(root: string, dir: string, out: string[]): void {
   }
 }
 
+/** where the editor's subpaths are declared; an overlay may replace it, like any file */
+export const EDITOR_PACKAGE_JSON = 'packages/editor/package.json'
+
 /** `@stave/editor/<subpath>` → the source file its bundle entry is built from */
-function subpathSources(root: string, known: Set<string>): Map<string, string> {
-  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'packages/editor/package.json'), 'utf8')) as {
+function subpathSources(read: (rel: string) => string, known: Set<string>): Map<string, string> {
+  const pkg = JSON.parse(read(EDITOR_PACKAGE_JSON)) as {
     name: string
     exports?: Record<string, { import?: string } | string>
   }
@@ -162,7 +165,7 @@ export function measureBoundary(opts: MeasureOptions = {}): Measurement {
   const subject = (rel: string): boolean =>
     isProductFile(rel) && !rel.startsWith(AREA) && (!opts.onlyOverlay || overlay.has(rel))
   const subjects = all.filter(subject).sort()
-  const subpaths = subpathSources(root, known)
+  const subpaths = subpathSources(read, known)
 
   const reaches: Reach[] = []
   const seen = new Set<string>()
