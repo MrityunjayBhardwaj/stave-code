@@ -35591,6 +35591,7 @@ var VISUAL_EDIT_TABS = [
     icon: "settings"
   }
 ];
+var keyOf = /* @__PURE__ */ __name((at, mini) => `${at}:${mini ?? ""}`, "keyOf");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const [model, setModel] = React22.useState(null);
@@ -35603,6 +35604,14 @@ function useGridModel(opts) {
   optsRef.current = opts;
   const viewScale = opts.viewScale ?? UNREFINED;
   const modelScaleRef = React22.useRef(UNREFINED);
+  const ownEchoRef = React22.useRef(null);
+  const patternKeyRef = React22.useRef(null);
+  const patternKey = React22.useMemo(() => {
+    if (!chunk) return patternKeyRef.current = null;
+    const key2 = keyOf(chunk.exprRange[0], chunk.miniString);
+    if (key2 !== ownEchoRef.current) patternKeyRef.current = key2;
+    return patternKeyRef.current;
+  }, [chunk]);
   React22.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
@@ -35640,6 +35649,7 @@ function useGridModel(opts) {
       setModel(plan.written);
       if (plan.spellsRefinement) o.onViewScaleConsumed?.();
       applyEdit((fresh, wb) => {
+        ownEchoRef.current = keyOf(fresh.exprRange[0], plan.mini);
         commit(wb, gridWriteEdits(fresh, plan.mini, plan.gain), o.source);
       });
     },
@@ -35664,7 +35674,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  return { model, read: read5, chunk, mutate, settle, writeMini, beginGesture, endGesture };
+  return { model, read: read5, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey };
 }
 __name(useGridModel, "useGridModel");
 
@@ -37509,7 +37519,7 @@ function reportRefusal(attempted) {
 __name(reportRefusal, "reportRefusal");
 function SequencerGrid({ onResolution } = {}) {
   const [viewScale, setViewScale] = React22.useState(UNREFINED);
-  const { chunk, model, read: read5, mutate, writeMini, beginGesture, endGesture } = useGridModel({
+  const { chunk, model, read: read5, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
     ...stepGridCodec,
     source: "seq",
     eligible: opensStepGrid,
@@ -37517,10 +37527,9 @@ function SequencerGrid({ onResolution } = {}) {
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, stepGridCodec.parse, writeMini);
-  const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
   React22.useEffect(() => {
     setViewScale(UNREFINED);
-  }, [chunkKey]);
+  }, [patternKey]);
   const playingStep = usePlayingStep(
     model?.steps ?? 0,
     model?.bars ?? 1,
@@ -38337,7 +38346,7 @@ function PianoRollGrid({
 } = {}) {
   const [viewScale, setViewScale] = React22.useState(UNREFINED);
   const [declinedCell, setDeclinedCell] = React22.useState(null);
-  const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel({
+  const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
     ...pianoRollCodec,
     source: "roll",
     eligible: opensPianoRoll,
@@ -38345,10 +38354,9 @@ function PianoRollGrid({
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, pianoRollCodec.parse, writeMini);
-  const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
   React22.useEffect(() => {
     setViewScale(UNREFINED);
-  }, [chunkKey]);
+  }, [patternKey]);
   const dragRef = React22.useRef(null);
   const velRef = React22.useRef(null);
   const playingStep = usePlayingStep(
