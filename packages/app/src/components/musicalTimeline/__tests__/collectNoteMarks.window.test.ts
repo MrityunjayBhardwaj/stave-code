@@ -21,12 +21,9 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@stave/editor', async () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   collectCycles: () => [],
-  structuralWalk: (await import('./structuralWalkTestStub')).structuralWalk,
-  wholeWalkWindow: (await import('./structuralWalkTestStub')).wholeWalkWindow,
-  sampleRefOf: (await import('./structuralWalkTestStub')).sampleRefOf,
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 
 import { collectNoteMarks } from '../timelineMarks'

@@ -24,7 +24,8 @@ const store = {
 
 let nextId = 0;
 
-vi.mock("@stave/editor", () => ({
+vi.mock("@stave/editor", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@stave/editor")>()),
   // The real predicate's rule, not a stub that answers yes: the arms below
   // throw a real-shaped error and must be told apart from any other failure.
   isQuotaError: (err: unknown) =>

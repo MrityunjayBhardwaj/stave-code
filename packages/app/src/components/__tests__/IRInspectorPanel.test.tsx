@@ -43,7 +43,8 @@ const mockListeners = new Set<(s: IRSnapshot | null) => void>();
 const revealLineInFileMock = vi.fn<[string, number], void>();
 const setCaptureCapacityMock = vi.fn<[number], void>();
 
-vi.mock("@stave/editor", () => ({
+vi.mock("@stave/editor", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@stave/editor")>()),
   getIRSnapshot: () => mockCurrent,
   subscribeIRSnapshot: (cb: (s: IRSnapshot | null) => void) => {
     mockListeners.add(cb);

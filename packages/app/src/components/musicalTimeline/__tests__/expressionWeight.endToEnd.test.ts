@@ -28,12 +28,9 @@ import { describe, it, expect, vi } from 'vitest'
 // Same barrel mock as the harnesses next door: no IR events, so lane structure
 // comes from the REAL `structuralWalk` over the REAL IR rather than from
 // collect's events. That is the path that carries `armIndex`.
-vi.mock('@stave/editor', async () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   collectCycles: () => [],
-  structuralWalk: (await import('./structuralWalkTestStub')).structuralWalk,
-  wholeWalkWindow: (await import('./structuralWalkTestStub')).wholeWalkWindow,
-  sampleRefOf: (await import('./structuralWalkTestStub')).sampleRefOf,
-  laneKeyOf: (ev: { trackId?: string; s?: string }) => ev?.trackId ?? ev?.s ?? '$default',
 }))
 
 import { collectNoteMarks } from '../timelineMarks'

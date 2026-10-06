@@ -27,7 +27,8 @@ const runs: Array<{ ir: unknown; signal: { aborted: boolean }; resolve: (a: unkn
 /** What the structural walk reports: an arrangement unless a test says bare. */
 let walkLanes: Lane[] = [{ armByCycle: [0] }]
 
-vi.mock('@stave/editor', () => ({
+vi.mock('@stave/editor', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@stave/editor')>()),
   analyzeSong: (ir: unknown, opts: { signal: { aborted: boolean } }) =>
     new Promise((resolve) => runs.push({ ir, signal: opts.signal, resolve })),
   getIRSnapshot: () => snapshots.current,
@@ -37,7 +38,6 @@ vi.mock('@stave/editor', () => ({
   },
   signalDimensionsOf: () => [],
   structuralWalk: () => walkLanes,
-  wholeWalkWindow: (n: number) => n,
 }))
 vi.mock('../../components/musicalTimeline/songCollector', () => ({
   createSongCollector: () => ({ collectFn: undefined, hasUnheardTrack: () => false }),
