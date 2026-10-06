@@ -25,6 +25,7 @@ import {
   rollSlotState,
   stepResolutionEffect,
   stepSlotState,
+  NO_RESOLUTION_EFFECT,
   type GridResolutionEffect,
   type SlotState,
 } from './resolution'
@@ -125,8 +126,6 @@ export function slotPress<M extends Scaled>(
   return scale === null ? { kind: 'none' } : { kind: 'view', scale }
 }
 
-const NO_COST: GridResolutionEffect = { lengthened: 0, snapped: 0, merged: 0 }
-
 /**
  * What the press would cost, for the control's copy. Asked of the op the press runs; a
  * free-zone target never reaches the op and costs nothing, because looking closer costs
@@ -138,7 +137,7 @@ export function slotPressCost<M extends Scaled>(
   target: number,
   canDrawView?: (scale: ViewScale) => boolean,
 ): GridResolutionEffect {
-  return ops.slotState(model, target, canDrawView) !== 'view' ? ops.resolutionEffect(model, target) : NO_COST
+  return ops.slotState(model, target, canDrawView) !== 'view' ? ops.resolutionEffect(model, target) : NO_RESOLUTION_EFFECT
 }
 
 /* ── keep-or-reseed, and the write plan (`useGridModel`'s two decisions) ───── */

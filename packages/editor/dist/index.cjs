@@ -11593,35 +11593,49 @@ function canScalePianoRollTo(model, target) {
 __name(canScalePianoRollTo, "canScalePianoRollTo");
 var clampInt = /* @__PURE__ */ __name((v, lo, hi) => Math.max(lo, Math.min(hi, v)), "clampInt");
 var bucket = /* @__PURE__ */ __name((c, from, to) => clampInt(Math.round(c * to / from), 0, to - 1), "bucket");
-var NO_EFFECT = { lengthened: 0, snapped: 0, merged: 0 };
+var NO_RESOLUTION_EFFECT = Object.freeze({
+  lengthened: 0,
+  snapped: 0,
+  merged: 0,
+  shortened: 0
+});
 var EFFECT_EPS = 1e-9;
 var COARSEN_FLOOR = 1;
 function quantizeStepGridToWithEffect(model, target) {
-  const unchanged = { model, effect: NO_EFFECT };
+  const unchanged = { model, effect: NO_RESOLUTION_EFFECT };
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return unchanged;
   if ((model.bars ?? 1) > 1) {
     const scaled2 = scaleStepGridTo(model, target);
-    return scaled2 === model ? unchanged : { model: scaled2, effect: NO_EFFECT };
+    return scaled2 === model ? unchanged : { model: scaled2, effect: NO_RESOLUTION_EFFECT };
   }
   const from = model.steps;
   const addingSlots = target > from;
   let lengthened = 0;
   let snapped = 0;
   let merged = 0;
+  let shortened = 0;
   const lanes = model.lanes.map((lane) => {
     const cells = Array(target).fill(false);
+    const keptExact = Array(target);
     lane.cells.forEach((cell, c) => {
       if (!isCellOn(cell)) return;
       const b = bucket(c, from, target);
       if (b !== c * target / from) snapped++;
       const exact = addingSlots ? cell.duration : cell.duration * (target / from);
       const scaled2 = addingSlots ? exact : Math.max(COARSEN_FLOOR, exact);
-      if (scaled2 !== exact) lengthened++;
       const prev = cells[b];
       if (isCellOn(prev)) merged++;
+      else keptExact[b] = exact;
       cells[b] = cellOn(isCellOn(prev) ? Math.min(prev.duration, scaled2) : scaled2);
     });
-    return { ...lane, cells: clampLane(cells, target) };
+    const clamped = clampLane(cells, target);
+    clamped.forEach((cell, b) => {
+      const exact = keptExact[b];
+      if (!isCellOn(cell) || exact === void 0) return;
+      if (cell.duration - exact > EFFECT_EPS) lengthened++;
+      if (exact - cell.duration > EFFECT_EPS) shortened++;
+    });
+    return { ...lane, cells: clamped };
   });
   let gains;
   if (model.gains) {
@@ -11641,7 +11655,7 @@ function quantizeStepGridToWithEffect(model, target) {
     lanes,
     ...gains ? { gains } : {}
   });
-  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged } };
+  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged, shortened } };
 }
 __name(quantizeStepGridToWithEffect, "quantizeStepGridToWithEffect");
 function quantizeStepGridTo(model, target) {
@@ -11653,17 +11667,18 @@ function stepResolutionEffect(model, target) {
 }
 __name(stepResolutionEffect, "stepResolutionEffect");
 function quantizePianoRollToWithEffect(model, target) {
-  const unchanged = { model, effect: NO_EFFECT };
+  const unchanged = { model, effect: NO_RESOLUTION_EFFECT };
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return unchanged;
   if ((model.bars ?? 1) > 1) {
     const next2 = quantizeMultiBarRoll(model, target);
-    return next2 === model ? unchanged : { model: next2, effect: NO_EFFECT };
+    return next2 === model ? unchanged : { model: next2, effect: NO_RESOLUTION_EFFECT };
   }
   const from = model.steps;
   const addingSlots = target > from;
   let snapped = 0;
   let merged = 0;
   let lengthened = 0;
+  let shortened = 0;
   const q = model.notes.map((n) => {
     const start = bucket(n.start, from, target);
     if (Math.abs(start - n.start * target / from) > EFFECT_EPS) snapped++;
@@ -11695,11 +11710,12 @@ function quantizePianoRollToWithEffect(model, target) {
     const gain = Math.max(...grp.map((m) => m.gain));
     for (const m of grp) {
       if (duration - m.exact > EFFECT_EPS) lengthened++;
+      if (m.exact - duration > EFFECT_EPS) shortened++;
       notes.push({ pitch: m.pitch, start, duration, gain });
     }
   });
   const next = ifRollSpellable(model, { ...model, steps: target, notes });
-  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged } };
+  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged, shortened } };
 }
 __name(quantizePianoRollToWithEffect, "quantizePianoRollToWithEffect");
 function quantizeMultiBarRoll(model, target) {
@@ -12475,9 +12491,8 @@ function slotPress(ops, model, target, canDrawView) {
   return scale === null ? { kind: "none" } : { kind: "view", scale };
 }
 __name(slotPress, "slotPress");
-var NO_COST = { lengthened: 0, snapped: 0, merged: 0 };
 function slotPressCost(ops, model, target, canDrawView) {
-  return ops.slotState(model, target, canDrawView) !== "view" ? ops.resolutionEffect(model, target) : NO_COST;
+  return ops.slotState(model, target, canDrawView) !== "view" ? ops.resolutionEffect(model, target) : NO_RESOLUTION_EFFECT;
 }
 __name(slotPressCost, "slotPressCost");
 function reconcileGrid(codec, mini, chunkGain, viewScale, prev, prevScale) {
@@ -35603,6 +35618,7 @@ var VISUAL_EDIT_TABS = [
     icon: "settings"
   }
 ];
+var keyOf = /* @__PURE__ */ __name((at, mini) => `${at}:${mini ?? ""}`, "keyOf");
 function useGridModel(opts) {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk();
   const [model, setModel] = React22__namespace.useState(null);
@@ -35615,6 +35631,14 @@ function useGridModel(opts) {
   optsRef.current = opts;
   const viewScale = opts.viewScale ?? UNREFINED;
   const modelScaleRef = React22__namespace.useRef(UNREFINED);
+  const ownEchoRef = React22__namespace.useRef(null);
+  const patternKeyRef = React22__namespace.useRef(null);
+  const patternKey = React22__namespace.useMemo(() => {
+    if (!chunk) return patternKeyRef.current = null;
+    const key2 = keyOf(chunk.exprRange[0], chunk.miniString);
+    if (key2 !== ownEchoRef.current) patternKeyRef.current = key2;
+    return patternKeyRef.current;
+  }, [chunk]);
   React22__namespace.useEffect(() => {
     const o = optsRef.current;
     if (!chunk || chunk.miniString === null || !o.eligible(chunk)) {
@@ -35652,6 +35676,7 @@ function useGridModel(opts) {
       setModel(plan.written);
       if (plan.spellsRefinement) o.onViewScaleConsumed?.();
       applyEdit((fresh, wb) => {
+        ownEchoRef.current = keyOf(fresh.exprRange[0], plan.mini);
         commit(wb, gridWriteEdits(fresh, plan.mini, plan.gain), o.source);
       });
     },
@@ -35676,7 +35701,7 @@ function useGridModel(opts) {
     },
     [applyEdit]
   );
-  return { model, read: read5, chunk, mutate, settle, writeMini, beginGesture, endGesture };
+  return { model, read: read5, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey };
 }
 __name(useGridModel, "useGridModel");
 
@@ -35933,7 +35958,7 @@ function useLiftResolution(steps, slotState2, onScaleTo, onResolution, effect) {
   const stableScaleTo = React22__namespace.useCallback((t) => onScaleToRef.current(t), []);
   const hasEffect = effect !== void 0;
   const stableEffect = React22__namespace.useCallback(
-    (t) => effectRef.current?.(t) ?? { lengthened: 0, snapped: 0, merged: 0 },
+    (t) => effectRef.current?.(t) ?? NO_RESOLUTION_EFFECT,
     []
   );
   React22__namespace.useEffect(() => {
@@ -35989,15 +36014,24 @@ function describeTarget(target, state5, effect) {
     case "lossless":
     case "quantize": {
       const keepsTiming = state5 === "lossless" || effect !== void 0 && effect.snapped === 0 && effect.merged === 0;
-      const n = effect?.lengthened ?? 0;
-      const longer = n > 0 ? `, and makes ${n} note${n === 1 ? "" : "s"} longer` : "";
-      return keepsTiming ? `${target} slots \u2014 rewrites your file, keeps timing${longer}` : `${target} slots \u2014 rewrites your file and snaps notes to the grid (changes timing)${longer}`;
+      const lengths = lengthChange(effect);
+      return keepsTiming ? `${target} slots \u2014 rewrites your file, keeps timing${lengths}` : `${target} slots \u2014 rewrites your file and snaps notes to the grid (changes timing)${lengths}`;
     }
     default:
       return `${target} slots \u2014 unavailable`;
   }
 }
 __name(describeTarget, "describeTarget");
+function lengthChange(effect) {
+  const notes = /* @__PURE__ */ __name((n) => `${n} note${n === 1 ? "" : "s"}`, "notes");
+  const longer = effect?.lengthened ?? 0;
+  const shorter = effect?.shortened ?? 0;
+  if (longer > 0 && shorter > 0) return `, and makes ${notes(longer)} longer and ${notes(shorter)} shorter`;
+  if (longer > 0) return `, and makes ${notes(longer)} longer`;
+  if (shorter > 0) return `, and makes ${notes(shorter)} shorter`;
+  return "";
+}
+__name(lengthChange, "lengthChange");
 function targetStyle(state5) {
   const active2 = state5 === "active";
   return {
@@ -36052,6 +36086,7 @@ function ResolutionControl({
         "aria-label": dir === "halve" ? "halve slots" : "double slots",
         title: target === null ? `\xF72 \u2014 unavailable on an odd slot count (${steps})` : describeTarget(target, state5, eff),
         "data-resolution-lengthens": (eff?.lengthened ?? 0) > 0 ? "true" : void 0,
+        "data-resolution-shortens": (eff?.shortened ?? 0) > 0 ? "true" : void 0,
         disabled: !pressable(state5),
         onClick: () => {
           if (target !== null && pressable(state5)) onScaleTo(target);
@@ -36161,6 +36196,7 @@ function ResolutionControl({
                   "data-resolution-writes": writes(state5) ? "true" : void 0,
                   "data-resolution-view": state5 === "view" ? "true" : void 0,
                   "data-resolution-lengthens": (eff?.lengthened ?? 0) > 0 ? "true" : void 0,
+                  "data-resolution-shortens": (eff?.shortened ?? 0) > 0 ? "true" : void 0,
                   "aria-selected": state5 === "active",
                   "aria-label": `${preset} slots`,
                   title: describeTarget(preset, state5, eff),
@@ -37510,7 +37546,7 @@ function reportRefusal(attempted) {
 __name(reportRefusal, "reportRefusal");
 function SequencerGrid({ onResolution } = {}) {
   const [viewScale, setViewScale] = React22__namespace.useState(UNREFINED);
-  const { chunk, model, read: read5, mutate, writeMini, beginGesture, endGesture } = useGridModel({
+  const { chunk, model, read: read5, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
     ...stepGridCodec,
     source: "seq",
     eligible: opensStepGrid,
@@ -37518,10 +37554,9 @@ function SequencerGrid({ onResolution } = {}) {
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, stepGridCodec.parse, writeMini);
-  const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
   React22__namespace.useEffect(() => {
     setViewScale(UNREFINED);
-  }, [chunkKey]);
+  }, [patternKey]);
   const playingStep = usePlayingStep(
     model?.steps ?? 0,
     model?.bars ?? 1,
@@ -37635,7 +37670,7 @@ function SequencerGrid({ onResolution } = {}) {
     // the sentence in the tooltip and the write the user gets are the same computation.
     // A free-zone target never reaches the op, and reports nothing, which is correct:
     // looking closer costs nothing.
-    (t) => model ? slotPressCost(stepGridCodec, model, t, canDrawView) : { lengthened: 0, snapped: 0, merged: 0 }
+    (t) => model ? slotPressCost(stepGridCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT
   );
   React22__namespace.useEffect(() => {
     const onMove = /* @__PURE__ */ __name((e) => {
@@ -38338,7 +38373,7 @@ function PianoRollGrid({
 } = {}) {
   const [viewScale, setViewScale] = React22__namespace.useState(UNREFINED);
   const [declinedCell, setDeclinedCell] = React22__namespace.useState(null);
-  const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel({
+  const { chunk, model, read: read5, mutate, settle, writeMini, beginGesture, endGesture, patternKey } = useGridModel({
     ...pianoRollCodec,
     source: "roll",
     eligible: opensPianoRoll,
@@ -38346,10 +38381,9 @@ function PianoRollGrid({
     onViewScaleConsumed: /* @__PURE__ */ __name(() => setViewScale(UNREFINED), "onViewScaleConsumed")
   });
   const length = usePatternLength(chunk, model, pianoRollCodec.parse, writeMini);
-  const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ""}` : null;
   React22__namespace.useEffect(() => {
     setViewScale(UNREFINED);
-  }, [chunkKey]);
+  }, [patternKey]);
   const dragRef = React22__namespace.useRef(null);
   const velRef = React22__namespace.useRef(null);
   const playingStep = usePlayingStep(
@@ -38656,7 +38690,7 @@ function PianoRollGrid({
     onResolution,
     // #1933 — what the press would cost, asked of the op `scaleToSlots` runs. A
     // free-zone target never reaches the op, so it reports nothing.
-    (t) => model ? slotPressCost(pianoRollCodec, model, t, canDrawView) : { lengthened: 0, snapped: 0, merged: 0 }
+    (t) => model ? slotPressCost(pianoRollCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT
   );
   const rows = [];
   for (let m = range2.hi; m >= range2.lo; m--) rows.push(m);

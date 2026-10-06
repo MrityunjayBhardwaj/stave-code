@@ -26,7 +26,7 @@
  */
 import * as React from 'react'
 
-import { stepGridCodec, gainWritable, slotPress, slotPressCost } from '../../codeView'
+import { stepGridCodec, gainWritable, slotPress, slotPressCost, NO_RESOLUTION_EFFECT } from '../../codeView'
 import { columnCount, isCellOn, laneCoverage } from '../../codeView'
 import type { StepGridModel } from '../../codeView'
 import { drawnLayout } from '../../codeView'
@@ -114,7 +114,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // reaches the document until an actual edit is made, and the first write absorbs
   // it (`useGridModel` → `absorbViewScale`).
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { chunk, model, read, mutate, writeMini, beginGesture, endGesture } = useGridModel<StepGridModel>({
+  const { chunk, model, read, mutate, writeMini, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
     ...stepGridCodec,
     source: 'seq',
     eligible: opensStepGrid,
@@ -128,10 +128,10 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // moves keeps a leftover zoom from deciding whether the NEXT pattern opens at all —
   // four projections refuse a finer view (#1117), so a carried scale could send an
   // perfectly editable pattern to standby with nothing reporting why.
-  const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ''}` : null
+  // The panel's own writes do not count as a new pattern (#1964).
   React.useEffect(() => {
     setViewScale(UNREFINED)
-  }, [chunkKey])
+  }, [patternKey])
 
   // The grid's length is always a whole number of columns, so `columnCount` is `steps`
   // here; it is asked anyway so both panels bound the playhead by the same rule (#1087).
@@ -414,7 +414,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     // the sentence in the tooltip and the write the user gets are the same computation.
     // A free-zone target never reaches the op, and reports nothing, which is correct:
     // looking closer costs nothing.
-    (t) => (model ? slotPressCost(stepGridCodec, model, t, canDrawView) : { lengthened: 0, snapped: 0, merged: 0 }),
+    (t) => (model ? slotPressCost(stepGridCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT),
   )
 
   React.useEffect(() => {
@@ -534,8 +534,8 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   cursorRef.current = liveCursor
 
   // The cursor belongs to the pattern it was placed on, like the Piano Roll's
-  // selection (PatternPanel). Keyed on the STATEMENT, not `chunkKey` — that one
-  // changes on every edit, and a toggle must not throw the cursor away.
+  // selection (PatternPanel). Keyed on the STATEMENT, not `patternKey` — that one
+  // changes on any edit typed in the code, and that must not throw the cursor away.
   const stmtId = chunk ? chunk.statementRange[0] : null
   const stmtRef = React.useRef<number | null>(stmtId)
   React.useEffect(() => {

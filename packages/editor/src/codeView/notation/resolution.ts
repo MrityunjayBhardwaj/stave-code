@@ -263,31 +263,47 @@ const bucket = (c: number, from: number, to: number): number =>
  * reconstructed from its output (#1061).
  *
  * The control has to tell the user what a press costs BEFORE they make it, and a
- * coarsening can cost three different things independently. `SlotState` names the
+ * press can cost four different things independently (a roll's FINER press too: its
+ * snapped onsets can crowd a note, #1948). `SlotState` names the
  * MECHANISM (`lossless` / `quantize`); this names the CONSEQUENCES, which is what the
  * copy is actually about. Splitting them is deliberate: one control with one label
  * covering several effects is what left the last gate certifying a control that no
  * longer existed, and widening a single verdict until the arithmetic comes out buries
  * the very distinction the user needs.
  *
- * Every field is counted inside the loop that causes it, so a caller cannot describe a
- * write the op did not make. A DECLINED op reports `NO_EFFECT` — nothing happened, so
+ * Every field is counted inside the op, at the step that decides it — the two length
+ * counts after the merge and the clamp, on the note that is written — so a caller cannot
+ * describe a write the op did not make. A DECLINED op reports `NO_RESOLUTION_EFFECT` — nothing happened, so
  * nothing is claimed.
  */
 export interface GridResolutionEffect {
   /**
    * notes held at one column because scaling would have put them BELOW one, and the
    * grid has no spelling for half a column. These sound LONGER than they did — the
-   * length grows to the coarsest thing the new grid can say (#1061).
+   * length grows to the coarsest thing the new grid can say (#1061). Counted on the note
+   * a column KEEPS, like `shortened`: a floored note that merged away is `merged` (#1968).
    */
   lengthened: number
   /** notes whose onset moved off its exact proportional position — i.e. timing changed */
   snapped: number
   /** notes that landed on a column their own lane had already filled, and merged */
   merged: number
+  /**
+   * notes written SHORTER than their exact scaled length (#1948): cut to the next onset
+   * that snapped closer, rounded down to whole columns (roll), or given the shorter length
+   * of whatever merged or stacked with them. Compared against the note's OWN source — the
+   * one that kept the column — so a note that merged away is `merged`, not this.
+   */
+  shortened: number
 }
 
-const NO_EFFECT: GridResolutionEffect = { lengthened: 0, snapped: 0, merged: 0 }
+/** the effect of a press that writes nothing — one value, so no caller spells it with a field missing */
+export const NO_RESOLUTION_EFFECT: GridResolutionEffect = Object.freeze({
+  lengthened: 0,
+  snapped: 0,
+  merged: 0,
+  shortened: 0,
+})
 
 /**
  * The roll compares positions and lengths computed as `x * target / from`, which can
@@ -325,21 +341,26 @@ export function quantizeStepGridToWithEffect(
   model: StepGridModel,
   target: number,
 ): { model: StepGridModel; effect: GridResolutionEffect } {
-  const unchanged = { model, effect: NO_EFFECT }
+  const unchanged = { model, effect: NO_RESOLUTION_EFFECT }
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return unchanged
   if ((model.bars ?? 1) > 1) {
     // A multi-bar grid keeps the strictly-lossless path, which by definition scales
     // every length cleanly — so there is no floor to apply and nothing to report.
     const scaled = scaleStepGridTo(model, target)
-    return scaled === model ? unchanged : { model: scaled, effect: NO_EFFECT }
+    return scaled === model ? unchanged : { model: scaled, effect: NO_RESOLUTION_EFFECT }
   }
   const from = model.steps
   const addingSlots = target > from
   let lengthened = 0
   let snapped = 0
   let merged = 0
+  let shortened = 0
   const lanes = model.lanes.map((lane) => {
     const cells = Array<StepCell>(target).fill(false)
+    // the exact length of the source that took each column first — the note the column
+    // keeps; the floor can grow it and the merge and the clamp can each cut it, so both
+    // directions are compared at the end, on the note that is written (#1948, #1968)
+    const keptExact: (number | undefined)[] = Array(target)
     lane.cells.forEach((cell, c) => {
       if (!isCellOn(cell)) return
       const b = bucket(c, from, target)
@@ -358,12 +379,19 @@ export function quantizeStepGridToWithEffect(
       // …and the floor is applied AFTER the scale and BEFORE the merge, so a merge still
       // takes the shortest of two lengths the grid can actually spell.
       const scaled = addingSlots ? exact : Math.max(COARSEN_FLOOR, exact)
-      if (scaled !== exact) lengthened++
       const prev = cells[b]
       if (isCellOn(prev)) merged++
+      else keptExact[b] = exact
       cells[b] = cellOn(isCellOn(prev) ? Math.min(prev.duration, scaled) : scaled)
     })
-    return { ...lane, cells: clampLane(cells, target) }
+    const clamped = clampLane(cells, target)
+    clamped.forEach((cell, b) => {
+      const exact = keptExact[b]
+      if (!isCellOn(cell) || exact === undefined) return
+      if (cell.duration - exact > EFFECT_EPS) lengthened++
+      if (exact - cell.duration > EFFECT_EPS) shortened++
+    })
+    return { ...lane, cells: clamped }
   })
   let gains: number[] | undefined
   if (model.gains) {
@@ -388,7 +416,7 @@ export function quantizeStepGridToWithEffect(
   })
   // A declined op made no write, so it reports no effect — the counters above describe
   // a candidate, and a candidate the writer refused never reaches the user.
-  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged } }
+  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged, shortened } }
 }
 
 /** the plain projection of {@link quantizeStepGridToWithEffect} — the model it produced */
@@ -421,25 +449,26 @@ export function stepResolutionEffect(model: StepGridModel, target: number): Grid
  * the current count or an unreachable target.
  *
  * Reports what it did the way {@link quantizeStepGridToWithEffect} does (#1933): each
- * count is taken in the step that causes it, and a declined op reports `NO_EFFECT`.
+ * count is taken in the step that causes it, and a declined op reports `NO_RESOLUTION_EFFECT`.
  */
 export function quantizePianoRollToWithEffect(
   model: PianoRollModel,
   target: number,
 ): { model: PianoRollModel; effect: GridResolutionEffect } {
-  const unchanged = { model, effect: NO_EFFECT }
+  const unchanged = { model, effect: NO_RESOLUTION_EFFECT }
   if (target < 1 || target > MAX_RESOLUTION_STEPS || target === model.steps) return unchanged
   if ((model.bars ?? 1) > 1) {
     // Neither multi-bar path costs anything the control reports: the reduce is the
     // lossless halve, and the add doubles every start exactly and keeps each length.
     const next = quantizeMultiBarRoll(model, target)
-    return next === model ? unchanged : { model: next, effect: NO_EFFECT }
+    return next === model ? unchanged : { model: next, effect: NO_RESOLUTION_EFFECT }
   }
   const from = model.steps
   const addingSlots = target > from
   let snapped = 0
   let merged = 0
   let lengthened = 0
+  let shortened = 0
   // 1. map each note onto the target grid: the START snaps proportionally; the
   //    DURATION keeps its slot-count when ADDING slots (conservative, #607 — no
   //    stretch) and scales down proportionally when REDUCING (stays in range).
@@ -480,13 +509,15 @@ export function quantizePianoRollToWithEffect(
     const gain = Math.max(...grp.map((m) => m.gain)) // a chord shares one gain
     for (const m of grp) {
       // Counted on the length the note is EMITTED with: the floor and the rounding can
-      // lengthen it, and the clamp to the next start can take that back.
+      // lengthen it, and the clamp to the next start can take that back. The rounding,
+      // the chord's shortest length and the clamp can each make it shorter (#1948).
       if (duration - m.exact > EFFECT_EPS) lengthened++
+      if (m.exact - duration > EFFECT_EPS) shortened++
       notes.push({ pitch: m.pitch, start, duration, gain })
     }
   })
   const next = ifRollSpellable(model, { ...model, steps: target, notes })
-  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged } }
+  return next === model ? unchanged : { model: next, effect: { lengthened, snapped, merged, shortened } }
 }
 
 /**

@@ -28,7 +28,7 @@ describe('slotPress — the Slots press is a view change or a write (#1942)', ()
     const m = step('bd ~ sn ~')
     expect(slotPress(stepGridCodec, m, 16, always)).toEqual({ kind: 'view', scale: 4 })
     // and looking closer costs nothing
-    expect(slotPressCost(stepGridCodec, m, 16, always)).toEqual({ lengthened: 0, snapped: 0, merged: 0 })
+    expect(slotPressCost(stepGridCodec, m, 16, always)).toEqual({ lengthened: 0, snapped: 0, merged: 0, shortened: 0 })
   })
 
   it('a coarser target is a write, and its cost is the op’s', () => {
@@ -47,7 +47,7 @@ describe('slotPress — the Slots press is a view change or a write (#1942)', ()
     const r = pianoRollCodec.parse('c3 e3 g3 a3 b3', UNREFINED)
     if (!r.ok) throw new Error('unparseable')
     expect(slotPress(pianoRollCodec, r.model, 4, always)).toEqual({ kind: 'write' })
-    expect(slotPressCost(pianoRollCodec, r.model, 4, always)).toEqual({ lengthened: 5, snapped: 4, merged: 0 })
+    expect(slotPressCost(pianoRollCodec, r.model, 4, always)).toEqual({ lengthened: 5, snapped: 4, merged: 0, shortened: 0 })
   })
 })
 

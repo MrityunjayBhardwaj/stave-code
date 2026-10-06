@@ -205,6 +205,8 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
       'title',
       '4 slots — rewrites your file, keeps timing, and makes 2 notes longer',
     )
+    // and it cuts nothing short, so it carries no shorter marker (#1948's control)
+    await expect(await preset(slots, 4)).not.toHaveAttribute('data-resolution-shortens', 'true')
 
     // CONTROL: refining the same pattern is still FREE, and free declares no cost. Without
     // this arm a regression that marked every target as lengthening would satisfy the above.
@@ -235,6 +237,26 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
       'title',
       '4 slots — rewrites your file, keeps timing',
     )
+  })
+
+  test('step grid: a hit that merges into its neighbour is not counted as made longer (#1968)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd bd bd ~ ~ ~ ~ ~")')
+    const drawer = await openPattern(page)
+    const slots = slotsControl(drawer)
+    // 8 → 4 puts the second and third hit in the same slot, so the press writes TWO notes.
+    // Both are held at one slot (longer than the half slot they scale to); the third hit is
+    // gone into the second. The sentence counts the notes the user will see, not the three
+    // they started with.
+    await expect(await preset(slots, 4)).toHaveAttribute(
+      'title',
+      '4 slots — rewrites your file and snaps notes to the grid (changes timing), and makes 2 notes longer',
+    )
+    await (await preset(slots, 4)).click()
+    await page.waitForTimeout(120)
+    expect(await getStrudelCode(page)).toBe('$: s("bd bd ~ ~")')
   })
 
   test('step grid: a non-power-of-2 (5-step) pattern can still be reduced (quantize)', async ({
@@ -419,6 +441,7 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
       'title',
       '4 slots — rewrites your file, keeps timing, and makes 4 notes longer',
     )
+    await expect(await preset(slots, 4)).not.toHaveAttribute('data-resolution-shortens', 'true')
     // CONTROL: refining is a view, and a view declares no cost
     await expect(await preset(slots, 16)).toHaveAttribute('data-resolution-view', 'true')
     await expect(await preset(slots, 16)).not.toHaveAttribute('data-resolution-lengthens', 'true')
@@ -450,6 +473,44 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     await expect(four).toHaveAttribute('data-resolution-quantize', 'true')
     await expect(four).not.toHaveAttribute('data-resolution-lengthens', 'true')
     await expect(four).toHaveAttribute('title', '4 slots — rewrites your file, keeps timing')
+  })
+
+  test('step grid: a reduce that cuts a note short says so before you press it (#1948)', async ({ page }) => {
+    await boot(page)
+    // 8 → 4: `bd@7` should be 3.5 columns. The second hit (column 7 → 3.5) lands on the last
+    // column, 3, and the held note is cut to the 3 columns before it. The second hit's
+    // half-column length is held at one, so one note is longer and one shorter.
+    await setStrudelCode(page, '$: s("bd@7 bd")')
+    const drawer = await openPattern(page)
+    const slots = slotsControl(drawer)
+    const four = await preset(slots, 4)
+    await expect(four).toHaveAttribute('data-resolution-quantize', 'true')
+    await expect(four).toHaveAttribute('data-resolution-shortens', 'true')
+    await expect(four).toHaveAttribute(
+      'title',
+      '4 slots — rewrites your file and snaps notes to the grid (changes timing), and makes 1 note longer and 1 note shorter',
+    )
+    // and the write is the one the tooltip described: the held note now spans 3 of 4
+    await four.click()
+    await page.waitForTimeout(120)
+    expect(await getStrudelCode(page)).toBe('$: s("bd _ _ bd")')
+  })
+
+  test('piano roll: a reduce that cuts a note short says so before you press it (#1948)', async ({ page }) => {
+    await boot(page)
+    // 8 → 4: `c3@7` scales to 3.5 columns, rounds to 4, and is clamped to the 3 before `e3`
+    await setStrudelCode(page, '$: note("c3@7 e3")')
+    const drawer = await openPattern(page)
+    await expect(drawer.locator('[data-bottom-panel-tab="piano-roll"]')).toHaveCount(1)
+    const four = await preset(slotsControl(drawer), 4)
+    await expect(four).toHaveAttribute('data-resolution-shortens', 'true')
+    await expect(four).toHaveAttribute(
+      'title',
+      '4 slots — rewrites your file and snaps notes to the grid (changes timing), and makes 1 note longer and 1 note shorter',
+    )
+    await four.click()
+    await page.waitForTimeout(120)
+    expect(await getStrudelCode(page)).toBe('$: note("c3@3 e3")')
   })
 
   test('piano roll: adding slots keeps notes single-slot, and 8→4 round-trips (#607)', async ({
