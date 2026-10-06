@@ -168,8 +168,11 @@ export function reconcileGrid<M>(
   const fresh = codec.applyGain ? codec.applyGain(parsed.model, chunkGain) : parsed.model
   const asWritten = prev == null ? null : (codec.collapseToDocument?.(prev) ?? prev)
   const sameMini = asWritten != null && codec.serialize(asWritten) === mini
+  // The gain is compared AS WRITTEN too (#1950): `gridWritePlan` spells it from the same
+  // collapsed model as the mini, so comparing the refined model's gain would call every
+  // velocity write made while refined "changed" and reseed on its own echo.
   const sameGain =
-    prev == null || !codec.serializeGain ? true : gainUnchanged(codec.serializeGain(prev), chunkGain)
+    asWritten == null || !codec.serializeGain ? true : gainUnchanged(codec.serializeGain(asWritten), chunkGain)
   const sameScale = prevScale === viewScale
   return { read: parsed.model, model: prev && sameMini && sameGain && sameScale ? prev : fresh }
 }

@@ -109,15 +109,24 @@ describe('reconcileGrid — keep the panel’s model, or reseed (#1942)', () => 
     expect(held?.model).toBe(prev)
   })
 
-  it('TODAY: after its own velocity write while refined, the model is reseeded (#1950)', () => {
-    // The `.gain` half compares the refined model's gain, not the collapsed one, so this
-    // reseeds. Pinned as it is, because #1942 moves this check without changing it; #1950
-    // flips this arm to `toBe(prev)`.
+  it('keeps a refined model across its own velocity write (#1950)', () => {
+    // The echo of the write: the bytes `gridWritePlan` puts in, read back as the chunk's gain.
+    // The `.gain` half compares the model AS WRITTEN (collapsed to the document), the same rule
+    // the mini half and the write follow, so the panel keeps its own model.
+    const prev = setColumnGain(step('bd ~ sn ~', 2), 0, 0.42)
+    const plan = gridWritePlan(stepGridCodec, prev)!
+    expect(plan.gain).toEqual({ kind: 'write', value: '0.42 ~ 1 ~', quoted: true })
+    const echo = { mini: plan.gain!.kind === 'write' ? plan.gain!.value : '', numeric: null, foreign: false }
+    const held = reconcileGrid(stepGridCodec, plan.mini, echo, 2, prev, 2)
+    expect(held?.model).toBe(prev)
+  })
+
+  it('CONTROL: a gain the write did not produce still reseeds a refined model', () => {
     const prev = setColumnGain(step('bd ~ sn ~', 2), 0, 0.42)
     const held = reconcileGrid(
       stepGridCodec,
       'bd ~ sn ~',
-      { mini: '0.42 ~ 1 ~', numeric: null, foreign: false },
+      { mini: '0.9 ~ 1 ~', numeric: null, foreign: false },
       2,
       prev,
       2,
