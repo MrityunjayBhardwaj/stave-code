@@ -32,7 +32,7 @@ import {
   type StepAxis,
   type StepBand,
 } from '../steppedLane'
-import { stepIndexAtCycle } from '../../../../../editor/src/codeView/ir/steppedAutomation'
+import { stepIndexAtCycle } from '@stave/editor'
 
 describe('stepHitAt — which step a press lands on (Stage 3\'s claim)', () => {
   const LIN: StepAxis = { lo: 0, hi: 1, scale: 'linear', step: 0.01 }

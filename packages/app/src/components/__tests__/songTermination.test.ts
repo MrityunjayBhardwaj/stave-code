@@ -3,8 +3,7 @@
  *
  * ── WHY THE EXTENTS ARE REAL, NOT LITERALS ───────────────────────────────────
  * Every arm below gets its `SongExtent` from the REAL `songExtent` walking a
- * real `PatternIR`, imported by SOURCE PATH (until #1938 the barrel pulled
- * `gifenc` and broke the app's vitest loader — the route `songLength.test.ts` takes next
+ * real `PatternIR`, both from `@stave/editor` (as `songLength.test.ts` next
  * door). Hand-written `{ kind: 'opaque' }` literals would pin these arms to my
  * idea of the type rather than to what the walk actually produces, and `opaque`
  * is exactly the kind that must not drift: it is the one that would truncate a
@@ -16,9 +15,9 @@
  * observed for real in the app (#1388's listening pass).
  */
 import { describe, it, expect } from 'vitest'
-import { IR, type PatternIR } from '../../../../editor/src/codeView/ir/PatternIR'
-import { songExtent } from '../../../../editor/src/codeView/ir/songExtent'
-import type { SongExtent } from '../../../../editor/src/codeView/ir/songExtent'
+import { IR, type PatternIR } from '@stave/editor'
+import { songExtent } from '@stave/editor'
+import type { SongExtent } from '@stave/editor'
 import {
   createEndOfSongWatcher,
   hasDefiniteEnd,

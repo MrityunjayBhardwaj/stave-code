@@ -10,8 +10,8 @@
  * must fail; with typed offsets they would sail through.
  */
 import { describe, it, expect } from 'vitest'
-import { parseStrudel } from '../../../../../editor/src/codeView/ir/parseStrudel'
-import type { PatternIR } from '../../../../../editor/src/codeView/ir/PatternIR'
+import { parseStrudel } from '@stave/editor'
+import type { PatternIR } from '@stave/editor'
 import { resolveSectionName, positionalSectionName } from '../sectionLabel'
 // The reader is the editor's since #1921 — the same rule a track label uses.
 import { sectionNameAt as sectionNameAtRange } from '@stave/editor'

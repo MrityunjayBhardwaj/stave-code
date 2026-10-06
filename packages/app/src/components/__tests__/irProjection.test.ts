@@ -5,15 +5,11 @@
  * plus the .off() 4-arrow-shape coverage (RESEARCH §2.x), Code
  * whitelist (NEW pre-mortem #8), Pure-as-Choice.else_ filter (NEW
  * pre-mortem #10), and direct stripInnerLate edge cases.
- *
- * Imports parseStrudel from the editor source path directly to avoid
- * the @stave/editor barrel, whose p5/gifenc transitive dependencies
- * vitest's ESM loader could not resolve until #1938.
  */
 import { describe, it, expect } from 'vitest'
-import { parseStrudel as _parseStrudel } from '../../../../editor/src/codeView/ir/parseStrudel'
-import { IR, type PatternIR } from '../../../../editor/src/codeView/ir/PatternIR'
-import { parseStrudelStages } from '../../../../editor/src/codeView/ir/parseStrudelStages'
+import { parseStrudel as _parseStrudel } from '@stave/editor'
+import { IR, type PatternIR } from '@stave/editor'
+import { parseStrudelStages } from '@stave/editor'
 import {
   projectedLabel,
   projectedChildren,

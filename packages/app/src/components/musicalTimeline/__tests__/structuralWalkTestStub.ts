@@ -5,6 +5,9 @@
  * `importOriginal` spread), so this file re-exports nothing; it only builds the fixture, and
  * never a hand-rolled copy of the reducer, which would be a second oracle free to drift.
  */
+// ⚠ BY SOURCE PATH, NEVER `@stave/editor`: this file is loaded INSIDE the tests'
+// `vi.mock('@stave/editor', …)` factories, so importing the module being mocked from here
+// waits on the factory that is waiting on this file — the run hangs, silently (#1943).
 import {
   aggregateLaneItems,
   type LaneItem,

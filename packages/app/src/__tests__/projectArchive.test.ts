@@ -19,7 +19,7 @@ import type { AssetRecord } from "@stave/editor";
 // has no imports of its own, so this costs nothing and keeps the arms below
 // driving the REAL minting rather than a hand-built record that only looks like
 // one. `samplesProvider` likewise imports nothing at runtime.
-import { planAssetImport } from "../../../editor/src/workspace/assetNaming";
+import { planAssetImport } from "@stave/editor";
 import { recordsToAssets } from "../assetLibrary/samplesProvider";
 
 // ---------------------------------------------------------------------------
