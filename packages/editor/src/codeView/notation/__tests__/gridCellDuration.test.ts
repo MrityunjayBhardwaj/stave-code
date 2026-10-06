@@ -177,13 +177,13 @@ describe('the grid ops keep a length meaning what it says', () => {
       lanes: [{ sound: 'bd', cells: [cellOn(2), false, cellOn(2), false] }],
     }
     expect(lens(quantizeStepGridTo(even, 2), 'bd')).toEqual([1, 1])
-    expect(stepResolutionEffect(even, 2)).toEqual({ lengthened: 0, snapped: 0, merged: 0 })
+    expect(stepResolutionEffect(even, 2)).toEqual({ lengthened: 0, snapped: 0, merged: 0, shortened: 0 })
     // CONTROL — and the floor is not a licence to write anything. A length that scales to a
     // NON-INTEGER number of columns (3 of 8 → 1.5 of 4) still has no spelling and is still
     // refused, rather than rounded into a different pattern.
     const odd = grid('bd _ _ ~ sn ~ ~ ~')
     expect(quantizeStepGridTo(odd, 4)).toBe(odd)
-    expect(stepResolutionEffect(odd, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0 })
+    expect(stepResolutionEffect(odd, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0, shortened: 0 })
   })
 
   it('quantize MERGING is reachable again, and the merge rule still keeps the SHORTEST', () => {
@@ -203,9 +203,10 @@ describe('the grid ops keep a length meaning what it says', () => {
     // `bd@3` scales to 1.5 and needs no floor; the two one-column hits are floored to 1 and
     // land in the same bucket, where the merge keeps the SHORTEST of the two. `clampLane`
     // then cuts the first note back to the column before the next hit — so the merged grid
-    // says `bd bd` and not a note sounding through a strike.
+    // says `bd bd` and not a note sounding through a strike. That cut is a cost the control
+    // reports (#1948): `bd@3` should have been 1.5 columns and is written as 1.
     expect(serializeStepGrid(quantizeStepGridTo(m, 2))).toBe('bd bd')
-    expect(stepResolutionEffect(m, 2)).toEqual({ lengthened: 2, snapped: 2, merged: 1 })
+    expect(stepResolutionEffect(m, 2)).toEqual({ lengthened: 2, snapped: 2, merged: 1, shortened: 1 })
     // CONTROL — a merge is reported only where one happens. The same shape with its hits
     // far enough apart to keep their own buckets floors identically and merges nothing, so
     // a regression that reported `merged` for every coarsening cannot pass both arms.
@@ -214,7 +215,7 @@ describe('the grid ops keep a length meaning what it says', () => {
       lanes: [{ sound: 'bd', cells: [cellOn(1), false, cellOn(1), false] }],
     }
     expect(serializeStepGrid(quantizeStepGridTo(apart, 2))).toBe('bd bd')
-    expect(stepResolutionEffect(apart, 2)).toEqual({ lengthened: 2, snapped: 0, merged: 0 })
+    expect(stepResolutionEffect(apart, 2)).toEqual({ lengthened: 2, snapped: 0, merged: 0, shortened: 0 })
   })
 
   it('a length is clamped to the grid it lands on, in resize as in quantize', () => {

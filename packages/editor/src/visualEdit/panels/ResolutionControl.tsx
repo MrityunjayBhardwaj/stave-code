@@ -87,6 +87,7 @@ import * as React from 'react'
 
 import {
   RESOLUTION_PRESETS,
+  NO_RESOLUTION_EFFECT,
   type GridResolutionEffect,
   type SlotState,
 } from '../../codeView'
@@ -133,7 +134,7 @@ export function useLiftResolution(
   // "not asked". The two must stay distinguishable at the prop.
   const hasEffect = effect !== undefined
   const stableEffect = React.useCallback(
-    (t: number) => effectRef.current?.(t) ?? { lengthened: 0, snapped: 0, merged: 0 },
+    (t: number) => effectRef.current?.(t) ?? NO_RESOLUTION_EFFECT,
     [],
   )
 
@@ -252,15 +253,30 @@ function describeTarget(target: number, state: SlotState, effect?: GridResolutio
       // wording rather than promise something we have not asked about.
       const keepsTiming =
         state === 'lossless' || (effect !== undefined && effect.snapped === 0 && effect.merged === 0)
-      const n = effect?.lengthened ?? 0
-      const longer = n > 0 ? `, and makes ${n} note${n === 1 ? '' : 's'} longer` : ''
+      const lengths = lengthChange(effect)
       return keepsTiming
-        ? `${target} slots — rewrites your file, keeps timing${longer}`
-        : `${target} slots — rewrites your file and snaps notes to the grid (changes timing)${longer}`
+        ? `${target} slots — rewrites your file, keeps timing${lengths}`
+        : `${target} slots — rewrites your file and snaps notes to the grid (changes timing)${lengths}`
     }
     default:
       return `${target} slots — unavailable`
   }
+}
+
+/**
+ * The length clause: how many notes the press makes longer and how many shorter (#1948),
+ * each named only when it happens. They are separate counts because they are separate
+ * losses — a note held at one column sounds longer, a note cut to the next onset or to its
+ * chord's shortest length sounds shorter — and one press can do both.
+ */
+function lengthChange(effect?: GridResolutionEffect): string {
+  const notes = (n: number): string => `${n} note${n === 1 ? '' : 's'}`
+  const longer = effect?.lengthened ?? 0
+  const shorter = effect?.shortened ?? 0
+  if (longer > 0 && shorter > 0) return `, and makes ${notes(longer)} longer and ${notes(shorter)} shorter`
+  if (longer > 0) return `, and makes ${notes(longer)} longer`
+  if (shorter > 0) return `, and makes ${notes(shorter)} shorter`
+  return ''
 }
 
 /** shared visual language for anything that names a target */
@@ -344,6 +360,7 @@ export function ResolutionControl({
             : describeTarget(target, state, eff)
         }
         data-resolution-lengthens={(eff?.lengthened ?? 0) > 0 ? 'true' : undefined}
+        data-resolution-shortens={(eff?.shortened ?? 0) > 0 ? 'true' : undefined}
         disabled={!pressable(state)}
         onClick={() => {
           if (target !== null && pressable(state)) onScaleTo(target)
@@ -460,6 +477,7 @@ export function ResolutionControl({
                 // from the DOM, so a spec asserts the CONSEQUENCE the user was promised
                 // rather than re-deriving it from the pattern that came back.
                 data-resolution-lengthens={(eff?.lengthened ?? 0) > 0 ? 'true' : undefined}
+                data-resolution-shortens={(eff?.shortened ?? 0) > 0 ? 'true' : undefined}
                 aria-selected={state === 'active'}
                 aria-label={`${preset} slots`}
                 title={describeTarget(preset, state, eff)}

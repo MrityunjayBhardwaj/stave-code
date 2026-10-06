@@ -18,7 +18,7 @@
  */
 import * as React from 'react'
 
-import { pianoRollCodec, gainWritable as gainWritableOn, slotPress, slotPressCost } from '../../codeView'
+import { pianoRollCodec, gainWritable as gainWritableOn, slotPress, slotPressCost, NO_RESOLUTION_EFFECT } from '../../codeView'
 import type { PianoRollModel, RollNote, ColumnOverlap } from '../../codeView'
 import { drawnLayout } from '../../codeView'
 import {
@@ -1017,7 +1017,7 @@ export function PianoRollGrid({
     onResolution,
     // #1933 — what the press would cost, asked of the op `scaleToSlots` runs. A
     // free-zone target never reaches the op, so it reports nothing.
-    (t) => (model ? slotPressCost(pianoRollCodec, model, t, canDrawView) : { lengthened: 0, snapped: 0, merged: 0 }),
+    (t) => (model ? slotPressCost(pianoRollCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT),
   )
 
   // Rows top to bottom (high pitch first) — the render draws exactly these.
