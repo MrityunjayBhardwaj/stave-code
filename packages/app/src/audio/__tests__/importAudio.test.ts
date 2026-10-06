@@ -9,10 +9,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  planAssetImport,
-  type AssetRecord,
-} from "../../../../editor/src/workspace/assetNaming";
+import { planAssetImport, type AssetRecord } from "@stave/editor";
 
 const store = {
   records: [] as AssetRecord[],

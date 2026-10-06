@@ -6,20 +6,19 @@
  * a horizon the analysis gave up at, and that distinction is made by
  * `analyzeSong`. Stubbing it would leave these arms asserting that a switch
  * statement routes three literals — green with the real decision entirely
- * absent. So the real `songExtent` and the real `analyzeSong` are imported by
- * SOURCE PATH (until #1938 the barrel pulled `gifenc` and broke the app's vitest loader —
- * the same route the corpus tests take) and driven with synthetic onsets.
+ * absent. So the real `songExtent` and the real `analyzeSong` are imported from
+ * `@stave/editor` and driven with synthetic onsets.
  *
  * The collector is the one injected stub. Its correctness is already pinned next
  * door by `songCollector.test.ts`; re-testing the band rule here would duplicate
  * that, and what these arms need is control over the ONSETS analysis sees.
  */
 import { describe, it, expect } from 'vitest'
-import { IR, type PatternIR } from '../../../../editor/src/codeView/ir/PatternIR'
-import { songExtent } from '../../../../editor/src/codeView/ir/songExtent'
-import { analyzeSong, songEnd, songEndOf } from '../../../../editor/src/codeView/ir/songAnalysis'
-import { parseStrudel } from '../../../../editor/src/codeView/ir/parseStrudel'
-import type { IREvent } from '../../../../editor/src/codeView/ir/IREvent'
+import { IR, type PatternIR } from '@stave/editor'
+import { songExtent } from '@stave/editor'
+import { analyzeSong, songEnd, songEndOf } from '@stave/editor'
+import { parseStrudel } from '@stave/editor'
+import type { IREvent } from '@stave/editor'
 import {
   measureSongLength,
   songLoopCycles,

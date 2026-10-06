@@ -25,9 +25,9 @@ import {
   AUTOMATION_PAD_Y,
   AUTOMATION_LABEL_LINE_H,
 } from '../automationCaption'
-import { captionEdit, rateEditable } from '../../../../../editor/src/codeView/automation/captionEdit'
-import { parseStrudel } from '../../../../../editor/src/codeView/ir/parseStrudel'
-import { signalAutomations, shapeAlternatives, crossClassShapes } from '../../../../../editor/src/codeView/ir/signalAutomation'
+import { captionEdit, rateEditable } from '@stave/editor'
+import { parseStrudel } from '@stave/editor'
+import { signalAutomations, shapeAlternatives, crossClassShapes } from '@stave/editor'
 
 const SHAPE_DEPS = { alternatives: shapeAlternatives, crossClass: crossClassShapes }
 

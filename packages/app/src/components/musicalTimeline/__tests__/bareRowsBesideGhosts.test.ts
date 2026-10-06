@@ -22,7 +22,7 @@ vi.mock('@stave/editor', async (importOriginal) => ({
 import { collectNoteMarks } from '../timelineMarks'
 import { wholeSongWindow } from '../songAxis'
 import { declaredTracks } from '../trackOrder'
-import { parseStrudel } from '../../../../../editor/src/codeView/ir/parseStrudel'
+import { parseStrudel } from '@stave/editor'
 
 /** One hap inside the statement that starts with `stmt`, keyed as the engine keys a bare capture. */
 function hapIn(doc: string, stmt: string, trackId: string) {
