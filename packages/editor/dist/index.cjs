@@ -4563,7 +4563,8 @@ function substituteBoundIdentInArg(args, bindings) {
 }
 __name(substituteBoundIdentInArg, "substituteBoundIdentInArg");
 function stripParserPrelude(code) {
-  const PRELUDE_CALL_RE = /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/;
+  const PRELUDE_CALLS = ["samples", "useRNG", ...TEMPO_SETTERS, "setVoicingRange", "initAudio", "aliasBank"];
+  const PRELUDE_CALL_RE = new RegExp(`^[ \\t]*(?:${PRELUDE_CALLS.join("|")})\\s*\\(`);
   const GUARDED_BOOT_RE = /^[ \t]*typeof\s+\w+\s*!==?\s*['"]undefined['"]\s*&&\s*\w+\s*\(/;
   let i = 0;
   while (i < code.length) {
