@@ -3111,7 +3111,8 @@ interface GridResolutionEffect {
     /**
      * notes held at one column because scaling would have put them BELOW one, and the
      * grid has no spelling for half a column. These sound LONGER than they did — the
-     * length grows to the coarsest thing the new grid can say (#1061).
+     * length grows to the coarsest thing the new grid can say (#1061). Counted on the note
+     * a column KEEPS, like `shortened`: a floored note that merged away is `merged` (#1968).
      */
     lengthened: number;
     /** notes whose onset moved off its exact proportional position — i.e. timing changed */

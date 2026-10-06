@@ -279,7 +279,8 @@ export interface GridResolutionEffect {
   /**
    * notes held at one column because scaling would have put them BELOW one, and the
    * grid has no spelling for half a column. These sound LONGER than they did — the
-   * length grows to the coarsest thing the new grid can say (#1061).
+   * length grows to the coarsest thing the new grid can say (#1061). Counted on the note
+   * a column KEEPS, like `shortened`: a floored note that merged away is `merged` (#1968).
    */
   lengthened: number
   /** notes whose onset moved off its exact proportional position — i.e. timing changed */
@@ -356,7 +357,8 @@ export function quantizeStepGridToWithEffect(
   const lanes = model.lanes.map((lane) => {
     const cells = Array<StepCell>(target).fill(false)
     // the exact length of the source that took each column first — the note the column
-    // keeps; the merge and the clamp below can each cut it, so it is compared at the end
+    // keeps; the floor can grow it and the merge and the clamp can each cut it, so both
+    // directions are compared at the end, on the note that is written (#1948, #1968)
     const keptExact: (number | undefined)[] = Array(target)
     lane.cells.forEach((cell, c) => {
       if (!isCellOn(cell)) return
@@ -376,7 +378,6 @@ export function quantizeStepGridToWithEffect(
       // …and the floor is applied AFTER the scale and BEFORE the merge, so a merge still
       // takes the shortest of two lengths the grid can actually spell.
       const scaled = addingSlots ? exact : Math.max(COARSEN_FLOOR, exact)
-      if (scaled !== exact) lengthened++
       const prev = cells[b]
       if (isCellOn(prev)) merged++
       else keptExact[b] = exact
@@ -385,7 +386,9 @@ export function quantizeStepGridToWithEffect(
     const clamped = clampLane(cells, target)
     clamped.forEach((cell, b) => {
       const exact = keptExact[b]
-      if (isCellOn(cell) && exact !== undefined && exact - cell.duration > EFFECT_EPS) shortened++
+      if (!isCellOn(cell) || exact === undefined) return
+      if (cell.duration - exact > EFFECT_EPS) lengthened++
+      if (exact - cell.duration > EFFECT_EPS) shortened++
     })
     return { ...lane, cells: clamped }
   })

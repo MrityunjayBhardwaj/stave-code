@@ -206,7 +206,10 @@ describe('the grid ops keep a length meaning what it says', () => {
     // says `bd bd` and not a note sounding through a strike. That cut is a cost the control
     // reports (#1948): `bd@3` should have been 1.5 columns and is written as 1.
     expect(serializeStepGrid(quantizeStepGridTo(m, 2))).toBe('bd bd')
-    expect(stepResolutionEffect(m, 2)).toEqual({ lengthened: 2, snapped: 2, merged: 1, shortened: 1 })
+    // Both one-column hits are floored, but only ONE of them is written: the other merged
+    // into it. So one note got longer, not two (#1968) — the count is taken on the note the
+    // column keeps, and the hit that merged away is `merged` and nothing else.
+    expect(stepResolutionEffect(m, 2)).toEqual({ lengthened: 1, snapped: 2, merged: 1, shortened: 1 })
     // CONTROL — a merge is reported only where one happens. The same shape with its hits
     // far enough apart to keep their own buckets floors identically and merges nothing, so
     // a regression that reported `merged` for every coarsening cannot pass both arms.
@@ -216,6 +219,20 @@ describe('the grid ops keep a length meaning what it says', () => {
     }
     expect(serializeStepGrid(quantizeStepGridTo(apart, 2))).toBe('bd bd')
     expect(stepResolutionEffect(apart, 2)).toEqual({ lengthened: 2, snapped: 0, merged: 0, shortened: 0 })
+  })
+
+  it('a length that is one column but for a rounding error is not reported as made longer (#1968)', () => {
+    // Lengths reach the cell through float arithmetic, so "two columns" routinely arrives as
+    // `1.9999999999999996`. Halved, that is a hair under one column and the floor rounds it
+    // up to one — a write the user cannot tell from the exact one. Counting it would put
+    // "makes 1 note longer" on a press that changes no length (seen on real 24- and 48-step
+    // patterns). The second note is exactly two columns and is the control for the first.
+    const m: StepGridModel = {
+      steps: 4,
+      lanes: [{ sound: 'bd', cells: [cellOn(1.9999999999999996), false, cellOn(2), false] }],
+    }
+    expect(serializeStepGrid(quantizeStepGridTo(m, 2))).toBe('bd bd')
+    expect(stepResolutionEffect(m, 2)).toEqual({ lengthened: 0, snapped: 0, merged: 0, shortened: 0 })
   })
 
   it('a length is clamped to the grid it lands on, in resize as in quantize', () => {

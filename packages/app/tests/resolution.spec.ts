@@ -239,6 +239,26 @@ test.describe('Grid resolution 4/8/16/32/64 (#479, in the inspector #601)', () =
     )
   })
 
+  test('step grid: a hit that merges into its neighbour is not counted as made longer (#1968)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd bd bd ~ ~ ~ ~ ~")')
+    const drawer = await openPattern(page)
+    const slots = slotsControl(drawer)
+    // 8 → 4 puts the second and third hit in the same slot, so the press writes TWO notes.
+    // Both are held at one slot (longer than the half slot they scale to); the third hit is
+    // gone into the second. The sentence counts the notes the user will see, not the three
+    // they started with.
+    await expect(await preset(slots, 4)).toHaveAttribute(
+      'title',
+      '4 slots — rewrites your file and snaps notes to the grid (changes timing), and makes 2 notes longer',
+    )
+    await (await preset(slots, 4)).click()
+    await page.waitForTimeout(120)
+    expect(await getStrudelCode(page)).toBe('$: s("bd bd ~ ~")')
+  })
+
   test('step grid: a non-power-of-2 (5-step) pattern can still be reduced (quantize)', async ({
     page,
   }) => {
