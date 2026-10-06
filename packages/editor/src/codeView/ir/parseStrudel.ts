@@ -19,7 +19,7 @@ import { IR, type PatternIR, type ArrangeArm } from './PatternIR'
 import type { SourceLocation } from './IREvent'
 import { parseMini } from './parseMini'
 import { trackIdFromLabel, trackIdsFromLabels, isMutedLabel } from './trackId'
-import { NON_TRACK_HEAD_RE } from './statementHeads'
+import { NON_TRACK_HEAD_RE, TEMPO_SETTERS } from './statementHeads'
 // #928 (Tier 2) — the deny-list authority. `isControlName(m)` is Strudel's OWN
 // control-registry membership predicate (main names + aliases), queried LIVE so
 // the classifier never drifts from the running @strudel/core version. NEVER
@@ -388,18 +388,23 @@ export function stripParserPrelude(code: string): { body: string; offset: number
   // method (`register('cpm',…)`), `all`/`each` take pattern transforms,
   // `hush` is a silence control — NONE are prelude boot calls.
   //
-  // There is NO programmatic cross-ref: the upstream setter export list
-  // is NOT vendored in this repo, so this regex is hand-maintained. The
-  // anti-drift mechanism is (a) this comment's file:line + SHA citation
-  // and (b) one CI fixture per setter (task V-3). #135's premise that the
+  // The four setter names are NOT spelled here: they come from
+  // `TEMPO_SETTERS` (statementHeads.ts), the one list the block scanner,
+  // the tokenizer and `tempo.ts` also read (#1963), so a setter added there
+  // is a prelude call here too. The upstream export list is still not
+  // vendored, so THAT list is the hand-maintained one; its anti-drift
+  // mechanism is (a) this comment's file:line + SHA citation and (b) one CI
+  // fixture per setter (task V-3). The OTHER prelude names stay this
+  // function's own list — they are not the same set as `NON_TRACK_HEADS`
+  // (see the note on `all` and `hush` above). #135's premise that the
   // 20-14 α-6 `settingPatterns` audit is the authoritative source is a
   // MISREAD: α-6 covers strudel.cc UI setters {theme,fontFamily,fontSize}
   // (20-14-OBSERVATIONS.md:13-71) — those are CHAIN methods
   // (`$: theme("dracula")`), UI-only (`onTrigger(...,false)` = no audio),
   // NOT top-level tempo boot calls. α-6 is therefore NOT the source for
   // THIS list; the @strudel/core repl.mjs audit above is.
-  const PRELUDE_CALL_RE =
-    /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/
+  const PRELUDE_CALLS = ['samples', 'useRNG', ...TEMPO_SETTERS, 'setVoicingRange', 'initAudio', 'aliasBank']
+  const PRELUDE_CALL_RE = new RegExp(`^[ \\t]*(?:${PRELUDE_CALLS.join('|')})\\s*\\(`)
 
   // #143 (20-15 V-1 backlog) — SECOND line classifier: a guarded boot
   // side-effect of the defensive idiom

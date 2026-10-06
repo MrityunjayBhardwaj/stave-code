@@ -292,6 +292,24 @@ describe('20-14 parser-gap fix — stripParserPrelude', () => {
     expect(offset).toBe(code.indexOf('s("bd")'))
   })
 
+  // #1963 — the setter names reach the prelude list through `TEMPO_SETTERS`. Spelled
+  // out here on purpose: a name dropped from that list must turn its own arm red, and an
+  // arm built by mapping over the list would vanish along with the name.
+  it.each(['setcps', 'setCps', 'setcpm', 'setCpm'])('skips a leading %s(...) as prelude', (setter) => {
+    const code = `${setter}(120)\ns("bd")`
+    const { body, offset } = stripParserPrelude(code)
+    expect(body).toBe('s("bd")')
+    expect(offset).toBe(code.indexOf('s("bd")'))
+  })
+
+  it('CONTROL — a set-prefixed call that is not a tempo setter is not prelude', () => {
+    // `setGain` is not one of Strudel's boot calls; stripping it would hide the statement
+    const code = 'setGain(0.5)\ns("bd")'
+    const { body, offset } = stripParserPrelude(code)
+    expect(body).toBe(code)
+    expect(offset).toBe(0)
+  })
+
   it('returns unchanged code when there is no prelude', () => {
     const code = 'note("c4")'
     const { body, offset } = stripParserPrelude(code)
