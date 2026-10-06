@@ -8,6 +8,7 @@
  *   - a pattern outside the grid subset falls back to standby (code-only).
  */
 import { test, expect, type Page } from '@playwright/test'
+import { slotsControl, preset } from './_resolutionControl'
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/')
@@ -512,5 +513,65 @@ test.describe('Sequencer (#382)', () => {
     await expect
       .poll(() => strudelValue(page), { timeout: 8_000 })
       .toBe(SOURCE)
+  })
+
+  /**
+   * #1964 — A ZOOM SURVIVES THE PANEL'S OWN NOTE EDIT, AND THE EMPTIED LANE WITH IT.
+   *
+   * The zoom used to reset whenever the pattern's text changed, and clearing a cell changes
+   * it — so the panel treated its own click as a move to another pattern: the view snapped
+   * back to 4 columns and the kept model went with it, taking the emptied lane (#1161).
+   */
+  test('a note edit made while zoomed keeps the zoom and the emptied lane (#1964)', async ({
+    page,
+  }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd ~ ~ ~, hh hh hh hh")')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    const voices = (): Promise<(string | null)[]> =>
+      grid
+        .locator('[data-seq-voice]')
+        .evaluateAll((els) => els.map((e) => e.getAttribute('data-seq-voice')))
+
+    await (await preset(slotsControl(drawer), 8)).click()
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
+
+    await expect(grid.locator('[data-seq-cell="0:0"]')).toHaveAttribute('aria-pressed', 'true')
+    await grid.locator('[data-seq-cell="0:0"]').click()
+    await expect
+      .poll(() => strudelValue(page), { timeout: 8_000 })
+      .toBe('$: s("~ ~ ~ ~, hh hh hh hh")')
+    // let the write's echo come back through the panel before reading the view
+    await page.waitForTimeout(400)
+
+    await expect(grid.locator('[data-seq-cell^="0:"]'), 'the zoom the user set').toHaveCount(8)
+    await expect(slotsControl(drawer).locator('[data-resolution-current]')).toHaveAttribute(
+      'data-resolution-current',
+      '8',
+    )
+    expect(await voices(), 'the emptied lane, kept only in the model').toEqual(['bd', 'hh'])
+  })
+
+  /** #1964's other half — the reset it narrowed still fires where #1117 needs it. */
+  test('moving to another pattern still drops the zoom (#1964, #1117)', async ({ page }) => {
+    await boot(page)
+    await setStrudelCode(page, '$: s("bd ~ sn ~")\n$: s("hh hh hh hh")')
+    const drawer = await openSequencer(page)
+    const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
+    await placeCursorOn(page, 'bd ~')
+    await expect(grid.locator('[data-seq-voice]').first()).toHaveAttribute('data-seq-voice', 'bd')
+
+    await (await preset(slotsControl(drawer), 8)).click()
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(8)
+
+    await placeCursorOn(page, 'hh hh')
+    await expect(grid.locator('[data-seq-voice]').first()).toHaveAttribute('data-seq-voice', 'hh')
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
+
+    // …and coming back does not bring the old zoom with it
+    await placeCursorOn(page, 'bd ~')
+    await expect(grid.locator('[data-seq-voice]').first()).toHaveAttribute('data-seq-voice', 'bd')
+    await expect(grid.locator('[data-seq-cell^="0:"]')).toHaveCount(4)
   })
 })

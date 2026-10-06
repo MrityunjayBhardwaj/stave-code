@@ -96,7 +96,19 @@ export interface GridModel<M> {
   writeMini: (mini: string) => void
   beginGesture: () => void
   endGesture: () => void
+  /**
+   * Which pattern is under the panel, for state that belongs to one pattern — a
+   * refined view (#1117/#1119). Changes when the cursor moves to another pattern or
+   * the text changes for any reason EXCEPT this panel's own write (#1964): every note
+   * edit changes the text, and a zoom the user's own click threw away is the bug. Any
+   * other change still counts — a scale carried onto text the user typed can refuse
+   * to draw it at all (a 64-step pattern at ×8 needs more than 256 columns).
+   */
+  patternKey: string | null
 }
+
+/** Where the pattern starts and what it says — see {@link GridModel.patternKey}. */
+const keyOf = (at: number, mini: string | null): string => `${at}:${mini ?? ''}`
 
 
 export function useGridModel<M extends { viewScale?: ViewScale }>(
@@ -129,6 +141,17 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
   // could keep the previous model whenever it happened to serialize back to the
   // source — retaining a ×2 model for a ×1 view, with no error anywhere.
   const modelScaleRef = React.useRef<ViewScale>(UNREFINED)
+
+  // The key this panel's last write will come back as, and the key it is standing in
+  // for. An echo of our own write keeps the pattern's key (#1964).
+  const ownEchoRef = React.useRef<string | null>(null)
+  const patternKeyRef = React.useRef<string | null>(null)
+  const patternKey = React.useMemo(() => {
+    if (!chunk) return (patternKeyRef.current = null)
+    const key = keyOf(chunk.exprRange[0], chunk.miniString)
+    if (key !== ownEchoRef.current) patternKeyRef.current = key
+    return patternKeyRef.current
+  }, [chunk])
 
   React.useEffect(() => {
     const o = optsRef.current
@@ -181,6 +204,7 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
       setModel(plan.written)
       if (plan.spellsRefinement) o.onViewScaleConsumed?.()
       applyEdit((fresh, wb) => {
+        ownEchoRef.current = keyOf(fresh.exprRange[0], plan.mini)
         // One commit → the mini and its `.gain` are one undo step.
         commit(wb, gridWriteEdits(fresh, plan.mini, plan.gain), o.source)
       })
@@ -212,5 +236,5 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
     [applyEdit],
   )
 
-  return { model, read, chunk, mutate, settle, writeMini, beginGesture, endGesture }
+  return { model, read, chunk, mutate, settle, writeMini, beginGesture, endGesture, patternKey }
 }
