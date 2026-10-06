@@ -346,7 +346,7 @@ export function PianoRollGrid({
    * worst case measured here is a sweep down the 13 declined cells of one column.
    */
   const [declinedCell, setDeclinedCell] = React.useState<string | null>(null)
-  const { chunk, model, read, mutate, settle, writeMini, beginGesture, endGesture } = useGridModel<PianoRollModel>({
+  const { chunk, model, read, mutate, settle, writeMini, beginGesture, endGesture, patternKey } = useGridModel<PianoRollModel>({
     ...pianoRollCodec,
     source: 'roll',
     eligible: opensPianoRoll,
@@ -358,10 +358,10 @@ export function PianoRollGrid({
 
   // A refinement belongs to the pattern it was made on — see `SequencerGrid` for
   // why carrying it across a cursor move could send an editable pattern to standby.
-  const chunkKey = chunk ? `${chunk.exprRange[0]}:${chunk.miniString ?? ''}` : null
+  // The panel's own writes do not count as a new pattern (#1964).
   React.useEffect(() => {
     setViewScale(UNREFINED)
-  }, [chunkKey])
+  }, [patternKey])
 
   const dragRef = React.useRef<DragState | null>(null)
   // A velocity-lane drag: vertical drag on a note's bar sets that group's gain.

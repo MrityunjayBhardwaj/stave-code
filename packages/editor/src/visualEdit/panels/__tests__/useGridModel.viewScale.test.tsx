@@ -26,6 +26,12 @@ let cursorOffset = 0
 // content listeners the hooks subscribe (fired after every edit, as Monaco does).
 let undoStops = 0
 let contentListeners: (() => void)[] = []
+let cursorListeners: (() => void)[] = []
+/** Move the cursor the way Monaco reports it — the panel re-detects the chunk there. */
+const moveCursor = (offset: number): void => {
+  cursorOffset = offset
+  for (const l of [...cursorListeners]) l()
+}
 const fireContentChange = (): void => {
   for (const l of [...contentListeners]) l()
 }
@@ -63,7 +69,10 @@ const fakeModel = {
 const fakeEditor = {
   getModel: () => fakeModel,
   getPosition: () => ({ lineNumber: 1, column: cursorOffset + 1 }),
-  onDidChangeCursorPosition: () => ({ dispose: () => {} }),
+  onDidChangeCursorPosition: (l: () => void) => {
+    cursorListeners.push(l)
+    return { dispose: () => (cursorListeners = cursorListeners.filter((x) => x !== l)) }
+  },
 }
 
 // Every chunk detection, with the offset it was asked at — so a test can tell the
@@ -111,7 +120,7 @@ let h: Handle
 
 function Harness(): React.ReactElement {
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { model, mutate, beginGesture, endGesture } = useGridModel<StepGridModel>({
+  const { model, mutate, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: isStepChunk,
     parse: parseStepGrid,
@@ -122,6 +131,9 @@ function Harness(): React.ReactElement {
     onViewScaleConsumed: () => setViewScale(UNREFINED),
     collapseToDocument: collapseStepGridToDocument,
   })
+  React.useEffect(() => {
+    setViewScale(UNREFINED)
+  }, [patternKey])
   h = { model, mutate, beginGesture, endGesture, setViewScale, viewScale }
   return React.createElement('div')
 }
@@ -300,5 +312,86 @@ describe('the grid binding through the door (#1909)', () => {
       fireContentChange()
     })
     expect(detectCalls).toContain(cursorOffset)
+  })
+})
+
+/**
+ * #1964 — a zoom belongs to the pattern it was made on, and the panel's OWN edits do not
+ * make it a different pattern. The reset used to be keyed on the pattern's text, and every
+ * note edit changes the text, so clearing a cell while zoomed threw away the zoom and the
+ * kept model with it — and an emptied lane lives only in that model (#1161).
+ *
+ * Every other change still drops the zoom, and the arms below say why it must: a scale
+ * carried onto a different pattern, or onto text typed in the code, can refuse to draw it.
+ */
+describe('a zoom survives the panel’s own edits, and nothing else (#1964)', () => {
+  beforeEach(() => {
+    DOC = 's("bd ~ ~ ~, hh hh hh hh")'
+    cursorOffset = 5
+    contentListeners = []
+    cursorListeners = []
+  })
+
+  const lanes = (): string[] => (h.model?.lanes ?? []).map((l) => l.sound)
+
+  it('a note edit made while zoomed keeps the zoom and the emptied lane', () => {
+    render(React.createElement(Harness))
+    act(() => h.setViewScale(2))
+    expect(h.model?.steps).toBe(8)
+
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 0, false))) // clear bd's only hit
+
+    expect(DOC, 'the edit really landed').toBe('s("~ ~ ~ ~, hh hh hh hh")')
+    expect(h.viewScale, 'the zoom the user set').toBe(2)
+    expect(h.model?.steps).toBe(8)
+    expect(lanes(), 'the emptied lane, kept only in the model').toEqual(['bd', 'hh'])
+  })
+
+  it('CONTROL: the same clear at the document’s own scale keeps the lane too', () => {
+    render(React.createElement(Harness))
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 0, false)))
+    expect(DOC).toBe('s("~ ~ ~ ~, hh hh hh hh")')
+    expect(lanes()).toEqual(['bd', 'hh'])
+  })
+
+  it('an edit typed in the code drops the zoom — a carried ×8 would refuse a 64-step pattern', () => {
+    render(React.createElement(Harness))
+    act(() => h.setViewScale(8))
+    expect(h.model?.steps).toBe(32)
+
+    const long = Array.from({ length: 64 }, (_, i) => (i % 4 === 0 ? 'bd' : '~')).join(' ')
+    act(() => {
+      DOC = `s("${long}")` // typed: no writer is committing
+      fireContentChange()
+    })
+
+    expect(h.viewScale).toBe(UNREFINED)
+    expect(h.model, 'the typed pattern opens').not.toBeNull()
+    expect(h.model?.steps).toBe(64)
+  })
+
+  it('moving the cursor to another pattern drops the zoom (#1117)', () => {
+    DOC = 'stack(s("bd ~ sn ~"), s("hh hh"))'
+    cursorOffset = 10 // inside the first mini
+    render(React.createElement(Harness))
+    act(() => h.setViewScale(2))
+    expect(h.model?.steps).toBe(8)
+
+    act(() => moveCursor(DOC.indexOf('hh') + 1))
+
+    expect(h.viewScale).toBe(UNREFINED)
+    expect(h.model?.steps).toBe(2)
+  })
+
+  it('moving the cursor within the same pattern keeps the zoom', () => {
+    DOC = 'stack(s("bd ~ sn ~"), s("hh hh"))'
+    cursorOffset = 10
+    render(React.createElement(Harness))
+    act(() => h.setViewScale(2))
+
+    act(() => moveCursor(13))
+
+    expect(h.viewScale).toBe(2)
+    expect(h.model?.steps).toBe(8)
   })
 })
