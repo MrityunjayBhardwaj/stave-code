@@ -15,20 +15,22 @@
  * the other. Merging by value would draw the same line and hand Stage 3 the wrong
  * index.
  *
- * Pure, and it imports only TYPES from the editor's BARREL. A runtime import from
- * it drags a CommonJS dependency into the app's test loader and the file fails to
- * collect — so the range function and the step selection (`stepIndexAtCycle`,
- * which knows the arrangement sections, #1585) are passed IN by the caller that already
+ * Pure. The range function and the step selection (`stepIndexAtCycle`, which
+ * knows the arrangement sections, #1585) are passed IN by the caller that already
  * holds the real one.
  *
- * `@stave/editor/knobScale` is a different door and may be imported at runtime
- * (#1581): it is the editor's own entry for the value↔position map, bundled
- * alone with no dependencies at all, so nothing follows it in. That map is where
- * the mixer knob reads the same three rules — one owner, so a level dragged on a
- * lane and the same control turned on the knob land on the same number.
+ * The value↔position map is the editor's (#1581), the same three rules the mixer
+ * knob reads — one owner, so a level dragged on a lane and the same control turned
+ * on the knob land on the same number.
  */
-import type { FixedParameter, OffsetEdit, SteppedAutomation } from '@stave/editor'
-import { positionOfValue, snapToStep, valueAtPosition } from '@stave/editor/knobScale'
+import {
+  positionOfValue,
+  snapToStep,
+  valueAtPosition,
+  type FixedParameter,
+  type OffsetEdit,
+  type SteppedAutomation,
+} from '@stave/editor'
 import { automationBand, automationBandHeight } from './automationCaption'
 
 /** `value` on the grid of `step`, spelled without float noise — the mixer knob's

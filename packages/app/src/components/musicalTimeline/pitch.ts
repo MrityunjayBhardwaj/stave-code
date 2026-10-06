@@ -25,10 +25,7 @@
  *  notes.
  */
 
-import type { IREvent } from '@stave/editor'
-// The barrel-free subpath: importing the barrel at runtime drags a CommonJS
-// dependency into this module's test loader (the same reason as `/trackId`).
-import { noteToMidi } from '@stave/editor/noteToMidi'
+import { noteToMidi, type IREvent } from '@stave/editor'
 
 /**
  * Convert frequency (Hz) to MIDI (float). 440 Hz → 69 (A4). Useful for

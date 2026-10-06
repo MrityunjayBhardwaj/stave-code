@@ -9,6 +9,7 @@ import {
   loadExceptions,
   measureBoundary,
   REPO_ROOT,
+  EDITOR_PACKAGE_JSON,
   shrinkOnlyProblems,
   type ExceptionList,
   type Measurement,
@@ -100,7 +101,9 @@ describe('the code↔view boundary (#1879)', () => {
       [`${PANELS}/plantedStar.tsx`]: `export * from '../../codeView/arrange'`,
       [`${PANELS}/plantedRequire.tsx`]: `declare const require: (s: string) => unknown\nexport const x = require('../../codeView/notation/parse')`,
       [`${PANELS}/plantedImportType.tsx`]: `export type T = import('../../codeView/notation/model').StepGridModel`,
-      [`packages/app/src/components/plantedSubpath.ts`]: `import { splitMuteMarker } from '@stave/editor/trackId'\nexport const x = splitMuteMarker`,
+      // the package itself has no subpath into the area any more (#1943); this arm plants one
+      // in an overlaid package.json (below), so the rule is still reached
+      [`packages/app/src/components/plantedSubpath.ts`]: `import { splitMuteMarker } from '@stave/editor/plantedTrackId'\nexport const x = splitMuteMarker`,
       // ── rule: owner ──
       [`${PANELS}/plantedMini.tsx`]: `import { mini } from '@strudel/mini'\nexport const x = mini`,
       [`${PANELS}/plantedKrill.tsx`]: `import * as krill from '@strudel/mini/krill-parser.js'\nexport const x = krill`,
@@ -143,8 +146,15 @@ describe('the code↔view boundary (#1879)', () => {
       if (!key) throw new Error(`no planted file ${name}`)
       return (by.get(key) ?? []).map((r) => r.reach)
     }
+    // The real package.json plus one planted subpath built from a file in the area. Not in
+    // `planted`: it is configuration the scan reads, not a file it judges.
+    const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, EDITOR_PACKAGE_JSON), 'utf8'))
+    const plantedPackageJson = JSON.stringify({
+      ...pkg,
+      exports: { ...pkg.exports, './plantedTrackId': { import: './dist/codeView/ir/trackId.js' } },
+    })
     beforeAll(() => {
-      const m = measureBoundary({ overlay: planted, onlyOverlay: true })
+      const m = measureBoundary({ overlay: { ...planted, [EDITOR_PACKAGE_JSON]: plantedPackageJson }, onlyOverlay: true })
       expect(m.examined).toBe(Object.keys(planted).length)
       by = new Map()
       for (const r of m.reaches) by.set(r.file, [...(by.get(r.file) ?? []), r])
