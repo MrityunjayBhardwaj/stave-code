@@ -5,7 +5,7 @@
  * `parseStrudel.ts` decides things about JavaScript syntax and about Strudel's
  * vocabulary by hand, in anchored regular expressions. Every other module in
  * the parse path asks an authority instead and has zero. The audit document
- * lists all 44 regex literals in the file — the 37 anchored predicates grouped by
+ * lists all 43 regex literals in the file — the 36 anchored predicates grouped by
  * the question each decides and who owns the answer, plus the 7 unanchored — so that
  * "find the next parser bug" is a finite list rather than a search.
  *
@@ -181,6 +181,11 @@ describe('predicate audit (#959)', () => {
       `the prose still spells the anchored count as something other than "${words[anchored]}"`,
     ).toBe(true)
 
+    // …and the opening paragraph, which no arm read until #1963 found it still saying 37
+    const opening = text.match(/owns the right answer\. (\d+) are anchored predicates/)
+    expect(opening, 'the opening paragraph lost its anchored count').toBeTruthy()
+    expect(Number((opening as RegExpMatchArray)[1]), 'the opening paragraph disagrees with the source').toBe(anchored)
+
     const catA = text.match(/^(\d+) of the (\d+)\./m)
     expect(catA, 'Category A lost its "N of the M." denominator line').toBeTruthy()
     expect(
@@ -205,7 +210,7 @@ describe('predicate audit (#959)', () => {
     const scan = (rel: string): number =>
       regexLiteralsIn(join(IR_DIR, rel)).filter(isAnchored).length
 
-    expect(scan('parseStrudel.ts'), 'control arm: the scan must find the known anchored predicates').toBe(37)
+    expect(scan('parseStrudel.ts'), 'control arm: the scan must find the known anchored predicates').toBe(36)
     for (const rel of delegating) expect(`${rel}: ${scan(rel)}`).toBe(`${rel}: 0`)
   })
 })

@@ -1,7 +1,7 @@
 # Predicate audit — `ir/parseStrudel.ts`
 
 Every regular expression in `parseStrudel.ts`, the question it answers, and the system that
-owns the right answer. 37 are anchored predicates (categories A and B); 7 are unanchored
+owns the right answer. 36 are anchored predicates (categories A and B); 7 are unanchored
 (category D), two of which are predicates as well.
 
 This file is a **census, not a plan**. It exists so that "find the next parser bug" becomes
@@ -26,9 +26,9 @@ the parse path asks somebody who already knows:
 | `ir/parseStrudelStages.ts` | — | **0** | 73 |
 | `chunkDetect.ts` | acorn | **0** | 496 |
 | `arrange/parse.ts` | acorn | **0** | 223 |
-| **`ir/parseStrudel.ts`** | **nobody** | **37** | **4214** |
+| **`ir/parseStrudel.ts`** | **nobody** | **36** | **4214** |
 
-Every module that delegates has zero. The one that does not has thirty-seven (was 42 before #965 delegated the pattern-source grid, and 36 before #1178 moved the side-effect head list to `statementHeads.ts`). `parseMini.ts` is
+Every module that delegates has zero. The one that does not has thirty-six (was 42 before #965 delegated the pattern-source grid, 36 before #1178 moved the side-effect head list to `statementHeads.ts`, and 37 before #1963 built the prelude list's tempo setters from `TEMPO_SETTERS`). `parseMini.ts` is
 the controlled before/after: 512 lines with a hand-rolled tokenizer, 397 lines and no anchored
 regexes after it was rebuilt on krill.
 
@@ -68,7 +68,7 @@ the regex alone without saying so.
 
 ## Category A — JavaScript syntax · owner: **acorn**
 
-29 of the 37. `acorn` is already a dependency and is already used to parse this same source
+29 of the 36. `acorn` is already a dependency and is already used to parse this same source
 text, three times, in `visualEdit/`. The package parses one document two different ways.
 
 ### A1 · "is this token a bare identifier?" — 4 sites
@@ -308,7 +308,7 @@ JavaScript's own `ID_Start`/`ID_Continue`, as acorn reads it.)
 
 ## Category B — Strudel vocabulary · owner: **`controls.mjs` / `signal.mjs` / krill**
 
-8 of the 34. These ask "is this name one of Strudel's?" — the same question #928 routed
+6 of the 36. These ask "is this name one of Strudel's?" — the same question #928 routed
 through `controls.mjs` for controls and #953 re-derived from `signal.mjs` for chain roots.
 The remaining sixteen have not had that treatment.
 
@@ -383,32 +383,33 @@ recognised here at all.
 1x  /^slow\s*\(\s*([0-9.]+)\s*\)$/
 ```
 
-### B5 · "is this statement a setup/side-effect head?" — 1 site
+### B5 · "is this statement a setup/side-effect head?" — 0 sites (derived since #1963)
 
-`stripParserPrelude:342` (`PRELUDE_CALL_RE`)
+`stripParserPrelude` (`PRELUDE_CALL_RE`)
 
-Owner: `@strudel/core` `repl.mjs` (the setter/boot surface). **Transcribed.**
+Owner: `@strudel/core` `repl.mjs` (the setter/boot surface). **Derived, partly** — no longer a
+literal, so it has left the census above.
 
-⚠ THIS ENTRY USED TO LIST TWO SITES, and the second one LEFT rather than vanished (#1178).
-`SIDE_EFFECT_CALL_RE` moved to `statementHeads.ts`, because the Mixer kept a THIRD copy of
-nearly the same vocabulary and the two disagreed for 14 of 55 bare corpus documents. It is now
-one list with two readers, and the regex there is derived from the set rather than spelled
-beside it. Recorded here rather than merely deleted: a census that drops an entry without
-saying where it went reads the same as one that never had it.
+⚠ THIS ENTRY HAS NOW LOST BOTH OF ITS SITES, and neither one vanished. `SIDE_EFFECT_CALL_RE`
+moved to `statementHeads.ts` in #1178, because the Mixer kept a THIRD copy of nearly the same
+vocabulary and the two disagreed for 14 of 55 bare corpus documents. `PRELUDE_CALL_RE` then
+stopped spelling the four tempo setters itself (#1963): it is built with `new RegExp` from a
+list that spreads `TEMPO_SETTERS`, the list the block scanner, the tokenizer and `tempo.ts`
+already read. The source it builds is byte-identical to the literal it replaced. Recorded here
+rather than deleted: a census that drops an entry without saying where it went reads the same
+as one that never had it.
 
-The two remaining lists are NOT redundant, which this entry previously implied by calling them
-"two copies of one vocabulary". They answer different questions, and the difference is exactly
-the entries they disagree on: `PRELUDE_CALL_RE` asks "is this a LEADING boot call I may strip
-before parsing?", and its own docblock reasons that `all` and `hush` are not — `all` takes a
-pattern transform, `hush` stops playback. `statementHeads` asks "is this statement a track?",
-for which both plainly qualify. Merging them would strip `all(...)` as prelude.
+What is still transcribed is the rest of its list: `samples`, `useRNG`, `setVoicingRange`,
+`initAudio`, `aliasBank`. That is deliberate. The two lists are NOT redundant: they answer
+different questions, and the difference is exactly the entries they disagree on.
+`PRELUDE_CALL_RE` asks "is this a LEADING boot call I may strip before parsing?", and its own
+docblock reasons that `all` and `hush` are not: `all` takes a pattern transform, `hush` stops
+playback. `statementHeads` asks "is this statement a track?", for which both plainly qualify.
+Merging them would strip `all(...)` as prelude. Only the tempo setters were the same set, so
+only they are shared.
 
 Known-incomplete: **observed** — a setup head absent from the list opaques the whole program:
 `setGain(0.5)` + `note("c3")` goes to `Code`, against a control `setcps(0.5)` that parses.
-
-```regex
-1x  /^[ \t]*(?:samples|useRNG|setcps|setCps|setcpm|setCpm|setVoicingRange|initAudio|aliasBank)\s*\(/
-```
 
 ---
 
@@ -477,12 +478,12 @@ observation — `const n = .5` and `const n = 4` now produce the same IR shape.
 | category | owner | sites |
 |---|---|---|
 | A — JavaScript syntax | acorn | 29 |
-| B — Strudel vocabulary | `controls.mjs` / `signal.mjs` / krill | 7 |
-| **total anchored regexes** | | **37** |
+| B — Strudel vocabulary | `controls.mjs` / `signal.mjs` / krill | 6 |
+| **total anchored regexes** | | **36** |
 | D — unanchored (2 predicates + 5 scans) | acorn / — | 7 |
-| **total regex literals** | | **44** |
-| distinct sources | | 32 |
+| **total regex literals** | | **43** |
+| distinct sources | | 31 |
 
-Of the 37 anchored predicates, **zero** currently delegate (the pattern-source extraction that #965 removed DID delegate — to acorn — which is why it is no longer a regex). Eleven of the incompleteness claims
+Of the 36 anchored predicates, **zero** currently delegate (the pattern-source extraction that #965 removed DID delegate — to acorn — which is why it is no longer a regex). Eleven of the incompleteness claims
 above are observed against a control arm; the rest are reasoned from the expression and marked
 as such.
