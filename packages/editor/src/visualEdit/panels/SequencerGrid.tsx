@@ -26,7 +26,7 @@
  */
 import * as React from 'react'
 
-import { stepGridCodec, gainWritable, slotPress, slotPressCost } from '../../codeView'
+import { stepGridCodec, gainWritable, slotPress, slotPressCost, NO_RESOLUTION_EFFECT } from '../../codeView'
 import { columnCount, isCellOn, laneCoverage } from '../../codeView'
 import type { StepGridModel } from '../../codeView'
 import { drawnLayout } from '../../codeView'
@@ -414,7 +414,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
     // the sentence in the tooltip and the write the user gets are the same computation.
     // A free-zone target never reaches the op, and reports nothing, which is correct:
     // looking closer costs nothing.
-    (t) => (model ? slotPressCost(stepGridCodec, model, t, canDrawView) : { lengthened: 0, snapped: 0, merged: 0 }),
+    (t) => (model ? slotPressCost(stepGridCodec, model, t, canDrawView) : NO_RESOLUTION_EFFECT),
   )
 
   React.useEffect(() => {

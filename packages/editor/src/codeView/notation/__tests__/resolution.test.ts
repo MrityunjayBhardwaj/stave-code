@@ -331,7 +331,7 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     expect(serializeStepGrid(quantizeStepGridTo(m8, 4))).toBe('bd ~ sn ~')
     // and it costs LENGTH only: every onset stays exactly where it was, which is what lets
     // the control say "keeps timing" about a target it reaches through the quantize path.
-    expect(stepResolutionEffect(m8, 4)).toEqual({ lengthened: 2, snapped: 0, merged: 0 })
+    expect(stepResolutionEffect(m8, 4)).toEqual({ lengthened: 2, snapped: 0, merged: 0, shortened: 0 })
     // CONTROL — ×2 is untouched by the floor. It is the one control the free zone routes
     // through, and if this moved, the round trip above would no longer be a round trip.
     expect(scaleStepGridTo(m8, 4)).toBe(m8)
@@ -349,7 +349,7 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     // all three notes floored, and two onsets genuinely moved — so this target is described
     // as changing timing AND lengths, where 8→4 above changes only lengths. The two cases
     // must not collapse into one label.
-    expect(stepResolutionEffect(m5, 4)).toEqual({ lengthened: 3, snapped: 2, merged: 0 })
+    expect(stepResolutionEffect(m5, 4)).toEqual({ lengthened: 3, snapped: 2, merged: 0, shortened: 0 })
     // CONTROL — REFINING is unaffected. It keeps the slot count (#607), so no length ever
     // approaches the floor and nothing is reported.
     expect(quantizeStepGridTo(m5, 16)).not.toBe(m5)
@@ -369,7 +369,7 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     // between DIFFERENT lanes, which stack rather than merge.
     const dense = step('bd sd hh cp bd sd hh cp')
     expect(ser(quantizeStepGridTo(dense, 4))).toBe('bd [sd,hh] [bd,cp] [sd,hh,cp]')
-    expect(stepResolutionEffect(dense, 4)).toEqual({ lengthened: 8, snapped: 4, merged: 0 })
+    expect(stepResolutionEffect(dense, 4)).toEqual({ lengthened: 8, snapped: 4, merged: 0, shortened: 0 })
     // CONTROL — REFINING the same grid is still offered and still writes 16 columns.
     expect(ser(quantizeStepGridTo(dense, 16)).split(' ').length).toBe(16)
     expect(stepResolutionEffect(dense, 16).lengthened).toBe(0)
@@ -395,7 +395,7 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     }
     expect(sub.lanes[0].cells.some((c) => isCellOn(c) && c.duration < 1)).toBe(true) // guard
     expect(quantizeStepGridTo(sub, 4)).toBe(sub)
-    expect(stepResolutionEffect(sub, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0 })
+    expect(stepResolutionEffect(sub, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0, shortened: 0 })
   })
 
   it('piano roll: a non-power-of-2 reduce snaps notes and always serializes', () => {
@@ -411,7 +411,7 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     // pitches, so that is not a merge.
     const m5 = roll('c3 e3 g3 a3 b3')
     expect(serializePianoRoll(quantizePianoRollTo(m5, 4))).toBe('c3 e3 [g3,a3] b3')
-    expect(rollResolutionEffect(m5, 4)).toEqual({ lengthened: 5, snapped: 4, merged: 0 })
+    expect(rollResolutionEffect(m5, 4)).toEqual({ lengthened: 5, snapped: 4, merged: 0, shortened: 0 })
   })
 
   it('piano roll: a reduce that moves no onset reports length only', () => {
@@ -419,17 +419,47 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     // at one, so this target keeps timing and makes notes longer
     const m8 = roll('c3 ~ e3 ~ g3 ~ a3 ~')
     expect(serializePianoRoll(quantizePianoRollTo(m8, 4))).toBe('c3 e3 g3 a3')
-    expect(rollResolutionEffect(m8, 4)).toEqual({ lengthened: 4, snapped: 0, merged: 0 })
+    expect(rollResolutionEffect(m8, 4)).toEqual({ lengthened: 4, snapped: 0, merged: 0, shortened: 0 })
   })
 
   it('piano roll: two notes of one pitch landing on one column are a merge', () => {
     const m = roll('c3 c3 e3 e3')
     expect(serializePianoRoll(quantizePianoRollTo(m, 2))).toBe('c3 [c3,e3]')
-    expect(rollResolutionEffect(m, 2)).toEqual({ lengthened: 3, snapped: 2, merged: 1 })
+    expect(rollResolutionEffect(m, 2)).toEqual({ lengthened: 3, snapped: 2, merged: 1, shortened: 0 })
   })
 
   it('piano roll: refining keeps each slot count, so it can move onsets but lengthens nothing', () => {
-    expect(rollResolutionEffect(roll('c3 e3 g3'), 4)).toEqual({ lengthened: 0, snapped: 2, merged: 0 })
+    expect(rollResolutionEffect(roll('c3 e3 g3'), 4)).toEqual({ lengthened: 0, snapped: 2, merged: 0, shortened: 0 })
+  })
+
+  // #1948 — a press can also make a note SHORTER, and nothing said so. Counted on the note
+  // the column keeps, against the length it should have had on the new grid.
+  it('step grid: a note cut to the next onset that snapped closer is reported shorter', () => {
+    // 3 → 2: `bd@2` should be 4/3 of a column, the second hit snaps to column 1, and
+    // `clampLane` cuts the first note to the one column before it. The other two costs are
+    // the second hit's: its onset moved (2/3 → 1) and its 2/3 length was floored to 1.
+    const m = step('bd@2 bd')
+    expect(ser(quantizeStepGridTo(m, 2))).toBe('bd bd')
+    expect(stepResolutionEffect(m, 2)).toEqual({ lengthened: 1, snapped: 1, merged: 0, shortened: 1 })
+    // CONTROL — the same press on hits that keep their room cuts nothing: `bd ~ ~ ~ sn ~ ~ ~`
+    // above floors both notes and reports `shortened: 0`, so a count that fired on every
+    // coarsening could not pass both arms.
+  })
+
+  it('piano roll: a length rounded down to whole columns is reported shorter', () => {
+    // The issue's own case: `c3@2` scales to 4/3 of a column and is written as 1.
+    const m = roll('c3@2 e3')
+    expect(serializePianoRoll(quantizePianoRollTo(m, 2))).toBe('c3 e3')
+    expect(rollResolutionEffect(m, 2)).toEqual({ lengthened: 1, snapped: 1, merged: 0, shortened: 1 })
+  })
+
+  it('piano roll: refining can shorten too — a chord shares its shortest length', () => {
+    // 3 → 4 keeps every slot count (#607), but `g3@3` snaps onto `c3`'s column and the
+    // chord is written with one length, `c3`'s 1. Nothing is lengthened and the press is a
+    // FINER grid, so a count that only ran when coarsening would miss it.
+    const m = roll('c3 e3@2, g3@3')
+    expect(serializePianoRoll(quantizePianoRollTo(m, 4))).toBe('[c3,g3] e3@2 ~')
+    expect(rollResolutionEffect(m, 4)).toEqual({ lengthened: 0, snapped: 1, merged: 0, shortened: 1 })
   })
 
   it('piano roll: a quantize that moves nothing reports nothing, and still writes', () => {
@@ -441,13 +471,13 @@ describe('#479 quantize-set — reduce any pattern to any slot count', () => {
     const out = quantizePianoRollTo(m, 4)
     expect(out).not.toBe(m)
     expect(serializePianoRoll(out)).toBe('c3@2 e3@2')
-    expect(rollResolutionEffect(m, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0 })
+    expect(rollResolutionEffect(m, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0, shortened: 0 })
   })
 
   it('piano roll: a declined op reports nothing', () => {
     const m = roll('c3 e3 g3 a3')
     expect(quantizePianoRollTo(m, 4)).toBe(m)
-    expect(rollResolutionEffect(m, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0 })
+    expect(rollResolutionEffect(m, 4)).toEqual({ lengthened: 0, snapped: 0, merged: 0, shortened: 0 })
   })
 
   it('piano roll: REDUCES the long 64-step choir melody to 16 without dropping the write', () => {
