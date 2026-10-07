@@ -47,8 +47,7 @@
 import type { PatternIR } from './PatternIR'
 import type { SourceLocation } from './IREvent'
 import { parseTypedNumber, type OffsetEdit } from '../writeback'
-import { atomSpan } from './parseMini'
-import { miniTree, type KElement, type KPattern } from '../strudelMini/tree'
+import { miniShape, type MiniElement, type MiniGroup } from '../strudelMini/shape'
 import { isSectionWindow, placementsTimeAt, playableParameters, type SectionWindow, type TimeStep, type TimeWarp } from './parameterRoutes'
 
 /** One step of a stepped parameter. */
@@ -193,9 +192,9 @@ function literalOf(param: PatternIR & { tag: 'Param' }): { inner: string; start:
  * moves every cycle it holds.
  */
 function stepsOfLiteral(inner: string, innerStart: number): SteppedStep[] | null {
-  let root: KPattern
+  let root: MiniGroup
   try {
-    root = miniTree(inner)
+    root = miniShape(inner)
   } catch {
     return null
   }
@@ -203,38 +202,43 @@ function stepsOfLiteral(inner: string, innerStart: number): SteppedStep[] | null
   // values a cycle. A root that is not a fastcat (`a | b`, `a, b`) holds PATTERNS,
   // not elements, and fails the alternation checks below on its own — an alignment
   // clause here was broken alone and turned nothing red.
-  if (root?.type_ !== 'pattern' || root.source_.length !== 1) return null
-  const whole = root.source_[0]
+  if (root.children.length !== 1) return null
+  const whole = root.children[0]
+  // a root that holds layers (`a | b`, `a, b`) has no single element to be the literal
+  if (whole.kind !== 'element') return null
   const stretch = slowFactor(whole)
-  if (stretch === null || (whole.options_?.weight ?? 1) !== 1 || (whole.options_?.reps ?? 1) !== 1) return null
+  if (stretch === null || whole.weight !== 1 || whole.reps !== 1) return null
 
-  const alt = whole.source_
-  if (alt.type_ !== 'pattern' || alt.arguments_?.alignment !== 'polymeter_slowcat' || alt.source_.length !== 1) return null
-  // A slowcat's child is a PATTERN, not an element (the krill AST reference), and
+  const alt = whole.content
+  if (alt.kind !== 'group' || alt.alignment !== 'polymeter_slowcat' || alt.children.length !== 1) return null
+  // A slowcat's child is a LAYER (a group), not an element (the krill AST reference), and
   // always a fastcat: `<0.2|0.8>` and `<0.2 . 0.8>` do not parse at all, in krill or
   // in the engine. A check of the child's alignment turned nothing red when broken.
-  const arms = alt.source_[0] as unknown as KPattern
+  const arms = alt.children[0]
+  if (arms.kind !== 'group') return null
 
   const steps: SteppedStep[] = []
   let at = 0
-  for (const el of arms.source_) {
-    const atom = el.source_
+  for (const el of arms.children) {
+    if (el.kind !== 'element') return null
+    const atom = el.content
     // `~` silences the track and `[a b]` subdivides the cycle: neither is a value
     // held for a cycle, so the whole parameter declines.
     //
     // ⚠ The number test is what DECLINES a group; the atom test only NARROWS. A
-    // group's `source_` is an array, which no number matches — measured by breaking
-    // the atom test, which turned nothing red. It stays so `source_` is a string.
-    if (atom.type_ !== 'atom' || !NUMBER.test(atom.source_)) return null
-    const weight = el.options_?.weight ?? 1
+    // group has no text for the number test to match. It was measured on krill's own
+    // nodes by breaking the atom test, which turned nothing red; on the adapter's
+    // nodes (#1972) the atom test is what gives `atom.text` its type.
+    if (atom.kind !== 'atom' || !NUMBER.test(atom.text)) return null
+    const weight = el.weight
     // A fractional weight has no whole-cycle start, and the per-cycle reading this
     // lane exists to draw would have to invent one.
     if (!Number.isInteger(weight) || weight < 1) return null
-    if (!(el.options_?.ops ?? []).every((op) => op.type_ === 'replicate')) return null
-    const span = atomSpan(atom, inner)
+    if (!el.ops.every((op) => op.kind === 'replicate')) return null
+    const span = atom.span
     const held = weight * stretch
     steps.push({
-      value: Number(atom.source_),
+      value: Number(atom.text),
       weight: held,
       startCycle: at,
       valueSpan: { start: innerStart + span.start, end: innerStart + span.end },
@@ -254,16 +258,17 @@ function stepsOfLiteral(inner: string, innerStart: number): SteppedStep[] | null
  * (`/2/2`) are two ops — each declines. `/0` and `/-2` play nothing at all, which
  * is what `n >= 1` refuses.
  */
-function slowFactor(el: KElement): number | null {
-  const ops = el.options_?.ops ?? []
+function slowFactor(el: MiniElement): number | null {
+  const ops = el.ops
   if (ops.length === 0) return 1
   if (ops.length !== 1) return null
   // `slow` is only ever a `stretch`'s type (dump), and a patterned amount (`/[2]`)
-  // has an array `source_`, which is no number — so neither needs a clause of its
+  // is a group, not an atom, so it is no number — so neither needs a clause of its
   // own. Both were written, broken alone, and turned nothing red.
-  const args = ops[0].arguments_ as { type?: string; amount?: { source_?: unknown } } | undefined
-  if (args?.type !== 'slow') return null
-  const n = Number(args.amount?.source_)
+  const { type, amount } = ops[0].args
+  if (type !== 'slow') return null
+  // the amount is a number only when it IS an atom: a patterned one is a group
+  const n = amount && typeof amount === 'object' && amount.kind === 'atom' ? Number(amount.text) : NaN
   return Number.isInteger(n) && n >= 1 ? n : null
 }
 

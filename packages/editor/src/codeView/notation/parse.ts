@@ -24,6 +24,7 @@
  */
 import { hapsInCycle, miniPattern, type MiniHap } from '../strudelMini/pattern'
 import { miniTree, type KAtom, type KElement, type KOp, type KPattern } from '../strudelMini/tree'
+import { isRest, miniShape, type MiniGroup } from '../strudelMini/shape'
 import { bjorklund, rotateEuclid } from '../ir/euclid'
 import { detectPeriod } from '../ir/songAnalysis'
 import { serializeByLeaf, serializeStepGrid, serializePianoRoll } from './serialize'
@@ -279,6 +280,14 @@ function unwrapAlternation(mini: string): string | null {
  * The krill nodes this file reads (`KAtom`, `KPattern`, `KOp`, `KElement`) and the
  * call that produces them (`miniTree`) live in `../strudelMini/tree.ts` (#1971) —
  * the shape is written down once, there.
+ *
+ * ⚠ ONLY THE OLD READER BELOW READS THOSE NODES' FIELDS (#1972): `isAtom`, `isRestAtom`,
+ * `tokenOf`, `numArg`, `readOps`, `groupSlots`, `chordAtoms`, `elementToSteps`,
+ * `tokenize`, `altAlternatives`, `expandAltElements`. They are listed with their read
+ * counts in `modellingRatchet/boundary.exceptions.json`, the counts only go down, and
+ * #1012 deletes them. Everything else in this file — the span readers, the projections —
+ * asks `../strudelMini/shape.ts` for plain nodes; a field read in any other function
+ * fails the boundary test.
  *
  * The tree is uniformly recursive — `pattern > element > (atom | pattern)` —
  * and `weight`/`reps`/`ops` are fields on EVERY element. That uniformity is
@@ -1438,35 +1447,35 @@ function playedBars<T>(
  * work rather than offer a grid that isn't byte-local per bar.
  */
 function isWholeAlternation(src: string): boolean {
-  let ast: KPattern
+  let ast: MiniGroup
   try {
-    ast = miniTree(src)
+    ast = miniShape(src)
   } catch {
     return false
   }
-  if (ast?.type_ !== 'pattern' || ast.arguments_?.alignment !== 'fastcat') return false
-  if (ast.source_.length !== 1) return false
-  const inner = ast.source_[0]?.source_ as KPattern | undefined
-  return inner?.type_ === 'pattern' && inner.arguments_?.alignment === 'polymeter_slowcat'
+  if (ast.alignment !== 'fastcat') return false
+  if (ast.children.length !== 1) return false
+  const only = ast.children[0]
+  if (only.kind !== 'element') return false
+  const inner = only.content
+  return inner.kind === 'group' && inner.alignment === 'polymeter_slowcat'
 }
 
 /** top-level fastcat elements from krill: byte span + unit weight, or null */
 function topLevelSpans(src: string): ElementSpan[] | null {
-  let ast: KPattern
+  let ast: MiniGroup
   try {
-    ast = miniTree(src)
+    ast = miniShape(src)
   } catch {
     return null
   }
-  if (!ast || ast.type_ !== 'pattern' || ast.arguments_?.alignment !== 'fastcat') return null
+  if (ast.alignment !== 'fastcat') return null
   const out: ElementSpan[] = []
-  for (const el of ast.source_) {
-    const loc = el.location_
-    if (!loc) return null
-    const reps = el.options_?.reps ?? 1
-    const weight = reps > 1 ? reps : el.options_?.weight ?? 1
+  for (const el of ast.children) {
+    if (el.kind !== 'element' || !el.span) return null
+    const weight = el.reps > 1 ? el.reps : el.weight
     if (!Number.isInteger(weight) || weight < 1) return null
-    out.push({ start: loc.start.offset, end: loc.end.offset, weight })
+    out.push({ start: el.span.start, end: el.span.end, weight })
   }
   return out
 }
@@ -2099,36 +2108,31 @@ function restSpansByColumn(
   perBar: number,
   bars: number,
 ): (LeafSpan | null)[] | null {
-  let ast: KPattern
+  let ast: MiniGroup
   try {
-    ast = miniTree(src)
+    ast = miniShape(src)
   } catch {
     return null
   }
-  // Collect every rest atom's own tight span. The recorded `start` is untrustworthy —
-  // krill's padding lands on either side by syntax — so the token is re-found from the
-  // first non-space at or after it, and its length is the atom's own text.
+  // Collect every rest atom's own tight span. The ELEMENT's recorded start is
+  // untrustworthy — krill's padding lands on either side by syntax — so the token is
+  // re-found from the first non-space at or after it, and its length is the atom's own
+  // text. (Counted from the element, as it always was, and checked against the text.)
   const spans: LeafSpan[] = []
-  const walk = (node: KPattern | KElement | KAtom | undefined): void => {
-    if (!node || typeof node !== 'object') return
-    if (node.type_ === 'pattern') {
-      for (const el of (node as KPattern).source_ ?? []) walk(el)
+  const walk = (node: MiniGroup['children'][number] | MiniGroup): void => {
+    if (node.kind === 'group') {
+      for (const child of node.children) walk(child)
       return
     }
-    if (node.type_ === 'element') {
-      const el = node as KElement
-      const inner = el.source_
-      if (inner && (inner as KAtom).type_ === 'atom') {
-        const atom = inner as KAtom
-        const loc = el.location_
-        if (isRestAtom(atom) && loc) {
-          let s = loc.start.offset
-          while (s < src.length && /\s/.test(src[s])) s++
-          if (src.slice(s, s + atom.source_.length) === atom.source_)
-            spans.push({ start: s, end: s + atom.source_.length })
-        }
-      } else walk(inner as KPattern)
+    const inner = node.content
+    if (inner.kind === 'group') {
+      walk(inner)
       return
+    }
+    if (isRest(inner) && node.span) {
+      let s = node.span.start
+      while (s < src.length && /\s/.test(src[s])) s++
+      if (src.slice(s, s + inner.text.length) === inner.text) spans.push({ start: s, end: s + inner.text.length })
     }
   }
   walk(ast)
@@ -4442,20 +4446,19 @@ export function bracketedBarRegions(
   raw: string,
 ): NonNullable<StepGridModel['source']>['parts'][number]['regions'] | null {
   const text = raw.trim()
-  let ast: KPattern
+  let ast: MiniGroup
   try {
-    ast = miniTree(text)
+    ast = miniShape(text)
   } catch {
     return null
   }
-  if (ast.source_.length !== 1) return null
-  const el = ast.source_[0]
-  if (isAtom(el.source_) || el.source_.arguments_?.alignment !== 'fastcat') return null
-  const o = el.options_ ?? {}
-  if ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0 || !el.location_) return null
+  if (ast.children.length !== 1) return null
+  const el = ast.children[0]
+  if (el.kind !== 'element' || el.content.kind !== 'group' || el.content.alignment !== 'fastcat') return null
+  if (el.weight !== 1 || el.reps !== 1 || el.ops.length > 0 || !el.span) return null
   // the element's bytes, less its brackets
-  const start = el.location_.start.offset
-  const end = el.location_.end.offset
+  const start = el.span.start
+  const end = el.span.end
   const inner = parseStepGrid(text.slice(start + 1, end - 1))
   if (!inner.ok) return null
   const src = inner.model.source
