@@ -3990,6 +3990,31 @@ function isEditList(edit) {
   return Array.isArray(edit);
 }
 __name(isEditList, "isEditList");
+function unquoteOffsets(node) {
+  if (!node || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    for (const child of node) unquoteOffsets(child);
+    return;
+  }
+  const rec = node;
+  for (const key2 of Object.keys(rec)) {
+    if (key2 !== "location_") {
+      unquoteOffsets(rec[key2]);
+      continue;
+    }
+    const loc = rec[key2];
+    if (typeof loc?.start?.offset === "number" && typeof loc.end?.offset === "number") {
+      rec[key2] = { start: { offset: loc.start.offset - 1 }, end: { offset: loc.end.offset - 1 } };
+    }
+  }
+}
+__name(unquoteOffsets, "unquoteOffsets");
+function miniTree(mini) {
+  const ast = krillParser_js.parse('"' + mini + '"');
+  unquoteOffsets(ast);
+  return ast;
+}
+__name(miniTree, "miniTree");
 var bjorklund = /* @__PURE__ */ __name((k, n) => {
   if (n <= 0) return [];
   if (k === 0) return Array(n).fill(false);
@@ -4007,7 +4032,7 @@ var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
 var isAtom = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
 var isRestAtom = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
 var atomSpan = /* @__PURE__ */ __name((a, input) => {
-  const start = firstNonWs(input, (a.location_?.start.offset ?? 1) - 1);
+  const start = firstNonWs(input, a.location_?.start.offset ?? 0);
   return { start, end: start + a.source_.length };
 }, "atomSpan");
 var argAtom = /* @__PURE__ */ __name((arg) => {
@@ -4020,7 +4045,7 @@ function parseMini(input, isSample = false, baseOffset = 0) {
   if (!input.trim()) return IR.pure();
   let ast;
   try {
-    ast = krillParser_js.parse('"' + input + '"');
+    ast = miniTree(input);
   } catch {
     return IR.code(input);
   }
@@ -4133,7 +4158,7 @@ function buildElement(el, isSample, baseOffset, input) {
 }
 __name(buildElement, "buildElement");
 function buildGroup(pat, isSample, baseOffset, input, el) {
-  const openPos = firstNonWs(input, (el.location_?.start.offset ?? 1) - 1);
+  const openPos = firstNonWs(input, el.location_?.start.offset ?? 0);
   const closePos = matchBracket(input, openPos);
   const loc = [{ start: baseOffset + openPos, end: baseOffset + closePos + 1 }];
   const node = patternToNode(pat, loc, isSample, baseOffset, input);
@@ -4212,7 +4237,7 @@ __name(literalOf, "literalOf");
 function stepsOfLiteral(inner, innerStart) {
   let root;
   try {
-    root = krillParser_js.parse('"' + inner + '"');
+    root = miniTree(inner);
   } catch {
     return null;
   }
@@ -8169,6 +8194,14 @@ function clampPartAtOnset(lanes, part, column) {
 }
 __name(clampPartAtOnset, "clampPartAtOnset");
 var lookOnlyLine = /* @__PURE__ */ __name((l) => `Look only \u2014 ${l.reason}. Edit it in the code.`, "lookOnlyLine");
+function miniPattern(mini) {
+  return mini_mjs.mini(mini);
+}
+__name(miniPattern, "miniPattern");
+function hapsInCycle(pat, cyc) {
+  return pat.queryArc(cyc, cyc + 1);
+}
+__name(hapsInCycle, "hapsInCycle");
 
 // src/codeView/notation/perBar.ts
 var MAX_SHARED_STEPS = 4096;
@@ -9688,7 +9721,7 @@ function tokenize(mini, allowNumeric = false) {
   if (src === "") return { ok: true, steps: [], elements: [] };
   let ast;
   try {
-    ast = krillParser_js.parse('"' + src + '"');
+    ast = miniTree(src);
   } catch {
     return { ok: false, reason: "unsupported mini-notation syntax" };
   }
@@ -9710,8 +9743,8 @@ function tokenize(mini, allowNumeric = false) {
     const loc = el.location_;
     if (loc) {
       elements.push({
-        start: loc.start.offset - 1,
-        end: loc.end.offset - 1,
+        start: loc.start.offset,
+        end: loc.end.offset,
         weight: mapped.reduce((w, s) => w + s.elongation, 0)
       });
     }
@@ -9805,7 +9838,7 @@ function expandAltElements(mini, allowNumeric) {
   const src = mini.trim();
   let ast;
   try {
-    ast = krillParser_js.parse('"' + src + '"');
+    ast = miniTree(src);
   } catch {
     return null;
   }
@@ -9848,8 +9881,8 @@ function expandAltElements(mini, allowNumeric) {
     return { reason: `the alternation expands past ${MAX_STEPS} steps` };
   }
   const elemSpans = topEls.map((el, i) => ({
-    start: el.location_.start.offset - 1,
-    end: el.location_.end.offset - 1,
+    start: el.location_.start.offset,
+    end: el.location_.end.offset,
     weight: elemWeight[i]
   }));
   return { bars, div, perBarCols, perBarSteps, elemSpans };
@@ -10019,7 +10052,7 @@ __name(playedBars, "playedBars");
 function isWholeAlternation(src) {
   let ast;
   try {
-    ast = krillParser_js.parse('"' + src + '"');
+    ast = miniTree(src);
   } catch {
     return false;
   }
@@ -10032,7 +10065,7 @@ __name(isWholeAlternation, "isWholeAlternation");
 function topLevelSpans(src) {
   let ast;
   try {
-    ast = krillParser_js.parse('"' + src + '"');
+    ast = miniTree(src);
   } catch {
     return null;
   }
@@ -10044,7 +10077,7 @@ function topLevelSpans(src) {
     const reps = el.options_?.reps ?? 1;
     const weight = reps > 1 ? reps : el.options_?.weight ?? 1;
     if (!Number.isInteger(weight) || weight < 1) return null;
-    out.push({ start: loc.start.offset - 1, end: loc.end.offset - 1, weight });
+    out.push({ start: loc.start.offset, end: loc.end.offset, weight });
   }
   return out;
 }
@@ -10087,7 +10120,7 @@ __name(gridOnsets, "gridOnsets");
 function readGridOnsets(pat, cyc) {
   let haps;
   try {
-    haps = pat.queryArc(cyc, cyc + 1);
+    haps = hapsInCycle(pat, cyc);
   } catch {
     return no("no-note-content");
   }
@@ -10132,7 +10165,7 @@ function projectStepGrid(src0, viewScale = UNREFINED) {
   if (src === "") return no("not-a-pattern");
   let pat;
   try {
-    pat = mini_mjs.mini(src);
+    pat = miniPattern(src);
   } catch {
     return no("not-a-pattern");
   }
@@ -10257,7 +10290,7 @@ function projectionEditSafe(model, perBar2, bars, base, probeCols) {
     if (out == null) return false;
     let edited;
     try {
-      edited = mini_mjs.mini(out);
+      edited = miniPattern(out);
     } catch {
       return false;
     }
@@ -10295,7 +10328,7 @@ __name(projectionEditSafe, "projectionEditSafe");
 function restSpansByColumn(src, perBar2, bars) {
   let ast;
   try {
-    ast = krillParser_js.parse('"' + src + '"');
+    ast = miniTree(src);
   } catch {
     return null;
   }
@@ -10313,7 +10346,7 @@ function restSpansByColumn(src, perBar2, bars) {
         const atom = inner;
         const loc = el.location_;
         if (isRestAtom2(atom) && loc) {
-          let s = loc.start.offset - 1;
+          let s = loc.start.offset;
           while (s < src.length && /\s/.test(src[s])) s++;
           if (src.slice(s, s + atom.source_.length) === atom.source_)
             spans.push({ start: s, end: s + atom.source_.length });
@@ -10333,7 +10366,7 @@ function restSpansByColumn(src, perBar2, bars) {
   }
   let probePat;
   try {
-    probePat = mini_mjs.mini(probeSrc);
+    probePat = miniPattern(probeSrc);
   } catch {
     return null;
   }
@@ -10365,7 +10398,7 @@ function projectStepGridByLeaf(src0) {
   if (src === "") return no("not-a-pattern");
   let pat;
   try {
-    pat = mini_mjs.mini(src);
+    pat = miniPattern(src);
   } catch {
     return no("not-a-pattern");
   }
@@ -10461,7 +10494,7 @@ function leafEditSafe(model, perBar2, bars) {
       const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }]);
       let edited;
       try {
-        edited = mini_mjs.mini(out);
+        edited = miniPattern(out);
       } catch {
         return false;
       }
@@ -10961,7 +10994,7 @@ __name(rollOnsets, "rollOnsets");
 function readRollOnsets(pat, cyc) {
   let haps;
   try {
-    haps = pat.queryArc(cyc, cyc + 1);
+    haps = hapsInCycle(pat, cyc);
   } catch {
     return no("no-note-content");
   }
@@ -11011,7 +11044,7 @@ function projectionRollEditSafe(model, perBar2, bars, numeric, probes) {
     if (out == null) return false;
     let pat;
     try {
-      pat = mini_mjs.mini(out);
+      pat = miniPattern(out);
     } catch {
       return false;
     }
@@ -11038,7 +11071,7 @@ function projectPianoRoll(src0, viewScale = UNREFINED) {
   if (src === "") return no("not-a-pattern");
   let pat;
   try {
-    pat = mini_mjs.mini(src);
+    pat = miniPattern(src);
   } catch {
     return no("not-a-pattern");
   }
@@ -11175,7 +11208,7 @@ function projectPianoRollByLeaf(src0) {
   if (src === "") return no("not-a-pattern");
   let pat;
   try {
-    pat = mini_mjs.mini(src);
+    pat = miniPattern(src);
   } catch {
     return no("not-a-pattern");
   }
@@ -11268,7 +11301,7 @@ function leafRollEditSafe(model, perBar2, bars, numeric) {
       const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }]);
       let edited;
       try {
-        edited = mini_mjs.mini(out);
+        edited = miniPattern(out);
       } catch {
         return false;
       }
@@ -11531,7 +11564,7 @@ function bracketedBarRegions(raw) {
   const text = raw.trim();
   let ast;
   try {
-    ast = krillParser_js.parse('"' + text + '"');
+    ast = miniTree(text);
   } catch {
     return null;
   }
@@ -11540,8 +11573,8 @@ function bracketedBarRegions(raw) {
   if (isAtom2(el.source_) || el.source_.arguments_?.alignment !== "fastcat") return null;
   const o = el.options_ ?? {};
   if ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0 || !el.location_) return null;
-  const start = el.location_.start.offset - 1;
-  const end = el.location_.end.offset - 1;
+  const start = el.location_.start.offset;
+  const end = el.location_.end.offset;
   const inner = parseStepGrid(text.slice(start + 1, end - 1));
   if (!inner.ok) return null;
   const src = inner.model.source;
@@ -13001,6 +13034,8 @@ function removeLane(model, sound) {
   return { ...model, lanes: model.lanes.filter((l) => l.sound !== sound) };
 }
 __name(removeLane, "removeLane");
+
+// src/codeView/notation/lengthen.ts
 function unwrapAlternation2(mini) {
   const t = mini.trim();
   if (t.length < 2 || !t.startsWith("<") || !t.endsWith(">")) return null;
@@ -13042,7 +13077,7 @@ __name(fromBar, "fromBar");
 function barKey(pat, bar2) {
   let haps;
   try {
-    haps = pat.queryArc(bar2, bar2 + 1);
+    haps = hapsInCycle(pat, bar2);
   } catch {
     return null;
   }
@@ -13051,7 +13086,7 @@ function barKey(pat, bar2) {
 __name(barKey, "barKey");
 function reify(mini) {
   try {
-    return mini_mjs.mini(mini);
+    return miniPattern(mini);
   } catch {
     return null;
   }

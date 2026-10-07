@@ -28,7 +28,8 @@
  *
  * WHEN THIS GOES RED. Upstream changed the AST. Do NOT patch the assertion to
  * match. Re-dump the AST (`krill.parse('"bd@2"')`, print it), read what moved,
- * and update `parse.ts`'s adapter to the new shape — then update this contract
+ * and update `parse.ts`'s adapter to the new shape (the node types it reads are
+ * written down once, in `strudelMini/tree.ts`) — then update this contract
  * to the new truth. The diff IS the news, exactly as in `parity.test.ts`.
  *
  * Every expectation below is a fact `parse.ts` RELIES ON. If an assertion here

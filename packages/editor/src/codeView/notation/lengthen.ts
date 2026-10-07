@@ -24,7 +24,7 @@
  * exactly the intended bars is refused. The same bar-by-bar reading is what says
  * which bar continues the pattern.
  */
-import { mini as reifyMini } from '@strudel/mini/mini.mjs'
+import { hapsInCycle, miniPattern, type MiniHap, type MiniTime } from '../strudelMini/pattern'
 
 import type { ChunkGain, ParseResult } from './model'
 import { UNREFINED, type ViewScale } from './viewResolution'
@@ -72,15 +72,6 @@ function splitEntries(inner: string): string[] | null {
   return out.some((e) => e === '.' || e === '!' || e === '_') ? null : out
 }
 
-/** one of Strudel's exact time values (fraction.js) */
-type Time = { valueOf(): number; sub?: (n: number) => Time; toFraction?: () => string }
-
-type Hap = {
-  hasOnset?: () => boolean
-  whole?: { begin: Time; end: Time }
-  value: unknown
-}
-
 /**
  * A time measured from a bar's downbeat, EXACTLY (#1829). In floating point a third
  * of the way into bar 1 is `1.3333333333333333 − 1` = `0.33333333333333326`, which is
@@ -88,7 +79,7 @@ type Hap = {
  * pattern with thirds read as changing from cycle to cycle. Strudel's times are exact
  * fractions; subtracting there gives `1/3` in every bar.
  */
-function fromBar(t: Time, bar: number): string {
+function fromBar(t: MiniTime, bar: number): string {
   const d = t.sub?.(bar)
   return d?.toFraction ? d.toFraction() : String(+t - bar)
 }
@@ -98,9 +89,9 @@ function fromBar(t: Time, bar: number): string {
  * measured from the bar's own downbeat. Null when Strudel cannot query it.
  */
 function barKey(pat: unknown, bar: number): string | null {
-  let haps: Hap[]
+  let haps: MiniHap[]
   try {
-    haps = (pat as { queryArc(a: number, b: number): Hap[] }).queryArc(bar, bar + 1)
+    haps = hapsInCycle(pat, bar)
   } catch {
     return null
   }
@@ -113,7 +104,7 @@ function barKey(pat: unknown, bar: number): string | null {
 
 function reify(mini: string): unknown | null {
   try {
-    return reifyMini(mini)
+    return miniPattern(mini)
   } catch {
     return null
   }

@@ -1,0 +1,106 @@
+/**
+ * Strudel's own parse of a mini-notation string (#1971, part of #1869, epic #1007).
+ *
+ * The grammar is STRUDEL'S, so we ask Strudel for it: `@strudel/mini`'s krill parser,
+ * the one the transpiler runs. This file and `./pattern.ts` are the only product code
+ * that imports `@strudel/mini` — the boundary test (`modellingRatchet/boundary.ts`)
+ * fails on any other file that does. Before this, eight places called the parser
+ * themselves, each with its own copy of the two rules below.
+ *
+ * THE TWO RULES A CALLER NO LONGER KNOWS:
+ *   1. krill wants the string QUOTED — the transpiler's own call shape.
+ *   2. so every offset krill reports counts the opening quote. `miniTree` takes it
+ *      back off: a `location_` here is in the coordinates of the string it was given.
+ *
+ * ⚠ WHY THIS IS A SEPARATE FILE FROM `./pattern.ts`: `ir/parseMini.ts` is in the
+ * engine's import graph (through `ir/parseStrudel.ts`), and the engine loads
+ * `@strudel/core` itself, later and dynamically. The evaluator (`mini.mjs`) imports
+ * `@strudel/core` at load. So this file imports the parser and NOTHING ELSE; a test
+ * keeps it that way.
+ *
+ * Node FIELDS are still read where they were read before this file existed. Moving
+ * those reads here is the next step (#1972).
+ */
+import { parse as krillParse } from '@strudel/mini/krill-parser.js'
+
+// ---------------------------------------------------------------------------
+// krill's nodes — dumped from `@strudel/mini@1.2.6`, not read off the grammar. The
+// accessors are easy to get wrong: `bd:3` is NOT an atom named "bd:3", it is atom
+// `bd` carrying a `tail` op. The tree is uniformly recursive — `pattern > element >
+// (atom | pattern)` — and `weight`/`reps`/`ops` are fields on EVERY element.
+// `notation/__tests__/krillContract.test.ts` pins the shape against the real parser.
+// ---------------------------------------------------------------------------
+
+/** where a node's text is, as offsets into the string `miniTree` was given */
+export interface KLoc {
+  start: { offset: number }
+  end: { offset: number }
+}
+export interface KAtom {
+  type_: 'atom'
+  source_: string
+  location_?: KLoc
+}
+export interface KOp {
+  type_: string
+  arguments_?: Record<string, unknown>
+}
+export interface KElement {
+  type_: 'element'
+  source_: KAtom | KPattern
+  options_?: { weight?: number; reps?: number; ops?: KOp[] }
+  /**
+   * Every element carries one, and the element spans TILE the source
+   * (`bd hh*2 sd cp` → `"bd "`, `"hh*2 "`, `"sd "`, `"cp"` — contiguous,
+   * reconstructing the input byte-for-byte). That tiling is what makes span
+   * surgery possible: the writer copies unedited regions through verbatim.
+   * The padding lands on EITHER side by syntax, so a tight token span is derived
+   * from the start, never copied from the end.
+   */
+  location_?: KLoc
+}
+export interface KPattern {
+  type_: 'pattern'
+  arguments_?: { alignment?: string }
+  source_: KElement[]
+}
+
+/**
+ * Take the opening quote off every offset in the tree. A location can sit at any
+ * depth — an op's argument is a node too (`bd:3`'s tail, a euclid's three numbers,
+ * `*<2 3>`'s amount) — so this walks every object rather than the three node kinds.
+ * Each location is replaced by a new `{ start, end }` holding offsets alone: krill's
+ * `line` and `column` count the quote as well, and nothing here corrects them.
+ */
+function unquoteOffsets(node: unknown): void {
+  if (!node || typeof node !== 'object') return
+  if (Array.isArray(node)) {
+    for (const child of node) unquoteOffsets(child)
+    return
+  }
+  const rec = node as Record<string, unknown>
+  for (const key of Object.keys(rec)) {
+    if (key !== 'location_') {
+      unquoteOffsets(rec[key])
+      continue
+    }
+    const loc = rec[key] as { start?: { offset?: unknown }; end?: { offset?: unknown } } | undefined
+    if (typeof loc?.start?.offset === 'number' && typeof loc.end?.offset === 'number') {
+      rec[key] = { start: { offset: loc.start.offset - 1 }, end: { offset: loc.end.offset - 1 } } satisfies KLoc
+    }
+  }
+}
+
+/**
+ * krill's tree for `mini`, with every offset in `mini`'s own coordinates.
+ *
+ * THROWS what krill throws: a string krill rejects means something different to each
+ * caller (a view's refusal, an opaque IR node, "not this shape"), so the catch stays
+ * with the caller. The string is parsed exactly as given — trimming is the caller's,
+ * because the offsets are into what was passed.
+ */
+export function miniTree(mini: string): KPattern {
+  const ast = krillParse('"' + mini + '"') as KPattern
+  unquoteOffsets(ast)
+  return ast
+}

@@ -27,7 +27,7 @@
  * node's `[start,end]` out of the source) is the gate that pins this.
  */
 
-import { parse as krillParse } from '@strudel/mini/krill-parser.js'
+import { miniTree, type KAtom, type KElement, type KOp, type KPattern } from '../strudelMini/tree'
 import { IR, type PatternIR, type PlayParams } from './PatternIR'
 import { bjorklund, rotateEuclid } from './euclid'
 
@@ -36,28 +36,10 @@ import { bjorklund, rotateEuclid } from './euclid'
 export { bjorklund } from './euclid'
 
 // ---------------------------------------------------------------------------
-// The krill AST this adapter consumes — dumped from `@strudel/mini@1.2.6`, not
-// read off the grammar (the accessors are easy to get wrong: `bd:3` is NOT an
-// atom named "bd:3", it is atom `bd` carrying a `tail` op). The tree is
-// uniformly recursive — `pattern > element > (atom | pattern)` — and
-// `weight`/`reps`/`ops` are fields on EVERY element.
+// The krill AST this file lowers (`KAtom`, `KElement`, `KPattern`) and the call
+// that produces it (`miniTree`) live in `../strudelMini/tree.ts` (#1971) — the one
+// place that knows its shape, and the one that takes the quote off its offsets.
 // ---------------------------------------------------------------------------
-// Exported for `steppedAutomation.ts`, which reads a literal's steps off this AST
-// directly (#1587) — so this module stays the one place that knows its shape.
-interface KLoc { start: { offset: number }; end: { offset: number } }
-export interface KAtom { type_: 'atom'; source_: string; location_?: KLoc }
-export interface KOp { type_: string; arguments_?: Record<string, unknown> }
-export interface KElement {
-  type_: 'element'
-  source_: KAtom | KPattern
-  options_?: { weight?: number; reps?: number; ops?: KOp[] }
-  location_?: KLoc
-}
-export interface KPattern {
-  type_: 'pattern'
-  arguments_?: { alignment?: string }
-  source_: KElement[]
-}
 
 const isAtom = (n: KAtom | KPattern): n is KAtom => n.type_ === 'atom'
 
@@ -77,7 +59,7 @@ const isRestAtom = (a: KAtom): boolean => a.source_ === '~' || a.source_ === '-'
  * atom's own `source_.length`, never from krill's tiling `location_.end`.
  */
 export const atomSpan = (a: KAtom, input: string): { start: number; end: number } => {
-  const start = firstNonWs(input, (a.location_?.start.offset ?? 1) - 1)
+  const start = firstNonWs(input, a.location_?.start.offset ?? 0)
   return { start, end: start + a.source_.length }
 }
 
@@ -109,9 +91,9 @@ export function parseMini(
 
   let ast: KPattern
   try {
-    // The mini string is QUOTED — the transpiler's own call shape. krill throws
-    // on a few inputs (e.g. a lone `_` has nothing to extend); fall back opaque.
-    ast = krillParse('"' + input + '"') as KPattern
+    // krill throws on a few inputs (e.g. a lone `_` has nothing to extend); fall
+    // back opaque.
+    ast = miniTree(input)
   } catch {
     return IR.code(input)
   }
@@ -321,7 +303,7 @@ function buildGroup(
   input: string,
   el: KElement,
 ): { node: PatternIR; openPos: number; closePos: number } | null {
-  const openPos = firstNonWs(input, (el.location_?.start.offset ?? 1) - 1)
+  const openPos = firstNonWs(input, el.location_?.start.offset ?? 0)
   const closePos = matchBracket(input, openPos)
   const loc = [{ start: baseOffset + openPos, end: baseOffset + closePos + 1 }]
   const node = patternToNode(pat, loc, isSample, baseOffset, input)

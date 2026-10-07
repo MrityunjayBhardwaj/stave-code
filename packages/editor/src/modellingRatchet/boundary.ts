@@ -10,7 +10,11 @@
  *   import — it imports something in `codeView/` other than the entry, `codeView/index.ts`
  *            (a package subpath counts when its bundle entry is built from a file in
  *            the area — `package.json` `exports` is read for that)
- *   owner  — it imports krill, `@strudel/mini` or acorn (`engine/` is exempt: it runs Strudel)
+ *   owner  — it imports krill, `@strudel/mini` or acorn (`engine/` is exempt from the acorn
+ *            half: it runs Strudel). `@strudel/mini` is held tighter, and INSIDE the area
+ *            as well (#1971): only the adapter, `codeView/strudelMini/`, may import it,
+ *            plus the engine files named in `MINI_RUNNERS`, each with its reason. Every
+ *            other product file that does is a reach — a view's parser included.
  *   door   — it touches the write door: a member of `Writeback`, the class as a value,
  *            or `applyEdits` — or it writes the document behind the door's back, through
  *            one of Monaco's own document writes (`ITextModel.setValue`, `pushEditOperations`,
@@ -62,6 +66,17 @@ const EDITOR_SRC = 'packages/editor/src'
 const AREA = `${EDITOR_SRC}/codeView/`
 const ENTRY = `${AREA}index.ts`
 const ENGINE = `${EDITOR_SRC}/engine/`
+/** the one place that parses, evaluates and queries mini-notation (#1971) */
+export const MINI_ADAPTER = `${AREA}strudelMini/`
+/**
+ * Files outside the adapter that import `@strudel/mini` because they RUN Strudel, by name.
+ * Not a directory: a second engine file that starts importing it is a reach like any other.
+ * A file named here that no longer imports it is stale, and fails (`miniRunnerProblems`).
+ */
+export const MINI_RUNNERS: Readonly<Record<string, string>> = {
+  [`${ENGINE}StrudelEngine.ts`]:
+    'Boots Strudel: loads @strudel/mini with the other packages and hands them to evalScope, so user code can call mini() and double-quoted strings become patterns.',
+}
 const PACKAGES = ['packages/editor', 'packages/app'] as const
 const DOOR_CLASS = 'Writeback'
 const DOOR_FUNCTIONS = new Set(['applyEdits'])
@@ -82,6 +97,10 @@ export interface Reach {
 export interface Measurement {
   /** product files outside the area that were examined */
   examined: number
+  /** product files inside the area that were examined, for the `@strudel/mini` half of `owner` */
+  examinedInside: number
+  /** the `MINI_RUNNERS` files that were seen importing `@strudel/mini` */
+  miniRunners: string[]
   reaches: Reach[]
 }
 
@@ -142,8 +161,9 @@ function isDoorHome(file: string): boolean {
 /** where Monaco declares its API — the editor's program and the app's each resolve it there */
 const isMonacoHome = (file: string): boolean => /\/node_modules\/monaco-editor\//.test(file)
 
-const isOwnerSpecifier =(spec: string): boolean =>
-  spec === '@strudel/mini' || spec.startsWith('@strudel/mini/') || spec.includes('krill-parser') || spec === 'acorn' || /^acorn[-/]/.test(spec)
+const isMiniSpecifier = (spec: string): boolean =>
+  spec === '@strudel/mini' || spec.startsWith('@strudel/mini/') || spec.includes('krill-parser')
+const isAcornSpecifier = (spec: string): boolean => spec === 'acorn' || /^acorn[-/]/.test(spec)
 
 export interface MeasureOptions {
   root?: string
@@ -165,6 +185,11 @@ export function measureBoundary(opts: MeasureOptions = {}): Measurement {
   const subject = (rel: string): boolean =>
     isProductFile(rel) && !rel.startsWith(AREA) && (!opts.onlyOverlay || overlay.has(rel))
   const subjects = all.filter(subject).sort()
+  /** inside the area, one question is asked: does it import `@strudel/mini` (#1971) */
+  const inside = all
+    .filter((rel) => isProductFile(rel) && rel.startsWith(AREA) && (!opts.onlyOverlay || overlay.has(rel)))
+    .sort()
+  const miniRunners = new Set<string>()
   const subpaths = subpathSources(read, known)
 
   const reaches: Reach[] = []
@@ -181,10 +206,18 @@ export function measureBoundary(opts: MeasureOptions = {}): Measurement {
     const base = toPosix(path.posix.normalize(path.posix.join(path.posix.dirname(from), spec)))
     return [base, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`, `${base}/index.tsx`, base.replace(/\.js$/, '.ts')].find((c) => known.has(c)) ?? null
   }
-  for (const rel of subjects) {
+  for (const rel of [...subjects, ...inside]) {
+    const inArea = rel.startsWith(AREA)
     const sf = ts.createSourceFile(rel, read(rel), ts.ScriptTarget.Latest, true, rel.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
     const note = (spec: string, names: string[]): void => {
-      if (isOwnerSpecifier(spec)) {
+      if (isMiniSpecifier(spec)) {
+        if (rel in MINI_RUNNERS) miniRunners.add(rel)
+        else if (!rel.startsWith(MINI_ADAPTER)) add(rel, 'owner', `owner#${spec}`)
+        return
+      }
+      // every other rule is about a file OUTSIDE the area
+      if (inArea) return
+      if (isAcornSpecifier(spec)) {
         if (!rel.startsWith(ENGINE)) add(rel, 'owner', `owner#${spec}`)
         return
       }
@@ -328,7 +361,7 @@ export function measureBoundary(opts: MeasureOptions = {}): Measurement {
   }
 
   reaches.sort((a, b) => a.file.localeCompare(b.file) || a.reach.localeCompare(b.reach))
-  return { examined: subjects.length, reaches }
+  return { examined: subjects.length, examinedInside: inside.length, miniRunners: [...miniRunners].sort(), reaches }
 }
 
 /**
@@ -455,7 +488,7 @@ export function boundaryProblems(measured: Reach[], list: ExceptionList): string
           (r.rule === 'import'
             ? `Import it from codeView/index.ts instead; if the name is not there, add it to the entry.`
             : r.rule === 'owner'
-              ? `Only codeView/ (and the engine) may import the parser owners; ask codeView for the answer instead.`
+              ? `Only codeView/ (and the engine) may import the parser owners, and only codeView/strudelMini/ may import @strudel/mini; ask codeView for the answer instead.`
               : `Only codeView/ writes to the document; the op that needs this write belongs in codeView/.`),
       )
     }
@@ -468,6 +501,13 @@ export function boundaryProblems(measured: Reach[], list: ExceptionList): string
     }
   }
   return out
+}
+
+/** a file named in `MINI_RUNNERS` that the measurement did not see importing `@strudel/mini` */
+export function miniRunnerProblems(measured: Pick<Measurement, 'miniRunners'>): string[] {
+  return Object.keys(MINI_RUNNERS)
+    .filter((f) => !measured.miniRunners.includes(f))
+    .map((f) => `${f} is named in MINI_RUNNERS and does not import @strudel/mini. Good: delete its line from boundary.ts in the same change.`)
 }
 
 /** every reach or declared file the list has that `base` (origin/main's list) does not, without an `added` line */

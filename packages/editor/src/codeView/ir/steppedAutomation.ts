@@ -44,11 +44,11 @@
  * read off krill's parse of that literal, the parse the engine itself runs, because
  * the IR's lowering flattens what decides them (#1587, `stepsOfLiteral`).
  */
-import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 import type { PatternIR } from './PatternIR'
 import type { SourceLocation } from './IREvent'
 import { parseTypedNumber, type OffsetEdit } from '../writeback'
-import { atomSpan, type KElement, type KPattern } from './parseMini'
+import { atomSpan } from './parseMini'
+import { miniTree, type KElement, type KPattern } from '../strudelMini/tree'
 import { isSectionWindow, placementsTimeAt, playableParameters, type SectionWindow, type TimeStep, type TimeWarp } from './parameterRoutes'
 
 /** One step of a stepped parameter. */
@@ -195,7 +195,7 @@ function literalOf(param: PatternIR & { tag: 'Param' }): { inner: string; start:
 function stepsOfLiteral(inner: string, innerStart: number): SteppedStep[] | null {
   let root: KPattern
   try {
-    root = krillParse('"' + inner + '"') as KPattern
+    root = miniTree(inner)
   } catch {
     return null
   }
