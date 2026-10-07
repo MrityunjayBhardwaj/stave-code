@@ -1,5 +1,5 @@
 {
-  "about": "The code↔view boundary (#1879). \"enforced\": every reach across the boundary that exists today, exact per file — one more is a failure, one fewer is stale. \"declared\": files that convert between code and views in ways no structural rule can see; named and counted, not enforced. Because nothing can see them, the declared list is kept by reading code, so a miss is expected: when one is found, it joins with an \"added\" line. Both lists only shrink: each new enforced reach needs its own line, \"added\": { \"<reach>\": \"#<issue> <why>\" }, and a newly declared file needs \"added\": \"#<issue> <why>\". See boundary.ts.",
+  "about": "The code↔view boundary (#1879). \"enforced\": every reach across the boundary that exists today, exact per file — one more is a failure, one fewer is stale. \"declared\": files that convert between code and views in ways no structural rule can see; named and counted, not enforced. Because nothing can see them, the declared list is kept by reading code, so a miss is expected: when one is found, it joins with an \"added\" line. Both lists only shrink: each new enforced reach needs its own line, \"added\": { \"<reach>\": \"#<issue> <why>\" }, and a newly declared file needs \"added\": \"#<issue> <why>\". \"krillReaders\" (#1972): the files outside codeView/strudelMini/ that still read a field of krill's nodes, by top-level function, with exactly how many reads each makes — one more is a failure, one fewer is stale, and a number never goes up without an \"added\" line for that function. See boundary.ts.",
   "enforced": [
     {
       "file": "packages/editor/src/engine/StrudelEngine.ts",
@@ -49,5 +49,25 @@
       }
     }
   ],
-  "declared": []
+  "declared": [],
+  "krillReaders": [
+    {
+      "file": "packages/editor/src/codeView/notation/parse.ts",
+      "why": "The old syntactic reader: it works out steps, slots, chords, ops and alternations from krill's tree by hand. It is the code #1012 exists to delete, so it is not rewritten onto the adapter's nodes. Everything else in this file (the span readers, the projections) asks codeView/strudelMini/.",
+      "issue": "#1012",
+      "functions": {
+        "chordAtoms": 12,
+        "groupSlots": 9,
+        "elementToSteps": 9,
+        "readOps": 8,
+        "altAlternatives": 7,
+        "tokenOf": 6,
+        "tokenize": 6,
+        "expandAltElements": 6,
+        "numArg": 4,
+        "isRestAtom": 2,
+        "isAtom": 1
+      }
+    }
+  ]
 }

@@ -4,8 +4,9 @@
  * One directory, `editor/src/codeView/`, is the only valid path from code to what a view
  * draws and from a gesture back to code. A rule like that cannot be enforced by recognising
  * what conversion code LOOKS like — a detector of hand-written grammar is itself a grammar,
- * and is never complete (#1871 was closed for it). So this measures STRUCTURE, three ways,
- * for every product file outside the area:
+ * and is never complete (#1871 was closed for it). So this measures STRUCTURE, four ways —
+ * the first three for every product file outside the area, the fourth for every product
+ * file outside the adapter:
  *
  *   import — it imports something in `codeView/` other than the entry, `codeView/index.ts`
  *            (a package subpath counts when its bundle entry is built from a file in
@@ -22,6 +23,12 @@
  *            Asked of the TYPE CHECKER, because the import lines do not show it: a panel
  *            calls `wb.replaceRanges` on a callback parameter and never imports `Writeback`
  *            at all, and a `setValue` is the door only when Monaco declared it.
+ *   krill  — it reads a field of one of krill's nodes (`source_`, `location_`, `options_`,
+ *            `arguments_`, `type_`), #1972. Only the adapter does: everything else asks it
+ *            for plain nodes (`strudelMini/shape.ts`). Counted from the syntax tree, per
+ *            top-level function. The one exception is the old syntactic reader in
+ *            `notation/parse.ts`, listed under `krillReaders` by function with how many
+ *            reads each makes; the numbers only go down, and #1012 deletes it.
  *
  * Each thing found is a REACH, named by symbol and never by line, so an entry does not go
  * stale when a file is edited above it. `boundary.exceptions.json` lists the reaches that
@@ -421,10 +428,23 @@ export interface DeclaredException {
   issue: string
   added?: string
 }
+/** a file outside the adapter that still reads krill's node fields, function by function (#1972) */
+export interface KrillReader {
+  file: string
+  why: string
+  /** the issue that removes this entry: `#1234` */
+  issue: string
+  /** top-level function → exactly how many krill field reads it makes; one more is red, one fewer is stale */
+  functions: Record<string, number>
+  /** required for a function `origin/main` does not list, or lists with a smaller number */
+  added?: Record<string, string>
+}
 export interface ExceptionList {
   about: string
   enforced: EnforcedException[]
   declared: DeclaredException[]
+  /** absent means none: no file outside the adapter may read a krill node field */
+  krillReaders?: KrillReader[]
 }
 
 export function loadExceptions(file: string = EXCEPTIONS_PATH): ExceptionList {
@@ -470,6 +490,24 @@ export function listProblems(list: ExceptionList, fileExists: (rel: string) => b
     if (!e.what) out.push(`declared[${i}] ${e.file}: missing "what"`)
     if (declared.has(e.file)) out.push(`declared[${i}] ${e.file}: a second entry for the same file`)
     declared.add(e.file)
+  })
+  const readers = new Set<string>()
+  ;(list.krillReaders ?? []).forEach((e, i) => {
+    const at = `krillReaders[${i}] ${e.file}`
+    if (!fileExists(e.file)) out.push(`${at}: no such file — a moved or deleted file takes its entry with it`)
+    if (!ISSUE.test(e.issue)) out.push(`${at}: "issue" must be one issue number (#1234), got ${JSON.stringify(e.issue)}`)
+    if (!e.why) out.push(`${at}: missing "why"`)
+    const fns = Object.entries(e.functions ?? {})
+    if (fns.length === 0) out.push(`${at}: lists no functions — delete the entry`)
+    for (const [fn, n] of fns) {
+      if (!Number.isInteger(n) || n < 1) out.push(`${at}: ${fn} must have a whole number of reads, 1 or more, got ${JSON.stringify(n)} — a function with none is deleted from the list`)
+    }
+    for (const [fn, line] of Object.entries(e.added ?? {})) {
+      if (e.functions?.[fn] === undefined) out.push(`${at}: "added" names ${fn}, which the entry does not list`)
+      addedLine(`${at} added[${fn}]`, line)
+    }
+    if (readers.has(e.file)) out.push(`${at}: a second entry for the same file`)
+    readers.add(e.file)
   })
   return out
 }
@@ -526,6 +564,17 @@ export function shrinkOnlyProblems(current: ExceptionList, base: ExceptionList):
       out.push(`${e.file}: newly declared, and not on origin/main's list. It needs "added": "#<issue> <why>".`)
     }
   }
+  // krill readers: compared only once origin/main has the section at all — the change that
+  // introduces it has nothing to shrink against (`krillReadersOnMain` says which case this is)
+  if (base.krillReaders !== undefined) {
+    const readersWas = new Map(base.krillReaders.map((e) => [e.file, e.functions]))
+    for (const e of current.krillReaders ?? []) {
+      const grown = Object.entries(e.functions).filter(([fn, n]) => n > (readersWas.get(e.file)?.[fn] ?? 0) && e.added?.[fn] === undefined)
+      if (grown.length) {
+        out.push(`${e.file}: ${grown.map(([fn, n]) => `${fn} (${readersWas.get(e.file)?.[fn] ?? 0} → ${n})`).join(', ')} read${grown.length === 1 ? 's' : ''} more krill node fields than on origin/main's list. The list only shrinks: ask codeView/strudelMini/ instead, or add "added": { "<function>": "#<issue> <why>" }.`)
+      }
+    }
+  }
   return out
 }
 
@@ -535,4 +584,95 @@ export type MainExceptions = { kind: 'present'; list: ExceptionList } | { kind: 
 export function exceptionsOnMain(file: string = EXCEPTIONS_PATH): MainExceptions {
   const text = textOnMain(file)
   return text === null ? { kind: 'absent' } : { kind: 'present', list: JSON.parse(text) as ExceptionList }
+}
+
+// ── krill's node fields: read in the adapter, and nowhere else (#1972) ──────────────────
+
+/** the fields krill puts on its nodes — a read of one is a read of Strudel's parse tree */
+export const KRILL_FIELDS: ReadonlySet<string> = new Set(['source_', 'location_', 'options_', 'arguments_', 'type_'])
+
+export interface KrillReads {
+  /** product files examined — everything in both packages outside the adapter */
+  examined: number
+  /** file → the top-level declaration the read sits in → how many */
+  reads: Map<string, Map<string, number>>
+}
+
+/** the name of the top-level declaration a node sits in — a function, or a `const` */
+function topLevelOwner(sf: ts.SourceFile, node: ts.Node): string {
+  let top = node
+  while (top.parent && top.parent !== sf) top = top.parent
+  if (ts.isFunctionDeclaration(top) && top.name) return top.name.text
+  if (ts.isClassDeclaration(top) && top.name) return top.name.text
+  if (ts.isVariableStatement(top)) return top.declarationList.declarations.map((d) => d.name.getText(sf)).join(',')
+  return `<${ts.SyntaxKind[top.kind]}>`
+}
+
+/**
+ * Every read of a krill node field in product code outside the adapter: `x.source_`,
+ * `x?.type_`, `x['options_']`, and a destructured `{ location_ }`. Declaring a field
+ * (a type's member, an object literal's key) is not a read.
+ */
+export function measureKrillReads(opts: MeasureOptions = {}): KrillReads {
+  const root = opts.root ?? REPO_ROOT
+  const overlay = new Map(Object.entries(opts.overlay ?? {}))
+  const all: string[] = []
+  for (const pkg of PACKAGES) walk(root, `${pkg}/src`, all)
+  for (const f of overlay.keys()) if (!all.includes(f)) all.push(f)
+  const subjects = all
+    .filter((rel) => isProductFile(rel) && !rel.startsWith(MINI_ADAPTER) && (!opts.onlyOverlay || overlay.has(rel)))
+    .sort()
+  const reads = new Map<string, Map<string, number>>()
+  for (const rel of subjects) {
+    const text = overlay.get(rel) ?? fs.readFileSync(path.join(root, rel), 'utf8')
+    // cheap gate: a file that never spells a field cannot read one
+    if (![...KRILL_FIELDS].some((f) => text.includes(f))) continue
+    const sf = ts.createSourceFile(rel, text, ts.ScriptTarget.Latest, true, rel.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
+    const hit = (node: ts.Node): void => {
+      const byFn = reads.get(rel) ?? new Map<string, number>()
+      const fn = topLevelOwner(sf, node)
+      byFn.set(fn, (byFn.get(fn) ?? 0) + 1)
+      reads.set(rel, byFn)
+    }
+    const visit = (n: ts.Node): void => {
+      if (ts.isPropertyAccessExpression(n) && KRILL_FIELDS.has(n.name.text)) hit(n)
+      else if (ts.isElementAccessExpression(n) && ts.isStringLiteralLike(n.argumentExpression) && KRILL_FIELDS.has(n.argumentExpression.text)) hit(n)
+      else if (ts.isBindingElement(n) && KRILL_FIELDS.has((n.propertyName ?? n.name).getText(sf))) hit(n)
+      ts.forEachChild(n, visit)
+    }
+    visit(sf)
+  }
+  return { examined: subjects.length, reads }
+}
+
+/**
+ * What is wrong between the reads measured and the readers the list names (`krillReaders`)
+ * — both directions: a read nobody listed or one more than listed, and a listed function
+ * that now reads fewer (lower its number) or none (delete its line).
+ */
+export function krillReadProblems(measured: Pick<KrillReads, 'reads'>, readers: readonly KrillReader[]): string[] {
+  const named = new Map(readers.map((e) => [e.file, e.functions]))
+  const out: string[] = []
+  const good = `Ask codeView/strudelMini/ (miniShape) for the node instead of reading krill's field.`
+  for (const [file, byFn] of measured.reads) {
+    const allowed = named.get(file)
+    for (const [fn, n] of byFn) {
+      const limit = allowed?.[fn]
+      if (limit === undefined) out.push(`${file} reads a krill node field in \`${fn}\` (${n}). ${good}`)
+      else if (n > limit) out.push(`${file} \`${fn}\` reads krill node fields ${n} times; boundary.exceptions.json allows ${limit}, and that number only goes down. ${good}`)
+    }
+  }
+  for (const { file, functions } of readers) {
+    for (const [fn, limit] of Object.entries(functions)) {
+      const n = measured.reads.get(file)?.get(fn) ?? 0
+      if (n < limit) {
+        out.push(
+          n === 0
+            ? `${file} \`${fn}\` is listed under krillReaders and reads no krill node field. Good: delete its line from boundary.exceptions.json in the same change.`
+            : `${file} \`${fn}\` is allowed ${limit} krill node reads and makes ${n}. Good: lower its number in boundary.exceptions.json in the same change.`,
+        )
+      }
+    }
+  }
+  return out.sort()
 }

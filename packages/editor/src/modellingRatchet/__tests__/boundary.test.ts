@@ -5,9 +5,11 @@ import {
   boundaryProblems,
   entryImportsInside,
   exceptionsOnMain,
+  krillReadProblems,
   listProblems,
   loadExceptions,
   measureBoundary,
+  measureKrillReads,
   MINI_ADAPTER,
   MINI_RUNNERS,
   miniRunnerProblems,
@@ -15,6 +17,7 @@ import {
   EDITOR_PACKAGE_JSON,
   shrinkOnlyProblems,
   type ExceptionList,
+  type KrillReader,
   type Measurement,
   type Reach,
 } from '../boundary'
@@ -64,6 +67,20 @@ describe('the code↔view boundary (#1879)', () => {
       }
     })
 
+    it('only the adapter reads a field of krill\'s nodes — and the old reader, function by function (#1972)', () => {
+      const krill = measureKrillReads()
+      const readers = list.krillReaders ?? []
+      const allowed = readers.reduce((n, e) => n + Object.values(e.functions).reduce((a, b) => a + b, 0), 0)
+      const found = [...krill.reads.values()].reduce((n, byFn) => n + [...byFn.values()].reduce((a, b) => a + b, 0), 0)
+      // said on every run, zero included
+      console.info(
+        `krill node fields: examined ${krill.examined} product files outside ${MINI_ADAPTER}; ` +
+          `${found} reads measured in ${krill.reads.size} file(s), ${allowed} allowed in ${readers.length} listed file(s)`,
+      )
+      expect(krill.examined, 'no files were examined — the walk is broken, not the tree clean').toBeGreaterThan(350)
+      none(krillReadProblems(krill, readers), "krill's node fields are read outside the adapter")
+    })
+
     it("the list only shrinks against origin/main's", () => {
       const main = exceptionsOnMain()
       if (main.kind === 'absent') {
@@ -77,7 +94,119 @@ describe('the code↔view boundary (#1879)', () => {
         )
         return
       }
+      if (main.list.krillReaders === undefined && list.krillReaders !== undefined) {
+        // the change that introduces the krill readers has no earlier numbers to shrink against
+        console.warn('code↔view boundary: origin/main lists no krillReaders, so their numbers were NOT compared in this run')
+      }
       none(shrinkOnlyProblems(list, main.list), 'the exception list grew')
+    })
+  })
+
+  describe("krill's node fields (#1972)", () => {
+    const PARSE = `${E}/codeView/notation/parse.ts`
+    const reader = (functions: Record<string, number>, added?: Record<string, string>): KrillReader => ({
+      file: PARSE,
+      why: 'the old reader',
+      issue: '#1012',
+      functions,
+      ...(added ? { added } : {}),
+    })
+    const plant = (file: string, src: string): Map<string, Map<string, number>> =>
+      measureKrillReads({ overlay: { [file]: src }, onlyOverlay: true }).reads
+    const counts = (m: Map<string, Map<string, number>>): Record<string, Record<string, number>> =>
+      Object.fromEntries([...m].map(([f, byFn]) => [f, Object.fromEntries(byFn)]))
+
+    it('a read in a panel is caught, however it is spelled — and named by the function it sits in', () => {
+      const file = `${PANELS}/plantedKrillRead.tsx`
+      const reads = plant(
+        file,
+        [
+          `export function dotted(n: any) { return n.source_ }`,
+          `export function optional(n: any) { return n?.options_?.weight }`,
+          `export function bracket(n: any) { return n['location_'] }`,
+          `export function destructured(n: any) { const { type_, arguments_: args } = n; return [type_, args] }`,
+          `export const arrow = (n: any) => n.source_.map((c: any) => c.type_)`,
+        ].join('\n'),
+      )
+      expect(counts(reads)).toEqual({ [file]: { dotted: 1, optional: 1, bracket: 1, destructured: 2, arrow: 2 } })
+      const problems = krillReadProblems({ reads }, [])
+      expect(problems).toHaveLength(5)
+      expect(problems[0]).toMatch(/plantedKrillRead\.tsx reads a krill node field in `arrow` \(2\)\. Ask codeView\/strudelMini\//)
+    })
+
+    it('in the app as well, and inside codeView/ outside the adapter', () => {
+      for (const file of ['packages/app/src/components/plantedKrillRead.tsx', `${E}/codeView/notation/plantedKrillRead.ts`]) {
+        expect(counts(plant(file, `export const f = (n: any) => n.source_`)), file).toEqual({ [file]: { f: 1 } })
+      }
+    })
+
+    it('the adapter itself is not examined, and neither is a test', () => {
+      for (const file of [`${E}/codeView/strudelMini/plantedKrillRead.ts`, `${PANELS}/__tests__/plantedKrillRead.test.ts`]) {
+        expect(plant(file, `export const f = (n: any) => n.source_`).size, file).toBe(0)
+      }
+    })
+
+    it('naming a field is not reading it: a comment, a string, a type member, an object key', () => {
+      const file = `${PANELS}/plantedKrillRead.tsx`
+      const reads = plant(
+        file,
+        [
+          `// reads n.source_ and n.type_ — in a comment`,
+          `export const text = 'n.source_ in a string'`,
+          `export interface Looks { source_: string; type_: 'atom' }`,
+          `export const made = { source_: 'bd', location_: null }`,
+          `export const other = (n: { source: string; kind: string }) => n.source + n.kind`,
+        ].join('\n'),
+      )
+      expect(reads.size).toBe(0)
+    })
+
+    it('a listed function may read exactly its number: one more is red, one fewer is stale, none is stale', () => {
+      const src = (n: number): string => `function chordAtoms(p: any) { return [${Array.from({ length: n }, () => 'p.source_').join(', ')}] }`
+      const at = (n: number): string[] => krillReadProblems({ reads: plant(PARSE, src(n)) }, [reader({ chordAtoms: 2 })])
+      expect(at(2)).toEqual([])
+      expect(at(3)).toHaveLength(1)
+      expect(at(3)[0]).toMatch(/`chordAtoms` reads krill node fields 3 times; boundary\.exceptions\.json allows 2, and that number only goes down/)
+      expect(at(1)[0]).toMatch(/`chordAtoms` is allowed 2 krill node reads and makes 1\. Good: lower its number/)
+      expect(krillReadProblems({ reads: new Map() }, [reader({ chordAtoms: 2 })])[0]).toMatch(/`chordAtoms` is listed under krillReaders and reads no krill node field\. Good: delete its line/)
+    })
+
+    it('an allowance covers its own function in its own file, nothing else', () => {
+      const other = krillReadProblems({ reads: plant(PARSE, `function topLevelSpans(p: any) { return p.source_ }`) }, [reader({ chordAtoms: 1 })])
+      expect(other.some((p) => /reads a krill node field in `topLevelSpans`/.test(p))).toBe(true)
+      const elsewhere = `${E}/codeView/ir/parseMini.ts`
+      const moved = krillReadProblems({ reads: plant(elsewhere, `function chordAtoms(p: any) { return p.source_ }`) }, [reader({ chordAtoms: 1 })])
+      expect(moved.some((p) => p.startsWith(`${elsewhere} reads a krill node field in \`chordAtoms\``))).toBe(true)
+    })
+
+    it("the list's shape: an issue, a why, whole numbers of 1 or more, one entry per file", () => {
+      const list = (krillReaders: KrillReader[]): ExceptionList => ({ about: '', enforced: [], declared: [], krillReaders })
+      expect(listProblems(list([reader({ chordAtoms: 2 })]), exists)).toEqual([])
+      expect(listProblems(list([{ ...reader({ chordAtoms: 2 }), issue: 'soon' }]), exists)).toHaveLength(1)
+      expect(listProblems(list([{ ...reader({ chordAtoms: 2 }), why: '' }]), exists)).toHaveLength(1)
+      expect(listProblems(list([reader({})]), exists)).toHaveLength(1)
+      expect(listProblems(list([reader({ chordAtoms: 0 })]), exists)).toHaveLength(1)
+      expect(listProblems(list([reader({ chordAtoms: 1.5 })]), exists)).toHaveLength(1)
+      expect(listProblems(list([reader({ chordAtoms: 1 }), reader({ tokenize: 1 })]), exists)).toHaveLength(1)
+      expect(listProblems(list([{ ...reader({ chordAtoms: 1 }), file: `${E}/gone.ts` }]), exists)).toHaveLength(1)
+      expect(listProblems(list([reader({ chordAtoms: 1 }, { tokenize: '#1 not listed' })]), exists)).toHaveLength(1)
+    })
+
+    it('shrink-only: a number may fall or a function go; a rise or a new function needs its own "added" line', () => {
+      const list = (krillReaders?: KrillReader[]): ExceptionList => ({ about: '', enforced: [], declared: [], ...(krillReaders ? { krillReaders } : {}) })
+      const base = list([reader({ chordAtoms: 3, tokenize: 2 })])
+      expect(shrinkOnlyProblems(list([reader({ chordAtoms: 3, tokenize: 2 })]), base)).toEqual([])
+      expect(shrinkOnlyProblems(list([reader({ chordAtoms: 2 })]), base)).toEqual([])
+      expect(shrinkOnlyProblems(list([]), base)).toEqual([])
+      const rose = shrinkOnlyProblems(list([reader({ chordAtoms: 4, tokenize: 2 })]), base)
+      expect(rose).toHaveLength(1)
+      expect(rose[0]).toMatch(/chordAtoms \(3 → 4\) reads more krill node fields than on origin\/main's list/)
+      expect(shrinkOnlyProblems(list([reader({ chordAtoms: 3, tokenize: 2, readOps: 1 })]), base)[0]).toMatch(/readOps \(0 → 1\)/)
+      expect(shrinkOnlyProblems(list([reader({ chordAtoms: 4, tokenize: 2 }, { chordAtoms: '#1012 why it grew' })]), base)).toEqual([])
+      // one line covers one function
+      expect(shrinkOnlyProblems(list([reader({ chordAtoms: 4, tokenize: 3 }, { chordAtoms: '#1012 why it grew' })]), base)[0]).toMatch(/tokenize \(2 → 3\)/)
+      // the change that introduces the section has nothing to compare against
+      expect(shrinkOnlyProblems(list([reader({ chordAtoms: 99 })]), list())).toEqual([])
     })
   })
 
