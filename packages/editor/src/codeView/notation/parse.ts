@@ -273,7 +273,7 @@ function unwrapAlternation(mini: string): string | null {
   return t.slice(1, -1)
 }
 
-/* ── the krill adapter ─────────────────────────────────────────── */
+/* ── reading the krill tree ────────────────────────────────────── */
 
 /**
  * The krill nodes this file reads (`KAtom`, `KPattern`, `KOp`, `KElement`) and the
