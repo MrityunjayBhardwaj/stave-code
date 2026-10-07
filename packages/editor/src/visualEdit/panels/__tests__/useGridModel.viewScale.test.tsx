@@ -111,6 +111,8 @@ import type { StepGridModel } from '../../../codeView/notation/model'
 interface Handle {
   model: StepGridModel | null
   mutate: (fn: (m: StepGridModel) => StepGridModel) => void
+  settle: (m: StepGridModel) => void
+  writeMini: (mini: string) => void
   beginGesture: () => void
   endGesture: () => void
   setViewScale: (s: ViewScale) => void
@@ -120,7 +122,7 @@ let h: Handle
 
 function Harness(): React.ReactElement {
   const [viewScale, setViewScale] = React.useState<ViewScale>(UNREFINED)
-  const { model, mutate, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
+  const { model, mutate, settle, writeMini, beginGesture, endGesture, patternKey } = useGridModel<StepGridModel>({
     source: 'seq',
     eligible: isStepChunk,
     parse: parseStepGrid,
@@ -134,7 +136,7 @@ function Harness(): React.ReactElement {
   React.useEffect(() => {
     setViewScale(UNREFINED)
   }, [patternKey])
-  h = { model, mutate, beginGesture, endGesture, setViewScale, viewScale }
+  h = { model, mutate, settle, writeMini, beginGesture, endGesture, setViewScale, viewScale }
   return React.createElement('div')
 }
 
@@ -393,5 +395,64 @@ describe('a zoom survives the panel’s own edits, and nothing else (#1964)', ()
 
     expect(h.viewScale).toBe(2)
     expect(h.model?.steps).toBe(8)
+  })
+})
+
+describe('a look-only pattern is held and never written (#1975)', () => {
+  beforeEach(() => {
+    DOC = 's("[hh ~]!16")'
+    cursorOffset = 5
+  })
+
+  /**
+   * A model an op built from scratch: no mark, no source — the rebuild spells it.
+   * Whole-column notes on purpose: `[hh ~]!16` plays half-column ones, which the
+   * rebuild declines for its own reason, and the door would then go untested.
+   */
+  const unmarked = (m: StepGridModel): StepGridModel => ({
+    steps: m.steps,
+    lanes: m.lanes.map((l) => ({ ...l, cells: l.cells.map((c, i) => (i === 0 || !c ? false : { duration: 1 })) })),
+  })
+
+  it('the panel holds what the pattern plays', () => {
+    render(React.createElement(Harness))
+    expect(h.model?.lookOnly?.gate).toBe('view-unusable')
+    expect(h.model?.steps).toBe(16)
+    expect(h.model?.lanes.map((l) => l.sound)).toEqual(['hh'])
+  })
+
+  it('no route through the hook writes: an op, a from-scratch model, a settle, a text rewrite', () => {
+    render(React.createElement(Harness))
+    const before = DOC
+    const held = h.model
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 0, false)))
+    act(() => h.mutate((prev) => setColumnGain(prev, 0, 0.4)))
+    // the case the ops cannot cover: the transform dropped the mark
+    act(() => h.mutate((prev) => unmarked(prev)))
+    act(() => h.settle(unmarked(held as StepGridModel)))
+    act(() => h.writeMini('hh*16'))
+    expect(DOC).toBe(before)
+    expect(h.model, 'and the view on screen is still the played one').toBe(held)
+  })
+
+  it('CONTROL: the same from-scratch model on an editable pattern does write', () => {
+    // If this stayed put too, the arm above would be passing for no reason.
+    DOC = 's("hh hh hh hh")'
+    render(React.createElement(Harness))
+    expect(h.model?.lookOnly).toBeUndefined()
+    act(() => h.mutate((prev) => unmarked(prev)))
+    expect(DOC).toBe('s("~ hh hh hh")')
+  })
+
+  it('typing an editable pattern over it opens the editable grid again', () => {
+    render(React.createElement(Harness))
+    expect(h.model?.lookOnly).toBeDefined()
+    act(() => {
+      DOC = 's("hh ~ hh ~")'
+      fireContentChange()
+    })
+    expect(h.model?.lookOnly).toBeUndefined()
+    act(() => h.mutate((prev) => toggleCell(prev, 0, 1, true)))
+    expect(DOC).toBe('s("hh hh hh ~")')
   })
 })

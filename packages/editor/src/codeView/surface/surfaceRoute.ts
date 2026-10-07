@@ -81,7 +81,14 @@ export function routeSurface(headFn: string | null, mini: string): Surface {
   // `step` here means "the grid is the right place to ASK", not "the grid will
   // open": it declines numerics itself, and a pattern both refuse (`"bd 3 hh"`)
   // correctly ends up with no editor and a named gate.
-  return parsePianoRoll(mini).ok ? 'roll' : 'step'
+  const roll = parsePianoRoll(mini)
+  if (roll.ok) return 'roll'
+  // A roll that can only SHOW the pattern (#1975) takes it when the grid cannot edit
+  // it either — the roll read these values as pitches, which is the discrimination
+  // this arm exists for. An editable grid still wins, exactly as before: look-only
+  // never takes a pattern away from a surface that can edit it.
+  if (roll.lookOnly && !parseStepGrid(mini).ok) return 'roll'
+  return 'step'
 }
 
 /**

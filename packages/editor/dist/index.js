@@ -8142,6 +8142,7 @@ function clampPartAtOnset(lanes, part, column) {
   });
 }
 __name(clampPartAtOnset, "clampPartAtOnset");
+var lookOnlyLine = /* @__PURE__ */ __name((l) => `Look only \u2014 ${l.reason}. Edit it in the code.`, "lookOnlyLine");
 
 // src/codeView/notation/perBar.ts
 var MAX_SHARED_STEPS = 4096;
@@ -8303,6 +8304,7 @@ function ifRollSpellable(input, next) {
 }
 __name(ifRollSpellable, "ifRollSpellable");
 function serializeStepGridWithExtent(drawn) {
+  if (drawn.lookOnly) return { mini: null, extent: { path: "declined" } };
   const model = toUniformGrid(drawn);
   const respell = drawn.barSteps;
   const spans = model.leafSource ?? model.surgical?.spans();
@@ -8822,6 +8824,7 @@ function gridColumns(lanes, steps) {
 __name(gridColumns, "gridColumns");
 function serializeStepGain(model) {
   if (model.gainForeign) return { kind: "skip" };
+  if (model.lookOnly) return { kind: "skip" };
   if (model.leafSource) return { kind: "skip" };
   const bars = model.bars ?? 1;
   const parts = new Set(model.lanes.map((l) => l.part ?? 0));
@@ -8894,6 +8897,7 @@ function buildGroups(model) {
 }
 __name(buildGroups, "buildGroups");
 function serializePianoRollWithExtent(drawn) {
+  if (drawn.lookOnly) return { mini: null, extent: { path: "declined" } };
   const model = toUniformRoll(drawn);
   const respell = drawn.barSteps;
   const spans = model.leafSource ?? model.surgical?.spans();
@@ -9322,6 +9326,7 @@ function rollBarLanes(model, bounds) {
 __name(rollBarLanes, "rollBarLanes");
 function serializeRollGain(model) {
   if (model.gainForeign) return { kind: "skip" };
+  if (model.lookOnly) return { kind: "skip" };
   if (model.leafSource) return { kind: "skip" };
   const bars = model.bars ?? 1;
   if (bars > 1 && model.steps !== bars) return { kind: "skip" };
@@ -9929,16 +9934,37 @@ function gateReason(gate, surface) {
   }
 }
 __name(gateReason, "gateReason");
-function refused(surface, core, gate, src) {
+function refused(surface, core, gate, src, lookOnly) {
   if (gate === "not-a-pattern") {
     if (src.includes("\\")) {
       return { ok: false, reason: gateReason("escaped-source", surface), gate: "escaped-source" };
     }
     return core;
   }
-  return { ok: false, reason: gateReason(gate, surface), gate };
+  return { ok: false, reason: gateReason(gate, surface), gate, ...lookOnly ? { lookOnly } : {} };
 }
 __name(refused, "refused");
+function gridLookOnly(gate, perCycle, perBar2, bars) {
+  const played = columnsFromOnsets(perCycle, perBar2, bars);
+  if (played === null) return no(gate);
+  for (const o of perCycle.flat()) {
+    for (const hit of o.occ) {
+      const shown = o.occ.find((x) => x.token === hit.token);
+      if (shown && Math.abs((shown.dur ?? 0) - (hit.dur ?? 0)) > 1e-9) return no(gate);
+    }
+  }
+  return {
+    ok: false,
+    gate,
+    lookOnly: {
+      steps: perBar2 * bars,
+      ...bars > 1 ? { bars } : {},
+      lanes: lanesFromCells(played),
+      lookOnly: { gate, reason: gateReason(gate, "grid") }
+    }
+  };
+}
+__name(gridLookOnly, "gridLookOnly");
 function playedBars(pat, read5, key2, cap) {
   const cycles = [];
   for (let c = 0; c < PERIOD_PROBE; c++) {
@@ -10317,7 +10343,9 @@ function projectStepGridByLeaf(src0) {
   }
   if (perBar2 * bars > MAX_STEPS) return no("resolution");
   const anchored = leafAnchors(src, perCycle, perBar2, bars);
-  if (!anchored.ok) return anchored;
+  if (!anchored.ok) {
+    return anchored.gate === "no-leaf-anchor" ? gridLookOnly(anchored.gate, perCycle, perBar2, bars) : anchored;
+  }
   const played = columnsFromOnsets(perCycle, perBar2, bars);
   if (played === null) return no("irrational-onset");
   const cols = anchored.cols.map(
@@ -10335,8 +10363,8 @@ function projectStepGridByLeaf(src0) {
     ),
     leafSource: { src, cols, attachedSteps: perBar2 * bars, ...rests ? { rests } : {} }
   };
-  if (!leafEditSafe(model, perBar2, bars)) return no("edit-unsafe");
-  if (!leafViewUsable(model)) return no("view-unusable");
+  if (!leafEditSafe(model, perBar2, bars)) return gridLookOnly("edit-unsafe", perCycle, perBar2, bars);
+  if (!leafViewUsable(model)) return gridLookOnly("view-unusable", perCycle, perBar2, bars);
   return { ok: true, model };
 }
 __name(projectStepGridByLeaf, "projectStepGridByLeaf");
@@ -10476,7 +10504,7 @@ function projectStepGridDerived(mini, fallbackReason, viewScale = UNREFINED) {
   const leaf = projectStepGridByLeaf(mini);
   if (leaf.ok) return leaf;
   if (owner.ok) return asOwner(owner);
-  return refused("grid", fallbackReason, leaf.gate, mini);
+  return refused("grid", fallbackReason, leaf.gate, mini, leaf.lookOnly);
 }
 __name(projectStepGridDerived, "projectStepGridDerived");
 function parseStepGrid(mini, viewScale = UNREFINED) {
@@ -11128,7 +11156,9 @@ function projectPianoRollByLeaf(src0) {
   }
   if (perBar2 * bars > MAX_STEPS) return no("resolution");
   const anchored = rollAnchors(src, perCycle, perBar2, bars);
-  if (!anchored.ok) return anchored;
+  if (!anchored.ok) {
+    return anchored.gate === "no-leaf-anchor" ? rollLookOnly(anchored.gate, perCycle, perBar2, bars, numeric) : anchored;
+  }
   const anchors = anchored.anchors;
   const model = {
     steps: perBar2 * bars,
@@ -11139,24 +11169,51 @@ function projectPianoRollByLeaf(src0) {
     ...numeric ? { numeric: true } : {},
     leafSource: { src, anchors, steps: perBar2 * bars, attachedSteps: perBar2 * bars }
   };
-  if (!leafRollEditSafe(model, perBar2, bars, numeric)) return no("edit-unsafe");
-  if (!leafRollViewUsable(model)) return no("view-unusable");
+  if (!leafRollEditSafe(model, perBar2, bars, numeric)) {
+    return rollLookOnly("edit-unsafe", perCycle, perBar2, bars, numeric);
+  }
+  if (!leafRollViewUsable(model)) return rollLookOnly("view-unusable", perCycle, perBar2, bars, numeric);
   return { ok: true, model };
 }
 __name(projectPianoRollByLeaf, "projectPianoRollByLeaf");
+function rollNoteInBar(o, perBar2) {
+  const start = Math.round(o.pos * perBar2);
+  const duration = Math.round(o.dur * perBar2);
+  return start < 0 || duration < 1 || start + duration > perBar2 ? null : { start, duration };
+}
+__name(rollNoteInBar, "rollNoteInBar");
+function rollLookOnly(gate, perCycle, perBar2, bars, numeric) {
+  const notes = [];
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const at = rollNoteInBar(o, perBar2);
+      if (at === null) return no(gate);
+      notes.push({ pitch: o.pitch, start: b * perBar2 + at.start, duration: at.duration });
+    }
+  }
+  return {
+    ok: false,
+    gate,
+    lookOnly: {
+      steps: perBar2 * bars,
+      ...bars > 1 ? { bars } : {},
+      notes,
+      ...numeric ? { numeric: true } : {},
+      lookOnly: { gate, reason: gateReason(gate, "roll") }
+    }
+  };
+}
+__name(rollLookOnly, "rollLookOnly");
 function rollAnchors(src, perCycle, perBar2, bars) {
   const out = [];
   const seen = [];
   for (let b = 0; b < bars; b++) {
     for (const o of perCycle[b]) {
-      const start = Math.round(o.pos * perBar2);
-      const duration = Math.round(o.dur * perBar2);
-      if (start < 0 || duration < 1 || start + duration > perBar2) {
-        return { ok: false, gate: "note-crosses-bar" };
-      }
+      const at = rollNoteInBar(o, perBar2);
+      if (at === null) return { ok: false, gate: "note-crosses-bar" };
       const claim = claimLeafSpan(src, o.loc, o.pitch, seen, true);
       if (!claim.ok) return claim;
-      out.push({ pitch: o.pitch, start: b * perBar2 + start, duration, span: claim.span });
+      out.push({ pitch: o.pitch, start: b * perBar2 + at.start, duration: at.duration, span: claim.span });
     }
   }
   return { ok: true, anchors: out };
@@ -11256,7 +11313,7 @@ function projectPianoRollDerived(mini, fallbackReason, viewScale = UNREFINED) {
   if (owner.ok) return withRollSurgery(mini, asOwner(owner));
   const leaf = projectPianoRollByLeaf(mini);
   if (leaf.ok) return leaf;
-  return refused("roll", fallbackReason, leaf.gate, mini);
+  return refused("roll", fallbackReason, leaf.gate, mini, leaf.lookOnly);
 }
 __name(projectPianoRollDerived, "projectPianoRollDerived");
 function parsePianoRoll(mini, viewScale = UNREFINED) {
@@ -11791,7 +11848,9 @@ function slotState(steps, docSteps, bars, lossless, applies, target, canDrawView
   return applies ? "quantize" : "disabled";
 }
 __name(slotState, "slotState");
+var lookOnlySlotState = /* @__PURE__ */ __name((steps, target) => target === steps ? "active" : "disabled", "lookOnlySlotState");
 function stepSlotState(model, target, canDrawView) {
+  if (model.lookOnly) return lookOnlySlotState(model.steps, target);
   return slotState(
     model.steps,
     documentSteps(model),
@@ -11804,6 +11863,7 @@ function stepSlotState(model, target, canDrawView) {
 }
 __name(stepSlotState, "stepSlotState");
 function rollSlotState(model, target, canDrawView) {
+  if (model.lookOnly) return lookOnlySlotState(model.steps, target);
   return slotState(
     model.steps,
     documentSteps(model),
@@ -11872,7 +11932,10 @@ __name(chordLanes, "chordLanes");
 function routeSurface(headFn, mini) {
   if (headFn === "s" || headFn === "sound") return "step";
   if (headFn === "note" || headFn === "n") return memoised(headFn, mini, rollUnlessChordChart);
-  return parsePianoRoll(mini).ok ? "roll" : "step";
+  const roll = parsePianoRoll(mini);
+  if (roll.ok) return "roll";
+  if (roll.lookOnly && !parseStepGrid(mini).ok) return "roll";
+  return "step";
 }
 __name(routeSurface, "routeSurface");
 var CACHE_CAP = 32;
@@ -12471,7 +12534,9 @@ function slotPressCost(ops, model, target, canDrawView) {
 __name(slotPressCost, "slotPressCost");
 function reconcileGrid(codec, mini, chunkGain, viewScale, prev, prevScale) {
   const parsed = codec.parse(mini, viewScale);
-  if (!parsed.ok) return null;
+  if (!parsed.ok) {
+    return parsed.lookOnly ? { read: parsed.lookOnly, model: parsed.lookOnly } : null;
+  }
   const fresh = codec.applyGain ? codec.applyGain(parsed.model, chunkGain) : parsed.model;
   const asWritten = prev == null ? null : codec.collapseToDocument?.(prev) ?? prev;
   const sameMini = asWritten != null && codec.serialize(asWritten) === mini;
@@ -12551,6 +12616,7 @@ __name(regionTrimEdit, "regionTrimEdit");
 
 // src/codeView/notation/place.ts
 function viewPlacesNotes(model) {
+  if (model.lookOnly) return false;
   let asked = 0;
   if ("lanes" in model) {
     for (let lane = 0; lane < model.lanes.length; lane++)
@@ -12782,6 +12848,7 @@ function removeNote(model, start, pitch, opts = {}) {
 }
 __name(removeNote, "removeNote");
 function moveNote(base, fromPitch, fromStart, toPitch, toStart, opts = {}) {
+  if (base.lookOnly) return base;
   const idx = base.notes.findIndex((n) => n.pitch === fromPitch && n.start === fromStart);
   if (idx < 0) return base;
   const grabbed = base.notes[idx];
@@ -12880,6 +12947,7 @@ __name(padCells, "padCells");
 // src/codeView/notation/lane.ts
 function addLane(model, sound) {
   const token = sound.trim();
+  if (model.lookOnly) return model;
   if (token === "" || model.lanes.some((l) => l.sound === token)) return model;
   const lane = {
     sound: token,
@@ -12890,6 +12958,7 @@ function addLane(model, sound) {
 }
 __name(addLane, "addLane");
 function removeLane(model, sound) {
+  if (model.lookOnly) return model;
   if (!model.lanes.some((l) => l.sound === sound)) return model;
   return { ...model, lanes: model.lanes.filter((l) => l.sound !== sound) };
 }
@@ -13009,15 +13078,21 @@ var VELOCITY_STRING = "its velocities are written per column, and the velocity l
 var GRID_CANT_SHOW = "the grid couldn't show the longer pattern";
 function lengthenOffers(parse6, mini, bars, gain) {
   return {
-    duplicate: readsBack(parse6, duplicateBar(mini, bars), bars + 1, gain),
+    duplicate: offered(parse6, mini, () => duplicateBar(mini, bars), bars + 1, gain),
     append: appendBarsOffer(parse6, mini, bars, 1, gain)
   };
 }
 __name(lengthenOffers, "lengthenOffers");
 function appendBarsOffer(parse6, mini, bars, add, gain) {
-  return readsBack(parse6, appendEmptyBars(mini, bars, add), bars + add, gain);
+  return offered(parse6, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain);
 }
 __name(appendBarsOffer, "appendBarsOffer");
+var NOT_EDITABLE_HERE = "the grid can show this pattern but can't edit it; make it longer in the code";
+function offered(parse6, mini, rewrite, wantBars, gain) {
+  if (!parse6(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE };
+  return readsBack(parse6, rewrite(), wantBars, gain);
+}
+__name(offered, "offered");
 function readsBack(parse6, r, wantBars, gain) {
   if (!r.ok) return r;
   if (gain.mini !== null) return { ok: false, reason: VELOCITY_STRING };
@@ -35642,6 +35717,7 @@ function useGridModel(opts) {
   }, [chunk, viewScale]);
   const writeModel = React22.useCallback(
     (next) => {
+      if (modelRef.current?.lookOnly) return;
       const o = optsRef.current;
       const plan = gridWritePlan(o, next);
       if (plan == null) return;
@@ -35669,6 +35745,7 @@ function useGridModel(opts) {
   const settle = React22.useCallback((next) => writeModel(next), [writeModel]);
   const writeMini = React22.useCallback(
     (mini) => {
+      if (modelRef.current?.lookOnly) return;
       applyEdit((fresh, wb) => {
         commit(wb, gridWriteEdits(fresh, mini, null), optsRef.current.source);
       });
@@ -36716,6 +36793,7 @@ function gainAtStart(model, start) {
 }
 __name(gainAtStart, "gainAtStart");
 function setGroupGain(model, start, gain) {
+  if (model.lookOnly) return model;
   return {
     ...model,
     notes: model.notes.map((n) => n.start === start ? { ...n, gain } : n)
@@ -36723,6 +36801,7 @@ function setGroupGain(model, start, gain) {
 }
 __name(setGroupGain, "setGroupGain");
 function setColumnGain(model, stepIndex, gain) {
+  if (model.lookOnly) return model;
   const gains = model.gains ? [...model.gains] : Array(model.steps).fill(1);
   if (gains[stepIndex] === gain) return model;
   gains[stepIndex] = gain;
@@ -37788,6 +37867,7 @@ function SequencerGrid({ onResolution } = {}) {
   const runGesture = /* @__PURE__ */ __name((action, dryRun, fromKey = false) => {
     if (!model || rowsN === 0 || colsN === 0) return false;
     const at = cursorRef.current ?? (fromKey ? { row: 0, col: 0 } : null);
+    if (model.lookOnly && !isCursorMove(action)) return false;
     if (isCursorMove(action)) {
       if (dryRun) return true;
       focusCursorRef.current = true;
@@ -37833,6 +37913,7 @@ function SequencerGrid({ onResolution } = {}) {
     });
   }
   const layout = drawnLayout(model, model.steps);
+  const lookOnly = model.lookOnly ?? null;
   const tabCell = liveCursor ?? { row: 0, col: 0 };
   const rulerPart = model.lanes[liveCursor?.row ?? 0]?.part ?? 0;
   const ruler = rulerLabels(model, model.steps, [...stepStarts?.get(rulerPart) ?? []]);
@@ -37851,6 +37932,7 @@ function SequencerGrid({ onResolution } = {}) {
         runGesture(action, false, true);
       },
       "data-bottom-panel-tab": "sequencer",
+      "data-look-only": lookOnly ? lookOnly.gate : void 0,
       "data-pattern-scroll": true,
       style: {
         padding: 16,
@@ -37874,7 +37956,19 @@ function SequencerGrid({ onResolution } = {}) {
             children: "Chord chart \u2014 each lane is a chord, not a sound."
           }
         ),
-        !placesNotes && /* @__PURE__ */ jsx(
+        lookOnly && /* @__PURE__ */ jsx(
+          "div",
+          {
+            "data-seq-look-only": true,
+            style: {
+              fontSize: 11,
+              color: "var(--foreground-muted, #a0a0aa)",
+              paddingBottom: 2
+            },
+            children: lookOnlyLine(lookOnly)
+          }
+        ),
+        !placesNotes && !lookOnly && /* @__PURE__ */ jsx(
           "div",
           {
             "data-seq-no-placement": true,
@@ -37955,7 +38049,7 @@ function SequencerGrid({ onResolution } = {}) {
                         children: /* @__PURE__ */ jsx("span", { style: { overflow: "hidden", textOverflow: "ellipsis" }, children: voice.label })
                       }
                     ),
-                    /* @__PURE__ */ jsx(
+                    lookOnly ? /* @__PURE__ */ jsx("span", { style: { width: 16, flex: "0 0 auto" } }) : /* @__PURE__ */ jsx(
                       "button",
                       {
                         type: "button",
@@ -38046,7 +38140,7 @@ function SequencerGrid({ onResolution } = {}) {
                               "data-playing": isPlaying ? "true" : void 0,
                               "data-seq-cell-inert": canToggle ? void 0 : "true",
                               "aria-disabled": canToggle ? void 0 : true,
-                              title: canToggle ? void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
+                              title: lookOnly ? lookOnlyLine(lookOnly) : canToggle ? void 0 : on ? model.leafSource ? "This hit comes from text that plays in more than one box here \u2014 remove it in the code view." : "Removing this hit would change the pattern in other places too \u2014 the grid has no way to write that." : model.leafSource ? "This pattern edits its existing notes \u2014 add steps in the code view." : "Adding a step here would change how long another sound plays \u2014 the grid has no way to write that.",
                               onPointerDown: (e) => {
                                 e.preventDefault();
                                 setCursor({ row: laneIndex, col: stepIndex });
@@ -38164,8 +38258,8 @@ function SequencerGrid({ onResolution } = {}) {
             );
           })
         ] }),
-        /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef, cellAttr: "data-seq-col", cols: model.steps, lastBarCols: layout.lastBarCols }),
-        !isChordChart && /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 4 }, children: [
+        !lookOnly && /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef, cellAttr: "data-seq-col", cols: model.steps, lastBarCols: layout.lastBarCols }),
+        !isChordChart && !lookOnly && /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginTop: 4 }, children: [
           /* @__PURE__ */ jsx("span", { style: { width: 72, flex: "0 0 auto" } }),
           /* @__PURE__ */ jsxs(
             "select",
@@ -38766,6 +38860,7 @@ function PianoRollGrid({
       return true;
     }
     if (!at) return false;
+    if (model.lookOnly && action !== "copy") return false;
     const midi = rows[at.row];
     const note = noteAt(model, midi, at.col);
     if (isNoteEdit(action)) return note ? editNote(note, action, dryRun) : false;
@@ -38819,6 +38914,7 @@ function PianoRollGrid({
     "div",
     {
       "data-bottom-panel-tab": "piano-roll",
+      "data-look-only": model.lookOnly ? model.lookOnly.gate : void 0,
       tabIndex: -1,
       onPointerDownCapture: (e) => {
         const cell = e.target.closest("[data-roll-cell]");
@@ -38846,7 +38942,19 @@ function PianoRollGrid({
       children: [
         /* @__PURE__ */ jsxs("div", { "data-roll-header": true, style: { display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }, children: [
           /* @__PURE__ */ jsx(PatternTrackChip, {}),
-          !placesNotes && /* @__PURE__ */ jsx(
+          model.lookOnly && /* @__PURE__ */ jsx(
+            "div",
+            {
+              "data-roll-look-only": true,
+              style: {
+                fontSize: 11,
+                color: "var(--foreground-muted, #a0a0aa)",
+                padding: "0 8px 0 0"
+              },
+              children: lookOnlyLine(model.lookOnly)
+            }
+          ),
+          !placesNotes && !model.lookOnly && /* @__PURE__ */ jsx(
             "div",
             {
               "data-roll-no-placement": true,
@@ -39001,7 +39109,7 @@ function PianoRollGrid({
                                 const isHead = on && headColumn(note) === step;
                                 const isTail = on && tailColumn(note) === step;
                                 const isSel = selected?.kind === "roll" && selected.start === step && selected.pitch === tokenForRow(!!model.numeric, midi);
-                                const canPlace = on || placesNotes;
+                                const canPlace = !model.lookOnly && (on || placesNotes);
                                 const dropRefused = declinedCell === `${midi}:${step}`;
                                 const resizeInert = on && isTail && resizable?.has(note) === false;
                                 const isTab = tabCell.col === step && rows[tabCell.row] === midi;
@@ -39034,7 +39142,7 @@ function PianoRollGrid({
                                           "data-roll-drop-refused": dropRefused ? "true" : void 0,
                                           "data-roll-resize-inert": resizeInert ? "true" : void 0,
                                           "aria-disabled": canPlace ? void 0 : true,
-                                          title: !canPlace ? "This pattern edits its existing notes \u2014 add notes in the code view." : resizeInert ? "This note has no other length the pattern can hold \u2014 change its length in the code view." : void 0,
+                                          title: model.lookOnly ? lookOnlyLine(model.lookOnly) : !canPlace ? "This pattern edits its existing notes \u2014 add notes in the code view." : resizeInert ? "This note has no other length the pattern can hold \u2014 change its length in the code view." : void 0,
                                           onPointerDown: (e) => {
                                             e.preventDefault();
                                             if (!canPlace && !(e.metaKey || e.ctrlKey)) return;
@@ -39052,7 +39160,7 @@ function PianoRollGrid({
                                             // that a note occupying part of a column occupies part of the box
                                             // (#1074). The cell keeps its own empty-cell background.
                                             background: step === playingStep ? "var(--background, #34343c)" : black ? "var(--background, #1c1c20)" : "var(--background-elevated, #26262c)",
-                                            cursor: dropRefused ? "not-allowed" : "pointer"
+                                            cursor: dropRefused ? "not-allowed" : model.lookOnly ? "default" : "pointer"
                                             // The selection ring (#432) is NOT here — see the overlay that
                                             // is the cell's last child (#1077).
                                           },
@@ -39217,8 +39325,8 @@ function PianoRollGrid({
                       })
                     }
                   ),
-                  /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef, cellAttr: "data-roll-cell", cols, lastBarCols: layout.lastBarCols }),
-                  gainInScope(model) && /* @__PURE__ */ jsxs(
+                  !model.lookOnly && /* @__PURE__ */ jsx(ExtendHandle, { length, gridRef, cellAttr: "data-roll-cell", cols, lastBarCols: layout.lastBarCols }),
+                  gainInScope(model) && !model.lookOnly && /* @__PURE__ */ jsxs(
                     "div",
                     {
                       "data-roll-velocity-lane": true,

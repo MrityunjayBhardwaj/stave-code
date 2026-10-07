@@ -148,7 +148,8 @@ export function slotPressCost<M extends Scaled>(
  * `read` is what the text reads as right now (#1849). `model` is what the panel keeps on
  * screen: the in-progress `prev`, when what it would WRITE is still exactly what the
  * document says, its `.gain` still matches and it was drawn at this scale; otherwise the
- * fresh parse. `null` when the mini doesn't parse.
+ * fresh parse. `null` when the mini doesn't parse — unless the refusal carries a
+ * look-only view, which is then both.
  *
  * Compared the way the write asks it: a refined model serializes to the drawn spelling,
  * not the document's bytes, so comparing it directly would call every refined model
@@ -163,7 +164,11 @@ export function reconcileGrid<M>(
   prevScale: ViewScale,
 ): { read: M; model: M } | null {
   const parsed = codec.parse(mini, viewScale)
-  if (!parsed.ok) return null
+  if (!parsed.ok) {
+    // A pattern that can be shown but not edited (#1975): the panel holds what it
+    // plays. Never the in-progress `prev` — a look-only model has no edits to keep.
+    return parsed.lookOnly ? { read: parsed.lookOnly, model: parsed.lookOnly } : null
+  }
   const fresh = codec.applyGain ? codec.applyGain(parsed.model, chunkGain) : parsed.model
   const asWritten = prev == null ? null : (codec.collapseToDocument?.(prev) ?? prev)
   const sameMini = asWritten != null && codec.serialize(asWritten) === mini

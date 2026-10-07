@@ -241,7 +241,7 @@ export function lengthenOffers<M extends { bars?: number }>(
   gain: ChunkGain,
 ): LengthenOffers {
   return {
-    duplicate: readsBack(parse, duplicateBar(mini, bars), bars + 1, gain),
+    duplicate: offered(parse, mini, () => duplicateBar(mini, bars), bars + 1, gain),
     append: appendBarsOffer(parse, mini, bars, 1, gain),
   }
 }
@@ -254,7 +254,26 @@ export function appendBarsOffer<M extends { bars?: number }>(
   add: number,
   gain: ChunkGain,
 ): LengthenResult {
-  return readsBack(parse, appendEmptyBars(mini, bars, add), bars + add, gain)
+  return offered(parse, mini, () => appendEmptyBars(mini, bars, add), bars + add, gain)
+}
+
+const NOT_EDITABLE_HERE = "the grid can show this pattern but can't edit it; make it longer in the code"
+
+/**
+ * The FIRST gate is the grid too (#1975): a rewrite is offered only on a pattern the
+ * grid can edit. A look-only pattern is drawn, so the handle is asked about it — and
+ * nothing says the longer text would be refused as well (`<[X] ~>` is a different
+ * pattern to every projection), so the read-back below cannot be what declines it.
+ */
+function offered<M extends { bars?: number }>(
+  parse: GridParse<M>,
+  mini: string,
+  rewrite: () => LengthenResult,
+  wantBars: number,
+  gain: ChunkGain,
+): LengthenResult {
+  if (!parse(mini, UNREFINED).ok) return { ok: false, reason: NOT_EDITABLE_HERE }
+  return readsBack(parse, rewrite(), wantBars, gain)
 }
 
 /**

@@ -1224,8 +1224,11 @@ export const PROJECTION_PERIOD_BOUNDS = Object.freeze({
 
 /* ── refusal gates (#990) ──────────────────────────────────────────────────── */
 
-/** a projection's outcome: a model, or the gate that stopped it */
-type Projection<M> = { ok: true; model: M } | { ok: false; gate: Gate }
+/**
+ * a projection's outcome: a model, or the gate that stopped it — with what the pattern
+ * plays beside the gate when editing is the only thing that gate refused (#1975)
+ */
+type Projection<M> = { ok: true; model: M } | { ok: false; gate: Gate; lookOnly?: M }
 
 /** decline at `gate` — the only way a projection says no */
 const no = (gate: Gate): { ok: false; gate: Gate } => ({ ok: false, gate })
@@ -1323,6 +1326,7 @@ function refused<M>(
   core: { ok: false; reason: string },
   gate: Gate,
   src: string,
+  lookOnly?: M,
 ): ParseResult<M> {
   if (gate === 'not-a-pattern') {
     // ⚠ ONE EXCEPTION TO "KEEP THE CORE'S MESSAGE" (#1254). Nothing reified, so the
@@ -1342,7 +1346,64 @@ function refused<M>(
     }
     return core
   }
-  return { ok: false, reason: gateReason(gate, surface), gate }
+  return { ok: false, reason: gateReason(gate, surface), gate, ...(lookOnly ? { lookOnly } : {}) }
+}
+
+/**
+ * The three gates that refuse EDITING and nothing else (#1975). A look-only view can be
+ * built for these alone, and the type is what holds that: a caller with some other gate
+ * in hand has to narrow it first, so "which refusals get a view" is decided where the
+ * refusal is made and cannot widen by accident.
+ */
+type EditGate = Extract<Gate, 'no-leaf-anchor' | 'edit-unsafe' | 'view-unusable'>
+
+/**
+ * THE LOOK-ONLY VIEW OF A GRID (#1975): what the pattern plays, laid out as the leaf
+ * projection would have drawn it, handed back beside a refusal that is only about
+ * EDITING — `no-leaf-anchor`, `edit-unsafe`, `view-unusable`. Those three all say the
+ * same thing from different ends: the hits are real and land on columns, and no single
+ * one can be written back on its own (`[hh ~]!16` is one `[hh ~]` played sixteen times;
+ * a euclid generates its hits). "Cannot edit" was being answered as "cannot show".
+ *
+ * Built from the played columns ALONE — no anchors, no source of any kind — and marked
+ * `lookOnly`, which every writer declines on. So this is not a fourth writer and
+ * cannot become one: there is nothing here to write through, and the old whole-pattern
+ * respell these patterns used to get (a rebuild from the cells) is exactly what the
+ * mark forbids.
+ *
+ * The gate is passed through untouched. A layout the columns cannot hold comes back
+ * with no view and the same gate as before.
+ */
+function gridLookOnly(
+  gate: EditGate,
+  perCycle: Onset[][],
+  perBar: number,
+  bars: number,
+): { ok: false; gate: Gate; lookOnly?: StepGridModel } {
+  const played = columnsFromOnsets(perCycle, perBar, bars)
+  if (played === null) return no(gate)
+  // EVERY HIT MUST BE DRAWN, or this is not a view of what plays. A cell shows a sound
+  // once per column (`lanesFromCells`), so two hits of one sound in one column share a
+  // cell — which draws both only when they are the same length. Where they differ
+  // (`[C G], <D Fb B C A>*[0.5,2]` plays a one-column D and a four-column D together)
+  // one hit's length would be missing, and an editable grid's display rule is not a
+  // licence for a look-only one to leave a hit out. Asked of `occ`, the column's truth.
+  for (const o of perCycle.flat()) {
+    for (const hit of o.occ) {
+      const shown = o.occ.find((x) => x.token === hit.token)
+      if (shown && Math.abs((shown.dur ?? 0) - (hit.dur ?? 0)) > 1e-9) return no(gate)
+    }
+  }
+  return {
+    ok: false,
+    gate,
+    lookOnly: {
+      steps: perBar * bars,
+      ...(bars > 1 ? { bars } : {}),
+      lanes: lanesFromCells(played),
+      lookOnly: { gate, reason: gateReason(gate, 'grid') },
+    },
+  }
 }
 
 /**
@@ -2188,7 +2249,11 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
   }
   if (perBar * bars > MAX_STEPS) return no('resolution')
   const anchored = leafAnchors(src, perCycle, perBar, bars)
-  if (!anchored.ok) return anchored
+  if (!anchored.ok) {
+    // only the bijection's refusal is about editing; a note outside its bar has no
+    // column to be drawn in either
+    return anchored.gate === 'no-leaf-anchor' ? gridLookOnly(anchored.gate, perCycle, perBar, bars) : anchored
+  }
   // The lanes come from the ANCHORS — that atom set is what this path can write back
   // — and the lengths from what was PLAYED, matched per column. The anchors are total
   // over drawn cells (`leaf-anchor-sweep`: a drawn cell with no anchor is a control
@@ -2218,8 +2283,8 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
     ),
     leafSource: { src, cols, attachedSteps: perBar * bars, ...(rests ? { rests } : {}) },
   }
-  if (!leafEditSafe(model, perBar, bars)) return no('edit-unsafe')
-  if (!leafViewUsable(model)) return no('view-unusable')
+  if (!leafEditSafe(model, perBar, bars)) return gridLookOnly('edit-unsafe', perCycle, perBar, bars)
+  if (!leafViewUsable(model)) return gridLookOnly('view-unusable', perCycle, perBar, bars)
   return { ok: true, model }
 }
 
@@ -2649,7 +2714,7 @@ export function projectStepGridDerived(
   // …and if nothing opened it, report the gate that actually stopped the general
   // write-back (#990) — not the core's syntactic message, which names the first
   // writer to decline
-  return refused('grid', fallbackReason, leaf.gate, mini)
+  return refused('grid', fallbackReason, leaf.gate, mini, leaf.lookOnly)
 }
 
 /**
@@ -3769,7 +3834,12 @@ function projectPianoRollByLeaf(src0: string): Projection<PianoRollModel> {
   }
   if (perBar * bars > MAX_STEPS) return no('resolution')
   const anchored = rollAnchors(src, perCycle, perBar, bars)
-  if (!anchored.ok) return anchored
+  if (!anchored.ok) {
+    // the grid's rule, the roll's half: only the bijection's refusal is about editing
+    return anchored.gate === 'no-leaf-anchor'
+      ? rollLookOnly(anchored.gate, perCycle, perBar, bars, numeric)
+      : anchored
+  }
   const anchors = anchored.anchors
   const model: PianoRollModel = {
     steps: perBar * bars,
@@ -3780,9 +3850,55 @@ function projectPianoRollByLeaf(src0: string): Projection<PianoRollModel> {
     ...(numeric ? { numeric: true } : {}),
     leafSource: { src, anchors, steps: perBar * bars, attachedSteps: perBar * bars },
   }
-  if (!leafRollEditSafe(model, perBar, bars, numeric)) return no('edit-unsafe')
-  if (!leafRollViewUsable(model)) return no('view-unusable')
+  if (!leafRollEditSafe(model, perBar, bars, numeric)) {
+    return rollLookOnly('edit-unsafe', perCycle, perBar, bars, numeric)
+  }
+  if (!leafRollViewUsable(model)) return rollLookOnly('view-unusable', perCycle, perBar, bars, numeric)
   return { ok: true, model }
+}
+
+/**
+ * Where a played note sits inside its own bar, in columns — or null when it does not
+ * fit there. The roll's one cycles→columns conversion, asked by the anchors and by the
+ * look-only view so the two cannot lay the same note out differently.
+ */
+function rollNoteInBar(o: RollOnset, perBar: number): { start: number; duration: number } | null {
+  const start = Math.round(o.pos * perBar)
+  const duration = Math.round(o.dur * perBar)
+  return start < 0 || duration < 1 || start + duration > perBar ? null : { start, duration }
+}
+
+/**
+ * THE LOOK-ONLY VIEW OF A ROLL (#1975) — `gridLookOnly` for the pitched surface, and
+ * the same contract: the played notes alone, no anchors, marked so every writer
+ * declines. A note that does not fit its bar gives no view and the gate unchanged.
+ */
+function rollLookOnly(
+  gate: EditGate,
+  perCycle: RollOnset[][],
+  perBar: number,
+  bars: number,
+  numeric: boolean,
+): { ok: false; gate: Gate; lookOnly?: PianoRollModel } {
+  const notes: RollNote[] = []
+  for (let b = 0; b < bars; b++) {
+    for (const o of perCycle[b]) {
+      const at = rollNoteInBar(o, perBar)
+      if (at === null) return no(gate)
+      notes.push({ pitch: o.pitch, start: b * perBar + at.start, duration: at.duration })
+    }
+  }
+  return {
+    ok: false,
+    gate,
+    lookOnly: {
+      steps: perBar * bars,
+      ...(bars > 1 ? { bars } : {}),
+      notes,
+      ...(numeric ? { numeric: true } : {}),
+      lookOnly: { gate, reason: gateReason(gate, 'roll') },
+    },
+  }
 }
 
 /**
@@ -3809,18 +3925,15 @@ function rollAnchors(
   const seen: LeafSpan[] = []
   for (let b = 0; b < bars; b++) {
     for (const o of perCycle[b]) {
-      const start = Math.round(o.pos * perBar)
-      const duration = Math.round(o.dur * perBar)
       // A note that does not fit inside its own bar is a LAYOUT refusal, not an
       // anchor one — it has a perfectly good source token, there is just no
       // single bar to hang it on. Kept distinct so the anchor count stays an
       // honest measure of the write-back guard (#990).
-      if (start < 0 || duration < 1 || start + duration > perBar) {
-        return { ok: false, gate: 'note-crosses-bar' }
-      }
+      const at = rollNoteInBar(o, perBar)
+      if (at === null) return { ok: false, gate: 'note-crosses-bar' }
       const claim = claimLeafSpan(src, o.loc, o.pitch, seen, true)
       if (!claim.ok) return claim
-      out.push({ pitch: o.pitch, start: b * perBar + start, duration, span: claim.span })
+      out.push({ pitch: o.pitch, start: b * perBar + at.start, duration: at.duration, span: claim.span })
     }
   }
   return { ok: true, anchors: out }
@@ -4029,7 +4142,7 @@ export function projectPianoRollDerived(
   if (leaf.ok) return leaf
   // …and if nothing opened it, report the gate that actually stopped the general
   // write-back (#990)
-  return refused('roll', fallbackReason, leaf.gate, mini)
+  return refused('roll', fallbackReason, leaf.gate, mini, leaf.lookOnly)
 }
 
 /**

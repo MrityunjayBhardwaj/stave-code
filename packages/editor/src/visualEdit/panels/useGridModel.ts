@@ -111,7 +111,7 @@ export interface GridModel<M> {
 const keyOf = (at: number, mini: string | null): string => `${at}:${mini ?? ''}`
 
 
-export function useGridModel<M extends { viewScale?: ViewScale }>(
+export function useGridModel<M extends { viewScale?: ViewScale; lookOnly?: unknown }>(
   opts: GridModelOptions<M>,
 ): GridModel<M> {
   const { chunk, applyEdit, beginGesture, endGesture } = useActiveChunk()
@@ -192,6 +192,12 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
    */
   const writeModel = React.useCallback(
     (next: M): void => {
+      // THE DOOR IS SHUT WHILE THE HELD MODEL IS LOOK-ONLY (#1975), whatever `next` says
+      // about itself. The ops already decline on such a model; this is for a transform
+      // that builds its result from scratch and so loses the mark — `next` would then
+      // look like an ordinary sourceless model and be rebuilt into the document. Asked of
+      // the model the panel is SHOWING, because that is the one the user is looking at.
+      if (modelRef.current?.lookOnly) return
       const o = optsRef.current
       // Which resolution this write spells, its bytes, and the model kept on screen:
       // `gridWritePlan` decides all three (#1057, #1942).
@@ -229,6 +235,7 @@ export function useGridModel<M extends { viewScale?: ViewScale }>(
   /** See {@link GridModel.writeMini}. One edit, so one undo step. */
   const writeMini = React.useCallback(
     (mini: string): void => {
+      if (modelRef.current?.lookOnly) return // same door, the text route (#1975)
       applyEdit((fresh, wb) => {
         commit(wb, gridWriteEdits(fresh, mini, null), optsRef.current.source)
       })
