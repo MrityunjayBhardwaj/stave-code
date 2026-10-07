@@ -819,6 +819,14 @@ function slotState(
 }
 
 /**
+ * A look-only model offers no other resolution (#1975): the one drawn is the one it
+ * has. `lossless` would otherwise be offered from arithmetic on the columns alone and
+ * the press would do nothing, because the writer declines.
+ */
+const lookOnlySlotState = (steps: number, target: number): SlotState =>
+  target === steps ? 'active' : 'disabled'
+
+/**
  * `canDrawView` is how the caller PROVES a finer view is really drawable — it is handed
  * a candidate scale and answers by asking the parser, not by predicting it. Omitting it
  * disables the free zone entirely, so every existing caller keeps today's behaviour
@@ -829,6 +837,7 @@ export function stepSlotState(
   target: number,
   canDrawView?: (scale: ViewScale) => boolean,
 ): SlotState {
+  if (model.lookOnly) return lookOnlySlotState(model.steps, target)
   return slotState(
     model.steps,
     documentSteps(model),
@@ -844,6 +853,7 @@ export function rollSlotState(
   target: number,
   canDrawView?: (scale: ViewScale) => boolean,
 ): SlotState {
+  if (model.lookOnly) return lookOnlySlotState(model.steps, target)
   return slotState(
     model.steps,
     documentSteps(model),

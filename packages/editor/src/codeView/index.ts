@@ -141,8 +141,10 @@ export {
   tailColumn,
   isCellOn,
   laneCoverage,
+  lookOnlyLine,
 } from './notation/model'
 export type {
+  LookOnly,
   StepGridModel,
   PianoRollModel,
   RollNote,

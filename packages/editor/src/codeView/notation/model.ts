@@ -572,6 +572,14 @@ export interface StepGridModel {
    * velocity drag is disabled — we never delete a gain we didn't author.
    */
   gainForeign?: boolean
+  /**
+   * Set when this model is a LOOK-ONLY view (#1975): drawn from what Strudel plays,
+   * with no way to write any one note back. Every writer declines on it — the
+   * serializer, the gain writer, the Slots states, the lengthen offers — so no op
+   * built on them can write, whatever the panel does. Never set on a model a parse
+   * returned as `ok: true`; it arrives only on a refusal's `lookOnly`.
+   */
+  lookOnly?: LookOnly
 }
 
 /**
@@ -1228,7 +1236,23 @@ export interface PianoRollModel {
    * both (mixed is rejected at parse).
    */
   numeric?: boolean
+  /** see `StepGridModel.lookOnly` — the roll's half, same rule */
+  lookOnly?: LookOnly
 }
+
+/**
+ * Why a model is look-only (#1975): the gate that refused the editable view, and why
+ * in the words of someone looking at the view (`lookOnlyWhy`, `parse.ts` — not the
+ * refusal's own `reason`, which speaks the parser's vocabulary). Carried on the model so
+ * a panel reads it rather than deciding for itself what cannot be edited.
+ */
+export interface LookOnly {
+  gate: Gate
+  reason: string
+}
+
+/** the one line a panel shows over a look-only view — said once, for both grids */
+export const lookOnlyLine = (l: LookOnly): string => `Look only — ${l.reason}. Edit it in the code.`
 
 /**
  * WHY a view declined a pattern — the gate that actually stopped it (#990).
@@ -1324,10 +1348,17 @@ export type Gate =
  * `gate` is present whenever a projection ran and declined — the machine-readable
  * half of `reason`, so a measurement buckets by cause instead of by string match.
  * Absent when the refusal is the syntactic core's own (nothing reified).
+ *
+ * `lookOnly` is present when the ONLY thing that stopped the view is that its notes
+ * cannot be edited one by one (#1975): what the pattern plays, laid out as the view
+ * would have drawn it, marked `lookOnly` so nothing can write through it. The result
+ * stays `ok: false` on purpose — everything that asks "can this be edited?" (routing,
+ * every read-back proof, the corpus gates) keeps its answer, and only a caller that
+ * wants to SHOW the pattern reads this field.
  */
 export type ParseResult<M> =
   | { ok: true; model: M }
-  | { ok: false; reason: string; gate?: Gate }
+  | { ok: false; reason: string; gate?: Gate; lookOnly?: M }
 
 /**
  * What a model's velocity wants done to the pattern's `.gain` method. A single

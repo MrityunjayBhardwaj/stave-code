@@ -27,7 +27,7 @@
 import * as React from 'react'
 
 import { stepGridCodec, gainWritable, slotPress, slotPressCost, NO_RESOLUTION_EFFECT } from '../../codeView'
-import { columnCount, isCellOn, laneCoverage } from '../../codeView'
+import { columnCount, isCellOn, laneCoverage, lookOnlyLine } from '../../codeView'
 import type { StepGridModel } from '../../codeView'
 import { drawnLayout } from '../../codeView'
 import { VisualEditStandby } from './VisualEditStandby'
@@ -608,6 +608,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   const runGesture = (action: GridAction, dryRun: boolean, fromKey = false): boolean => {
     if (!model || rowsN === 0 || colsN === 0) return false
     const at = cursorRef.current ?? (fromKey ? { row: 0, col: 0 } : null)
+    // A look-only view (#1975) can be walked, and nothing else: an edit key is not
+    // offered, rather than run and refused with a console line on every press.
+    if (model.lookOnly && !isCursorMove(action)) return false
     if (isCursorMove(action)) {
       if (dryRun) return true
       focusCursorRef.current = true
@@ -667,6 +670,10 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
   // Each bar may hold its own count of cells (#1827) — the roll's `drawnLayout`, so the
   // two grids agree on where bars start and how wide a cell is.
   const layout = drawnLayout(model, model.steps)
+  // What the MODEL says about itself (#1975). The cells below already grey themselves
+  // out — each asks the op whether it could toggle, and every op declines — so this
+  // only adds the sentence and takes away the controls that are not cells.
+  const lookOnly = model.lookOnly ?? null
   const tabCell = liveCursor ?? { row: 0, col: 0 }
   // The ruler counts the steps of the row you're on — the first row until a cursor
   // exists — because rows from different `,`-parts can split a bar differently (#1841).
@@ -692,6 +699,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
         runGesture(action, false, true)
       }}
       data-bottom-panel-tab="sequencer"
+      data-look-only={lookOnly ? lookOnly.gate : undefined}
       // always-visible (non-overlay) scrollbar when the grid overflows the panel,
       // styled in globals.css (the editor ships no CSS) — #pattern-scrollbar.
       data-pattern-scroll
@@ -736,7 +744,19 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             Chord chart — each lane is a chord, not a sound.
           </div>
         )}
-        {!placesNotes && (
+        {lookOnly && (
+          <div
+            data-seq-look-only
+            style={{
+              fontSize: 11,
+              color: 'var(--foreground-muted, #a0a0aa)',
+              paddingBottom: 2,
+            }}
+          >
+            {lookOnlyLine(lookOnly)}
+          </div>
+        )}
+        {!placesNotes && !lookOnly && (
           <div
             data-seq-no-placement
             style={{
@@ -829,6 +849,8 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             >
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{voice.label}</span>
             </span>
+            {/* a look-only view removes nothing; the space stays so rows keep their ruler */}
+            {lookOnly ? <span style={{ width: 16, flex: '0 0 auto' }} /> : (
             <button
               type="button"
               aria-label={`remove ${lane.sound}`}
@@ -851,6 +873,7 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
             >
               ×
             </button>
+            )}
             </div>
             <div role="none" style={{ display: 'flex', gap: 2, flex: 1, minWidth: 0 }}>
               {(boxes?.[laneIndex] ?? []).map(({ start: stepIndex, width: w }) => {
@@ -982,7 +1005,9 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
                     // whose text plays in more than one box has no replacement that
                     // removes only this box — all 285 refused erases in the corpus.
                     title={
-                      canToggle
+                      lookOnly
+                        ? lookOnlyLine(lookOnly)
+                        : canToggle
                         ? undefined
                         : on
                           ? model.leafSource
@@ -1122,13 +1147,15 @@ export function SequencerGrid({ onResolution }: SequencerGridProps = {}): React.
           )
         })}
         </div>
-        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-seq-col" cols={model.steps} lastBarCols={layout.lastBarCols} />
+        {!lookOnly && (
+          <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-seq-col" cols={model.steps} lastBarCols={layout.lastBarCols} />
+        )}
         {/* The drum catalogue is the wrong menu for a chord chart — it would
             offer Kick and Snare as things to add to a progression. Withdrawn
             rather than restocked: a chord picker is a different feature, and
             offering the wrong one is worse than offering none. Every other
             gesture in the grid keeps working. */}
-        {!isChordChart && (
+        {!isChordChart && !lookOnly && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
           <span style={{ width: 72, flex: '0 0 auto' }} />
           <select

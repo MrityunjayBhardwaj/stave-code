@@ -127,6 +127,9 @@ import { parsePianoRoll } from './parse'
  * are disjoint populations, measured rather than hoped.
  */
 export function viewPlacesNotes(model: StepGridModel | PianoRollModel): boolean {
+  // look-only takes no note anywhere (#1975). COST ONLY: every ask below would be told
+  // so by the writer, one cell at a time — the answer is the same without this line.
+  if (model.lookOnly) return false
   let asked = 0
   if ('lanes' in model) {
     for (let lane = 0; lane < model.lanes.length; lane++)
@@ -1074,6 +1077,13 @@ export function moveNote(
   toStart: number,
   opts: RollWriteOptions = {},
 ): PianoRollModel {
+  // ⚠ A LOOK-ONLY MODEL IS REFUSED BY NAME HERE, AND ONLY HERE (#1975). Every other op
+  // spreads its input, so the mark rides along and the writer declines the result. This
+  // one builds `rebuilt` field by field below — the mark would be dropped, and a model
+  // with no mark and no source is exactly what the rebuild spells: the whole-pattern
+  // respell a look-only view exists to stop. Found by the op enumeration in
+  // `lookOnly.test.ts`, which is what a new from-scratch op has to pass too.
+  if (base.lookOnly) return base
   const idx = base.notes.findIndex((n) => n.pitch === fromPitch && n.start === fromStart)
   if (idx < 0) return base
   const grabbed = base.notes[idx]

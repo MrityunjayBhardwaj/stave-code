@@ -24,6 +24,7 @@ import type { StepCell, StepGridModel, StepLane } from './model'
  */
 export function addLane(model: StepGridModel, sound: string): StepGridModel {
   const token = sound.trim()
+  if (model.lookOnly) return model
   if (token === '' || model.lanes.some((l) => l.sound === token)) return model
   const lane: StepLane = {
     sound: token,
@@ -38,6 +39,7 @@ export function addLane(model: StepGridModel, sound: string): StepGridModel {
  * output; every other lane stays byte-identical. No-op when the sound is absent.
  */
 export function removeLane(model: StepGridModel, sound: string): StepGridModel {
+  if (model.lookOnly) return model
   if (!model.lanes.some((l) => l.sound === sound)) return model
   return { ...model, lanes: model.lanes.filter((l) => l.sound !== sound) }
 }

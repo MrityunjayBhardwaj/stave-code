@@ -168,6 +168,12 @@ export function serializeStepGridWithExtent(drawn: StepGridModel): {
   mini: string | null
   extent: GridWriteExtent
 } {
+  // A LOOK-ONLY model has no spelling, and this is where that is true for every op at
+  // once (#1975): each op asks this writer whether its result can be written, so a
+  // decline here is a decline everywhere, including ops not yet written. Without it the
+  // model would fall to `rebuildGrid` below — it carries no source — and come back as
+  // the whole-pattern respell these views exist to stop.
+  if (drawn.lookOnly) return { mini: null, extent: { path: 'declined' } }
   // A grid drawn per bar (#1827) holds DRAWN columns; every writer below slices bars
   // as equal runs of the SHARED grid its regions were captured in, so it gets that.
   const model = toUniformGrid(drawn)
@@ -1667,6 +1673,8 @@ function gridColumns(lanes: StepLane[], steps: number): string[] | null {
  */
 export function serializeStepGain(model: StepGridModel): GainWrite {
   if (model.gainForeign) return { kind: 'skip' }
+  // look-only (#1975): nothing is written, the `.gain` included
+  if (model.lookOnly) return { kind: 'skip' }
   // A leaf-anchored grid emits the user's own columns, not ours — there is no
   // serialized column sequence for a `.gain("…")` to run against. Hands off.
   if (model.leafSource) return { kind: 'skip' }
@@ -1794,7 +1802,8 @@ function buildGroups(model: PianoRollModel): Map<number, Group> | null {
   return groups
 }
 
-export type RollWriteExtent = { path: 'leaf' | 'alt' | 'splice' | 'rebuild' }
+/** `declined`: no writer was asked — a look-only model has no spelling (#1975) */
+export type RollWriteExtent = { path: 'leaf' | 'alt' | 'splice' | 'rebuild' | 'declined' }
 
 /**
  * `serializePianoRoll`, plus WHICH WRITER answered — the roll's half of
@@ -1826,6 +1835,8 @@ export function serializePianoRollWithExtent(drawn: PianoRollModel): {
   mini: string | null
   extent: RollWriteExtent
 } {
+  // look-only has no spelling — see `serializeStepGridWithExtent` (#1975)
+  if (drawn.lookOnly) return { mini: null, extent: { path: 'declined' } }
   // A roll drawn per bar (#1827) holds DRAWN columns; the writers below get the shared
   // grid their regions were captured in.
   const model = toUniformRoll(drawn)
@@ -2724,6 +2735,8 @@ function rollBarLanes(model: PianoRollModel, bounds: readonly number[]): string 
  */
 export function serializeRollGain(model: PianoRollModel): GainWrite {
   if (model.gainForeign) return { kind: 'skip' }
+  // look-only (#1975): nothing is written, the `.gain` included
+  if (model.lookOnly) return { kind: 'skip' }
   // A leaf-anchored roll emits the user's own notation, not a note sequence of ours
   // — there is nothing for a per-note `.gain("…")` mini to run 1:1 against. Hands off
   // (the grid's `serializeStepGain` declines for the same reason).

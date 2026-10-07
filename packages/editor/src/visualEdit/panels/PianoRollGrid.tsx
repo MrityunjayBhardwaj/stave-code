@@ -20,6 +20,7 @@ import * as React from 'react'
 
 import { pianoRollCodec, gainWritable as gainWritableOn, slotPress, slotPressCost, NO_RESOLUTION_EFFECT } from '../../codeView'
 import type { PianoRollModel, RollNote, ColumnOverlap } from '../../codeView'
+import { lookOnlyLine } from '../../codeView'
 import { drawnLayout } from '../../codeView'
 import {
   columnCount,
@@ -1150,6 +1151,9 @@ export function PianoRollGrid({
       return true
     }
     if (!at) return false
+    // A look-only view (#1975) can be walked and copied from, and nothing else: an edit
+    // key is not offered, rather than run and refused with a console line each press.
+    if (model.lookOnly && action !== 'copy') return false
     const midi = rows[at.row]
     const note = noteAt(model, midi, at.col)
     if (isNoteEdit(action)) return note ? editNote(note, action, dryRun) : false
@@ -1235,6 +1239,7 @@ export function PianoRollGrid({
   return (
     <div
       data-bottom-panel-tab="piano-roll"
+      data-look-only={model.lookOnly ? model.lookOnly.gate : undefined}
       // Focusable, but not a tab stop: the grid's one tab stop is its cursor cell
       // (#1802, ARIA grid pattern).
       tabIndex={-1}
@@ -1285,7 +1290,19 @@ export function PianoRollGrid({
             fact the grid states, on the surface that carries 18,386 of the corpus's
             19,098 inert roll placements. Moving, resizing, deleting and velocity
             all still work on the notes that are here. */}
-        {!placesNotes && (
+        {model.lookOnly && (
+          <div
+            data-roll-look-only
+            style={{
+              fontSize: 11,
+              color: 'var(--foreground-muted, #a0a0aa)',
+              padding: '0 8px 0 0',
+            }}
+          >
+            {lookOnlyLine(model.lookOnly)}
+          </div>
+        )}
+        {!placesNotes && !model.lookOnly && (
           <div
             data-roll-no-placement
             style={{
@@ -1469,7 +1486,9 @@ export function PianoRollGrid({
                   // (#1070). A cell holding a note keeps every gesture it had —
                   // move, resize, delete, velocity — and so does ⌘-click, which
                   // selects a paste target without editing anything.
-                  const canPlace = on || placesNotes
+                  // …and on a look-only view (#1975) no cell takes a gesture, a note's
+                  // own included: the same inert cell, for the model's own reason.
+                  const canPlace = !model.lookOnly && (on || placesNotes)
                   // The cell a move drag is over that the writer declines (#1452). Only
                   // ever one at a time, and only during a drag.
                   const dropRefused = declinedCell === `${midi}:${step}`
@@ -1532,7 +1551,9 @@ export function PianoRollGrid({
                       // Removing the handle makes the absence visible; this makes it
                       // legible.
                       title={
-                        !canPlace
+                        model.lookOnly
+                          ? lookOnlyLine(model.lookOnly)
+                          : !canPlace
                           ? 'This pattern edits its existing notes — add notes in the code view.'
                           : resizeInert
                             ? 'This note has no other length the pattern can hold — change its length in the code view.'
@@ -1565,7 +1586,7 @@ export function PianoRollGrid({
                             : black
                               ? 'var(--background, #1c1c20)'
                               : 'var(--background-elevated, #26262c)',
-                        cursor: dropRefused ? 'not-allowed' : 'pointer',
+                        cursor: dropRefused ? 'not-allowed' : model.lookOnly ? 'default' : 'pointer',
                         // The selection ring (#432) is NOT here — see the overlay that
                         // is the cell's last child (#1077).
                       }}
@@ -1729,8 +1750,12 @@ export function PianoRollGrid({
           )
         })}
           </div>
-        <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-roll-cell" cols={cols} lastBarCols={layout.lastBarCols} />
-        {gainInScope(model) && (
+        {!model.lookOnly && (
+          <ExtendHandle length={length} gridRef={gridRef} cellAttr="data-roll-cell" cols={cols} lastBarCols={layout.lastBarCols} />
+        )}
+        {/* Not on a look-only view (#1975): its levels are never read from the code, so
+            the lane would draw every note at full level whatever the pattern says. */}
+        {gainInScope(model) && !model.lookOnly && (
           <div
             data-roll-velocity-lane
             // The velocity lane is the last child INSIDE the scroll area, so it
