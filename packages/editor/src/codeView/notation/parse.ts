@@ -22,8 +22,8 @@
  * `Step[]` is two levels (steps → slots), so deeper nesting is refused as a
  * MODEL limit — an honest "a grid can't show this", not a fake parse failure.
  */
-import { parse as krillParse } from '@strudel/mini/krill-parser.js'
-import { mini as reifyMini } from '@strudel/mini/mini.mjs'
+import { hapsInCycle, miniPattern, type MiniHap } from '../strudelMini/pattern'
+import { miniTree, type KAtom, type KElement, type KOp, type KPattern } from '../strudelMini/tree'
 import { bjorklund, rotateEuclid } from '../ir/euclid'
 import { detectPeriod } from '../ir/songAnalysis'
 import { serializeByLeaf, serializeStepGrid, serializePianoRoll } from './serialize'
@@ -276,9 +276,9 @@ function unwrapAlternation(mini: string): string | null {
 /* ── the krill adapter ─────────────────────────────────────────── */
 
 /**
- * The krill AST nodes this file consumes — dumped from `@strudel/mini@1.2.6`,
- * not read off the grammar. The accessors are easy to get wrong: `bd:3` is NOT
- * an atom named `"bd:3"`, it is atom `bd` carrying a `tail` op.
+ * The krill nodes this file reads (`KAtom`, `KPattern`, `KOp`, `KElement`) and the
+ * call that produces them (`miniTree`) live in `../strudelMini/tree.ts` (#1971) —
+ * the shape is written down once, there.
  *
  * The tree is uniformly recursive — `pattern > element > (atom | pattern)` —
  * and `weight`/`reps`/`ops` are fields on EVERY element. That uniformity is
@@ -287,35 +287,6 @@ function unwrapAlternation(mini: string): string | null {
  * makes uniform, which is why all of its gaps read "works on an atom, fails on
  * a group".
  */
-interface KAtom {
-  type_: 'atom'
-  source_: string
-}
-interface KPattern {
-  type_: 'pattern'
-  arguments_?: { alignment?: string }
-  source_: KElement[]
-}
-interface KOp {
-  type_: string
-  arguments_?: Record<string, unknown>
-}
-interface KLocation {
-  start: { offset: number }
-  end: { offset: number }
-}
-interface KElement {
-  type_: 'element'
-  source_: KAtom | KPattern
-  options_?: { weight?: number; reps?: number; ops?: KOp[] }
-  /**
-   * Every krill node carries one, and the element spans TILE the source
-   * (`bd hh*2 sd cp` → `"bd "`, `"hh*2 "`, `"sd "`, `"cp"` — contiguous,
-   * reconstructing the input byte-for-byte). That tiling is what makes span
-   * surgery possible: the writer copies unedited regions through verbatim.
-   */
-  location_?: KLocation
-}
 
 /**
  * One top-level krill element: where its bytes are, and how many steps it
@@ -638,8 +609,7 @@ function tokenize(mini: string, allowNumeric = false): Tokenized {
   if (src === '') return { ok: true, steps: [], elements: [] }
   let ast: KPattern
   try {
-    // krill wants the mini string QUOTED — the transpiler's own call shape.
-    ast = krillParse('"' + src + '"') as KPattern
+    ast = miniTree(src)
   } catch {
     return { ok: false, reason: 'unsupported mini-notation syntax' }
   }
@@ -664,11 +634,10 @@ function tokenize(mini: string, allowNumeric = false): Tokenized {
     const mapped = elementToSteps(el, allowNumeric)
     if (!Array.isArray(mapped)) return { ok: false, reason: mapped.reason }
     const loc = el.location_
-    // krill was handed a QUOTED string, so its offsets carry the opening quote.
     if (loc) {
       elements.push({
-        start: loc.start.offset - 1,
-        end: loc.end.offset - 1,
+        start: loc.start.offset,
+        end: loc.end.offset,
         weight: mapped.reduce((w, s) => w + s.elongation, 0),
       })
     }
@@ -918,7 +887,7 @@ function expandAltElements(mini: string, allowNumeric: boolean): AltExpansion | 
   const src = mini.trim()
   let ast: KPattern
   try {
-    ast = krillParse('"' + src + '"') as KPattern
+    ast = miniTree(src)
   } catch {
     return null
   }
@@ -978,8 +947,8 @@ function expandAltElements(mini: string, allowNumeric: boolean): AltExpansion | 
     return { reason: `the alternation expands past ${MAX_STEPS} steps` }
   }
   const elemSpans = topEls.map((el, i) => ({
-    start: el.location_!.start.offset - 1,
-    end: el.location_!.end.offset - 1,
+    start: el.location_!.start.offset,
+    end: el.location_!.end.offset,
     weight: elemWeight[i],
   }))
   return { bars, div, perBarCols, perBarSteps, elemSpans }
@@ -1471,7 +1440,7 @@ function playedBars<T>(
 function isWholeAlternation(src: string): boolean {
   let ast: KPattern
   try {
-    ast = krillParse('"' + src + '"') as KPattern
+    ast = miniTree(src)
   } catch {
     return false
   }
@@ -1485,7 +1454,7 @@ function isWholeAlternation(src: string): boolean {
 function topLevelSpans(src: string): ElementSpan[] | null {
   let ast: KPattern
   try {
-    ast = krillParse('"' + src + '"') as KPattern
+    ast = miniTree(src)
   } catch {
     return null
   }
@@ -1497,7 +1466,7 @@ function topLevelSpans(src: string): ElementSpan[] | null {
     const reps = el.options_?.reps ?? 1
     const weight = reps > 1 ? reps : el.options_?.weight ?? 1
     if (!Number.isInteger(weight) || weight < 1) return null
-    out.push({ start: loc.start.offset - 1, end: loc.end.offset - 1, weight })
+    out.push({ start: loc.start.offset, end: loc.end.offset, weight })
   }
   return out
 }
@@ -1698,7 +1667,7 @@ function deriveColumn(occ: Occurrence[]): Pick<Onset, 'atoms' | 'spans' | 'durs'
 
 /**
  * Read what a step-grid pattern PLAYS, one cycle, as onset columns — inherited
- * from Strudel (`reifyMini(...).queryArc`), never re-derived here. The value the
+ * from Strudel (`hapsInCycle(miniPattern(...))`), never re-derived here. The value the
  * engine yields IS the ground truth for "what sound fires when"; the display
  * token is `s` (+`:n` when a sample index rides along). Returns null when the
  * pattern isn't a plain sound grid the view can show — a numeric value (that is
@@ -1722,17 +1691,13 @@ export function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
 /* exported for `gridOnsetDuration.test.ts` — the axis-dropping boundary is worth
    being able to interrogate directly; see that file for why. */
 export function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
-  let haps: Array<{
-    hasOnset?: () => boolean
-    // `end` is read for `Onset.durs` (#1010 P4a). It was absent from this type,
-    // which is the literal form the dropped-duration defect took: the axis could
-    // not be read because it was not declared. Same shape the roll already uses.
-    whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
-    value: unknown
-    context?: { locations?: Array<{ start: number; end: number }> }
-  }>
+  // `whole.end` is read for `Onset.durs` (#1010 P4a). It was once absent from the hap
+  // type declared here, which is the literal form the dropped-duration defect took:
+  // the axis could not be read because it was not declared. The type is `MiniHap` now,
+  // one shape for the grid and the roll.
+  let haps: MiniHap[]
   try {
-    haps = (pat as { queryArc(a: number, b: number): typeof haps }).queryArc(cyc, cyc + 1)
+    haps = hapsInCycle(pat, cyc)
   } catch {
     return no('no-note-content')
   }
@@ -1818,7 +1783,7 @@ function projectStepGrid(src0: string, viewScale: ViewScale = UNREFINED): Projec
   if (src === '') return no('not-a-pattern')
   let pat: unknown
   try {
-    pat = reifyMini(src)
+    pat = miniPattern(src)
   } catch {
     return no('not-a-pattern')
   }
@@ -2051,7 +2016,7 @@ function projectionEditSafe(
     if (out == null) return false
     let edited: unknown
     try {
-      edited = reifyMini(out)
+      edited = miniPattern(out)
     } catch {
       return false
     }
@@ -2136,7 +2101,7 @@ function restSpansByColumn(
 ): (LeafSpan | null)[] | null {
   let ast: KPattern
   try {
-    ast = krillParse('"' + src + '"') as KPattern
+    ast = miniTree(src)
   } catch {
     return null
   }
@@ -2157,7 +2122,7 @@ function restSpansByColumn(
         const atom = inner as KAtom
         const loc = el.location_
         if (isRestAtom(atom) && loc) {
-          let s = loc.start.offset - 1
+          let s = loc.start.offset
           while (s < src.length && /\s/.test(src[s])) s++
           if (src.slice(s, s + atom.source_.length) === atom.source_)
             spans.push({ start: s, end: s + atom.source_.length })
@@ -2180,7 +2145,7 @@ function restSpansByColumn(
   }
   let probePat: unknown
   try {
-    probePat = reifyMini(probeSrc)
+    probePat = miniPattern(probeSrc)
   } catch {
     return null
   }
@@ -2255,7 +2220,7 @@ function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
   if (src === '') return no('not-a-pattern')
   let pat: unknown
   try {
-    pat = reifyMini(src)
+    pat = miniPattern(src)
   } catch {
     return no('not-a-pattern')
   }
@@ -2451,7 +2416,7 @@ function leafEditSafe(model: StepGridModel, perBar: number, bars: number): boole
       const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }])
       let edited: unknown
       try {
-        edited = reifyMini(out)
+        edited = miniPattern(out)
       } catch {
         return false
       }
@@ -3472,7 +3437,7 @@ export interface RollOnset {
 
 /**
  * Read what a melodic pattern PLAYS, one cycle, as pitched onsets with DURATION —
- * inherited from Strudel (`reifyMini(...).queryArc`), never re-derived. Unlike the
+ * inherited from Strudel (`hapsInCycle(miniPattern(...))`), never re-derived. Unlike the
  * grid's `gridOnsets`, the roll keeps each hap's length (`whole.end - whole.begin`):
  * a note's `@n` hold is part of what it plays and the writer must put it back. The
  * value the engine yields is the ground truth — a number is a numeric pitch
@@ -3493,14 +3458,9 @@ export function rollOnsets(pat: unknown, cyc: number): RollOnset[] | null {
  * every editability denominator we quoted.
  */
 function readRollOnsets(pat: unknown, cyc: number): Read<RollOnset[]> {
-  let haps: Array<{
-    hasOnset?: () => boolean
-    whole?: { begin: { valueOf(): number }; end: { valueOf(): number } }
-    value: unknown
-    context?: { locations?: Array<{ start: number; end: number }> }
-  }>
+  let haps: MiniHap[]
   try {
-    haps = (pat as { queryArc(a: number, b: number): typeof haps }).queryArc(cyc, cyc + 1)
+    haps = hapsInCycle(pat, cyc)
   } catch {
     return no('no-note-content')
   }
@@ -3593,7 +3553,7 @@ function projectionRollEditSafe(
     if (out == null) return false
     let pat: unknown
     try {
-      pat = reifyMini(out)
+      pat = miniPattern(out)
     } catch {
       return false
     }
@@ -3645,7 +3605,7 @@ function projectPianoRoll(
   if (src === '') return no('not-a-pattern')
   let pat: unknown
   try {
-    pat = reifyMini(src)
+    pat = miniPattern(src)
   } catch {
     return no('not-a-pattern')
   }
@@ -3834,7 +3794,7 @@ function projectPianoRollByLeaf(src0: string): Projection<PianoRollModel> {
   if (src === '') return no('not-a-pattern')
   let pat: unknown
   try {
-    pat = reifyMini(src)
+    pat = miniPattern(src)
   } catch {
     return no('not-a-pattern')
   }
@@ -3988,7 +3948,7 @@ function leafRollEditSafe(
       const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }])
       let edited: unknown
       try {
-        edited = reifyMini(out)
+        edited = miniPattern(out)
       } catch {
         return false
       }
@@ -4484,7 +4444,7 @@ export function bracketedBarRegions(
   const text = raw.trim()
   let ast: KPattern
   try {
-    ast = krillParse('"' + text + '"') as KPattern
+    ast = miniTree(text)
   } catch {
     return null
   }
@@ -4493,9 +4453,9 @@ export function bracketedBarRegions(
   if (isAtom(el.source_) || el.source_.arguments_?.alignment !== 'fastcat') return null
   const o = el.options_ ?? {}
   if ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0 || !el.location_) return null
-  // the element's bytes (offsets are into the QUOTED string, hence − 1), less its brackets
-  const start = el.location_.start.offset - 1
-  const end = el.location_.end.offset - 1
+  // the element's bytes, less its brackets
+  const start = el.location_.start.offset
+  const end = el.location_.end.offset
   const inner = parseStepGrid(text.slice(start + 1, end - 1))
   if (!inner.ok) return null
   const src = inner.model.source

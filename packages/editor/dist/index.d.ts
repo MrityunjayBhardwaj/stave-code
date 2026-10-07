@@ -1584,6 +1584,53 @@ type WriteOutcome = 'applied' | WriteRefusal;
  */
 declare function commitToFile(fileId: string, edit: OffsetEdit | readonly OffsetEdit[] | null, source: WriteSource, expectedDoc: string): WriteOutcome;
 
+/**
+ * Stepped automation a track declares, read off the static IR (#1463 Stage 1).
+ *
+ * `.gain("<0.2 0.8>")` is a parameter that holds one value per cycle and moves
+ * between them — the stepped class, next to #1464's continuous one. It already
+ * parses completely: `Param{value: Cycle{items: [Play "0.2", Play "0.8"]}}`, with
+ * an exact source span on every step. This module turns that into what a lane
+ * needs to DRAW it, and into the one edit a lane may make to it.
+ *
+ * WHAT THE ENGINE DOES WITH IT, measured through the real evaluator before any of
+ * this was written (#1463, the grounding comment on the issue):
+ *
+ *   `<a b>`        cycle n plays step (n mod 2)          → period 2
+ *   `<a@2 b>`      a weighted step spans 2 cycles         → period 3
+ *   `<a b>/2`      every step spans 2 cycles              → period 4   (#1579)
+ *   `<a b>/1.5`    a step changes INSIDE a cycle          → not stepped
+ *   `<a [b c]>`    the second step SUBDIVIDES its cycle   → not stepped
+ *   `<a ~ b>`      the `~` step SILENCES THE TRACK        → not "no value"
+ *
+ * ⚠ A STEP IS ADDRESSED BY ITS INDEX, NOT BY A BAR. Step k plays in every cycle
+ * where `cycle mod period` selects it, so an edit to step k changes every bar that
+ * plays it — which is what the document says. A lane that pretended to change one
+ * bar would be describing a document nobody wrote.
+ *
+ * ⚠ `cycle mod period` HOLDS ONLY WHERE NOTHING ABOVE THE PARAMETER MOVES TIME
+ * (#1584). `.slow(2)`, `.early(1)` and `jux(x => x.fast(2))` hand the parameter a
+ * cycle no lane can draw, so the walk admits a parameter only under nodes measured
+ * to leave the cycle alone.
+ *
+ * ⚠ AN ARRANGEMENT SECTION IS THE ONE TIME CHANGE A LANE CAN DRAW (#1585). An arm
+ * of `arrange`, `cat` or `slowcat` hands the parameter how many cycles THAT SECTION
+ * has played, so the walk records the section instead of declining, and
+ * `stepIndexAtCycle` does the section's arithmetic. This was once recorded as "an
+ * arrange arm follows the absolute cycle", from `arrange([1, a], [2, b])`: a
+ * section two cycles behind per pass, which a two-step pattern cannot tell apart.
+ * `[3, a], [1, b]` can. And a section that appears twice does NOT continue its
+ * count — each appearance is its own arm, and both play the same steps in a pass
+ * (engine test, on a three-step pattern where the two readings disagree).
+ *
+ * Mirrors `signalAutomation.ts`: pure, no eval, the same per-track attribution,
+ * and the same direction of error — ABSTAIN rather than approximate. A missing
+ * lane shows less than it could; a wrong one is the editor lying about what
+ * plays. The walk over the track is structural, over the IR; a literal's STEPS are
+ * read off krill's parse of that literal, the parse the engine itself runs, because
+ * the IR's lowering flattens what decides them (#1587, `stepsOfLiteral`).
+ */
+
 /** One step of a stepped parameter. */
 interface SteppedStep {
     /** The value this step holds, as a number. */

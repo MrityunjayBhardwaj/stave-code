@@ -8,6 +8,9 @@ import {
   listProblems,
   loadExceptions,
   measureBoundary,
+  MINI_ADAPTER,
+  MINI_RUNNERS,
+  miniRunnerProblems,
   REPO_ROOT,
   EDITOR_PACKAGE_JSON,
   shrinkOnlyProblems,
@@ -43,10 +46,22 @@ describe('the code↔view boundary (#1879)', () => {
       console.info(
         `code↔view boundary: examined ${measured.examined} product files outside codeView/; ` +
           `${measured.reaches.length} reaches measured, ${enforcedReaches} excepted in ${list.enforced.length} files; ` +
-          `${list.declared.length} more files declared and NOT enforced`,
+          `${list.declared.length} more files declared and NOT enforced; ` +
+          `${measured.examinedInside} product files inside codeView/ examined for a @strudel/mini import ` +
+          `(allowed: ${MINI_ADAPTER} and ${Object.keys(MINI_RUNNERS).length} named engine file(s), ${measured.miniRunners.length} seen importing it)`,
       )
       expect(measured.examined, 'no files were examined — the walk is broken, not the boundary clean').toBeGreaterThan(300)
+      expect(measured.examinedInside, 'no file inside codeView/ was examined — the @strudel/mini rule saw nothing').toBeGreaterThan(50)
       none(boundaryProblems(measured.reaches, list), 'the code↔view boundary is crossed')
+    })
+
+    it('every engine file named as running Strudel still imports @strudel/mini (#1971)', () => {
+      none(miniRunnerProblems(measured), 'MINI_RUNNERS names a file that no longer imports @strudel/mini')
+      // and the names are real files, each with a reason
+      for (const [file, why] of Object.entries(MINI_RUNNERS)) {
+        expect(exists(file), `${file} does not exist`).toBe(true)
+        expect(why.length, `${file} has no reason`).toBeGreaterThan(20)
+      }
     })
 
     it("the list only shrinks against origin/main's", () => {
@@ -109,6 +124,15 @@ describe('the code↔view boundary (#1879)', () => {
       [`${PANELS}/plantedKrill.tsx`]: `import * as krill from '@strudel/mini/krill-parser.js'\nexport const x = krill`,
       [`${PANELS}/plantedAcorn.tsx`]: `import { parse } from 'acorn'\nexport const x = parse`,
       [`${E}/engine/plantedEngineMini.ts`]: `import { mini } from '@strudel/mini'\nexport const x = mini`,
+      [`${E}/engine/plantedEngineAcorn.ts`]: `import { parse } from 'acorn'\nexport const x = parse`,
+      // @strudel/mini has one importer INSIDE the area too (#1971): a view's parser, a dynamic
+      // import, a re-export — and the adapter's own directory, which is where it belongs
+      [`${E}/codeView/notation/plantedInsideKrill.ts`]: `import { parse } from '@strudel/mini/krill-parser.js'\nexport const x = parse`,
+      [`${E}/codeView/plantedInsideDynamic.ts`]: `export const x = () => import('@strudel/mini/mini.mjs')`,
+      [`${E}/codeView/ir/plantedInsideReexport.ts`]: `export { mini } from '@strudel/mini'`,
+      [`${E}/codeView/strudelMini/plantedAdapter.ts`]: `import { parse } from '@strudel/mini/krill-parser.js'\nexport const x = parse`,
+      // inside the area nothing else is asked: acorn and a sibling's internals are its own business
+      [`${E}/codeView/plantedInsideAcorn.ts`]: `import { parse } from 'acorn'\nimport { parseStepGrid } from './notation/parse'\nexport const x = [parse, parseStepGrid]`,
       // ── rule: door ──
       // the real shape: no import of the writer at all, it arrives as a callback parameter
       [`${PANELS}/plantedDoorCallback.tsx`]:
@@ -155,7 +179,8 @@ describe('the code↔view boundary (#1879)', () => {
     })
     beforeAll(() => {
       const m = measureBoundary({ overlay: { ...planted, [EDITOR_PACKAGE_JSON]: plantedPackageJson }, onlyOverlay: true })
-      expect(m.examined).toBe(Object.keys(planted).length)
+      expect(m.examined + m.examinedInside).toBe(Object.keys(planted).length)
+      expect(m.examinedInside).toBe(5)
       by = new Map()
       for (const r of m.reaches) by.set(r.file, [...(by.get(r.file) ?? []), r])
     }, 120_000)
@@ -177,12 +202,33 @@ describe('the code↔view boundary (#1879)', () => {
       expect(of('plantedSubpath.ts')).toEqual(['codeView/ir/trackId#splitMuteMarker'])
     })
 
-    it('an owner import outside the area is a crossing — and the engine is exempt', () => {
+    it('an owner import outside the area is a crossing — and the engine is exempt for acorn only', () => {
       expect(of('plantedMini.tsx')).toEqual(['owner#@strudel/mini'])
       expect(of('plantedKrill.tsx')).toEqual(['owner#@strudel/mini/krill-parser.js'])
       expect(of('plantedAcorn.tsx')).toEqual(['owner#acorn'])
-      expect(of('plantedEngineMini.ts')).toEqual([])
+      expect(of('plantedEngineAcorn.ts')).toEqual([])
+      // an engine file is allowed @strudel/mini by NAME, and this one is not named (#1971)
+      expect(of('plantedEngineMini.ts')).toEqual(['owner#@strudel/mini'])
     })
+
+    it('@strudel/mini imported inside the area is a crossing too — anywhere but the adapter (#1971)', () => {
+      expect(of('plantedInsideKrill.ts')).toEqual(['owner#@strudel/mini/krill-parser.js'])
+      expect(of('plantedInsideDynamic.ts')).toEqual(['owner#@strudel/mini/mini.mjs'])
+      expect(of('plantedInsideReexport.ts')).toEqual(['owner#@strudel/mini'])
+      expect(of('plantedAdapter.ts')).toEqual([])
+      expect(of('plantedInsideAcorn.ts')).toEqual([])
+    })
+
+    it('a named engine file that stops importing @strudel/mini is stale, and says so (#1971)', () => {
+      const [file] = Object.keys(MINI_RUNNERS)
+      const real = fs.readFileSync(path.join(REPO_ROOT, file), 'utf8')
+      expect(miniRunnerProblems(measureBoundary({ overlay: { [file]: real }, onlyOverlay: true }))).toEqual([])
+      const without = real.replace(/import\('@strudel\/mini'\)/g, "import('@strudel/core')")
+      expect(without).not.toBe(real)
+      const stale = miniRunnerProblems(measureBoundary({ overlay: { [file]: without }, onlyOverlay: true }))
+      expect(stale).toHaveLength(1)
+      expect(stale[0]).toMatch(/StrudelEngine\.ts is named in MINI_RUNNERS and does not import @strudel\/mini/)
+    }, 120_000)
 
     it('a direct write is a crossing even with no import of the writer in sight', () => {
       expect(of('plantedDoorCallback.tsx')).toEqual(['door#Writeback.replaceRanges'])
