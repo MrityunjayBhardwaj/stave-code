@@ -13,7 +13,7 @@ import { mini as reifyMini } from '@strudel/mini/mini.mjs'
 
 import { parsePianoRoll, parseStepGrid } from '../parse'
 import { serializePianoRoll, serializeStepGrid, serializeStepGridWithExtent, serializePianoRollWithExtent } from '../serialize'
-import { isCellOn, type PianoRollModel, type StepGridModel } from '../model'
+import { isCellOn, lookOnlyLine, type PianoRollModel, type StepGridModel } from '../model'
 import {
   moveNote,
   pasteNote,
@@ -47,9 +47,9 @@ const NO_GAIN: ChunkGain = { mini: null, numeric: null, foreign: false }
 
 /** the two patterns the issue names, and what `main` said about each */
 const GRID_CASES = [
-  { mini: '[hh ~]!16', gate: 'view-unusable', reason: 'nothing in this view could be edited on its own', steps: 16, bars: 1, hits: 16 },
-  { mini: '~ ~ ~ bd(<2 4!2>, 8)', gate: 'no-leaf-anchor', reason: 'a played note has no source token of its own to edit', steps: 48, bars: 3, hits: 10 },
-  { mini: '<bd>*4', gate: 'view-unusable', reason: 'nothing in this view could be edited on its own', steps: 4, bars: 1, hits: 4 },
+  { mini: '[hh ~]!16', gate: 'view-unusable', reason: 'nothing in this view could be edited on its own', why: 'every hit here comes from the same piece of text, so none can be changed on its own', steps: 16, bars: 1, hits: 16 },
+  { mini: '~ ~ ~ bd(<2 4!2>, 8)', gate: 'no-leaf-anchor', reason: 'a played note has no source token of its own to edit', why: 'some hits here have no text of their own to change', steps: 48, bars: 3, hits: 10 },
+  { mini: '<bd>*4', gate: 'view-unusable', reason: 'nothing in this view could be edited on its own', why: 'every hit here comes from the same piece of text, so none can be changed on its own', steps: 4, bars: 1, hits: 4 },
 ] as const
 
 const ROLL_CASES = [
@@ -119,7 +119,9 @@ describe('a pattern that cannot be edited note by note is still shown (#1975)', 
       const m = r.lookOnly
       expect(m).toBeDefined()
       if (!m) return
-      expect(m.lookOnly).toEqual({ gate: c.gate, reason: c.reason })
+      // the view speaks for itself, in its own words — not the refusal's
+      expect(m.lookOnly).toEqual({ gate: c.gate, reason: c.why })
+      expect(lookOnlyLine(m.lookOnly!)).toBe(`Look only — ${c.why}. Edit it in the code.`)
       expect(m.steps).toBe(c.steps)
       expect(m.bars ?? 1).toBe(c.bars)
       // nothing to write through
@@ -151,7 +153,10 @@ describe('a pattern that cannot be edited note by note is still shown (#1975)', 
       if (r.ok) return
       expect(r.gate).toBe(c.gate)
       const m = r.lookOnly
-      expect(m?.lookOnly?.gate).toBe(c.gate)
+      expect(m?.lookOnly).toEqual({
+        gate: c.gate,
+        reason: 'every note here comes from the same piece of text, so none can be changed on its own',
+      })
       if (!m) return
       expect(m.leafSource).toBeUndefined()
       expect(m.source).toBeUndefined()

@@ -1358,6 +1358,28 @@ function refused<M>(
 type EditGate = Extract<Gate, 'no-leaf-anchor' | 'edit-unsafe' | 'view-unusable'>
 
 /**
+ * What a look-only view says about itself, to the person looking at it (#1975).
+ *
+ * NOT `gateReason`, on purpose. That vocabulary was written for refusals nobody outside
+ * a measurement ever read — the panel showed one generic hint — so it speaks in the
+ * parser's terms ("no source token of its own"). This is the first sentence of a gate
+ * that reaches a musician, and it has to be true in their terms: what is drawn is what
+ * plays, and here is why a hit cannot be changed from the picture. The refusal's own
+ * `reason` is left exactly as it was.
+ */
+function lookOnlyWhy(gate: EditGate, surface: Surface): string {
+  const one = surface === 'grid' ? 'hit' : 'note'
+  switch (gate) {
+    case 'view-unusable':
+      return `every ${one} here comes from the same piece of text, so none can be changed on its own`
+    case 'no-leaf-anchor':
+      return `some ${one}s here have no text of their own to change`
+    case 'edit-unsafe':
+      return `changing one ${one} here would not come back the way it is drawn`
+  }
+}
+
+/**
  * THE LOOK-ONLY VIEW OF A GRID (#1975): what the pattern plays, laid out as the leaf
  * projection would have drawn it, handed back beside a refusal that is only about
  * EDITING — `no-leaf-anchor`, `edit-unsafe`, `view-unusable`. Those three all say the
@@ -1401,7 +1423,7 @@ function gridLookOnly(
       steps: perBar * bars,
       ...(bars > 1 ? { bars } : {}),
       lanes: lanesFromCells(played),
-      lookOnly: { gate, reason: gateReason(gate, 'grid') },
+      lookOnly: { gate, reason: lookOnlyWhy(gate, 'grid') },
     },
   }
 }
@@ -3896,7 +3918,7 @@ function rollLookOnly(
       ...(bars > 1 ? { bars } : {}),
       notes,
       ...(numeric ? { numeric: true } : {}),
-      lookOnly: { gate, reason: gateReason(gate, 'roll') },
+      lookOnly: { gate, reason: lookOnlyWhy(gate, 'roll') },
     },
   }
 }

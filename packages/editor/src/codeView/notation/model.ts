@@ -1241,9 +1241,10 @@ export interface PianoRollModel {
 }
 
 /**
- * Why a model is look-only (#1975): the gate that refused the editable view, and the
- * sentence that gate says. Carried on the model so a panel reads it rather than
- * deciding for itself what cannot be edited.
+ * Why a model is look-only (#1975): the gate that refused the editable view, and why
+ * in the words of someone looking at the view (`lookOnlyWhy`, `parse.ts` — not the
+ * refusal's own `reason`, which speaks the parser's vocabulary). Carried on the model so
+ * a panel reads it rather than deciding for itself what cannot be edited.
  */
 export interface LookOnly {
   gate: Gate

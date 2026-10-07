@@ -210,7 +210,10 @@ test.describe('a pattern nobody can edit note by note is still shown (#1975)', (
     await dragFrom(page, note.x, note.y, 60, -34) // move
     await dragFrom(page, note.x + note.w / 2 - 2, note.y, 40, 0) // length
     await page.mouse.click(free.x, free.y) // place
-    await page.mouse.click(note.x, note.y, { modifiers: ['Meta'] }) // select, for the keys
+    // ⌘-click selects without editing, so the keys below have a note to act on
+    await page.keyboard.down('Meta')
+    await page.mouse.click(note.x, note.y)
+    await page.keyboard.up('Meta')
     for (const key of ['Backspace', 'Delete', 'Enter', 'Alt+ArrowUp', 'Alt+ArrowRight', 'Shift+ArrowRight']) {
       await page.keyboard.press(key)
     }

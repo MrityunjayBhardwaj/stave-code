@@ -9970,6 +9970,18 @@ function refused(surface, core, gate, src, lookOnly) {
   return { ok: false, reason: gateReason(gate, surface), gate, ...lookOnly ? { lookOnly } : {} };
 }
 __name(refused, "refused");
+function lookOnlyWhy(gate, surface) {
+  const one = surface === "grid" ? "hit" : "note";
+  switch (gate) {
+    case "view-unusable":
+      return `every ${one} here comes from the same piece of text, so none can be changed on its own`;
+    case "no-leaf-anchor":
+      return `some ${one}s here have no text of their own to change`;
+    case "edit-unsafe":
+      return `changing one ${one} here would not come back the way it is drawn`;
+  }
+}
+__name(lookOnlyWhy, "lookOnlyWhy");
 function gridLookOnly(gate, perCycle, perBar2, bars) {
   const played = columnsFromOnsets(perCycle, perBar2, bars);
   if (played === null) return no(gate);
@@ -9986,7 +9998,7 @@ function gridLookOnly(gate, perCycle, perBar2, bars) {
       steps: perBar2 * bars,
       ...bars > 1 ? { bars } : {},
       lanes: lanesFromCells(played),
-      lookOnly: { gate, reason: gateReason(gate, "grid") }
+      lookOnly: { gate, reason: lookOnlyWhy(gate, "grid") }
     }
   };
 }
@@ -11225,7 +11237,7 @@ function rollLookOnly(gate, perCycle, perBar2, bars, numeric) {
       ...bars > 1 ? { bars } : {},
       notes,
       ...numeric ? { numeric: true } : {},
-      lookOnly: { gate, reason: gateReason(gate, "roll") }
+      lookOnly: { gate, reason: lookOnlyWhy(gate, "roll") }
     }
   };
 }
