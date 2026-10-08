@@ -22,9 +22,10 @@
  * `Step[]` is two levels (steps → slots), so deeper nesting is refused as a
  * MODEL limit — an honest "a grid can't show this", not a fake parse failure.
  */
-import { miniPattern, type MiniHit, type MiniPattern } from '../strudelMini/pattern'
+import { joinedCycle, type JoinedHit } from '../strudelMini/joined'
+import { miniPattern, type MiniPattern } from '../strudelMini/pattern'
 import { miniTree, type KAtom, type KElement, type KOp, type KPattern } from '../strudelMini/tree'
-import { isRest, miniShape, type MiniGroup } from '../strudelMini/shape'
+import { isRest, miniShape, type MiniAtom, type MiniGroup } from '../strudelMini/shape'
 import { bjorklund, rotateEuclid } from '../ir/euclid'
 import { detectPeriod } from '../ir/songAnalysis'
 import { serializeByLeaf, serializeStepGrid, serializePianoRoll } from './serialize'
@@ -1496,22 +1497,21 @@ function topLevelSpans(src: string): ElementSpan[] | null {
 export type { LeafSpan }
 
 /**
- * The span a hit is anchored on: the FIRST location Strudel lists for it, already in
- * `src`-space (the adapter takes the quote off — `strudelMini/pattern.ts`). Verified
- * token-for-token against krill in `leafLoc.test.ts` for the shapes that test names.
- * `null` when a hit carried no location.
+ * The span a hit is anchored on: the text of the NOTE that wrote it, in `src`-space —
+ * the one written atom among the places Strudel lists for the hit, as the adapter's
+ * joined tree settles it (`strudelMini/joined.ts`). `null` when the hit has no single
+ * written note: it named no place, or none that is a note, or more than one.
  *
- * ⚠ FIRST IS NOT ALWAYS THE NOTE (measured for #1973: 2,192 of 52,498 corpus hits).
- * `*2` and a euclid list the note first; `sd:2`, `0 .. 3` and `{a b c}%4` list the
- * op's argument first, and a token followed by a newline or a tab has a location one
- * longer than its text. Every view that opens today has its anchors on its notes
- * (1,062 of 1,062, same measurement) because the admission checks turn those patterns
- * away. `strudelMini/joined.ts` pairs a hit with the note that wrote it whatever the
- * order; moving this anchor onto it changes which patterns open, so it is #1974's.
+ * It was once the FIRST place Strudel lists (#986). That is the note for `*2` and a
+ * euclid, but `sd:2`, `0 .. 3` and `{a b c}%4` list the op's argument first, and a token
+ * followed by a newline or a tab has a place one longer than its text (measured for
+ * #1973: 2,192 of 52,498 corpus hits were not the note). The leaf writer replaces the
+ * bytes of this span, so a span on an argument is a write onto the wrong text; the
+ * admission checks turned those patterns away, which is why none ever opened.
+ * Verified token-for-token against krill in `leafLoc.test.ts`.
  */
-function leafLoc(h: MiniHit): LeafSpan | null {
-  const l = h.locations[0]
-  return l ? { start: l.start, end: l.end } : null
+function noteSpan(atom: MiniAtom | null): LeafSpan | null {
+  return atom ? { start: atom.span.start, end: atom.span.end } : null
 }
 
 /**
@@ -1704,14 +1704,14 @@ export function readGridOnsets(pat: MiniPattern, cyc: number): Read<Onset[]> {
   // type declared here, which is the literal form the dropped-duration defect took:
   // the axis could not be read because it was not declared. The type is the adapter's
   // `MiniHit` now, one shape for the grid and the roll.
-  let haps: MiniHit[]
+  let haps: JoinedHit[]
   try {
-    haps = pat.hits(cyc)
+    haps = joinedCycle(pat, cyc).hits
   } catch {
     return no('no-note-content')
   }
   const byCol = new Map<number, Occurrence[]>()
-  for (const h of haps) {
+  for (const { hit: h, atom } of haps) {
     // A bare mini string reifies to raw token VALUES (`"bd"`), not superdough
     // params — that is what `parseStepGrid` receives (the inner string of
     // `s("…")`). THREE shapes arrive, not two: a string token, a number, and an
@@ -1749,7 +1749,7 @@ export function readGridOnsets(pat: MiniPattern, cyc: number): Read<Onset[]> {
     const cell = byCol.get(key) ?? []
     cell.push({
       token,
-      span: leafLoc(h),
+      span: noteSpan(atom),
       dur: h.end.valueOf() - h.begin.valueOf(),
     })
     byCol.set(key, cell)
@@ -3461,14 +3461,14 @@ export function rollOnsets(pat: MiniPattern, cyc: number): RollOnset[] | null {
  * every editability denominator we quoted.
  */
 function readRollOnsets(pat: MiniPattern, cyc: number): Read<RollOnset[]> {
-  let haps: MiniHit[]
+  let haps: JoinedHit[]
   try {
-    haps = pat.hits(cyc)
+    haps = joinedCycle(pat, cyc).hits
   } catch {
     return no('no-note-content')
   }
   const out: RollOnset[] = []
-  for (const h of haps) {
+  for (const { hit: h, atom } of haps) {
     const v = h.value
     let pitch: string
     let numeric: boolean
@@ -3503,7 +3503,7 @@ function readRollOnsets(pat: MiniPattern, cyc: number): Read<RollOnset[]> {
     const pos = h.begin.valueOf() - cyc
     const dur = h.end.valueOf() - h.begin.valueOf()
     if (dur <= 0) return no('no-note-content')
-    out.push({ pos, dur, pitch, numeric, loc: leafLoc(h) })
+    out.push({ pos, dur, pitch, numeric, loc: noteSpan(atom) })
   }
   return { ok: true, onsets: out }
 }

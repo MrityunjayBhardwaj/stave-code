@@ -351,7 +351,7 @@ describe('timing facts — what a view states is what Strudel plays (corpus)', (
     // a grid cell is a column: a hit between columns would have been a hit the view cannot show
     for (const k of ['grid written', 'grid leaf', 'grid look-only']) expect(tally.get(k)!.between, k).toBe(0)
     // the population, so a corpus refresh or a change in what opens announces itself
-    expect({ patterns: minis.length, asked, views: views.length, noView }).toEqual({ patterns: 1625, asked: 6500, views: 3262, noView: 3238 })
+    expect({ patterns: minis.length, asked, views: views.length, noView }).toEqual({ patterns: 1625, asked: 6500, views: 3258, noView: 3242 })
   }, 600_000)
 
   it('control: the same views with a step count that is not theirs disagree, every one that holds a note', () => {

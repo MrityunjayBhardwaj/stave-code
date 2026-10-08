@@ -114,3 +114,53 @@ describe('#986 P0 — roll onsets carry a resolvable leaf span', () => {
     }
   })
 })
+
+/**
+ * #1974 — the anchor is the NOTE that wrote the hit, not the first place Strudel lists.
+ * The leaf writer replaces the bytes of this span, so a span on an op's argument, or one
+ * that takes in the newline after a token, is a write onto the wrong text.
+ */
+describe('#1974 — a hit is anchored on its written note, wherever Strudel lists it', () => {
+  const text = (src: string, span: LeafSpan | null): string | null => (span ? src.slice(span.start, span.end) : null)
+  const gridAnchors = (src: string): Array<string | null> =>
+    (gridOnsets(miniPattern(src), 0) ?? []).flatMap((o) => o.occ.map((x) => text(src, x.span)))
+  const rollAnchors = (src: string): Array<string | null> =>
+    (rollOnsets(miniPattern(src), 0) ?? []).map((o) => text(src, o.loc))
+
+  it('an op argument Strudel lists first is not the anchor', () => {
+    // the fixtures really are argument-first, or the cases below prove nothing
+    for (const [src, arg] of [['sd:2 hh', '2'], ['{bd hh sd}%4', '4'], ['0 .. 3', '3']] as const) {
+      const first = miniPattern(src).hits(0)[0].locations[0]
+      expect(src.slice(first.start, first.end), src).toBe(arg)
+    }
+    expect(gridAnchors('sd:2 hh')).toEqual(['sd', 'hh'])
+    expect(gridAnchors('{bd hh sd}%4').sort()).toEqual(['bd', 'bd', 'hh', 'sd'])
+    expect(rollAnchors('0 .. 3')).toEqual(['0', '0', '0', '0'])
+    expect(rollAnchors('{0 4 7}%4').sort()).toEqual(['0', '0', '4', '7'])
+  })
+
+  it('a token before a newline or a tab is anchored on its own text, not on the break', () => {
+    for (const src of ['bd\nsd', 'bd\tsd', 'bd \n sd']) {
+      // the fixture really carries a place longer than its token
+      expect(miniPattern(src).hits(0).some((h) => h.locations.some((l) => /\s/.test(src.slice(l.start, l.end)))), src).toBe(true)
+      expect(gridAnchors(src), src).toEqual(['bd', 'sd'])
+    }
+    expect(rollAnchors('0\n4')).toEqual(['0', '4'])
+  })
+
+  it('a hit with no single written note has no anchor', () => {
+    const at = (n: number) => ({ valueOf: () => n })
+    const fake = (locations: Array<{ start: number; end: number }>) => ({
+      mini: 'bd sd',
+      hits: () => [{ begin: at(0), end: at(0.5), value: 'bd', locations }],
+    })
+    // it names no place at all (a place Strudel reported in a form that cannot be read is dropped by the adapter)
+    expect(gridOnsets(fake([]), 0)!.flatMap((o) => o.occ.map((x) => x.span))).toEqual([null])
+    // it names a place that is no note
+    expect(gridOnsets(fake([{ start: 0, end: 5 }]), 0)!.flatMap((o) => o.occ.map((x) => x.span))).toEqual([null])
+    // it names two notes
+    expect(gridOnsets(fake([{ start: 0, end: 2 }, { start: 3, end: 5 }]), 0)!.flatMap((o) => o.occ.map((x) => x.span))).toEqual([null])
+    // control: one note, one anchor
+    expect(gridOnsets(fake([{ start: 0, end: 2 }]), 0)!.flatMap((o) => o.occ.map((x) => x.span))).toEqual([{ start: 0, end: 2 }])
+  })
+})

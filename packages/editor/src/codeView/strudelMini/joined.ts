@@ -102,7 +102,8 @@ function joinHit(hit: MiniHit, mini: string, places: Places): JoinedHit {
   const args: MiniAtom[] = []
   const strays: MiniSpan[] = []
   for (const loc of hit.locations) {
-    const found = places.at.get(tight(mini, loc))
+    // most locations are a token's own span already; the trim is for the rest
+    const found = places.at.get(key(loc.start, loc.end)) ?? places.at.get(tight(mini, loc))
     if (!found) strays.push(loc)
     else if (found.written) written.push(found.atom)
     else args.push(found.atom)
@@ -130,18 +131,24 @@ export function joinedCycle(pat: MiniPattern, cyc: number): JoinedCycle {
   let places = PLACES.get(pat)
   if (!places) PLACES.set(pat, (places = placesOf(pat.mini)))
   const hits = pat.hits(cyc).map((h) => joinHit(h, pat.mini, places))
-  const byAtom = new Map<MiniAtom, JoinedHit[]>()
-  for (const j of hits) {
-    if (!j.atom) continue
-    const list = byAtom.get(j.atom)
-    if (list) list.push(j)
-    else byAtom.set(j.atom, [j])
+  // built on the first `of`: the view readers take `hits` and never ask a node
+  let byAtom: Map<MiniAtom, JoinedHit[]> | null = null
+  const index = (): Map<MiniAtom, JoinedHit[]> => {
+    if (byAtom) return byAtom
+    byAtom = new Map()
+    for (const j of hits) {
+      if (!j.atom) continue
+      const list = byAtom.get(j.atom)
+      if (list) list.push(j)
+      else byAtom.set(j.atom, [j])
+    }
+    return byAtom
   }
   return {
     root: places.root,
     hits,
     of(node) {
-      if (node.kind === 'atom') return byAtom.get(node) ?? []
+      if (node.kind === 'atom') return index().get(node) ?? []
       const mine = new Set(notesIn(node, []))
       return hits.filter((j) => j.atom !== null && mine.has(j.atom))
     },

@@ -48,7 +48,9 @@ const NO_GAIN: ChunkGain = { mini: null, numeric: null, foreign: false }
 /** the two patterns the issue names, and what `main` said about each */
 const GRID_CASES = [
   { mini: '[hh ~]!16', gate: 'view-unusable', reason: 'nothing in this view could be edited on its own', why: 'every hit here comes from the same piece of text, so none can be changed on its own', steps: 16, bars: 1, hits: 16 },
-  { mini: '~ ~ ~ bd(<2 4!2>, 8)', gate: 'no-leaf-anchor', reason: 'a played note has no source token of its own to edit', why: 'some hits here have no text of their own to change', steps: 48, bars: 3, hits: 10 },
+  // `no-leaf-anchor` until #1974: its hits were anchored on the euclid's `<2 4!2>`, not on `bd`.
+  // Anchored on the note, every hit is the one `bd` — the same reason as the row above.
+  { mini: '~ ~ ~ bd(<2 4!2>, 8)', gate: 'view-unusable', reason: 'nothing in this view could be edited on its own', why: 'every hit here comes from the same piece of text, so none can be changed on its own', steps: 48, bars: 3, hits: 10 },
   { mini: '<bd>*4', gate: 'view-unusable', reason: 'nothing in this view could be edited on its own', why: 'every hit here comes from the same piece of text, so none can be changed on its own', steps: 4, bars: 1, hits: 4 },
 ] as const
 
@@ -312,7 +314,9 @@ describe('a view that could not draw every hit is not offered (#1975)', () => {
     const r = parseStepGrid('[C G], <D Fb B C A>*[0.5,2]')
     expect(r.ok).toBe(false)
     if (r.ok) return
-    expect(r.gate).toBe('no-leaf-anchor')
+    // `no-leaf-anchor` until #1974 anchored its hits on their notes; it is turned away one
+    // check later now, still with no view
+    expect(r.gate).toBe('edit-unsafe')
     expect('lookOnly' in r).toBe(false)
   })
 
