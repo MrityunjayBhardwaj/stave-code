@@ -3039,31 +3039,6 @@ type ParseResult<M> = {
 type ViewScale = number;
 
 /**
- * Mini-notation → notation models.
- *
- * The grammar is STRUDEL'S, so we ask Strudel for it. `@strudel/mini`'s krill
- * parser — the same parser the transpiler runs — answers "what IS this syntax",
- * and this file maps its AST onto the view models below.
- *
- * This file used to hand-roll that grammar. Every real-world "gap" the copy
- * reported turned out to be DRIFT from the original rather than a missing
- * feature: krill parses 623 of the 625 real-world units the copy rejected
- * (99.7%; the 2 residuals are a truncated source and a floatbeat DSP
- * expression that is not mini-notation at all). The copy is gone.
- *
- * THE RULE AT THIS BOUNDARY: if you need to know what a character MEANS, ask
- * krill — and do not write its answer back down here as a regex. A transcribed
- * rule is a second oracle: correct the day it is written, silently divergent
- * after, and the divergence surfaces as a user-visible bug rather than an
- * error. That is how `gm_agogo` became uneditable (an `_` in a char-class read
- * a NAME as syntax) and how `stack (` blanked a whole timeline.
- *
- * What stays OURS is the VIEW. krill yields an unbounded recursive tree;
- * `Step[]` is two levels (steps → slots), so deeper nesting is refused as a
- * MODEL limit — an honest "a grid can't show this", not a fake parse failure.
- */
-
-/**
  * THE PUBLIC ENTRY, and the only place a caller can express a view resolution.
  *
  * #1055 threaded `ViewScale` into the DERIVED projections. But the core answers first
