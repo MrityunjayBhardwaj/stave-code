@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { mini as reifyMini, getLeafLocations } from '@strudel/mini/mini.mjs'
+import { getLeafLocations } from '@strudel/mini/mini.mjs'
+import { miniPattern } from '../../strudelMini/pattern'
 import { gridOnsets, rollOnsets, type LeafSpan } from '../parse'
 
 /**
@@ -51,7 +52,7 @@ describe('#986 P0 — grid onsets carry a resolvable leaf span', () => {
   ]
 
   it.each(GRID)('%s', (src, expectedTokens) => {
-    const onsets = gridOnsets(reifyMini(src), 0)
+    const onsets = gridOnsets(miniPattern(src), 0)
     expect(onsets, `gridOnsets refused ${JSON.stringify(src)}`).not.toBeNull()
     const leaves = krillLeafSpans(src)
     const seen = new Set<string>()
@@ -69,7 +70,7 @@ describe('#986 P0 — grid onsets carry a resolvable leaf span', () => {
     // `bd*2` plays bd twice → two columns, one source leaf. P1 rewrites that one
     // leaf; both columns follow. This is the N-cells/1-leaf input the P2 bijection
     // gate reasons about — recorded here so the invariant is observable.
-    const onsets = gridOnsets(reifyMini('bd*2 sd'), 0)!
+    const onsets = gridOnsets(miniPattern('bd*2 sd'), 0)!
     const bdSpans = onsets
       .flatMap((o) => o.atoms.map((a, i) => ({ a, s: o.spans[i] })))
       .filter((x) => x.a === 'bd')
@@ -82,7 +83,7 @@ describe('#986 P0 — grid onsets carry a resolvable leaf span', () => {
   it('a comma-stack lands two DISTINCT leaf spans on one column', () => {
     // `[a,b]` stacks two voices on column 0 — two leaves, two spans. P2 refuses the
     // ambiguous write-back; P0 records both faithfully.
-    const onsets = gridOnsets(reifyMini('[a,b] c'), 0)!
+    const onsets = gridOnsets(miniPattern('[a,b] c'), 0)!
     const col0 = onsets.find((o) => Math.abs(o.pos) < 1e-9)!
     expect(col0.atoms.sort()).toEqual(['a', 'b'])
     const spans = col0.spans as LeafSpan[]
@@ -100,7 +101,7 @@ describe('#986 P0 — roll onsets carry a resolvable leaf span', () => {
   ]
 
   it.each(ROLL)('%s', (src) => {
-    const onsets = rollOnsets(reifyMini(src), 0)
+    const onsets = rollOnsets(miniPattern(src), 0)
     expect(onsets, `rollOnsets refused ${JSON.stringify(src)}`).not.toBeNull()
     const leaves = krillLeafSpans(src)
     for (const o of onsets!) {

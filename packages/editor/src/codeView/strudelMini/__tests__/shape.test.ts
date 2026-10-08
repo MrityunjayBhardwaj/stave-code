@@ -20,6 +20,7 @@ function expectGroup(raw: Raw, mini: string): unknown {
     kind: 'group',
     alignment: raw.arguments_?.alignment,
     children: raw.source_.map((c: Raw) => (c.type_ === 'element' ? expectElement(c, mini) : expectGroup(c, mini))),
+    steps: expectArg(raw.arguments_?.stepsPerCycle, mini),
   }
 }
 function expectAtom(raw: Raw, mini: string): unknown {
@@ -123,7 +124,7 @@ describe('miniShape — krill read once', () => {
   it('an atom span is the token itself, wherever krill put the padding', () => {
     for (const mini of ['bd sd', 'a@2 b@2', '  bd   [sd  cp]  ', 'bd:3 hh(3,8,2)*2']) {
       const seen: string[] = []
-      const walk = (n: MiniGroup | MiniElement | MiniArg): void => {
+      const walk = (n: MiniGroup | MiniElement | MiniArg | undefined): void => {
         if (!n || typeof n !== 'object') return
         if (n.kind === 'atom') {
           expect(mini.slice(n.span.start, n.span.end), mini).toBe(n.text)
@@ -169,8 +170,29 @@ describe('miniShape — krill read once', () => {
     expect((miniShape('bd!3').children[0] as MiniElement).ops[0]).toEqual({ kind: 'replicate', args: { amount: 3 } })
   })
 
+  it('a polymeter keeps its step count on the group: an atom, a pattern, or nothing (#1973)', () => {
+    const poly = (mini: string): MiniGroup => (miniShape(mini).children[0] as MiniElement).content as MiniGroup
+    const four = poly('{a b c}%4')
+    expect(four.alignment).toBe('polymeter')
+    expect(four.steps).toEqual({ kind: 'atom', text: '4', span: { start: 8, end: 9 } })
+    expect((poly('{a b}%<4 8>').steps as MiniGroup).kind).toBe('group')
+    expect(poly('{a b, c d e}').steps).toBeNull()
+    // every group that is not a polymeter has none
+    expect(miniShape('bd sd').steps).toBeNull()
+    expect(poly('<a b>').steps).toBeNull()
+  })
+
+  it('an op argument krill lists and the author left out is null; a name the op does not have is absent', () => {
+    const op = (mini: string) => (miniShape(mini).children[0] as MiniElement).ops[0]
+    expect(op('bd(3,8)').args.rotation).toBeNull()
+    expect(op('bd?').args.amount).toBeNull()
+    expect('rotation' in op('bd(3,8)').args).toBe(true)
+    expect(op('bd:3').args.amount).toBeUndefined()
+    expect('amount' in op('bd:3').args).toBe(false)
+  })
+
   it('argAtom: the atom itself, the atom an element holds, nothing for a pattern or a plain value', () => {
-    const stretch = (mini: string): MiniArg => (miniShape(mini).children[0] as MiniElement).ops[0].args.amount
+    const stretch = (mini: string): MiniArg | undefined => (miniShape(mini).children[0] as MiniElement).ops[0].args.amount
     expect(argAtom(stretch('bd*2'))?.text).toBe('2')
     expect(argAtom(stretch('bd*<2 3>'))).toBeNull()
     expect(argAtom(stretch('bd!3'))).toBeNull()

@@ -24,7 +24,7 @@
  * exactly the intended bars is refused. The same bar-by-bar reading is what says
  * which bar continues the pattern.
  */
-import { hapsInCycle, miniPattern, type MiniHap, type MiniTime } from '../strudelMini/pattern'
+import { miniPattern, type MiniHit, type MiniPattern, type MiniTime } from '../strudelMini/pattern'
 
 import type { ChunkGain, ParseResult } from './model'
 import { UNREFINED, type ViewScale } from './viewResolution'
@@ -88,21 +88,20 @@ function fromBar(t: MiniTime, bar: number): string {
  * What one bar plays, as a comparable key: each onset's value, start and end
  * measured from the bar's own downbeat. Null when Strudel cannot query it.
  */
-function barKey(pat: unknown, bar: number): string | null {
-  let haps: MiniHap[]
+function barKey(pat: MiniPattern, bar: number): string | null {
+  let haps: MiniHit[]
   try {
-    haps = hapsInCycle(pat, bar)
+    haps = pat.hits(bar)
   } catch {
     return null
   }
   return haps
-    .filter((h) => (h.hasOnset?.() ?? false) && h.whole)
-    .map((h) => `${JSON.stringify(h.value)}|${fromBar(h.whole!.begin, bar)}|${fromBar(h.whole!.end, bar)}`)
+    .map((h) => `${JSON.stringify(h.value)}|${fromBar(h.begin, bar)}|${fromBar(h.end, bar)}`)
     .sort()
     .join(' ')
 }
 
-function reify(mini: string): unknown | null {
+function reify(mini: string): MiniPattern | null {
   try {
     return miniPattern(mini)
   } catch {

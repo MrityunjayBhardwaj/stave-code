@@ -1,5 +1,6 @@
 import { describe, it } from 'vitest'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
+import { miniPattern } from '../../../editor/src/codeView/strudelMini/pattern'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,7 +21,7 @@ describe('#1034 — what the 44 dropped occurrences were carrying', () => {
       for (let cyc = 0; cyc < 16; cyc++) {
         let pat: unknown
         try { pat = reifyMini(m) } catch { continue }
-        const r = readGridOnsets(pat, cyc) as { ok: boolean; onsets?: any[] }
+        const r = readGridOnsets(miniPattern(m), cyc) as { ok: boolean; onsets?: any[] }
         if (!r.ok) continue
         for (const o of r.onsets!) {
           const seen = new Map<string, any>()
