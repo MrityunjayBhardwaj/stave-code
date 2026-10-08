@@ -7,14 +7,14 @@
       "A": {
         "asks": 802,
         "opened": 170,
-        "leafOpened": 57,
-        "transfers": 140,
+        "leafOpened": 52,
+        "transfers": 143,
         "noView": 632,
-        "noProbe": 30,
+        "noProbe": 27,
         "viewCorrupts": 0,
-        "leafStructured": 55,
-        "leafAlive": 167,
-        "leafProbed": 295
+        "leafStructured": 50,
+        "leafAlive": 147,
+        "leafProbed": 259
       },
       "B": {
         "asks": 831,
@@ -34,14 +34,14 @@
       "A": {
         "asks": 802,
         "opened": 171,
-        "leafOpened": 58,
-        "transfers": 140,
+        "leafOpened": 53,
+        "transfers": 143,
         "noView": 631,
-        "noProbe": 31,
+        "noProbe": 28,
         "viewCorrupts": 0,
-        "leafStructured": 56,
-        "leafAlive": 170,
-        "leafProbed": 308
+        "leafStructured": 51,
+        "leafAlive": 150,
+        "leafProbed": 272
       },
       "B": {
         "asks": 831,
@@ -61,14 +61,14 @@
       "A": {
         "asks": 802,
         "opened": 187,
-        "leafOpened": 74,
-        "transfers": 151,
+        "leafOpened": 69,
+        "transfers": 154,
         "noView": 615,
-        "noProbe": 36,
+        "noProbe": 33,
         "viewCorrupts": 0,
-        "leafStructured": 72,
-        "leafAlive": 202,
-        "leafProbed": 358
+        "leafStructured": 67,
+        "leafAlive": 182,
+        "leafProbed": 322
       },
       "B": {
         "asks": 831,
@@ -88,14 +88,14 @@
       "A": {
         "asks": 802,
         "opened": 193,
-        "leafOpened": 80,
-        "transfers": 156,
+        "leafOpened": 75,
+        "transfers": 159,
         "noView": 609,
-        "noProbe": 37,
+        "noProbe": 34,
         "viewCorrupts": 0,
-        "leafStructured": 78,
-        "leafAlive": 212,
-        "leafProbed": 368
+        "leafStructured": 73,
+        "leafAlive": 192,
+        "leafProbed": 332
       },
       "B": {
         "asks": 831,
@@ -116,14 +116,14 @@
     "A": {
       "asks": 802,
       "opened": 195,
-      "leafOpened": 82,
-      "transfers": 157,
+      "leafOpened": 77,
+      "transfers": 160,
       "noView": 607,
-      "noProbe": 38,
+      "noProbe": 35,
       "viewCorrupts": 0,
-      "leafStructured": 80,
-      "leafAlive": 220,
-      "leafProbed": 384
+      "leafStructured": 75,
+      "leafAlive": 200,
+      "leafProbed": 348
     },
     "B": {
       "asks": 831,
