@@ -10717,11 +10717,6 @@ function lazyGridLeaf(mini, attachedSteps) {
   };
 }
 __name(lazyGridLeaf, "lazyGridLeaf");
-function vacuousLocality(a) {
-  if (!a || a.bars <= 1 || a.regions.length !== 1) return false;
-  return a.regions[0].from === 0 && a.regions[0].to === a.perBar;
-}
-__name(vacuousLocality, "vacuousLocality");
 function projectStepGridDerived(mini, fallbackReason, viewScale = UNREFINED) {
   const owner = projectStepGrid(mini);
   const asOwner = /* @__PURE__ */ __name((ok) => {
@@ -10729,10 +10724,9 @@ function projectStepGridDerived(mini, fallbackReason, viewScale = UNREFINED) {
     const scaled2 = projectStepGrid(mini, viewScale);
     return scaled2.ok ? scaled2 : refused("grid", fallbackReason, scaled2.gate, mini);
   }, "asOwner");
-  if (owner.ok && !vacuousLocality(owner.model.altSource)) return withSurgery(mini, asOwner(owner));
+  if (owner.ok) return withSurgery(mini, asOwner(owner));
   const leaf = projectStepGridByLeaf(mini);
   if (leaf.ok) return leaf;
-  if (owner.ok) return asOwner(owner);
   return refused("grid", fallbackReason, leaf.gate, mini, leaf.lookOnly);
 }
 __name(projectStepGridDerived, "projectStepGridDerived");
