@@ -17,7 +17,7 @@
  * at all.
  */
 import { describe, it, expect } from 'vitest'
-import { mini as reifyMini } from '@strudel/mini/mini.mjs'
+import { miniPattern } from '../../strudelMini/pattern'
 import { readGridOnsets, type Onset } from '../parse'
 
 /**
@@ -29,7 +29,7 @@ import { readGridOnsets, type Onset } from '../parse'
  * reading the authority means those cases can be written at all.
  */
 function read(mini: string): string[] {
-  const r = readGridOnsets(reifyMini(mini), 0)
+  const r = readGridOnsets(miniPattern(mini), 0)
   if (!r.ok) throw new Error(`${mini} refused at gate: ${JSON.stringify(r.gate)}`)
   return (r.onsets as Onset[]).flatMap((o) =>
     o.occ.map((c) => `${c.token}@${o.pos.toFixed(3)}×${(c.dur ?? NaN).toFixed(3)}`),
@@ -112,7 +112,7 @@ describe('#1034 — one sound at one column with two lengths keeps both', () => 
     // The span collapsed under the same guard, and predates the duration field.
     // A column resolving to one anchor means an edit writes to one of the two
     // source leaves and silently ignores the other.
-    const r = readGridOnsets(reifyMini('bd*2, bd'), 0)
+    const r = readGridOnsets(miniPattern('bd*2, bd'), 0)
     if (!r.ok) throw new Error('refused')
     const first = (r.onsets as Onset[]).find((o) => o.pos === 0)!
     expect(first.occ.map((c) => c.span)).toEqual([
@@ -134,7 +134,7 @@ describe('#1034 — one sound at one column with two lengths keeps both', () => 
     // even where no length does, because two notes really are sounding. Only the
     // derived `atoms` collapses them, which is what display should do.
     expect(read('[bd@2, bd]')).toEqual(['bd@0.000×1.000', 'bd@0.000×1.000'])
-    const r = readGridOnsets(reifyMini('[bd@2, bd]'), 0)
+    const r = readGridOnsets(miniPattern('[bd@2, bd]'), 0)
     if (!r.ok) throw new Error('refused')
     expect((r.onsets as Onset[])[0].atoms).toEqual(['bd'])
   })

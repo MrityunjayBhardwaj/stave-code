@@ -22,6 +22,8 @@
  *     `{…}`, `feet` for `.`) holds PATTERNS, one per layer. Both are `children` here,
  *     told apart by `kind`.
  *   - an element holds an atom or a pattern, a weight, a repeat count and ops.
+ *   - a polymeter written `{…}%n` keeps its step count on the pattern itself, beside
+ *     the alignment — `steps` here.
  *   - an op's arguments are atoms (`*2`, `:3`), patterns (`*<2 3>`), elements holding
  *     either (a euclid's numbers), or plain values (`!3`'s count, a stretch's
  *     `'fast'` / `'slow'`).
@@ -69,6 +71,11 @@ export interface MiniGroup {
   alignment: string | undefined
   /** elements under `fastcat`, one group per layer under everything else */
   children: (MiniElement | MiniGroup)[]
+  /**
+   * `{…}%n`'s step count — krill keeps it on the group, not in an op. `null` wherever
+   * none is written, which is every group that is not a polymeter and most that are.
+   */
+  steps: MiniArg
 }
 
 /** an op's argument: a node, a plain value, or nothing */
@@ -77,7 +84,12 @@ export type MiniArg = MiniAtom | MiniElement | MiniGroup | string | number | boo
 export interface MiniOp {
   /** krill's name: `stretch`, `replicate`, `bjorklund`, `tail`, `degradeBy`, `range` */
   kind: string
-  args: Record<string, MiniArg>
+  /**
+   * By krill's argument name. A name krill does not give this op is ABSENT (asking a
+   * `tail` for its `amount` is undefined); an argument krill lists and the author left
+   * out is null (a euclid's `rotation`, a bare `?`'s `amount`).
+   */
+  args: Partial<Record<string, MiniArg>>
 }
 
 /** the atom an argument IS, or the atom the element it is holds; null for anything else */
@@ -113,12 +125,13 @@ function atomOf(raw: Raw, mini: string): MiniAtom {
 }
 
 function groupOf(raw: Raw, mini: string): MiniGroup {
-  const args = raw.arguments_ as { alignment?: string } | undefined
+  const args = raw.arguments_ as { alignment?: string; stepsPerCycle?: unknown } | undefined
   const kids = Array.isArray(raw.source_) ? raw.source_ : []
   return {
     kind: 'group',
     alignment: args?.alignment,
     children: kids.filter(isObj).map((k) => (k.type_ === 'element' ? elementOf(k, mini) : groupOf(k, mini))),
+    steps: argOf(args?.stepsPerCycle, mini),
   }
 }
 
@@ -146,7 +159,7 @@ function argOf(raw: unknown, mini: string): MiniArg {
 }
 
 function opOf(raw: Raw, mini: string): MiniOp {
-  const args: Record<string, MiniArg> = {}
+  const args: MiniOp['args'] = {}
   for (const [name, value] of Object.entries((raw.arguments_ as Raw | undefined) ?? {})) args[name] = argOf(value, mini)
   return { kind: raw.type_ as string, args }
 }

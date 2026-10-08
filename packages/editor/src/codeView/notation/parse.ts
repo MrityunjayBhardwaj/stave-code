@@ -22,7 +22,7 @@
  * `Step[]` is two levels (steps → slots), so deeper nesting is refused as a
  * MODEL limit — an honest "a grid can't show this", not a fake parse failure.
  */
-import { hapsInCycle, miniPattern, type MiniHap } from '../strudelMini/pattern'
+import { miniPattern, type MiniHit, type MiniPattern } from '../strudelMini/pattern'
 import { miniTree, type KAtom, type KElement, type KOp, type KPattern } from '../strudelMini/tree'
 import { isRest, miniShape, type MiniGroup } from '../strudelMini/shape'
 import { bjorklund, rotateEuclid } from '../ir/euclid'
@@ -1421,8 +1421,8 @@ function gridLookOnly(
  * rather than as nothing to show. A period above `cap` reads as no period.
  */
 function playedBars<T>(
-  pat: unknown,
-  read: (pat: unknown, cycle: number) => Read<T[]>,
+  pat: MiniPattern,
+  read: (pat: MiniPattern, cycle: number) => Read<T[]>,
   key: (onsets: T[]) => string,
   cap: number,
 ): { ok: true; perCycle: T[][] } | { ok: false; gate: Gate } {
@@ -1482,7 +1482,7 @@ function topLevelSpans(src: string): ElementSpan[] | null {
 
 /**
  * A leaf atom's OWN source span, in `src`-space (offsets into the inner mini
- * string), read from a hap's `context.locations`. Strudel's `mini()` calls
+ * string), read from a hit's locations. Strudel's `mini()` calls
  * `.withLoc` on each atom pure (`mini.mjs` `patternifyAST` → `pattern.mjs`
  * `withLoc`), so a nested atom carries its own token span, not its container's:
  * `s("a [b c]")` gives the `c` hap the span of `c`, never `[b c]`. This is the
@@ -1496,22 +1496,22 @@ function topLevelSpans(src: string): ElementSpan[] | null {
 export type { LeafSpan }
 
 /**
- * The leaf atom's span for a hap, from `context.locations[0]`, shifted to
- * `src`-space. Within a bare reified mini string (no method chain) the leaf's own
- * location is FIRST — an inline op's mini arg (`*2`, `(3,8)`) contributes its
- * location AFTER, in source order. The `.scale("…")`-style prepend that pushes the
- * leaf last only happens for a method whose arg is a mini STRING, which
- * `gridOnsets`/`rollOnsets` never see: they reify the inner string alone. The
- * stored offsets count the leading quote `mini()` adds, so subtract 1. Verified
- * token-for-token against krill in `leafLoc.test.ts`. `null` when a hap carried no
- * usable location.
+ * The span a hit is anchored on: the FIRST location Strudel lists for it, already in
+ * `src`-space (the adapter takes the quote off — `strudelMini/pattern.ts`). Verified
+ * token-for-token against krill in `leafLoc.test.ts` for the shapes that test names.
+ * `null` when a hit carried no location.
+ *
+ * ⚠ FIRST IS NOT ALWAYS THE NOTE (measured for #1973: 2,192 of 52,498 corpus hits).
+ * `*2` and a euclid list the note first; `sd:2`, `0 .. 3` and `{a b c}%4` list the
+ * op's argument first, and a token followed by a newline or a tab has a location one
+ * longer than its text. Every view that opens today has its anchors on its notes
+ * (1,062 of 1,062, same measurement) because the admission checks turn those patterns
+ * away. `strudelMini/joined.ts` pairs a hit with the note that wrote it whatever the
+ * order; moving this anchor onto it changes which patterns open, so it is #1974's.
  */
-function leafLoc(h: {
-  context?: { locations?: Array<{ start: number; end: number }> }
-}): LeafSpan | null {
-  const l = h.context?.locations?.[0]
-  if (!l || typeof l.start !== 'number' || typeof l.end !== 'number') return null
-  return { start: l.start - 1, end: l.end - 1 }
+function leafLoc(h: MiniHit): LeafSpan | null {
+  const l = h.locations[0]
+  return l ? { start: l.start, end: l.end } : null
 }
 
 /**
@@ -1676,13 +1676,13 @@ function deriveColumn(occ: Occurrence[]): Pick<Onset, 'atoms' | 'spans' | 'durs'
 
 /**
  * Read what a step-grid pattern PLAYS, one cycle, as onset columns — inherited
- * from Strudel (`hapsInCycle(miniPattern(...))`), never re-derived here. The value the
+ * from Strudel (`miniPattern(...).hits(cycle)`), never re-derived here. The value the
  * engine yields IS the ground truth for "what sound fires when"; the display
  * token is `s` (+`:n` when a sample index rides along). Returns null when the
  * pattern isn't a plain sound grid the view can show — a numeric value (that is
  * the roll's, not the grid's), a `.gain`/signal-only hap, or a query that throws.
  */
-export function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
+export function gridOnsets(pat: MiniPattern, cyc: number): Onset[] | null {
   const r = readGridOnsets(pat, cyc)
   return r.ok ? r.onsets : null
 }
@@ -1699,20 +1699,19 @@ export function gridOnsets(pat: unknown, cyc: number): Onset[] | null {
  */
 /* exported for `gridOnsetDuration.test.ts` — the axis-dropping boundary is worth
    being able to interrogate directly; see that file for why. */
-export function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
-  // `whole.end` is read for `Onset.durs` (#1010 P4a). It was once absent from the hap
+export function readGridOnsets(pat: MiniPattern, cyc: number): Read<Onset[]> {
+  // A hit's `end` is read for `Onset.durs` (#1010 P4a). It was once absent from the hap
   // type declared here, which is the literal form the dropped-duration defect took:
-  // the axis could not be read because it was not declared. The type is `MiniHap` now,
-  // one shape for the grid and the roll.
-  let haps: MiniHap[]
+  // the axis could not be read because it was not declared. The type is the adapter's
+  // `MiniHit` now, one shape for the grid and the roll.
+  let haps: MiniHit[]
   try {
-    haps = hapsInCycle(pat, cyc)
+    haps = pat.hits(cyc)
   } catch {
     return no('no-note-content')
   }
   const byCol = new Map<number, Occurrence[]>()
   for (const h of haps) {
-    if (!(h.hasOnset?.() ?? false) || !h.whole) continue
     // A bare mini string reifies to raw token VALUES (`"bd"`), not superdough
     // params — that is what `parseStepGrid` receives (the inner string of
     // `s("…")`). THREE shapes arrive, not two: a string token, a number, and an
@@ -1735,7 +1734,7 @@ export function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
       token = v.s + (v.n != null ? ':' + String(v.n) : '')
     } else return no('no-note-content')
     if (NUMERIC.test(token)) return no('wrong-surface') // a bare number is the roll's
-    const pos = h.whole.begin.valueOf() - cyc
+    const pos = h.begin.valueOf() - cyc
     const key = Math.round(pos * ONSET_GRID)
     // EVERY hap is recorded, unconditionally (#1034). The note's own leaf loc is
     // the #986 write-back anchor and its length is read the way the roll reads it,
@@ -1751,7 +1750,7 @@ export function readGridOnsets(pat: unknown, cyc: number): Read<Onset[]> {
     cell.push({
       token,
       span: leafLoc(h),
-      dur: h.whole.end.valueOf() - h.whole.begin.valueOf(),
+      dur: h.end.valueOf() - h.begin.valueOf(),
     })
     byCol.set(key, cell)
   }
@@ -1790,7 +1789,7 @@ const onsetKey = (o: Onset[]): string =>
 function projectStepGrid(src0: string, viewScale: ViewScale = UNREFINED): Projection<StepGridModel> {
   const src = src0.trim()
   if (src === '') return no('not-a-pattern')
-  let pat: unknown
+  let pat: MiniPattern
   try {
     pat = miniPattern(src)
   } catch {
@@ -2023,7 +2022,7 @@ function projectionEditSafe(
     probe.cells[col] = cellOn()
     const out = serializeStepGrid({ ...model, lanes })
     if (out == null) return false
-    let edited: unknown
+    let edited: MiniPattern
     try {
       edited = miniPattern(out)
     } catch {
@@ -2147,7 +2146,7 @@ function restSpansByColumn(
     const s = ordered[i]
     probeSrc = probeSrc.slice(0, s.start) + SENTINEL(i) + probeSrc.slice(s.end)
   }
-  let probePat: unknown
+  let probePat: MiniPattern
   try {
     probePat = miniPattern(probeSrc)
   } catch {
@@ -2222,7 +2221,7 @@ function restSpansByColumn(
 function projectStepGridByLeaf(src0: string): Projection<StepGridModel> {
   const src = src0.trim()
   if (src === '') return no('not-a-pattern')
-  let pat: unknown
+  let pat: MiniPattern
   try {
     pat = miniPattern(src)
   } catch {
@@ -2418,7 +2417,7 @@ function leafEditSafe(model: StepGridModel, perBar: number, bars: number): boole
   for (const anchor of probes.values()) {
     for (const text of [PROBE_SOUND, '~']) {
       const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }])
-      let edited: unknown
+      let edited: MiniPattern
       try {
         edited = miniPattern(out)
       } catch {
@@ -3441,7 +3440,7 @@ export interface RollOnset {
 
 /**
  * Read what a melodic pattern PLAYS, one cycle, as pitched onsets with DURATION —
- * inherited from Strudel (`hapsInCycle(miniPattern(...))`), never re-derived. Unlike the
+ * inherited from Strudel (`miniPattern(...).hits(cycle)`), never re-derived. Unlike the
  * grid's `gridOnsets`, the roll keeps each hap's length (`whole.end - whole.begin`):
  * a note's `@n` hold is part of what it plays and the writer must put it back. The
  * value the engine yields is the ground truth — a number is a numeric pitch
@@ -3449,7 +3448,7 @@ export interface RollOnset {
  * a hap isn't a placeable pitch (a sound token, a signal/params value, a zero-length
  * hap) or the query throws.
  */
-export function rollOnsets(pat: unknown, cyc: number): RollOnset[] | null {
+export function rollOnsets(pat: MiniPattern, cyc: number): RollOnset[] | null {
   const r = readRollOnsets(pat, cyc)
   return r.ok ? r.onsets : null
 }
@@ -3461,16 +3460,15 @@ export function rollOnsets(pat: unknown, cyc: number): RollOnset[] | null {
  * broken roll but the wrong view, and counting it as a failure is what inflated
  * every editability denominator we quoted.
  */
-function readRollOnsets(pat: unknown, cyc: number): Read<RollOnset[]> {
-  let haps: MiniHap[]
+function readRollOnsets(pat: MiniPattern, cyc: number): Read<RollOnset[]> {
+  let haps: MiniHit[]
   try {
-    haps = hapsInCycle(pat, cyc)
+    haps = pat.hits(cyc)
   } catch {
     return no('no-note-content')
   }
   const out: RollOnset[] = []
   for (const h of haps) {
-    if (!(h.hasOnset?.() ?? false) || !h.whole) continue
     const v = h.value
     let pitch: string
     let numeric: boolean
@@ -3502,8 +3500,8 @@ function readRollOnsets(pat: unknown, cyc: number): Read<RollOnset[]> {
         numeric = false
       } else return no('wrong-surface') // a sound token — the grid's, not the roll's
     }
-    const pos = h.whole.begin.valueOf() - cyc
-    const dur = h.whole.end.valueOf() - h.whole.begin.valueOf()
+    const pos = h.begin.valueOf() - cyc
+    const dur = h.end.valueOf() - h.begin.valueOf()
     if (dur <= 0) return no('no-note-content')
     out.push({ pos, dur, pitch, numeric, loc: leafLoc(h) })
   }
@@ -3555,7 +3553,7 @@ function projectionRollEditSafe(
     }
     const out = serializePianoRoll(edited)
     if (out == null) return false
-    let pat: unknown
+    let pat: MiniPattern
     try {
       pat = miniPattern(out)
     } catch {
@@ -3607,7 +3605,7 @@ function projectPianoRoll(
 ): Projection<PianoRollModel> {
   const src = src0.trim()
   if (src === '') return no('not-a-pattern')
-  let pat: unknown
+  let pat: MiniPattern
   try {
     pat = miniPattern(src)
   } catch {
@@ -3796,7 +3794,7 @@ function projectAltRollBars(
 function projectPianoRollByLeaf(src0: string): Projection<PianoRollModel> {
   const src = src0.trim()
   if (src === '') return no('not-a-pattern')
-  let pat: unknown
+  let pat: MiniPattern
   try {
     pat = miniPattern(src)
   } catch {
@@ -3950,7 +3948,7 @@ function leafRollEditSafe(
   for (const anchor of probes.values()) {
     for (const text of [probePitch, '~']) {
       const out = serializeByLeaf(ls.src, [{ span: anchor.span, text }])
-      let edited: unknown
+      let edited: MiniPattern
       try {
         edited = miniPattern(out)
       } catch {

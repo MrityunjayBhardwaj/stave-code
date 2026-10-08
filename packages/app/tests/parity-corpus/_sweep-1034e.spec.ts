@@ -51,6 +51,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { mini as reifyMini } from '@strudel/mini/mini.mjs'
+import { miniPattern } from '../../../editor/src/codeView/strudelMini/pattern'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -108,8 +109,9 @@ describe.skipIf(!HAVE_BASE)('#1034 A/B — derived atoms/spans/durs are byte-ide
       for (const cyc of [0, 1, 2, 3]) {
         let pat: unknown
         try { pat = reifyMini(m) } catch { continue }
-        const a = OLD(pat, cyc) as any
-        const b = NEW(pat, cyc) as any
+        // the archived reader takes Strudel's own pattern; today's takes the adapter's (#1973)
+        const a = (OLD as unknown as (p: unknown, c: number) => unknown)(pat, cyc) as any
+        const b = NEW(miniPattern(m), cyc) as any
         if (a.ok !== b.ok) { diffs.push(`ok mismatch: ${m} @${cyc}`); continue }
         if (!a.ok) { if (a.gate !== b.gate) diffs.push(`gate: ${m} @${cyc}`); continue }
         compared++

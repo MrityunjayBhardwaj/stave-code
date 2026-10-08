@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
-import { hapsInCycle, miniPattern } from '../pattern'
+import { mini as reifyMini } from '@strudel/mini/mini.mjs'
+import { miniPattern } from '../pattern'
 import { miniTree, type KAtom, type KElement, type KPattern } from '../tree'
 
 /** every location in a tree, with the node kind that carries it */
@@ -93,11 +94,11 @@ describe('miniTree — krill, in the coordinates of the string it was given', ()
   })
 })
 
-describe('miniPattern + hapsInCycle — what the string plays, asked of Strudel', () => {
+describe('miniPattern — what the string plays, asked of Strudel', () => {
   const onsets = (mini: string, cyc: number): string[] =>
-    hapsInCycle(miniPattern(mini), cyc)
-      .filter((h) => h.hasOnset?.() && h.whole)
-      .map((h) => `${String(h.value)}@${h.whole!.begin.valueOf() - cyc}`)
+    miniPattern(mini)
+      .hits(cyc)
+      .map((h) => `${String(h.value)}@${h.begin.valueOf() - cyc}`)
 
   it('one cycle is the half-open window [cyc, cyc + 1)', () => {
     expect(onsets('bd sd', 0)).toEqual(['bd@0', 'sd@0.5'])
@@ -107,17 +108,39 @@ describe('miniPattern + hapsInCycle — what the string plays, asked of Strudel'
     expect(onsets('<a b>', 2)).toEqual(['a@0'])
   })
 
-  it('times are Strudel\'s exact fractions, and a hap says where its leaf was written', () => {
-    const [, second] = hapsInCycle(miniPattern('a b c'), 1)
-    expect(second.whole!.begin.sub!(1).toFraction!()).toBe('1/3')
-    expect(second.context?.locations?.length).toBeGreaterThan(0)
+  it('times are Strudel\'s exact fractions', () => {
+    const [, second] = miniPattern('a b c').hits(1)
+    expect(second.begin.sub!(1).toFraction!()).toBe('1/3')
+    expect(second.end.sub!(1).toFraction!()).toBe('2/3')
   })
 
-  it('throws on text Strudel rejects, and on a thing that is not a pattern', () => {
+  it('a hit is an onset: the tail of a note held over from the cycle before is not one', () => {
+    // `a@3 b` slowed by two: `a` starts in cycle 0 and is still sounding in cycle 1,
+    // where Strudel returns a fragment of it with no onset
+    const raw = (reifyMini('[a@3 b]/2') as { queryArc(a: number, b: number): Array<{ hasOnset(): boolean; value: unknown }> }).queryArc(1, 2)
+    expect(raw.map((h) => [h.value, h.hasOnset()])).toEqual([['a', false], ['b', true]])
+    expect(miniPattern('[a@3 b]/2').hits(1).map((h) => h.value)).toEqual(['b'])
+  })
+
+  it('every location is in the string that was passed: one less than Strudel reports, in Strudel\'s order', () => {
+    for (const mini of ['bd sd', 'a [b c]', 'sd:2 hh', 'bd(3,8)', '0 .. 3', '{a b c}%4', 'hh*<2 3>']) {
+      const raw = (reifyMini(mini) as { queryArc(a: number, b: number): Array<{ hasOnset(): boolean; context: { locations: Array<{ start: number; end: number }> } }> })
+        .queryArc(0, 1)
+        .filter((h) => h.hasOnset())
+      const ours = miniPattern(mini).hits(0)
+      expect(ours.length, mini).toBeGreaterThan(0)
+      expect(ours.map((h) => h.locations), mini).toEqual(raw.map((h) => h.context.locations.map((l) => ({ start: l.start - 1, end: l.end - 1 }))))
+    }
+    // the plain case reads back as the token; the order is Strudel's, argument first for a tail
+    const src = 'bd sd:2'
+    const [bd, sd] = miniPattern(src).hits(0)
+    expect(bd.locations.map((l) => src.slice(l.start, l.end))).toEqual(['bd'])
+    expect(sd.locations.map((l) => src.slice(l.start, l.end))).toEqual(['2', 'sd'])
+  })
+
+  it('throws on text Strudel rejects; the pattern remembers the string it was given', () => {
     expect(() => miniPattern('bd [sd')).toThrow()
-    expect(() => hapsInCycle(null, 0)).toThrow()
-    expect(() => hapsInCycle({}, 0)).toThrow()
-    expect(() => hapsInCycle(miniPattern('bd'), 0)).not.toThrow()
+    expect(miniPattern('  bd sd ').mini).toBe('  bd sd ')
   })
 })
 
@@ -135,6 +158,6 @@ describe('the parser half stays importable from the engine\'s graph', () => {
     // engine loads itself, later — so the two halves of the adapter are two files.
     expect(specifiers('tree.ts')).toEqual(['@strudel/mini/krill-parser.js'])
     // control: the same read finds the evaluator's import next door
-    expect(specifiers('pattern.ts')).toEqual(['@strudel/mini/mini.mjs'])
+    expect(specifiers('pattern.ts')).toEqual(['@strudel/mini/mini.mjs', './shape'])
   })
 })
