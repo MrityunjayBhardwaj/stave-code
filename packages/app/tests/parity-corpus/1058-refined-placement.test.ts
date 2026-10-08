@@ -332,8 +332,8 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
   it('LOCALITY IS VACUOUS where the source is a single region — reported, not hidden', () => {
     // `hh*8`, `hh(<3,7>,16)`, `amen/4`: one element owns the whole cycle, so a
     // write re-emits it and satisfies every locality rule while re-deriving the
-    // entire pattern. #994's self-review found this and `vacuousLocality` routes
-    // around it at parse time; the gate must not count it as evidence that
+    // entire pattern. #994's self-review found this (the grid sent the several-bar
+    // ones to the leaf writer until #1983); the gate must not count it as evidence that
     // placement is local, which is exactly what reporting `1 of 1` prevents.
     for (const k of SCALES) {
       const spliced = SWEPT.get(k)!.asks.filter((a) => a.accepted && a.path === 'splice')

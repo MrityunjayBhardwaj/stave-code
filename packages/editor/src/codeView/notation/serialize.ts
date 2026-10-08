@@ -150,8 +150,11 @@ export function ifRollSpellable(input: PianoRollModel, next: PianoRollModel): Pi
  * whose source is a SINGLE region covering the whole cycle — `hh(<3,7>,16)`,
  * `amen/4` — re-emits that one region and satisfies every locality rule
  * vacuously, while the write is in fact a whole-cycle re-derivation. That class
- * was found by #994's self-review and is what `vacuousLocality` routes around at
- * parse time; reporting `1 of 1` rather than `1` is what lets a caller see it.
+ * was found by #994's self-review. Until #1983 the grid routed its several-bar
+ * members to the leaf writer at parse time; now they keep the element writer, with
+ * the byte-local overlay tried first, so the re-derivation is what answers only the
+ * edits the overlay cannot make. Reporting `1 of 1` rather than `1` is what lets a
+ * caller see which write it got.
  */
 export type GridWriteExtent =
   | { path: 'splice'; regions: number; regionsReemitted: number; rebuiltParts: number[] }
@@ -191,8 +194,8 @@ export function serializeStepGridWithExtent(drawn: StepGridModel): {
   //                   re-emit is precisely what would destroy the notation this view
   //                   was opened to preserve. Falling back here would hand the re-emit
   //                   the 275 shared-leaf deletes #1160 declines, and would answer
-  //                   `amen/4`'s only cell with `<~ ~ ~ ~>` — the case `vacuousLocality`
-  //                   exists to route around.
+  //                   `amen/4`'s only cell with `<~ ~ ~ ~>` (the element writer cannot
+  //                   open `amen/4` at all, so that view is the leaf writer's alone).
   //   `surgical`    — the ELEMENT writer owns this view and these spans are overlaid on
   //                   it. A refusal falls through to the element paths below, which is
   //                   exactly what this model did before P4d, so the fallback can only

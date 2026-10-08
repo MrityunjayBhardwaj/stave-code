@@ -2645,11 +2645,6 @@ function lazyGridLeaf(mini: string, attachedSteps: number): LazyLeafSource {
   }
 }
 
-function vacuousLocality(a: AltSource<unknown> | undefined): boolean {
-  if (!a || a.bars <= 1 || a.regions.length !== 1) return false
-  return a.regions[0].from === 0 && a.regions[0].to === a.perBar
-}
-
 /**
  * THE DERIVED WRITERS FOR THE GRID, in the order `parseStepGrid` asks them — the
  * whole chain BELOW the syntactic core, and the only place that order is written.
@@ -2684,7 +2679,7 @@ export function projectStepGridDerived(
   //
   // ⚠ WHICH of the two owns the pattern is asked at `UNREFINED`, for the same reason
   // `parseStepGrid` asks it there (#1116): `projectStepGrid`'s own gates read the
-  // DRAWN column count — `perBar % totalWeight`, `vacuousLocality`, the edit-safety
+  // DRAWN column count — `perBar % totalWeight`, the edit-safety
   // probe — so at a finer scale the element path can start succeeding where it
   // declined, and the leaf writer that owned the user's bytes is silently replaced by
   // an element re-emit. Measured: one corpus unit did exactly that, and it was found
@@ -2698,10 +2693,23 @@ export function projectStepGridDerived(
     const scaled = projectStepGrid(mini, viewScale)
     return scaled.ok ? scaled : refused('grid', fallbackReason, scaled.gate, mini)
   }
-  if (owner.ok && !vacuousLocality(owner.model.altSource)) return withSurgery(mini, asOwner(owner))
+  // THE ELEMENT WRITER KEEPS WHATEVER IT OPENS, with the byte-local overlay on top —
+  // the same order as the roll (#1983).
+  //
+  // Until #1983 there was one exception: an element view whose ONLY region is the whole
+  // bar, over several bars, went to the leaf writer when that could take it, because
+  // every element write there re-derives the entire pattern (#994). That was measured
+  // before the overlay existed. With it, the edits the leaf writer can make are made
+  // the leaf writer's way here too (`surgical` is tried first), and the ones it
+  // declines — a hit on an empty cell, a note two bars share — are written instead of
+  // refused. Over the five corpus patterns both writers can open: deletes 20 → 36 of 36,
+  // placements 4 → 248 of 248, a finer view for all five, no wrong write either way.
+  //
+  // ⚠ THE COST IS THE AUTHOR'S SPELLING, and only on the edits the leaf writer could not
+  // make: those are respelled as bars (`{c [f g] d# d}%2` + a hit → `<[c c f g] [d# _ d _]>`).
+  if (owner.ok) return withSurgery(mini, asOwner(owner))
   const leaf = projectStepGridByLeaf(mini)
   if (leaf.ok) return leaf
-  if (owner.ok) return asOwner(owner)
   // …and if nothing opened it, report the gate that actually stopped the general
   // write-back (#990) — not the core's syntactic message, which names the first
   // writer to decline
@@ -4086,9 +4094,10 @@ function lazyRollLeaf(mini: string, attachedSteps: number): LazyRollLeafSource {
 /**
  * THE DERIVED WRITERS FOR THE ROLL, in the order `parsePianoRoll` asks them — the
  * roll's counterpart to `projectStepGridDerived`, and the only place this order is
- * written. See that function for why the census needs it split out; note that the
- * two orders DIFFER (the grid takes the `vacuousLocality` exception and the roll
- * does not), which is exactly why neither may be re-derived by a caller.
+ * written. See that function for why the census needs it split out. The two orders
+ * are the same since #1983 (until then the grid sent a whole-bar element view to the
+ * leaf writer and the roll did not); each is still written once, in its own function,
+ * and neither may be re-derived by a caller.
  */
 export function projectPianoRollDerived(
   mini: string,
@@ -4107,8 +4116,9 @@ export function projectPianoRollDerived(
     const scaled = projectPianoRoll(mini, viewScale)
     return scaled.ok ? scaled : refused('roll', fallbackReason, scaled.gate, mini)
   }
-  // NOT gated on `vacuousLocality` the way the grid is, and that asymmetry is
-  // measured rather than assumed: preferring the leaf writer here costs the roll
+  // THE ELEMENT WRITER KEEPS WHAT IT OPENS — never the leaf writer first, even where
+  // the only region is the whole bar. The grid made that exception until #1983; the
+  // roll never did, and the reason is measured: preferring the leaf writer here costs the roll
   // reach outright, because a shared leaf it declines is an edit the element writer
   // completes. Reach is the invariant under contract; locality does not buy a unit
   // of it (#994).
@@ -4119,9 +4129,11 @@ export function projectPianoRollDerived(
   // 75 → 65. The original number was not wrong when it was written; it was taken
   // with an instrument that could not see the axis the flip moves, so it never
   // transferred. Re-measure a figure before reusing it across an instrument change
-  // rather than carrying it forward — the grid's own answer to this same flip
-  // (+5 reach, 16 fewer silent length rewrites) is the opposite sign, which is why
-  // the two surfaces are decided separately and never by analogy.
+  // rather than carrying it forward. The grid is the second example of the same
+  // lesson: its answer to this flip was the opposite sign when it was taken (+5 reach,
+  // 16 fewer silent length rewrites, before the byte-local overlay existed) and the
+  // roll's sign when it was taken again with the overlay (#1983). The two surfaces are
+  // decided separately, each by its own measurement, never by analogy.
   if (owner.ok) return withRollSurgery(mini, asOwner(owner))
   const leaf = projectPianoRollByLeaf(mini)
   if (leaf.ok) return leaf
