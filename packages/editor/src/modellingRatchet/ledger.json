@@ -9,6 +9,11 @@
           "value": 77,
           "date": "2026-09-30",
           "note": "Baseline when the ratchet was added, on origin/main 612772aa over mini-corpus.json. It grew 68 → 70 (#1827), 70 → 76 (#1849), 76 → 77 (#1849's <…> half) before the ratchet existed, each re-pinned in the change that moved it — see #1867."
+        },
+        {
+          "value": 76,
+          "date": "2026-10-08",
+          "note": "#1974: the views' hits are anchored on the note that wrote them (the adapter's joined tree), not on the first place Strudel lists. One roll ask no derived writer could take over now transfers: the leaf writer can anchor it."
         }
       ]
     },
@@ -31,6 +36,11 @@
           "value": 55,
           "date": "2026-09-30",
           "note": "Baseline when the ratchet was added (grid 20 + roll 35), on origin/main 612772aa. It grew 51 → 53 (#1827), 53 → 54 (#1849), 54 → 55 (#1849's <…> half) before the ratchet existed — see #1867. A change to either cap moves this count and must be recorded here like any other move."
+        },
+        {
+          "value": 54,
+          "date": "2026-10-08",
+          "note": "#1974 (grid 20 + roll 34): the views' hits are anchored on the note that wrote them, so the leaf writer can take over one roll ask that only the core could edit. Caps unchanged."
         }
       ]
     },

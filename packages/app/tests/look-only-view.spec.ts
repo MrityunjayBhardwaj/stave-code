@@ -136,7 +136,8 @@ test.describe('a pattern nobody can edit note by note is still shown (#1975)', (
     await setCode(page, code)
     const drawer = await openPattern(page)
     const grid = drawer.locator('[data-bottom-panel-tab="sequencer"]')
-    await expect(grid).toHaveAttribute('data-look-only', 'no-leaf-anchor')
+    // `no-leaf-anchor` until #1974: with its hits anchored on the note, every hit is the one `bd`
+    await expect(grid).toHaveAttribute('data-look-only', 'view-unusable')
     await expect(grid.locator('[data-seq-cell]')).toHaveCount(48)
     // bar 1 plays 2 hits, bars 2 and 3 play 4 each — at the columns Strudel puts them
     const on = await grid.locator('[data-seq-cell][aria-pressed="true"]').evaluateAll((els) =>

@@ -178,9 +178,9 @@ function walk(node, parent, ctx) {
   if (!node || typeof node.type !== "string") return;
   ctx.parent.set(node, parent);
   if (isMiniLiteral(node)) ctx.literals.push(node);
-  for (const key2 of Object.keys(node)) {
-    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
-    const v = node[key2];
+  for (const key3 of Object.keys(node)) {
+    if (key3 === "type" || key3 === "start" || key3 === "end") continue;
+    const v = node[key3];
     if (Array.isArray(v)) v.forEach((c) => walk(c, node, ctx));
     else if (v && typeof v === "object" && typeof v.type === "string") walk(v, node, ctx);
   }
@@ -934,7 +934,7 @@ var IR = {
   // literal construction `{ tag: 'Cycle', items, loc, userMethod }`.
   cycle: /* @__PURE__ */ __name((...items) => ({ tag: "Cycle", items }), "cycle"),
   when: /* @__PURE__ */ __name((gate, body, meta) => attachMeta({ tag: "When", gate, body }, meta), "when"),
-  param: /* @__PURE__ */ __name((key2, value, rawArgs, body, meta) => attachMeta({ tag: "Param", key: key2, value, rawArgs, body }, meta), "param"),
+  param: /* @__PURE__ */ __name((key3, value, rawArgs, body, meta) => attachMeta({ tag: "Param", key: key3, value, rawArgs, body }, meta), "param"),
   track: /* @__PURE__ */ __name((trackId, body, meta, flags) => attachMeta(
     {
       tag: "Track",
@@ -1336,13 +1336,13 @@ function aggregateLaneItems(items, window2, rests = []) {
     if (armByCycle.get(r.laneKey)?.[slot] !== void 0) continue;
     markArm(r.laneKey, r.cycle, r.armIndex, r.armRange);
   }
-  return order.map((key2) => {
-    const lane = byKey.get(key2);
-    const byCycle = armByCycle.get(key2);
+  return order.map((key3) => {
+    const lane = byKey.get(key3);
+    const byCycle = armByCycle.get(key3);
     if (byCycle) lane.armByCycle = byCycle;
-    const labels = armLabels.get(key2);
+    const labels = armLabels.get(key3);
     if (labels) lane.armLabels = labels;
-    const ranges = armRanges.get(key2);
+    const ranges = armRanges.get(key3);
     if (ranges) lane.armRanges = ranges;
     return lane;
   });
@@ -1749,7 +1749,7 @@ function buildNodeLocIndex(ir) {
     if (!loc || loc.length === 0) continue;
     const l0 = loc[0];
     if (typeof l0.start !== "number" || typeof l0.end !== "number") continue;
-    const key2 = `${l0.start}:${l0.end}`;
+    const key3 = `${l0.start}:${l0.end}`;
     const stub = {
       begin: 0,
       end: 0,
@@ -1763,9 +1763,9 @@ function buildNodeLocIndex(ir) {
       loc: [...loc],
       irNodeId: nodeIdFor(l0.start, l0.end, "Play", 0)
     };
-    const arr = map.get(key2);
+    const arr = map.get(key3);
     if (arr) arr.push(stub);
-    else map.set(key2, [stub]);
+    else map.set(key3, [stub]);
   }
   return map;
 }
@@ -1867,13 +1867,13 @@ function childNodes(node) {
       out.push(value);
       return;
     }
-    for (const [key2, child] of Object.entries(value)) {
-      if (SKIP_KEYS.has(key2)) continue;
+    for (const [key3, child] of Object.entries(value)) {
+      if (SKIP_KEYS.has(key3)) continue;
       visit(child, depth + 1);
     }
   }, "visit");
-  for (const [key2, value] of Object.entries(node)) {
-    if (SKIP_KEYS.has(key2)) continue;
+  for (const [key3, value] of Object.entries(node)) {
+    if (SKIP_KEYS.has(key3)) continue;
     visit(value, 0);
   }
   return out;
@@ -2119,13 +2119,13 @@ function childNodes2(node) {
       out.push(value);
       return;
     }
-    for (const [key2, child] of Object.entries(value)) {
-      if (SKIP_KEYS2.has(key2)) continue;
+    for (const [key3, child] of Object.entries(value)) {
+      if (SKIP_KEYS2.has(key3)) continue;
       visit(child, depth + 1);
     }
   }, "visit");
-  for (const [key2, value] of Object.entries(node)) {
-    if (SKIP_KEYS2.has(key2)) continue;
+  for (const [key3, value] of Object.entries(node)) {
+    if (SKIP_KEYS2.has(key3)) continue;
     visit(value, 0);
   }
   return out;
@@ -2211,8 +2211,8 @@ function carriesSignal(value, depth = 0) {
   if (Array.isArray(value)) return value.some((v) => carriesSignal(v, depth + 1));
   const o = value;
   if (o.tag === "Signal") return true;
-  for (const [key2, child] of Object.entries(o)) {
-    if (SKIP_KEYS2.has(key2)) continue;
+  for (const [key3, child] of Object.entries(o)) {
+    if (SKIP_KEYS2.has(key3)) continue;
     if (carriesSignal(child, depth + 1)) return true;
   }
   return false;
@@ -2571,30 +2571,30 @@ var VIZ_FLAG_KEYS = {
   maxFps: "stave.viz.maxFps",
   maxDpr: "stave.viz.maxDpr"
 };
-function read(key2) {
+function read(key3) {
   try {
     if (typeof localStorage === "undefined") return null;
-    return localStorage.getItem(key2);
+    return localStorage.getItem(key3);
   } catch {
     return null;
   }
 }
 __name(read, "read");
-function enabledByDefault(key2) {
-  return read(key2) !== "0";
+function enabledByDefault(key3) {
+  return read(key3) !== "0";
 }
 __name(enabledByDefault, "enabledByDefault");
-function optIn(key2) {
-  return read(key2) === "1";
+function optIn(key3) {
+  return read(key3) === "1";
 }
 __name(optIn, "optIn");
-function triState(key2) {
-  const v = read(key2);
+function triState(key3) {
+  const v = read(key3);
   return v === "1" ? true : v === "0" ? false : null;
 }
 __name(triState, "triState");
-function numFlag(key2) {
-  const n = Number(read(key2));
+function numFlag(key3) {
+  const n = Number(read(key3));
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 __name(numFlag, "numFlag");
@@ -3502,11 +3502,11 @@ __name(sanitizeAliasValue, "sanitizeAliasValue");
 function sanitizeStoredSignalAliases(raw) {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out = {};
-  for (const [key2, value] of Object.entries(raw)) {
-    if (!isNonEmptyString(key2)) continue;
+  for (const [key3, value] of Object.entries(raw)) {
+    if (!isNonEmptyString(key3)) continue;
     const legacy = sanitizeAliasValue(value);
     if (legacy != null) {
-      out[key2] = { [DEFAULT_VIZ_ENGINE]: legacy };
+      out[key3] = { [DEFAULT_VIZ_ENGINE]: legacy };
       continue;
     }
     if (value != null && typeof value === "object" && !Array.isArray(value)) {
@@ -3516,7 +3516,7 @@ function sanitizeStoredSignalAliases(raw) {
         const sv = sanitizeAliasValue(ev);
         if (sv != null) slot[eng] = sv;
       }
-      if (Object.keys(slot).length > 0) out[key2] = slot;
+      if (Object.keys(slot).length > 0) out[key3] = slot;
     }
   }
   return out;
@@ -3997,14 +3997,14 @@ function unquoteOffsets(node) {
     return;
   }
   const rec = node;
-  for (const key2 of Object.keys(rec)) {
-    if (key2 !== "location_") {
-      unquoteOffsets(rec[key2]);
+  for (const key3 of Object.keys(rec)) {
+    if (key3 !== "location_") {
+      unquoteOffsets(rec[key3]);
       continue;
     }
-    const loc = rec[key2];
+    const loc = rec[key3];
     if (typeof loc?.start?.offset === "number" && typeof loc.end?.offset === "number") {
-      rec[key2] = { start: { offset: loc.start.offset - 1 }, end: { offset: loc.end.offset - 1 } };
+      rec[key3] = { start: { offset: loc.start.offset - 1 }, end: { offset: loc.end.offset - 1 } };
     }
   }
 }
@@ -6175,13 +6175,13 @@ function parseNamedPickEntries(args, baseOffset, bindings, numbers) {
     if (colon < 0 && !shorthand) return null;
     const rawKey = shorthand ? part.value : part.value.slice(0, colon);
     const rawVal = shorthand ? part.value : part.value.slice(colon + 1);
-    const key2 = normalizePickKey(rawKey);
-    if (key2 == null) return null;
+    const key3 = normalizePickKey(rawKey);
+    if (key3 == null) return null;
     const keyStart = baseOffset + bodyOffsetInArgs + part.offset;
     const keyLoc = { start: keyStart, end: keyStart + rawKey.trim().length };
     const valOffset = shorthand ? keyStart : baseOffset + bodyOffsetInArgs + part.offset + colon + 1;
     const pattern = parseArrayLiteralElement(rawVal, "note", valOffset, bindings, numbers);
-    entries3.push({ key: key2, pattern, keyLoc });
+    entries3.push({ key: key3, pattern, keyLoc });
   }
   return entries3;
 }
@@ -6387,16 +6387,16 @@ function accumulateLanesInWindow(events, originCycle, spanCycles, pinnedLaneKeys
   const span = Math.max(0, Math.floor(Number.isFinite(spanCycles) ? spanCycles : 0));
   const order = [];
   const byLane = /* @__PURE__ */ new Map();
-  const ensure = /* @__PURE__ */ __name((key2) => {
-    let counts = byLane.get(key2);
+  const ensure = /* @__PURE__ */ __name((key3) => {
+    let counts = byLane.get(key3);
     if (!counts) {
       counts = new Array(span).fill(0);
-      byLane.set(key2, counts);
-      order.push(key2);
+      byLane.set(key3, counts);
+      order.push(key3);
     }
     return counts;
   }, "ensure");
-  if (pinnedLaneKeys) for (const key2 of pinnedLaneKeys) ensure(key2);
+  if (pinnedLaneKeys) for (const key3 of pinnedLaneKeys) ensure(key3);
   for (const ev of events) {
     const cycle = Math.floor(ev.begin);
     if (!Number.isFinite(cycle) || cycle < origin || cycle >= origin + span) continue;
@@ -6447,11 +6447,11 @@ __name(detectDisplayPeriod, "detectDisplayPeriod");
 function eventsByLane(events) {
   const byLane = /* @__PURE__ */ new Map();
   for (const ev of events) {
-    const key2 = laneKeyOf(ev);
-    let bucket2 = byLane.get(key2);
+    const key3 = laneKeyOf(ev);
+    let bucket2 = byLane.get(key3);
     if (!bucket2) {
       bucket2 = [];
-      byLane.set(key2, bucket2);
+      byLane.set(key3, bucket2);
     }
     bucket2.push(ev);
   }
@@ -6510,10 +6510,10 @@ async function previewShapeSwap(ir, a, next, opts) {
   const standInPeriod = standInPeriodOf(a, next);
   const pastCap = !hasTruePeriod(next) && standInPeriod !== null && standInPeriod > DEFAULT_CAP;
   if (!pastCap && sharesItsControl(ir, a)) return null;
-  const key2 = a.paramKey;
+  const key3 = a.paramKey;
   return analyzeSong(ir, {
     ...opts,
-    collectFn: /* @__PURE__ */ __name((start, end) => collect2(start, end).map((ev) => laneKeyOf(ev) === a.trackId ? withValue(ev, key2, standIn(ev)) : ev), "collectFn"),
+    collectFn: /* @__PURE__ */ __name((start, end) => collect2(start, end).map((ev) => laneKeyOf(ev) === a.trackId ? withValue(ev, key3, standIn(ev)) : ev), "collectFn"),
     signals: signalDimensionsOf(ir, { at, kind: next })
   });
 }
@@ -6541,10 +6541,10 @@ function standInFor(a, next) {
   };
 }
 __name(standInFor, "standInFor");
-function withValue(ev, key2, value) {
+function withValue(ev, key3, value) {
   const rec = ev;
-  if (rec[key2] !== void 0) return { ...rec, [key2]: value };
-  if (ev.params && key2 in ev.params) return { ...ev, params: { ...ev.params, [key2]: value } };
+  if (rec[key3] !== void 0) return { ...rec, [key3]: value };
+  if (ev.params && key3 in ev.params) return { ...ev, params: { ...ev.params, [key3]: value } };
   return ev;
 }
 __name(withValue, "withValue");
@@ -6579,12 +6579,12 @@ function spanCoversEveryLane(events, period) {
   const inSpan = /* @__PURE__ */ new Set();
   const all = /* @__PURE__ */ new Set();
   for (const ev of events) {
-    const key2 = laneKeyOf(ev);
-    all.add(key2);
+    const key3 = laneKeyOf(ev);
+    all.add(key3);
     const cycle = Math.floor(ev.begin);
-    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period) inSpan.add(key2);
+    if (Number.isFinite(cycle) && cycle >= 0 && cycle < period) inSpan.add(key3);
   }
-  for (const key2 of all) if (!inSpan.has(key2)) return false;
+  for (const key3 of all) if (!inSpan.has(key3)) return false;
   return true;
 }
 __name(spanCoversEveryLane, "spanCoversEveryLane");
@@ -7340,26 +7340,26 @@ function validateNode(raw, path) {
   }
 }
 __name(validateNode, "validateNode");
-function requireField(node, key2, types, path) {
-  if (!(key2 in node)) {
-    throw new Error(`${path}: missing field "${key2}"`);
+function requireField(node, key3, types, path) {
+  if (!(key3 in node)) {
+    throw new Error(`${path}: missing field "${key3}"`);
   }
-  if (!types.includes(typeof node[key2])) {
+  if (!types.includes(typeof node[key3])) {
     throw new Error(
-      `${path}: field "${key2}" must be ${types.join(" or ")}, got ${typeof node[key2]}`
+      `${path}: field "${key3}" must be ${types.join(" or ")}, got ${typeof node[key3]}`
     );
   }
 }
 __name(requireField, "requireField");
-function requireArray(node, key2, path) {
-  if (!(key2 in node) || !Array.isArray(node[key2])) {
-    throw new Error(`${path}: field "${key2}" must be an array`);
+function requireArray(node, key3, path) {
+  if (!(key3 in node) || !Array.isArray(node[key3])) {
+    throw new Error(`${path}: field "${key3}" must be an array`);
   }
 }
 __name(requireArray, "requireArray");
-function requireObject(node, key2, path) {
-  if (!(key2 in node) || typeof node[key2] !== "object" || node[key2] === null || Array.isArray(node[key2])) {
-    throw new Error(`${path}: field "${key2}" must be an object`);
+function requireObject(node, key3, path) {
+  if (!(key3 in node) || typeof node[key3] !== "object" || node[key3] === null || Array.isArray(node[key3])) {
+    throw new Error(`${path}: field "${key3}" must be an object`);
   }
 }
 __name(requireObject, "requireObject");
@@ -7721,12 +7721,12 @@ function paletteForTrack(trackIndex, sampleHint) {
   return TRACK_PALETTE_32[slot];
 }
 __name(paletteForTrack, "paletteForTrack");
-function colorForTrack(key2) {
-  return paletteForTrack(trackIndexOf(key2), key2);
+function colorForTrack(key3) {
+  return paletteForTrack(trackIndexOf(key3), key3);
 }
 __name(colorForTrack, "colorForTrack");
-function trackIdentity(key2, customColor) {
-  return { key: key2, name: key2, color: customColor ?? colorForTrack(key2) };
+function trackIdentity(key3, customColor) {
+  return { key: key3, name: key3, color: customColor ?? colorForTrack(key3) };
 }
 __name(trackIdentity, "trackIdentity");
 
@@ -8263,6 +8263,89 @@ function clampPartAtOnset(lanes, part, column) {
 }
 __name(clampPartAtOnset, "clampPartAtOnset");
 var lookOnlyLine = /* @__PURE__ */ __name((l) => `Look only \u2014 ${l.reason}. Edit it in the code.`, "lookOnlyLine");
+
+// src/codeView/strudelMini/joined.ts
+var key = /* @__PURE__ */ __name((start, end) => `${start}:${end}`, "key");
+function placesOf(mini) {
+  const root = miniShape(mini);
+  const at = /* @__PURE__ */ new Map();
+  const group = /* @__PURE__ */ __name((g, written) => {
+    arg(g.steps);
+    for (const c of g.children) c.kind === "element" ? element(c, written) : group(c, written);
+  }, "group");
+  const element = /* @__PURE__ */ __name((e, written) => {
+    if (e.content.kind === "atom") at.set(key(e.content.span.start, e.content.span.end), { atom: e.content, written });
+    else group(e.content, written);
+    for (const op of e.ops) for (const a of Object.values(op.args)) arg(a);
+  }, "element");
+  const arg = /* @__PURE__ */ __name((a) => {
+    if (!a || typeof a !== "object") return;
+    if (a.kind === "atom") at.set(key(a.span.start, a.span.end), { atom: a, written: false });
+    else if (a.kind === "element") element(a, false);
+    else group(a, false);
+  }, "arg");
+  group(root, true);
+  return { root, at };
+}
+__name(placesOf, "placesOf");
+var PLACES = /* @__PURE__ */ new WeakMap();
+function tight(mini, span) {
+  let s = span.start;
+  let e = span.end;
+  while (s < e && /\s/.test(mini[s])) s++;
+  while (e > s && /\s/.test(mini[e - 1])) e--;
+  return key(s, e);
+}
+__name(tight, "tight");
+function joinHit(hit, mini, places) {
+  const written = [];
+  const args = [];
+  const strays = [];
+  for (const loc of hit.locations) {
+    const found = places.at.get(key(loc.start, loc.end)) ?? places.at.get(tight(mini, loc));
+    if (!found) strays.push(loc);
+    else if (found.written) written.push(found.atom);
+    else args.push(found.atom);
+  }
+  if (written.length === 1) return { hit, atom: written[0], why: null, args, strays };
+  const why = hit.locations.length === 0 ? "no-location" : written.length === 0 ? "no-written-atom" : "several-written-atoms";
+  return { hit, atom: null, why, args, strays };
+}
+__name(joinHit, "joinHit");
+function notesIn(node, out) {
+  if (node.kind === "atom") out.push(node);
+  else if (node.kind === "element") notesIn(node.content, out);
+  else for (const c of node.children) notesIn(c, out);
+  return out;
+}
+__name(notesIn, "notesIn");
+function joinedCycle(pat, cyc) {
+  let places = PLACES.get(pat);
+  if (!places) PLACES.set(pat, places = placesOf(pat.mini));
+  const hits = pat.hits(cyc).map((h) => joinHit(h, pat.mini, places));
+  let byAtom = null;
+  const index = /* @__PURE__ */ __name(() => {
+    if (byAtom) return byAtom;
+    byAtom = /* @__PURE__ */ new Map();
+    for (const j of hits) {
+      if (!j.atom) continue;
+      const list = byAtom.get(j.atom);
+      if (list) list.push(j);
+      else byAtom.set(j.atom, [j]);
+    }
+    return byAtom;
+  }, "index");
+  return {
+    root: places.root,
+    hits,
+    of(node) {
+      if (node.kind === "atom") return index().get(node) ?? [];
+      const mine = new Set(notesIn(node, []));
+      return hits.filter((j) => j.atom !== null && mine.has(j.atom));
+    }
+  };
+}
+__name(joinedCycle, "joinedCycle");
 function spansOf(hap) {
   const out = [];
   for (const l of hap.context?.locations ?? []) {
@@ -8641,20 +8724,20 @@ function spliceByLeaf(model, ls) {
     if (added.length > 0 && !swap) {
       const rest = ls.rests?.[c];
       if (rest && anchors.length === 0 && added.length === 1 && after.length === 1) {
-        const key2 = `${rest.start}:${rest.end}`;
-        const prev = want.get(key2);
+        const key3 = `${rest.start}:${rest.end}`;
+        const prev = want.get(key3);
         if (prev && prev.text !== added[0]) return null;
-        want.set(key2, { span: rest, text: added[0] });
+        want.set(key3, { span: rest, text: added[0] });
         continue;
       }
       return null;
     }
     for (const a of anchors) {
       const text = swap ? added[0] : gone.includes(a.atom) ? "~" : a.atom;
-      const key2 = `${a.span.start}:${a.span.end}`;
-      const prev = want.get(key2);
+      const key3 = `${a.span.start}:${a.span.end}`;
+      const prev = want.get(key3);
       if (prev && prev.text !== text) return null;
-      want.set(key2, { span: a.span, text });
+      want.set(key3, { span: a.span, text });
     }
   }
   const edits = [...want.values()].filter(
@@ -8691,10 +8774,10 @@ function spliceRollByLeaf(model, ls) {
     if (added.length > 0 && !swap) return null;
     for (const a of anchors) {
       const text = swap ? added[0] : gone.includes(a.pitch) ? "~" : ls.src.slice(a.span.start, a.span.end);
-      const key2 = `${a.span.start}:${a.span.end}`;
-      const prev = want.get(key2);
+      const key3 = `${a.span.start}:${a.span.end}`;
+      const prev = want.get(key3);
       if (prev && prev.text !== text) return null;
-      want.set(key2, { span: a.span, text });
+      want.set(key3, { span: a.span, text });
     }
   }
   const edits = [...want.values()].filter(
@@ -9275,10 +9358,10 @@ function laneWrapRegion(notes, from, to, div) {
   for (const n of [...notes].sort((a, b) => a.start - b.start)) {
     const start = n.start - from;
     if (start < 0 || n.duration < 1 || start + n.duration > width) return null;
-    const key2 = `${start}:${n.duration}`;
-    const g = byKey.get(key2);
+    const key3 = `${start}:${n.duration}`;
+    const g = byKey.get(key3);
     if (g) g.pitches.push(n.pitch);
-    else byKey.set(key2, { pitches: [n.pitch], start, duration: n.duration });
+    else byKey.set(key3, { pitches: [n.pitch], start, duration: n.duration });
   }
   const lanes = packLanes([...byKey.values()]);
   if (lanes.length < 2) return null;
@@ -9318,10 +9401,10 @@ function placedGroups(model) {
     if (note.start < 0 || note.duration < 1 || note.start + note.duration > model.steps) {
       return null;
     }
-    const key2 = `${note.start}:${note.duration}`;
-    const g = byKey.get(key2);
+    const key3 = `${note.start}:${note.duration}`;
+    const g = byKey.get(key3);
     if (g) g.pitches.push(note.pitch);
-    else byKey.set(key2, { pitches: [note.pitch], start: note.start, duration: note.duration });
+    else byKey.set(key3, { pitches: [note.pitch], start: note.start, duration: note.duration });
   }
   return [...byKey.values()];
 }
@@ -9438,10 +9521,10 @@ function rollBarLanes(model, bounds) {
     if (over.every((n) => n.start > barStart - E && n.start + n.duration < barEnd + E)) {
       const byKey = /* @__PURE__ */ new Map();
       for (const n of over) {
-        const key2 = `${n.start - barStart}:${n.duration}`;
-        const g = byKey.get(key2);
+        const key3 = `${n.start - barStart}:${n.duration}`;
+        const g = byKey.get(key3);
         if (g) g.pitches.push(n.pitch);
-        else byKey.set(key2, { pitches: [n.pitch], start: n.start - barStart, duration: n.duration });
+        else byKey.set(key3, { pitches: [n.pitch], start: n.start - barStart, duration: n.duration });
       }
       const strings = [];
       for (const lane of packLanes([...byKey.values()])) {
@@ -10120,7 +10203,7 @@ function gridLookOnly(gate, perCycle, perBar2, bars) {
   };
 }
 __name(gridLookOnly, "gridLookOnly");
-function playedBars(pat, read5, key2, cap) {
+function playedBars(pat, read5, key3, cap) {
   const cycles = [];
   for (let c = 0; c < PERIOD_PROBE; c++) {
     const cc = read5(pat, c);
@@ -10128,7 +10211,7 @@ function playedBars(pat, read5, key2, cap) {
     cycles.push(cc.onsets);
   }
   if (cycles.every((c) => c.length === 0)) return no("no-note-content");
-  const period = detectPeriod(cycles.map(key2));
+  const period = detectPeriod(cycles.map(key3));
   if (period === null || period > cap) return no("unstable-period");
   return { ok: true, perCycle: cycles.slice(0, period) };
 }
@@ -10166,11 +10249,10 @@ function topLevelSpans(src) {
   return out;
 }
 __name(topLevelSpans, "topLevelSpans");
-function leafLoc(h) {
-  const l = h.locations[0];
-  return l ? { start: l.start, end: l.end } : null;
+function noteSpan(atom) {
+  return atom ? { start: atom.span.start, end: atom.span.end } : null;
 }
-__name(leafLoc, "leafLoc");
+__name(noteSpan, "noteSpan");
 function tailToken(v) {
   if (v.length < 2) return null;
   if (!v.every((p) => typeof p === "string" || typeof p === "number")) return null;
@@ -10203,12 +10285,12 @@ __name(gridOnsets, "gridOnsets");
 function readGridOnsets(pat, cyc) {
   let haps;
   try {
-    haps = pat.hits(cyc);
+    haps = joinedCycle(pat, cyc).hits;
   } catch {
     return no("no-note-content");
   }
   const byCol = /* @__PURE__ */ new Map();
-  for (const h of haps) {
+  for (const { hit: h, atom } of haps) {
     const v = h.value;
     let token;
     if (typeof v === "string") token = v;
@@ -10222,14 +10304,14 @@ function readGridOnsets(pat, cyc) {
     } else return no("no-note-content");
     if (NUMERIC.test(token)) return no("wrong-surface");
     const pos = h.begin.valueOf() - cyc;
-    const key2 = Math.round(pos * ONSET_GRID);
-    const cell = byCol.get(key2) ?? [];
+    const key3 = Math.round(pos * ONSET_GRID);
+    const cell = byCol.get(key3) ?? [];
     cell.push({
       token,
-      span: leafLoc(h),
+      span: noteSpan(atom),
       dur: h.end.valueOf() - h.begin.valueOf()
     });
-    byCol.set(key2, cell);
+    byCol.set(key3, cell);
   }
   return {
     ok: true,
@@ -11070,12 +11152,12 @@ __name(rollOnsets, "rollOnsets");
 function readRollOnsets(pat, cyc) {
   let haps;
   try {
-    haps = pat.hits(cyc);
+    haps = joinedCycle(pat, cyc).hits;
   } catch {
     return no("no-note-content");
   }
   const out = [];
-  for (const h of haps) {
+  for (const { hit: h, atom } of haps) {
     const v = h.value;
     let pitch;
     let numeric;
@@ -11096,7 +11178,7 @@ function readRollOnsets(pat, cyc) {
     const pos = h.begin.valueOf() - cyc;
     const dur = h.end.valueOf() - h.begin.valueOf();
     if (dur <= 0) return no("no-note-content");
-    out.push({ pos, dur, pitch, numeric, loc: leafLoc(h) });
+    out.push({ pos, dur, pitch, numeric, loc: noteSpan(atom) });
   }
   return { ok: true, onsets: out };
 }
@@ -12086,12 +12168,12 @@ __name(routeSurface, "routeSurface");
 var CACHE_CAP = 32;
 var routed = /* @__PURE__ */ new Map();
 function memoised(headFn, mini, compute) {
-  const key2 = `${headFn}\0${mini}`;
-  const hit = routed.get(key2);
+  const key3 = `${headFn}\0${mini}`;
+  const hit = routed.get(key3);
   if (hit !== void 0) return hit;
   const answer = compute(mini);
   if (routed.size >= CACHE_CAP) routed.clear();
-  routed.set(key2, answer);
+  routed.set(key3, answer);
   return answer;
 }
 __name(memoised, "memoised");
@@ -12140,9 +12222,9 @@ __name(isCombinatorCall, "isCombinatorCall");
 function walk2(node, visit) {
   if (!node || typeof node !== "object") return;
   if (typeof node.type === "string" && typeof node.start === "number") visit(node);
-  for (const key2 of Object.keys(node)) {
-    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
-    const child = node[key2];
+  for (const key3 of Object.keys(node)) {
+    if (key3 === "type" || key3 === "start" || key3 === "end") continue;
+    const child = node[key3];
     if (Array.isArray(child)) {
       for (const c of child) walk2(c, visit);
     } else if (child && typeof child === "object") {
@@ -12369,9 +12451,9 @@ function splitArm(doc, call, i, firstWeight) {
 }
 __name(splitArm, "splitArm");
 var NOT_A_NAME = "__proto__";
-function walk3(node, parent, key2, visit) {
+function walk3(node, parent, key3, visit) {
   if (!node || typeof node !== "object") return;
-  if (typeof node.type === "string" && typeof node.start === "number") visit(node, parent, key2);
+  if (typeof node.type === "string" && typeof node.start === "number") visit(node, parent, key3);
   for (const k of Object.keys(node)) {
     if (k === "type" || k === "start" || k === "end") continue;
     const child = node[k];
@@ -12391,26 +12473,26 @@ function parseProgram2(doc) {
   }
 }
 __name(parseProgram2, "parseProgram");
-function isNonReference(node, parent, key2) {
+function isNonReference(node, parent, key3) {
   if (!parent) return false;
-  if (parent.type === "Property" && key2 === "key" && !parent.computed) return true;
-  if (parent.type === "MemberExpression" && key2 === "property" && !parent.computed) return true;
-  if (parent.type === "LabeledStatement" && key2 === "label") return true;
+  if (parent.type === "Property" && key3 === "key" && !parent.computed) return true;
+  if (parent.type === "MemberExpression" && key3 === "property" && !parent.computed) return true;
+  if (parent.type === "LabeledStatement" && key3 === "label") return true;
   if (parent.type === "BreakStatement" || parent.type === "ContinueStatement") return true;
-  if ((parent.type === "MethodDefinition" || parent.type === "PropertyDefinition") && key2 === "key" && !parent.computed) {
+  if ((parent.type === "MethodDefinition" || parent.type === "PropertyDefinition") && key3 === "key" && !parent.computed) {
     return true;
   }
   return false;
 }
 __name(isNonReference, "isNonReference");
-function isBindingIntroduction(parent, key2) {
+function isBindingIntroduction(parent, key3) {
   if (!parent) return false;
-  if (parent.type === "VariableDeclarator" && key2 === "id") return true;
-  if ((parent.type === "FunctionDeclaration" || parent.type === "FunctionExpression" || parent.type === "ClassDeclaration") && key2 === "id") {
+  if (parent.type === "VariableDeclarator" && key3 === "id") return true;
+  if ((parent.type === "FunctionDeclaration" || parent.type === "FunctionExpression" || parent.type === "ClassDeclaration") && key3 === "id") {
     return true;
   }
-  if (key2 === "params") return true;
-  if (parent.type === "ArrowFunctionExpression" && key2 === "params") return true;
+  if (key3 === "params") return true;
+  if (parent.type === "ArrowFunctionExpression" && key3 === "params") return true;
   return false;
 }
 __name(isBindingIntroduction, "isBindingIntroduction");
@@ -12446,16 +12528,16 @@ function analyze(doc, oldName, newName) {
   let declarations = 0;
   let introductions = 0;
   let newNameSeen = false;
-  walk3(program, null, null, (node, parent, key2) => {
+  walk3(program, null, null, (node, parent, key3) => {
     if (node.type !== "Identifier") return;
     if (newName != null && node.name === newName) {
       newNameSeen = true;
       return;
     }
     if (node.name !== oldName) return;
-    if (isNonReference(node, parent, key2)) return;
+    if (isNonReference(node, parent, key3)) return;
     const shorthand = parent?.type === "Property" && parent.shorthand === true;
-    if (isBindingIntroduction(parent, key2)) {
+    if (isBindingIntroduction(parent, key3)) {
       introductions++;
       const isTopLevelVar = parent.type === "VariableDeclarator" && program.body.some(
         (st) => st.type === "VariableDeclaration" && st.declarations.some((d) => d === parent)
@@ -12937,9 +13019,9 @@ var rollReadsBack = /* @__PURE__ */ __name((next) => {
   }
   if (back.model.steps !== next.steps) return false;
   if (back.model.notes.length !== next.notes.length) return false;
-  const key2 = /* @__PURE__ */ __name((n) => `${n.pitch}@${n.start}+${n.duration}`, "key");
-  const meant = next.notes.map(key2).sort();
-  const got = back.model.notes.map(key2).sort();
+  const key3 = /* @__PURE__ */ __name((n) => `${n.pitch}@${n.start}+${n.duration}`, "key");
+  const meant = next.notes.map(key3).sort();
+  const got = back.model.notes.map(key3).sort();
   return meant.every((s, i) => s === got[i]);
 }, "rollReadsBack");
 function resizeNote(model, start, pitch, duration, opts = {}) {
@@ -13074,9 +13156,9 @@ function resizeRoll(model, nextSteps, mode) {
     ...model,
     steps: nextSteps,
     notes: scaled2.filter((n) => {
-      const key2 = `${n.pitch}@${n.start}`;
-      if (seen.has(key2)) return false;
-      seen.add(key2);
+      const key3 = `${n.pitch}@${n.start}`;
+      if (seen.has(key3)) return false;
+      seen.add(key3);
       return true;
     })
   });
@@ -13263,9 +13345,9 @@ __name(isPickCall, "isPickCall");
 function walk4(node, visit) {
   if (!node || typeof node !== "object") return;
   if (typeof node.type === "string" && typeof node.start === "number") visit(node);
-  for (const key2 of Object.keys(node)) {
-    if (key2 === "type" || key2 === "start" || key2 === "end") continue;
-    const child = node[key2];
+  for (const key3 of Object.keys(node)) {
+    if (key3 === "type" || key3 === "start" || key3 === "end") continue;
+    const child = node[key3];
     if (Array.isArray(child)) for (const c of child) walk4(c, visit);
     else if (child && typeof child === "object") walk4(child, visit);
   }
@@ -13345,15 +13427,15 @@ function collectSectionEntries(node) {
   const entries3 = [];
   for (const prop of arg.properties ?? []) {
     if (prop.type !== "Property" || prop.kind !== "init" || prop.computed) continue;
-    const key2 = prop.key;
+    const key3 = prop.key;
     let name = null;
-    if (key2?.type === "Identifier") name = key2.name;
-    else if (key2?.type === "Literal" && typeof key2.value === "string") name = key2.value;
-    else if (key2?.type === "Literal" && typeof key2.value === "number") name = String(key2.value);
+    if (key3?.type === "Identifier") name = key3.name;
+    else if (key3?.type === "Literal" && typeof key3.value === "string") name = key3.value;
+    else if (key3?.type === "Literal" && typeof key3.value === "number") name = String(key3.value);
     if (name == null) continue;
     entries3.push({
       key: name,
-      keyRange: [key2.start, key2.end],
+      keyRange: [key3.start, key3.end],
       shorthand: prop.shorthand === true
     });
   }
@@ -13440,10 +13522,10 @@ function silenceArm2(doc, control, i) {
 }
 __name(silenceArm2, "silenceArm");
 var SELECTOR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-function setArmHead(doc, control, i, key2) {
+function setArmHead(doc, control, i, key3) {
   const arm = control.arms[i];
   if (!arm) return [];
-  const next = key2.trim();
+  const next = key3.trim();
   if (!SELECTOR_NAME.test(next)) return [];
   if (!control.entries.some((e) => e.key === next)) return [];
   if (headText(doc, control, i) === next) return [];
@@ -13606,8 +13688,8 @@ function declaredOnly(loc, declared) {
 __name(declaredOnly, "declaredOnly");
 function findMatchedEvent(loc, begin, locLookup) {
   if (!locLookup || !loc || loc.length === 0) return void 0;
-  const key2 = `${loc[0].start}:${loc[0].end}`;
-  const candidates = locLookup.get(key2);
+  const key3 = `${loc[0].start}:${loc[0].end}`;
+  const candidates = locLookup.get(key3);
   if (!candidates || candidates.length === 0) return void 0;
   let best = candidates[0];
   let bestDist = Math.abs(best.begin - begin);
@@ -14100,8 +14182,8 @@ function dedupeKey(p) {
 }
 __name(dedupeKey, "dedupeKey");
 function emitLog(partial) {
-  const key2 = dedupeKey(partial);
-  const existing = dedupeIndex.get(key2);
+  const key3 = dedupeKey(partial);
+  const existing = dedupeIndex.get(key3);
   if (existing) {
     existing.ts = Date.now();
     existing.count = (existing.count ?? 1) + 1;
@@ -14122,7 +14204,7 @@ function emitLog(partial) {
     ...partial
   };
   history.push(entry);
-  dedupeIndex.set(key2, entry);
+  dedupeIndex.set(key3, entry);
   if (history.length > MAX_HISTORY) {
     const removed = history.splice(0, history.length - MAX_HISTORY);
     for (const r of removed) {
@@ -14353,7 +14435,7 @@ function roomChangeTimes(haps, cps) {
     const orbit = v.orbit ?? 1;
     const ir = v.ir === void 0 ? void 0 : `${String(v.ir)}:${String(v.i ?? 0)}`;
     const room = rooms.get(orbit);
-    const changed = room !== void 0 && (room.ir !== ir || ROOM_SHAPE_KEYS.some((key2) => v[key2] !== void 0 && v[key2] !== room[key2]));
+    const changed = room !== void 0 && (room.ir !== ir || ROOM_SHAPE_KEYS.some((key3) => v[key3] !== void 0 && v[key3] !== room[key3]));
     if (room === void 0 || changed) rooms.set(orbit, builtRoom(v, ir));
     if (changed) times.push(hap.whole.begin.valueOf() / cps);
   }
@@ -14407,15 +14489,15 @@ async function renderStemsInOrder(stems, render, onProgress, cancel) {
   const keys = Object.keys(stems);
   const outcomes = {};
   for (let i = 0; i < keys.length; i++) {
-    const key2 = keys[i];
+    const key3 = keys[i];
     if (cancel?.signal.aborted) throw cancel.error();
     try {
-      outcomes[key2] = { ok: true, ...await render(stems[key2], key2, i) };
+      outcomes[key3] = { ok: true, ...await render(stems[key3], key3, i) };
     } catch (error) {
       if (cancel?.signal.aborted) throw error;
-      outcomes[key2] = { ok: false, error };
+      outcomes[key3] = { ok: false, error };
     }
-    onProgress?.(key2, i + 1, keys.length);
+    onProgress?.(key3, i + 1, keys.length);
   }
   return outcomes;
 }
@@ -14549,8 +14631,8 @@ function playsAtDisplayRate(value) {
   if (typeof s !== "string" || !OSCILLATORS.has(s)) return false;
   if (v.bank != null || v.ir != null || v.iresponse != null) return false;
   if (v.noise != null && v.noise !== 0) return false;
-  for (const key2 in v) {
-    const x = v[key2];
+  for (const key3 in v) {
+    const x = v[key3];
     if (typeof x === "string" && NOISES.has(x)) return false;
   }
   return true;
@@ -14858,8 +14940,8 @@ function scanVizRequestLines(requests, code, vizOptions) {
     const isAnon = raw.trim().startsWith("$:");
     const namedMatch = isAnon ? null : LABEL_HEAD.exec(raw);
     if (!isAnon && !namedMatch) continue;
-    const key2 = isAnon ? `$${anonIndex++}` : namedMatch[1];
-    const vizId = requests.get(key2);
+    const key3 = isAnon ? `$${anonIndex++}` : namedMatch[1];
+    const vizId = requests.get(key3);
     if (!vizId) continue;
     let lastLineIdx = i;
     for (let j = i + 1; j < lines.length; j++) {
@@ -14869,8 +14951,8 @@ function scanVizRequestLines(requests, code, vizOptions) {
     }
     const blockLines = lines.slice(i, lastLineIdx + 1).join(" ").replace(/\s+/g, " ").trim();
     const contentHash = blockLines.slice(0, 120);
-    const options = vizOptions?.get(key2);
-    result.set(key2, {
+    const options = vizOptions?.get(key3);
+    result.set(key3, {
       vizId,
       afterLine: lastLineIdx + 1,
       contentHash,
@@ -15003,11 +15085,11 @@ function bridgeAudioExtensions(page, frame) {
     const mine = page[name]?.prototype;
     const theirs = frame[name]?.prototype;
     if (mine == null || theirs == null || mine === theirs) continue;
-    for (const key2 of Object.getOwnPropertyNames(mine)) {
-      if (Object.prototype.hasOwnProperty.call(theirs, key2)) continue;
-      const descriptor = Object.getOwnPropertyDescriptor(mine, key2);
+    for (const key3 of Object.getOwnPropertyNames(mine)) {
+      if (Object.prototype.hasOwnProperty.call(theirs, key3)) continue;
+      const descriptor = Object.getOwnPropertyDescriptor(mine, key3);
       if (descriptor == null) continue;
-      Object.defineProperty(theirs, key2, descriptor);
+      Object.defineProperty(theirs, key3, descriptor);
       copied++;
     }
   }
@@ -15221,9 +15303,9 @@ function buildAliasSuffix(missingName, ctx) {
     const seen = /* @__PURE__ */ new Set();
     const lines = [];
     for (const r of ctx.resolutions) {
-      const key2 = `${r.from}\u2192${r.to}`;
-      if (seen.has(key2)) continue;
-      seen.add(key2);
+      const key3 = `${r.from}\u2192${r.to}`;
+      if (seen.has(key3)) continue;
+      seen.add(key3);
       lines.push(`\`${r.from}\` \u2192 \`${r.to}\``);
     }
     parts.push(`tried alias ${lines.join(", ")}`);
@@ -17470,8 +17552,8 @@ var _SignalBus = class _SignalBus {
     const end = now2 + EPSILON;
     this.activeEvents = this.scheduler ? this.scheduler.query(begin, end) : [];
     this.activeByTrack.clear();
-    for (const [key2, sched] of this.trackSchedulers) {
-      this.activeByTrack.set(key2, sched.query(begin, end));
+    for (const [key3, sched] of this.trackSchedulers) {
+      this.activeByTrack.set(key3, sched.query(begin, end));
     }
   }
   /** Current scheduler time (mirror `H()`'s `sched.now()`), 0 in demo mode. */
@@ -17505,11 +17587,11 @@ var _SignalBus = class _SignalBus {
   audioFor(soundOrAlias) {
     const resolved = new Set(this.resolveSounds(soundOrAlias));
     let onlyKey = null;
-    for (const [key2, events] of this.activeByTrack) {
+    for (const [key3, events] of this.activeByTrack) {
       const hit = events.some((e) => e.s != null && resolved.has(e.s));
       if (!hit) continue;
       if (onlyKey != null) return this.masterAnalyser;
-      onlyKey = key2;
+      onlyKey = key3;
     }
     if (onlyKey != null) {
       const isolated = this.trackAnalysers.get(onlyKey);
@@ -17695,8 +17777,8 @@ function buildStaveUniforms(bus, onTick) {
   sig.track = (id) => bus.track(id);
   Object.defineProperty(sig, "tracks", { get: /* @__PURE__ */ __name(() => bus.tracks, "get"), enumerable: true });
   Object.defineProperty(sig, "sounds", { get: /* @__PURE__ */ __name(() => bus.sounds, "get"), enumerable: true });
-  const env = /* @__PURE__ */ __name((key2) => ({
-    get: /* @__PURE__ */ __name(() => bus.envValue(key2), "get"),
+  const env = /* @__PURE__ */ __name((key3) => ({
+    get: /* @__PURE__ */ __name(() => bus.envValue(key3), "get"),
     enumerable: true
   }), "env");
   Object.defineProperty(sig, "kick", env("uKick"));
@@ -17957,7 +18039,7 @@ function summariseEvent(e) {
   return { s: e.s, velocity: e.velocity, note: e.note, color: e.color };
 }
 __name(summariseEvent, "summariseEvent");
-function readAnalyserBytes(key2, an) {
+function readAnalyserBytes(key3, an) {
   const n = an.frequencyBinCount | 0;
   if (n <= 0) return null;
   perf.inc("viz.sample.analyserReads");
@@ -17968,7 +18050,7 @@ function readAnalyserBytes(key2, an) {
   an.getByteFrequencyData(freq);
   an.getByteTimeDomainData(time);
   return {
-    key: key2,
+    key: key3,
     frequencyBinCount: n,
     freq,
     time,
@@ -18034,19 +18116,19 @@ var _MainSignalSampler = class _MainSignalSampler {
     const activeEvents = scheduler ? queryAt(scheduler, begin, end).map(summariseEvent) : [];
     const activeByTrack = [];
     if (trackSchedulers) {
-      for (const [key2, sched] of trackSchedulers) {
-        activeByTrack.push([key2, queryAt(sched, begin, end).map(summariseEvent)]);
+      for (const [key3, sched] of trackSchedulers) {
+        activeByTrack.push([key3, queryAt(sched, begin, end).map(summariseEvent)]);
       }
     }
-    const readBytes = /* @__PURE__ */ __name((key2, an) => cache3 ? cache3.readAnalyser(key2, an, (a) => readAnalyserBytes(key2, a)) : readAnalyserBytes(key2, an), "readBytes");
+    const readBytes = /* @__PURE__ */ __name((key3, an) => cache3 ? cache3.readAnalyser(key3, an, (a) => readAnalyserBytes(key3, a)) : readAnalyserBytes(key3, an), "readBytes");
     const analysers = [];
     if (masterAnalyser) {
       const b = readBytes(MASTER_KEY, masterAnalyser);
       if (b) analysers.push(b);
     }
     if (trackAnalysers) {
-      for (const [key2, an] of trackAnalysers) {
-        const b = readBytes(key2, an);
+      for (const [key3, an] of trackAnalysers) {
+        const b = readBytes(key3, an);
         if (b) analysers.push(b);
       }
     }
@@ -18167,7 +18249,7 @@ var _FrameSampleCache = class _FrameSampleCache {
    * callers (a shared master, or the same node read under both `'master'` and its
    * track key) get a fresh-buffer slice of the cached bytes — no second FFT.
    */
-  readAnalyser(key2, an, read5) {
+  readAnalyser(key3, an, read5) {
     let raw;
     if (this.analyserReads.has(an)) {
       raw = this.analyserReads.get(an) ?? null;
@@ -18176,7 +18258,7 @@ var _FrameSampleCache = class _FrameSampleCache {
       this.analyserReads.set(an, raw);
     }
     if (raw === null) return null;
-    return { ...raw, key: key2, freq: raw.freq.slice(), time: raw.time.slice() };
+    return { ...raw, key: key3, freq: raw.freq.slice(), time: raw.time.slice() };
   }
   /**
    * Run `scheduler.query(a, b)` at most once this tick per (scheduler, window).
@@ -18458,9 +18540,9 @@ ${d.stack}` : "");
     if (!this.worker) return;
     this.bindSampler(components);
     const next = this.postOptions(components);
-    const key2 = stableKey(next);
-    if (key2 !== this.lastOptionsKey) {
-      this.lastOptionsKey = key2;
+    const key3 = stableKey(next);
+    if (key3 !== this.lastOptionsKey) {
+      this.lastOptionsKey = key3;
       this.worker.postMessage({ type: "options", options: next });
     }
   }
@@ -24836,8 +24918,8 @@ var LIGHT_THEME_TOKENS = {
 };
 function applyTheme(el, theme) {
   const tokens = theme === "dark" ? DARK_THEME_TOKENS : theme === "light" ? LIGHT_THEME_TOKENS : theme.tokens;
-  for (const [key2, value] of Object.entries(tokens)) {
-    el.style.setProperty(key2, value);
+  for (const [key3, value] of Object.entries(tokens)) {
+    el.style.setProperty(key3, value);
   }
 }
 __name(applyTheme, "applyTheme");
@@ -25274,9 +25356,9 @@ function ensureUndoManager() {
     if (inner instanceof Y3__namespace.Map) um.addToScope(inner);
   }
   const filesObserver = /* @__PURE__ */ __name((event) => {
-    for (const [key2, change] of event.changes.keys) {
+    for (const [key3, change] of event.changes.keys) {
       if (change.action === "add" || change.action === "update") {
-        const val = files.get(key2);
+        const val = files.get(key3);
         if (val instanceof Y3__namespace.Map) um.addToScope(val);
       }
     }
@@ -25424,18 +25506,18 @@ function ensureFilesMapObserver() {
     for (const event of events) {
       if (event.target === filesMap) {
         const mapEvent = event;
-        for (const [key2, change] of mapEvent.changes.keys) {
+        for (const [key3, change] of mapEvent.changes.keys) {
           if (change.action === "add" || change.action === "update") {
-            const fileMap = filesMap.get(key2);
+            const fileMap = filesMap.get(key3);
             const ytext = fileMap.get("content");
-            rebuildSnapshot(key2);
-            wireTextObserver(key2, ytext);
-            notify2(key2);
+            rebuildSnapshot(key3);
+            wireTextObserver(key3, ytext);
+            notify2(key3);
             anyStructuralChange = true;
           } else if (change.action === "delete") {
-            unwireTextObserver(key2);
-            cachedSnapshots.delete(key2);
-            notify2(key2);
+            unwireTextObserver(key3);
+            cachedSnapshots.delete(key3);
+            notify2(key3);
             anyStructuralChange = true;
           }
         }
@@ -25761,7 +25843,7 @@ function pruneZoneOverrides(fileId, currentViz) {
   }
   if (stale.length === 0) return;
   doc.transact(() => {
-    for (const key2 of stale) overrides.delete(key2);
+    for (const key3 of stale) overrides.delete(key3);
   }, PRUNE_ZONE_OVERRIDES_ORIGIN);
 }
 __name(pruneZoneOverrides, "pruneZoneOverrides");
@@ -25878,7 +25960,7 @@ function pruneTrackMeta(fileId, currentTrackIds) {
   if (stale.length === 0) return;
   const doc = ensureDoc();
   doc.transact(() => {
-    for (const key2 of stale) meta.delete(key2);
+    for (const key3 of stale) meta.delete(key3);
   }, PRUNE_TRACK_META_ORIGIN);
 }
 __name(pruneTrackMeta, "pruneTrackMeta");
@@ -31418,13 +31500,13 @@ function registeredProviderKeys(monaco) {
   return set2;
 }
 __name(registeredProviderKeys, "registeredProviderKeys");
-function ensureProviders(key2, monaco, register) {
+function ensureProviders(key3, monaco, register) {
   if (typeof monaco.languages?.registerCompletionItemProvider !== "function" || typeof monaco.languages?.registerHoverProvider !== "function") {
     return;
   }
   const registered = registeredProviderKeys(monaco);
-  if (registered.has(key2)) return;
-  registered.add(key2);
+  if (registered.has(key3)) return;
+  registered.add(key3);
   register(monaco);
 }
 __name(ensureProviders, "ensureProviders");
@@ -31574,8 +31656,8 @@ function useHighlighting(editor, hapStream) {
       return o;
     }, "translateOffset");
     const anchorRangeFor = /* @__PURE__ */ __name((model, start, end) => {
-      const key2 = `${start}:${end}`;
-      let anchor = anchorsRef.current.get(key2);
+      const key3 = `${start}:${end}`;
+      let anchor = anchorsRef.current.get(key3);
       if (!anchor) {
         anchor = editor.createDecorationsCollection([
           {
@@ -31588,7 +31670,7 @@ function useHighlighting(editor, hapStream) {
             // NeverGrowsWhenTypingAtEdges
           }
         ]);
-        anchorsRef.current.set(key2, anchor);
+        anchorsRef.current.set(key3, anchor);
       }
       return anchor.getRange(0);
     }, "anchorRangeFor");
@@ -31712,10 +31794,10 @@ function enrichWithLookups(snap) {
   for (const e of snap.events) {
     if (e.irNodeId) idLookup.set(e.irNodeId, e);
     if (e.loc && e.loc.length > 0) {
-      const key2 = `${e.loc[0].start}:${e.loc[0].end}`;
-      const arr = locLookup.get(key2);
+      const key3 = `${e.loc[0].start}:${e.loc[0].end}`;
+      const arr = locLookup.get(key3);
       if (arr) arr.push(e);
-      else locLookup.set(key2, [e]);
+      else locLookup.set(key3, [e]);
       if (e.irNodeId) {
         const line = countLines(snap.code, e.loc[0].start);
         const ids = lineLookup.get(line);
@@ -32123,9 +32205,9 @@ var _BufferedScheduler = class _BufferedScheduler {
       const cutoff = this.audioCtx.currentTime - this.maxAge;
       while (this.head < this.buffer.length && this.buffer[this.head].end < cutoff) {
         const old = this.buffer[this.head];
-        const key2 = old.s ?? "_default";
-        if (this.lastByInstrument.get(key2) === old) {
-          this.lastByInstrument.delete(key2);
+        const key3 = old.s ?? "_default";
+        if (this.lastByInstrument.get(key3) === old) {
+          this.lastByInstrument.delete(key3);
         }
         this.head++;
       }
@@ -33481,7 +33563,7 @@ async function deleteProjectHistory(projectId) {
     const keys = await requestResult(
       snapshots2.index("byProject").getAllKeys(IDBKeyRange.only(projectId))
     );
-    for (const key2 of keys) snapshots2.delete(key2);
+    for (const key3 of keys) snapshots2.delete(key3);
     await done;
   } finally {
     db.close();
@@ -34568,9 +34650,9 @@ function registerPreviewProvider(provider) {
 }
 __name(registerPreviewProvider, "registerPreviewProvider");
 function getPreviewProviderForExtension(extension) {
-  const key2 = normalizeExtension(extension);
-  if (!key2) return void 0;
-  return byExtension.get(key2);
+  const key3 = normalizeExtension(extension);
+  if (!key3) return void 0;
+  return byExtension.get(key3);
 }
 __name(getPreviewProviderForExtension, "getPreviewProviderForExtension");
 function getPreviewProviderForLanguage(language) {
@@ -35587,30 +35669,30 @@ function safeLocalStorage4() {
   }
 }
 __name(safeLocalStorage4, "safeLocalStorage");
-function safeGetItem(key2) {
+function safeGetItem(key3) {
   const ls = safeLocalStorage4();
   if (!ls) return null;
   try {
-    return ls.getItem(key2);
+    return ls.getItem(key3);
   } catch {
     return null;
   }
 }
 __name(safeGetItem, "safeGetItem");
-function safeSetItem(key2, value) {
+function safeSetItem(key3, value) {
   const ls = safeLocalStorage4();
   if (!ls) return;
   try {
-    ls.setItem(key2, value);
+    ls.setItem(key3, value);
   } catch {
   }
 }
 __name(safeSetItem, "safeSetItem");
-function safeRemoveItem(key2) {
+function safeRemoveItem(key3) {
   const ls = safeLocalStorage4();
   if (!ls) return;
   try {
-    ls.removeItem(key2);
+    ls.removeItem(key3);
   } catch {
   }
 }
@@ -35831,8 +35913,8 @@ function useGridModel(opts) {
   const patternKeyRef = React22__namespace.useRef(null);
   const patternKey = React22__namespace.useMemo(() => {
     if (!chunk) return patternKeyRef.current = null;
-    const key2 = keyOf(chunk.exprRange[0], chunk.miniString);
-    if (key2 !== ownEchoRef.current) patternKeyRef.current = key2;
+    const key3 = keyOf(chunk.exprRange[0], chunk.miniString);
+    if (key3 !== ownEchoRef.current) patternKeyRef.current = key3;
     return patternKeyRef.current;
   }, [chunk]);
   React22__namespace.useEffect(() => {
@@ -36182,22 +36264,22 @@ function useViewProver(mini, parse6) {
   });
   const parseRef = React22__namespace.useRef(parse6);
   parseRef.current = parse6;
-  const key2 = mini ?? null;
+  const key3 = mini ?? null;
   return React22__namespace.useCallback(
     (scale) => {
-      if (key2 == null) return false;
+      if (key3 == null) return false;
       const c = cacheRef.current;
-      if (c.mini !== key2) {
-        c.mini = key2;
+      if (c.mini !== key3) {
+        c.mini = key3;
         c.answers = /* @__PURE__ */ new Map();
       }
       const hit = c.answers.get(scale);
       if (hit !== void 0) return hit;
-      const answer = parseRef.current(key2, scale).ok;
+      const answer = parseRef.current(key3, scale).ok;
       c.answers.set(scale, answer);
       return answer;
     },
-    [key2]
+    [key3]
   );
 }
 __name(useViewProver, "useViewProver");
@@ -37362,9 +37444,9 @@ function usePatternLength(chunk, model, parse6, writeMini) {
   const cache3 = React22__namespace.useRef(null);
   const verdict = /* @__PURE__ */ __name(() => {
     if (mini === null || gain === null) return null;
-    const key2 = `${bars}|${velocity}|${mini}`;
-    if (cache3.current?.key !== key2) {
-      cache3.current = { key: key2, verdict: lengthenOffers(parseRef.current, mini, bars, gain) };
+    const key3 = `${bars}|${velocity}|${mini}`;
+    if (cache3.current?.key !== key3) {
+      cache3.current = { key: key3, verdict: lengthenOffers(parseRef.current, mini, bars, gain) };
     }
     return cache3.current.verdict;
   }, "verdict");
@@ -37443,16 +37525,16 @@ __name(isModifierOnlyKey, "isModifierOnlyKey");
 function keyToken(e, byPosition) {
   const fromCode = e.code ? tokenForCode(e.code) : "";
   if (byPosition && fromCode) return fromCode;
-  const key2 = e.key;
-  if (key2 === " ") return "space";
-  if (key2.length === 1) {
+  const key3 = e.key;
+  if (key3 === " ") return "space";
+  if (key3.length === 1) {
     const codeIsSymbolKey = /^Digit[0-9]$/.test(e.code) || e.code in PUNCTUATION_BY_CODE;
     if (e.shiftKey && codeIsSymbolKey) return fromCode;
-    if (PLAIN_LABEL.test(key2)) return key2 === "+" ? "plus" : key2.toLowerCase();
-    return fromCode || key2.toLowerCase();
+    if (PLAIN_LABEL.test(key3)) return key3 === "+" ? "plus" : key3.toLowerCase();
+    return fromCode || key3.toLowerCase();
   }
-  if (key2 === "Dead" || key2 === "Unidentified" || key2 === "") return fromCode || "unidentified";
-  return key2.toLowerCase();
+  if (key3 === "Dead" || key3 === "Unidentified" || key3 === "") return fromCode || "unidentified";
+  return key3.toLowerCase();
 }
 __name(keyToken, "keyToken");
 function chordFromEvent(e, opts = {}) {
@@ -37474,7 +37556,7 @@ var MODIFIER_ORDER = ["mod", "ctrl", "shift", "alt"];
 function normalizeChord(chord, opts = {}) {
   const isMac = opts.isMac ?? isMacPlatform();
   const mods = /* @__PURE__ */ new Set();
-  let key2 = "";
+  let key3 = "";
   for (const raw of chord.toLowerCase().split("+")) {
     let t = raw;
     if (t === "cmd" || t === "command" || t === "meta") t = "mod";
@@ -37482,13 +37564,13 @@ function normalizeChord(chord, opts = {}) {
     else if (t === "ctrl" && !isMac) t = "mod";
     else if (t === "option" || t === "opt") t = "alt";
     if (MODIFIER_ORDER.includes(t)) mods.add(t);
-    else if (t === " " || t === "spacebar") key2 = "space";
-    else if (t === "esc") key2 = "escape";
-    else if (t === "return") key2 = "enter";
-    else key2 = t;
+    else if (t === " " || t === "spacebar") key3 = "space";
+    else if (t === "esc") key3 = "escape";
+    else if (t === "return") key3 = "enter";
+    else key3 = t;
   }
-  if (mods.has("shift") && key2 in BASE_OF_SHIFTED) key2 = BASE_OF_SHIFTED[key2];
-  return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key2].join("+");
+  if (mods.has("shift") && key3 in BASE_OF_SHIFTED) key3 = BASE_OF_SHIFTED[key3];
+  return [...MODIFIER_ORDER.filter((m) => mods.has(m)), key3].join("+");
 }
 __name(normalizeChord, "normalizeChord");
 function chordMatches(eventChord, declared, opts = {}) {
@@ -41135,7 +41217,7 @@ var GM_FAMILY_KEYS = {
 var KEY_TO_FAMILY = (() => {
   const m = /* @__PURE__ */ new Map();
   for (const family of GM_FAMILY_ORDER) {
-    for (const key2 of GM_FAMILY_KEYS[family]) m.set(key2, family);
+    for (const key3 of GM_FAMILY_KEYS[family]) m.set(key3, family);
   }
   return m;
 })();
@@ -41232,11 +41314,11 @@ __name(groupSoundCatalog, "groupSoundCatalog");
 function banksFromDrumMachineManifest(manifest) {
   if (!manifest) return [];
   const banks = /* @__PURE__ */ new Set();
-  for (const key2 of Object.keys(manifest)) {
-    if (key2.startsWith("_")) continue;
-    const i = key2.lastIndexOf("_");
+  for (const key3 of Object.keys(manifest)) {
+    if (key3.startsWith("_")) continue;
+    const i = key3.lastIndexOf("_");
     if (i <= 0) continue;
-    banks.add(key2.slice(0, i));
+    banks.add(key3.slice(0, i));
   }
   return [...banks].sort();
 }
@@ -42756,10 +42838,10 @@ function PatternPanel() {
 __name(PatternPanel, "PatternPanel");
 var KEY_PREFIX = "stave:mixer.expanded:";
 var EMPTY2 = /* @__PURE__ */ new Set();
-function key(fileId) {
+function key2(fileId) {
   return KEY_PREFIX + fileId;
 }
-__name(key, "key");
+__name(key2, "key");
 function safeLocalStorage5() {
   try {
     if (typeof window === "undefined") return null;
@@ -42786,7 +42868,7 @@ function load(fileId) {
   const ls = safeLocalStorage5();
   if (!ls) return /* @__PURE__ */ new Set();
   try {
-    return parseExpanded(ls.getItem(key(fileId)));
+    return parseExpanded(ls.getItem(key2(fileId)));
   } catch {
     return /* @__PURE__ */ new Set();
   }
@@ -42806,7 +42888,7 @@ function persist(fileId, set2) {
   const ls = safeLocalStorage5();
   if (!ls) return;
   try {
-    ls.setItem(key(fileId), JSON.stringify([...set2]));
+    ls.setItem(key2(fileId), JSON.stringify([...set2]));
   } catch {
   }
 }
@@ -47357,9 +47439,9 @@ function registerRuntimeProvider(provider) {
 }
 __name(registerRuntimeProvider, "registerRuntimeProvider");
 function getRuntimeProviderForExtension(extension) {
-  const key2 = normalizeExtension2(extension);
-  if (!key2) return void 0;
-  return byExtension2.get(key2);
+  const key3 = normalizeExtension2(extension);
+  if (!key3) return void 0;
+  return byExtension2.get(key3);
 }
 __name(getRuntimeProviderForExtension, "getRuntimeProviderForExtension");
 function getRuntimeProviderForLanguage(language) {
@@ -48121,13 +48203,13 @@ var _WorkerBusFeed = class _WorkerBusFeed {
       if (a.key === MASTER_KEY) master = stub;
       else trackAnalysers.set(a.key, stub);
     }
-    for (const key2 of [...this.analysers.keys()]) {
-      if (!present.has(key2)) this.analysers.delete(key2);
+    for (const key3 of [...this.analysers.keys()]) {
+      if (!present.has(key3)) this.analysers.delete(key3);
     }
     const scheduler = makeSchedulerStub(frame.now, frame.activeEvents);
     const trackSchedulers = /* @__PURE__ */ new Map();
-    for (const [key2, events] of frame.activeByTrack) {
-      trackSchedulers.set(key2, makeSchedulerStub(frame.now, events));
+    for (const [key3, events] of frame.activeByTrack) {
+      trackSchedulers.set(key3, makeSchedulerStub(frame.now, events));
     }
     this.bus.bindScheduler(scheduler, trackSchedulers);
     this.bus.bindAnalysers(master, trackAnalysers);
@@ -48381,10 +48463,10 @@ function VizDropdown({
   const activeLabel = activeDescriptor?.label ?? activeId;
   const groups = /* @__PURE__ */ new Map();
   for (const d of descriptors) {
-    const key2 = d.renderer ?? "other";
-    const arr = groups.get(key2) ?? [];
+    const key3 = d.renderer ?? "other";
+    const arr = groups.get(key3) ?? [];
     arr.push(d);
-    groups.set(key2, arr);
+    groups.set(key3, arr);
   }
   const isEnabled = /* @__PURE__ */ __name((d) => {
     if (!availableComponents || !d.requires?.length) return true;
@@ -49120,9 +49202,9 @@ async function restoreSnapshot(id) {
   const activeOrder = activeDoc2.getMap("fileOrder");
   const activeSubOrder = activeDoc2.getMap("subfolderOrder");
   activeDoc2.transact(() => {
-    for (const key2 of Array.from(activeFiles.keys())) activeFiles.delete(key2);
-    for (const key2 of Array.from(activeOrder.keys())) activeOrder.delete(key2);
-    for (const key2 of Array.from(activeSubOrder.keys())) activeSubOrder.delete(key2);
+    for (const key3 of Array.from(activeFiles.keys())) activeFiles.delete(key3);
+    for (const key3 of Array.from(activeOrder.keys())) activeOrder.delete(key3);
+    for (const key3 of Array.from(activeSubOrder.keys())) activeSubOrder.delete(key3);
     for (const [fid, snapFile] of snapFiles.entries()) {
       const clone = new Y3__namespace.Map();
       clone.set("id", snapFile.get("id"));
@@ -49321,8 +49403,8 @@ async function registerAsset(record) {
 }
 __name(registerAsset, "registerAsset");
 function unregisterAsset(name) {
-  const key2 = name.toLowerCase().replace(/\s+/g, "_");
-  webaudio.soundMap.setKey(key2, void 0);
+  const key3 = name.toLowerCase().replace(/\s+/g, "_");
+  webaudio.soundMap.setKey(key3, void 0);
 }
 __name(unregisterAsset, "unregisterAsset");
 async function registerAssets(records) {
@@ -51628,9 +51710,9 @@ __name(applyEntry, "applyEntry");
 function clearForFix(marker) {
   const prefix = `${marker.runtime}:`;
   if (!marker.source) {
-    for (const key2 of Array.from(activeMarkers)) {
-      if (!key2.startsWith(prefix)) continue;
-      const fileId2 = key2.slice(prefix.length);
+    for (const key3 of Array.from(activeMarkers)) {
+      if (!key3.startsWith(prefix)) continue;
+      const fileId2 = key3.slice(prefix.length);
       const resolved2 = getModelForFile(fileId2);
       if (resolved2) {
         clearLineMarkers(
@@ -51639,7 +51721,7 @@ function clearForFix(marker) {
           OWNER
         );
       }
-      activeMarkers.delete(key2);
+      activeMarkers.delete(key3);
     }
     return;
   }
