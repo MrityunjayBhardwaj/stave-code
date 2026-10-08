@@ -4047,7 +4047,8 @@ function groupOf(raw, mini) {
   return {
     kind: "group",
     alignment: args?.alignment,
-    children: kids.filter(isObj).map((k) => k.type_ === "element" ? elementOf(k, mini) : groupOf(k, mini))
+    children: kids.filter(isObj).map((k) => k.type_ === "element" ? elementOf(k, mini) : groupOf(k, mini)),
+    steps: argOf(args?.stepsPerCycle, mini)
   };
 }
 __name(groupOf, "groupOf");
@@ -8262,14 +8263,29 @@ function clampPartAtOnset(lanes, part, column) {
 }
 __name(clampPartAtOnset, "clampPartAtOnset");
 var lookOnlyLine = /* @__PURE__ */ __name((l) => `Look only \u2014 ${l.reason}. Edit it in the code.`, "lookOnlyLine");
+function spansOf(hap) {
+  const out = [];
+  for (const l of hap.context?.locations ?? []) {
+    if (typeof l?.start === "number" && typeof l.end === "number") out.push({ start: l.start - 1, end: l.end - 1 });
+  }
+  return out;
+}
+__name(spansOf, "spansOf");
 function miniPattern(mini) {
-  return mini_mjs.mini(mini);
+  const pat = mini_mjs.mini(mini);
+  return {
+    mini,
+    hits(cyc) {
+      const out = [];
+      for (const h of pat.queryArc(cyc, cyc + 1)) {
+        if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
+        out.push({ begin: h.whole.begin, end: h.whole.end, value: h.value, locations: spansOf(h) });
+      }
+      return out;
+    }
+  };
 }
 __name(miniPattern, "miniPattern");
-function hapsInCycle(pat, cyc) {
-  return pat.queryArc(cyc, cyc + 1);
-}
-__name(hapsInCycle, "hapsInCycle");
 
 // src/codeView/notation/perBar.ts
 var MAX_SHARED_STEPS = 4096;
@@ -10151,9 +10167,8 @@ function topLevelSpans(src) {
 }
 __name(topLevelSpans, "topLevelSpans");
 function leafLoc(h) {
-  const l = h.context?.locations?.[0];
-  if (!l || typeof l.start !== "number" || typeof l.end !== "number") return null;
-  return { start: l.start - 1, end: l.end - 1 };
+  const l = h.locations[0];
+  return l ? { start: l.start, end: l.end } : null;
 }
 __name(leafLoc, "leafLoc");
 function tailToken(v) {
@@ -10188,13 +10203,12 @@ __name(gridOnsets, "gridOnsets");
 function readGridOnsets(pat, cyc) {
   let haps;
   try {
-    haps = hapsInCycle(pat, cyc);
+    haps = pat.hits(cyc);
   } catch {
     return no("no-note-content");
   }
   const byCol = /* @__PURE__ */ new Map();
   for (const h of haps) {
-    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
     const v = h.value;
     let token;
     if (typeof v === "string") token = v;
@@ -10207,13 +10221,13 @@ function readGridOnsets(pat, cyc) {
       token = v.s + (v.n != null ? ":" + String(v.n) : "");
     } else return no("no-note-content");
     if (NUMERIC.test(token)) return no("wrong-surface");
-    const pos = h.whole.begin.valueOf() - cyc;
+    const pos = h.begin.valueOf() - cyc;
     const key2 = Math.round(pos * ONSET_GRID);
     const cell = byCol.get(key2) ?? [];
     cell.push({
       token,
       span: leafLoc(h),
-      dur: h.whole.end.valueOf() - h.whole.begin.valueOf()
+      dur: h.end.valueOf() - h.begin.valueOf()
     });
     byCol.set(key2, cell);
   }
@@ -11056,13 +11070,12 @@ __name(rollOnsets, "rollOnsets");
 function readRollOnsets(pat, cyc) {
   let haps;
   try {
-    haps = hapsInCycle(pat, cyc);
+    haps = pat.hits(cyc);
   } catch {
     return no("no-note-content");
   }
   const out = [];
   for (const h of haps) {
-    if (!(h.hasOnset?.() ?? false) || !h.whole) continue;
     const v = h.value;
     let pitch;
     let numeric;
@@ -11080,8 +11093,8 @@ function readRollOnsets(pat, cyc) {
         numeric = false;
       } else return no("wrong-surface");
     }
-    const pos = h.whole.begin.valueOf() - cyc;
-    const dur = h.whole.end.valueOf() - h.whole.begin.valueOf();
+    const pos = h.begin.valueOf() - cyc;
+    const dur = h.end.valueOf() - h.begin.valueOf();
     if (dur <= 0) return no("no-note-content");
     out.push({ pos, dur, pitch, numeric, loc: leafLoc(h) });
   }
@@ -13138,11 +13151,11 @@ __name(fromBar, "fromBar");
 function barKey(pat, bar2) {
   let haps;
   try {
-    haps = hapsInCycle(pat, bar2);
+    haps = pat.hits(bar2);
   } catch {
     return null;
   }
-  return haps.filter((h) => (h.hasOnset?.() ?? false) && h.whole).map((h) => `${JSON.stringify(h.value)}|${fromBar(h.whole.begin, bar2)}|${fromBar(h.whole.end, bar2)}`).sort().join(" ");
+  return haps.map((h) => `${JSON.stringify(h.value)}|${fromBar(h.begin, bar2)}|${fromBar(h.end, bar2)}`).sort().join(" ");
 }
 __name(barKey, "barKey");
 function reify(mini) {
