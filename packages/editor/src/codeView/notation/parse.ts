@@ -1703,7 +1703,8 @@ export function readGridOnsets(pat: MiniPattern, cyc: number): Read<Onset[]> {
   // A hit's `end` is read for `Onset.durs` (#1010 P4a). It was once absent from the hap
   // type declared here, which is the literal form the dropped-duration defect took:
   // the axis could not be read because it was not declared. The type is the adapter's
-  // `MiniHit` now, one shape for the grid and the roll.
+  // `MiniHit` now, one shape for the grid and the roll — read here as `JoinedHit.hit`,
+  // beside the note that wrote it (#1974).
   let haps: JoinedHit[]
   try {
     haps = joinedCycle(pat, cyc).hits

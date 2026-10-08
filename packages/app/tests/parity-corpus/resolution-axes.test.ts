@@ -329,10 +329,12 @@ describe('#1054 — document, layout and haps are three separate readings', () =
       units: 1018,
       asks: 7614,
       coarsenSkipped: 1283,
-      'no-offer': 1064,
+      // ⚠ no-offer 1064 -> 1074 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      'no-offer': 1074,
       unwritable: 0,
       // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-      measured: 6550,
+      // ⚠ measured 6550 -> 6540 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      measured: 6540,
       hapsUnevaluable: 0,
     })
     // TODAY'S ANSWER. Every grid refine that reaches the writer rewrites the document —
@@ -371,15 +373,19 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     // ⚠ MOVED at #1849: +3 units, +20 asks, and 107 `no-offer` become `measured` — the rolls
     // it moves off the leaf reading can now be refined. `unwritable` stays ZERO.
     }).toEqual({
-      units: 601,
-      asks: 3800,
-      coarsenSkipped: 1105,
+      // ⚠ units 601 -> 603 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      units: 603,
+      // ⚠ asks 3800 -> 3812 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      asks: 3812,
+      // ⚠ coarsenSkipped 1105 -> 1109 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      coarsenSkipped: 1109,
       // ⚠ MOVED at #1312 (per-bar lanes + the region ladder): six asks move from `no-offer`
       // to `measured`, 815 -> 809 and 2955 -> 2961. They are the same six — the writer now
       // has an answer where it previously had none — so `units` and `asks` do not move at
       // all. `unwritable` stays ZERO, which is the arm that matters: the widening turned
       // silence into measurements, not into failures.
-      'no-offer': 712,
+      // ⚠ no-offer 712 -> 724 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      'no-offer': 724,
       unwritable: 0,
       measured: 3088,
       hapsUnevaluable: 0,

@@ -5,10 +5,13 @@ import { gridOnsets, rollOnsets, type LeafSpan } from '../parse'
 
 /**
  * #986 P0 gate — the note-broken family's induced fix threads each hap's OWN leaf
- * span (`context.locations[0]`) into `Onset`/`RollOnset` so P1 can write back at the
+ * span into `Onset`/`RollOnset` so P1 can write back at the
  * leaf loc instead of the top-level element span. This proves the plumbing carries a
  * RESOLVABLE leaf span — for nested groups, `*n`, euclid, chords — grounded against
  * krill, never a re-parsed second oracle (PV192).
+ *
+ * The span was first taken from `context.locations[0]`. For every shape in the #986
+ * arms that is the note; where it is not, see the #1974 arms at the end of this file.
  *
  * The cross-check is `getLeafLocations` from `@strudel/mini` itself: `mini()`'s
  * `.withLoc` is derived from exactly that function, so a span the onset carries must

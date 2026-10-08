@@ -204,7 +204,8 @@ describe('#1058 — a hit placed on a refined grid subdivides one element', () =
       // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
       // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-      expect(s.admitsFinerView, `k=${k} admits`).toBe(937)
+      // ⚠ 937 -> 935 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      expect(s.admitsFinerView, `k=${k} admits`).toBe(935)
       // Two refusal gates, each saying why by name. `no-finer-view` is the leaf path: a
       // leaf model anchors each note to its own source span, so there is no span to
       // subdivide, and the entry refuses a refine rather than quietly drawing the
@@ -769,7 +770,8 @@ describe('#1058 — the roll, gated separately', () => {
       // were UNMOVED. That was inferred from the arrival's shape and never measured, and
       // it was wrong by 3. The figures above are read off a run.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-      expect(opens, `k=${k} opens`).toBe(599)
+      // ⚠ 599 -> 601 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+      expect(opens, `k=${k} opens`).toBe(601)
       expect(gates.get('view-resolution'), `k=${k} view refusals`).toBe(k === 2 ? 1 : 2)
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
       expect(admits, `k=${k} admits`).toBe(k === 2 ? 562 : 561)

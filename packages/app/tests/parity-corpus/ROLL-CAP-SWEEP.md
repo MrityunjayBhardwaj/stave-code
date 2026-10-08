@@ -56,16 +56,16 @@ Both populations, all 4 caps, the real shipped writers at each value —
 
 | | **4** (shipped) | 6 | 8 | 12 |
 |---|---|---|---|---|
-| **A** reach (transfers) | 89 | 89 | 90 | 90 |
-| **B** transfers | 377 | 379 | 391 | 394 |
-| A views opened by the leaf writer | 36 | 37 | 47 | 48 |
-| B views opened by the leaf writer | 34 | 36 | 48 | 52 |
-| A leaf notes live | 110/294 37.4% | 113/307 36.8% | 172/420 41.0% | 176/432 40.7% |
-| B leaf notes live | 40/60 66.7% | 75/95 78.9% | 211/255 82.7% | 252/307 82.1% |
+| **A** reach (transfers) | 90 | 89 | 90 | 90 |
+| **B** transfers | 378 | 379 | 391 | 394 |
+| A views opened by the leaf writer | 38 | 37 | 47 | 48 |
+| B views opened by the leaf writer | 35 | 36 | 48 | 52 |
+| A leaf notes live | 117/315 37.1% | 113/307 36.8% | 172/420 41.0% | 176/432 40.7% |
+| B leaf notes live | 44/64 68.8% | 75/95 78.9% | 211/255 82.7% | 252/307 82.1% |
 | views that CORRUPT (must be 0) | 0 | 0 | 0 | 0 |
 
-- **Population A's reach moves by 1 ask across the whole range** (89 → 89 → 90 → 90). It is the population production reaches today, and it is the reason the cap has not been raised: the gain there is a rounding error.
-- **Population B gains 17 transfers** (377 → 379 → 391 → 394), every one served by the leaf writer, which is the writer this cap governs. B is a counterfactual until the core is deleted.
+- **Population A's reach moves by 0 asks across the whole range** (90 → 89 → 90 → 90). It is the population production reaches today, and it is the reason the cap has not been raised: the gain there is a rounding error.
+- **Population B gains 16 transfers** (378 → 379 → 391 → 394), every one served by the leaf writer, which is the writer this cap governs. B is a counterfactual until the core is deleted.
 - **Zero views corrupt on either population at any cap**, and zero asks moved to a worse outcome per ask — checked against the shipped-cap rows rather than by netting totals, since an ask lost and an ask gained sum to no change.
 
 The ceiling is 12 and not a round number: `detectPeriod` confirms a period `p` only

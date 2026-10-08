@@ -343,7 +343,8 @@ const POPULATION = {
   // no resolver. Left at 220, verified in the same run as the wiring.
   // ⚠ 220 -> 217 at #1849: three units on which no view opened now open (the stacks it reads
   // part by part), so they leave the set of units only evaluation admits.
-  newlyAdmitted: 217,
+  // ⚠ newlyAdmitted 217 -> 215 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+  newlyAdmitted: 215,
 }
 
 /**
