@@ -91,6 +91,17 @@ describe('duplicateBar — click +: one more bar, continuing the pattern', () =>
     expect(r.reason).toMatch(/plays differently from one cycle to the next/)
   })
 
+  it('…and one that changes only in how LONG a note is: same notes, same starts, different ends (#1973)', () => {
+    // every other cycle the note is cut to half its length. A comparison of bars by
+    // what starts when would call the two cycles the same bar and copy the long one.
+    const r = duplicateBar('<a [a ~]>', 1)
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.reason).toMatch(/plays differently from one cycle to the next/)
+    // control: read as the two bars it is, the same pattern is continued
+    expect(duplicateBar('<a [a ~]>', 2).ok).toBe(true)
+  })
+
   it('REFUSES a pattern the grid draws shorter than it really is', () => {
     // told it is one bar, but it takes two to repeat — no rewrite of it can be
     // checked against what is on screen
