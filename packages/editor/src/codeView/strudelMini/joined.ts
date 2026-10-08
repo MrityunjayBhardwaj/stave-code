@@ -67,15 +67,16 @@ function placesOf(mini: string): Places {
   const root = miniShape(mini)
   const at: Places['at'] = new Map()
   const group = (g: MiniGroup, written: boolean): void => {
-    arg(g.steps, false)
+    arg(g.steps)
     for (const c of g.children) c.kind === 'element' ? element(c, written) : group(c, written)
   }
   const element = (e: MiniElement, written: boolean): void => {
     if (e.content.kind === 'atom') at.set(key(e.content.span.start, e.content.span.end), { atom: e.content, written })
     else group(e.content, written)
-    for (const op of e.ops) for (const a of Object.values(op.args)) arg(a, false)
+    for (const op of e.ops) for (const a of Object.values(op.args)) arg(a)
   }
-  const arg = (a: MiniArg | undefined, _written: false): void => {
+  /** everything under an op argument or a step count shapes hits; it writes none */
+  const arg = (a: MiniArg | undefined): void => {
     if (!a || typeof a !== 'object') return
     if (a.kind === 'atom') at.set(key(a.span.start, a.span.end), { atom: a, written: false })
     else if (a.kind === 'element') element(a, false)
