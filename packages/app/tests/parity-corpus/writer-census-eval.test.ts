@@ -358,7 +358,8 @@ const POPULATION = {
  */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
 // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-const ALL_RESOLVED = { coreServed: 509, transfers: 439, untransferable: 28, unverified: 42 }
+// ⚠ transfers 439 -> 440, untransferable 28 -> 27 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const ALL_RESOLVED = { coreServed: 509, transfers: 440, untransferable: 27, unverified: 42 }
 
 /**
  * the counterfactual over ONLY the slice `mini-corpus.json` does not contain
@@ -394,7 +395,8 @@ const NEWLY_ADMITTED = { coreServed: 32, transfers: 22, untransferable: 1, unver
 // drawn per bar are untransferable (the derived projections still cap at 64 columns).
 // ⚠ 1096/1275 -> 1106/1303 at #1849 — writer-census.test.ts's own figures, which this arm must equal.
 // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-const MINI_CORPUS_ARM = { transfers: 1107, asks: 1306 }
+// ⚠ transfers 1107 -> 1108 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const MINI_CORPUS_ARM = { transfers: 1108, asks: 1306 }
 // ⚠ MOVED 1041/1204 -> 1096/1273 at #1242, when the harvest gained the product's own
 // resolver and the corpus went 1535 -> 1633 units. The pin FIRED again, which is what
 // it is for: +69 asks and +55 transfers, both upward, so the rate falls 86.5% -> 86.1%

@@ -346,10 +346,12 @@ describe('#1054 — document, layout and haps are three separate readings', () =
     expect(grid.triples).toEqual({
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
       // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-      'lossless (doc,layout,----)': 2869,
+      // ⚠ 2869 -> 2864 at #1974 (a hit is anchored on the note that wrote it): the grids `[c eb g <f bb>](3,8,<0 1>)` and `{c [f g] d# d}%2` go element -> leaf writer, and a leaf-written view is offered no finer — store probes/timing-facts-1974/anchor-move.
+      'lossless (doc,layout,----)': 2864,
       'lossless (doc,layout,haps)': 230,
       // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-      'quantize (doc,layout,----)': 109,
+      // ⚠ 109 -> 104 at #1974 (a hit is anchored on the note that wrote it): the grids `[c eb g <f bb>](3,8,<0 1>)` and `{c [f g] d# d}%2` go element -> leaf writer, and a leaf-written view is offered no finer — store probes/timing-facts-1974/anchor-move.
+      'quantize (doc,layout,----)': 104,
       'quantize (doc,layout,haps)': 3342,
     })
   })

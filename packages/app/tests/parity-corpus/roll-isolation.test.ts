@@ -64,12 +64,14 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 // ⚠ 600 -> 602 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
 const ROLL_UNITS = 602
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const ROLL_ASKS = 131514
+// ⚠ 131514 -> 131829 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const ROLL_ASKS = 131829
 // ⚠ 17710 -> 14392 at #1849: FEWER refusals — the 18 rolls #1849 moves from the leaf reading to the core used to refuse every placement.
 // ⚠ 14392 -> 14707 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
 const ROLL_REFUSED = 14707
 // ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
-const ROLL_ANSWERS = 'cd40e47393a72b43'
+// ⚠ 'cd40e47393a72b43' -> '68f7549fa04582e8' at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const ROLL_ANSWERS = '68f7549fa04582e8'
 
 /** the durations are the axis the previous instrument lacked — see the header */
 const DURATIONS = [1, 2, 4]
@@ -402,7 +404,8 @@ describe('surface isolation — the roll, every placement it can be asked', () =
 // ⚠ 599 -> 601 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
 const DELETE_UNITS = 601
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const DELETE_ASKS = 5514
+// ⚠ 5514 -> 5535 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const DELETE_ASKS = 5535
 
 /**
  * ⚠ PINNED WITH ITS ARGUMENT, because a bare number here reads as a defect and is not one.
@@ -588,7 +591,8 @@ describe('surface isolation — the roll, every delete it can be asked', () => {
 // ⚠ 599 -> 601 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
 const MOVE_UNITS = 601
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const MOVE_ASKS = 172646
+// ⚠ 172646 -> 173273 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const MOVE_ASKS = 173273
 // ⚠ 3652 -> 3559 at #1827 (each bar drawn at its own step count): fewer refusals — the two re-drawn units have no half-cells
 // left to drop a note on, net of the arrival's own refusals.
 // ⚠ 3559 -> 3573 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
@@ -739,7 +743,8 @@ describe('surface isolation — the roll, every move a pointer can make', () => 
 // ⚠ 599 -> 601 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
 const OFFER_UNITS = 601
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const OFFER_NOTES = 5514
+// ⚠ 5514 -> 5535 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const OFFER_NOTES = 5535
 /**
  * ⚠ THIS PIN IS A THIRD OF THE SURFACE, AND #1322 WAS FILED AT 93.
  *

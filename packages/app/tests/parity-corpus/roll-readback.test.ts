@@ -48,7 +48,8 @@ const minis = corpus.minis.map((o) => o.mini.trim()).filter((m) => m !== '')
 // ⚠ 599 -> 601 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
 const UNITS = 601
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const ASKS = 11028
+// ⚠ 11028 -> 11070 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const ASKS = 11070
 /** what the CHEAP rule ships today: writes whose reopen holds different notes (#1331) */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
 // ⚠ 1146 -> 1120 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
@@ -221,7 +222,8 @@ const PLACE_ASKS = 35769
 const PLACE_LOSSY_UNDER_DEFAULT = 4306
 /** pastes over a cell that already holds a note — the case placement does not cover */
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
-const PASTE_ASKS = 5514
+// ⚠ 5514 -> 5535 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+const PASTE_ASKS = 5535
 /** 3 that do not parse + 83 that lose notes + 1 rescale */
 // ⚠ 87 -> 88 at #1849: one more paste the REJECTED cheap rule would ship lossy — the control arm, so it only has to stay above zero; the shipped rule refuses it.
 // ⚠ 88 -> 85 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.

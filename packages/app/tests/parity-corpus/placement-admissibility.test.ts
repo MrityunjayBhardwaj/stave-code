@@ -254,7 +254,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       { asks: by.alt.asks, refused: by.alt.refused },
       'alt path — 512 → 0 refused',
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
-    ).toEqual({ asks: 3934, refused: 0 })
+    // ⚠ asks 3934 -> 3825 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+    ).toEqual({ asks: 3825, refused: 0 })
     expect(
       { leaf: by.leaf.units, alt: by.alt.units, element: by.element.units },
       'parseable units per path',
@@ -262,7 +263,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       // ⚠ element 874 -> 875 at #1827 (each bar drawn at its own step count): the newly opened drum grid.
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-    ).toEqual({ leaf: 80, alt: 61, element: 885 })
+    // ⚠ alt 61 -> 59, leaf 80 -> 82 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
+    ).toEqual({ leaf: 82, alt: 59, element: 885 })
 
     // The residual's SHAPE is asserted in its own test below, not here — an assertion
     // that sits after a failing one never runs, so bundling it into this body would
@@ -603,7 +605,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       // ⚠ 508 -> 509 at #1827: the newly opened drum grid, which takes a note too.
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
-    ).toEqual([519, 519])
+    // ⚠ 519 -> 517 at #1974 (a hit is anchored on the note that wrote it): the grids `[c eb g <f bb>](3,8,<0 1>)` and `{c [f g] d# d}%2` go element -> leaf writer, and a leaf-written view is offered no finer — store probes/timing-facts-1974/anchor-move.
+    ).toEqual([517, 517])
   })
 
   /**
