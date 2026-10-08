@@ -214,8 +214,14 @@ interface Opened {
   model: View
 }
 
-/** every view either surface opens over the corpus, at the document's resolution and one finer */
+let memo: { views: Opened[]; asked: number; noView: number } | null = null
+/**
+ * Every view either surface opens over the corpus, at the document's resolution and one
+ * finer. Built on first use inside a test, never while the file is being collected: ten
+ * seconds of parsing there would be charged to every run that only lists this file.
+ */
 function opened(): { views: Opened[]; asked: number; noView: number } {
+  if (memo) return memo
   const views: Opened[] = []
   let asked = 0
   let noView = 0
@@ -231,7 +237,7 @@ function opened(): { views: Opened[]; asked: number; noView: number } {
         }
         views.push({ mini, surface, scale, path: !r.ok ? 'look-only' : model.leafSource ? 'leaf' : 'written', model })
       }
-  return { views, asked, noView }
+  return (memo = { views, asked, noView })
 }
 
 const grid = (mini: string): StepGridModel => {
@@ -301,9 +307,8 @@ describe('timing facts — the comparison can fail', () => {
 })
 
 describe('timing facts — what a view states is what Strudel plays (corpus)', () => {
-  const { views, asked, noView } = opened()
-
   it('every start, length and step count of every view either surface opens, over two periods', () => {
+    const { views, asked, noView } = opened()
     type Tally = { views: number; onsets: number; lengths: number; counts: number; shared: number; between: number; betweenViews: number }
     const tally = new Map<string, Tally>()
     const disagreeing: string[] = []
@@ -350,6 +355,7 @@ describe('timing facts — what a view states is what Strudel plays (corpus)', (
   }, 600_000)
 
   it('control: the same views with a step count that is not theirs disagree, every one that holds a note', () => {
+    const { views } = opened()
     let holding = 0
     let caught = 0
     const missed: string[] = []
