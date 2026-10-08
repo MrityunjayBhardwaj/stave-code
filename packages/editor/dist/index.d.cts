@@ -1814,7 +1814,8 @@ declare function patternFromJSON(json: string): PatternIR;
  * parseMini — mini-notation string → PatternIR, via the krill grammar.
  *
  * The mini-notation grammar is STRUDEL'S, so we ask Strudel for it: this file
- * lowers `@strudel/mini`'s krill AST into PatternIR instead of re-tokenizing
+ * lowers Strudel's own parse — handed over as plain nodes by
+ * `../strudelMini/shape.ts` (#1972) — into PatternIR instead of re-tokenizing
  * the string ourselves. The hand-rolled tokenizer + byte-position operator
  * scanner it replaced (#943) was a second oracle of a grammar Strudel ships
  * complete and located — every "gap" in it was drift, never a missing feature,
@@ -1832,11 +1833,11 @@ declare function patternFromJSON(json: string): PatternIR;
  * Transform SEMANTICS are never modeled here — they run in Strudel; we only
  * shape the note tree and thread source `loc` back to it.
  *
- * loc: krill's element spans TILE the source (they include padding), so we
- * DERIVE tight per-token spans from the reliable anchors — an atom's
- * `location_.start` plus its `source_.length`, an op amount atom's start — never
- * copy krill's tiling `location_` end. `loc-fidelity.test.ts` (which slices each
- * node's `[start,end]` out of the source) is the gate that pins this.
+ * loc: krill's element spans TILE the source (they include padding), so every loc
+ * here is built from an ATOM's tight span (`MiniAtom.span`: the token itself, found
+ * by the adapter) or from a delimiter found in the text — never from an element's
+ * tiling end. `loc-fidelity.test.ts` (which slices each node's `[start,end]` out
+ * of the source) is the gate that pins this.
  */
 
 /**

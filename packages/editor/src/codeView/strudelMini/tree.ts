@@ -18,8 +18,11 @@
  * `@strudel/core` at load. So this file imports the parser and NOTHING ELSE; a test
  * keeps it that way.
  *
- * Node FIELDS are still read where they were read before this file existed. Moving
- * those reads here is the next step (#1972).
+ * The nodes' FIELDS are read in this directory and nowhere else (#1972): `./shape.ts`
+ * hands the same tree back as plain nodes, and that is what a caller walks. The raw tree
+ * below is still exported for one caller — the old syntactic reader in
+ * `notation/parse.ts`, listed function by function in `boundary.exceptions.json` until
+ * #1012 deletes it.
  */
 import { parse as krillParse } from '@strudel/mini/krill-parser.js'
 

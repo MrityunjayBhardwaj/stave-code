@@ -2,7 +2,8 @@
  * parseMini — mini-notation string → PatternIR, via the krill grammar.
  *
  * The mini-notation grammar is STRUDEL'S, so we ask Strudel for it: this file
- * lowers `@strudel/mini`'s krill AST into PatternIR instead of re-tokenizing
+ * lowers Strudel's own parse — handed over as plain nodes by
+ * `../strudelMini/shape.ts` (#1972) — into PatternIR instead of re-tokenizing
  * the string ourselves. The hand-rolled tokenizer + byte-position operator
  * scanner it replaced (#943) was a second oracle of a grammar Strudel ships
  * complete and located — every "gap" in it was drift, never a missing feature,
@@ -20,14 +21,21 @@
  * Transform SEMANTICS are never modeled here — they run in Strudel; we only
  * shape the note tree and thread source `loc` back to it.
  *
- * loc: krill's element spans TILE the source (they include padding), so we
- * DERIVE tight per-token spans from the reliable anchors — an atom's
- * `location_.start` plus its `source_.length`, an op amount atom's start — never
- * copy krill's tiling `location_` end. `loc-fidelity.test.ts` (which slices each
- * node's `[start,end]` out of the source) is the gate that pins this.
+ * loc: krill's element spans TILE the source (they include padding), so every loc
+ * here is built from an ATOM's tight span (`MiniAtom.span`: the token itself, found
+ * by the adapter) or from a delimiter found in the text — never from an element's
+ * tiling end. `loc-fidelity.test.ts` (which slices each node's `[start,end]` out
+ * of the source) is the gate that pins this.
  */
 
-import { miniTree, type KAtom, type KElement, type KOp, type KPattern } from '../strudelMini/tree'
+import {
+  argAtom,
+  isRest,
+  miniShape,
+  type MiniElement,
+  type MiniGroup,
+  type MiniOp,
+} from '../strudelMini/shape'
 import { IR, type PatternIR, type PlayParams } from './PatternIR'
 import { bjorklund, rotateEuclid } from './euclid'
 
@@ -36,39 +44,31 @@ import { bjorklund, rotateEuclid } from './euclid'
 export { bjorklund } from './euclid'
 
 // ---------------------------------------------------------------------------
-// The krill AST this file lowers (`KAtom`, `KElement`, `KPattern`) and the call
-// that produces it (`miniTree`) live in `../strudelMini/tree.ts` (#1971) — the one
-// place that knows its shape, and the one that takes the quote off its offsets.
+// The nodes this file lowers (`MiniGroup`, `MiniElement`, `MiniAtom`, `MiniOp`) and
+// the call that produces them (`miniShape`) live in `../strudelMini/shape.ts` — the
+// one place that reads krill's own fields (#1972). Three things this file used to
+// work out for itself are answers there now: an atom's tight span (`atom.span`),
+// whether an atom is silence (`isRest`: `~` and `-`, one branch upstream; `_` is
+// NOT silence — it is sustain, already folded into the previous element's weight),
+// and the atom an op's argument holds (`argAtom`: a euclid's numbers arrive wrapped
+// in an element, a `*n` amount bare).
 // ---------------------------------------------------------------------------
 
-const isAtom = (n: KAtom | KPattern): n is KAtom => n.type_ === 'atom'
-
 /**
- * `~` and `-` are both silence — literally one branch upstream (mini.mjs:157:
- * `if (ast.source_ === '~' || ast.source_ === '-') return silence`). Each is an
- * atom occupying a slot. (`_` is NOT silence — it is sustain, and krill has
- * already folded it into the previous element's `weight` by now.)
+ * The elements of a sequence. krill gives ELEMENTS to a plain sequence and one
+ * PATTERN per layer to everything else; a layer standing where an element should be
+ * (a top-level `a . b`) is a shape this file does not lower, and it says so the way
+ * it always has — by throwing, which `parseMini` turns into an opaque node.
  */
-const isRestAtom = (a: KAtom): boolean => a.source_ === '~' || a.source_ === '-'
-
-/**
- * The tight source span of a krill atom. krill's spans TILE the source, and the
- * padding lands on EITHER side depending on the element's syntax (`bd sd` puts
- * it trailing on the first; `a@2 b@2` puts it LEADING on the second) — so the
- * start is skipped past whitespace onto the token, and the end comes from the
- * atom's own `source_.length`, never from krill's tiling `location_.end`.
- */
-export const atomSpan = (a: KAtom, input: string): { start: number; end: number } => {
-  const start = firstNonWs(input, a.location_?.start.offset ?? 0)
-  return { start, end: start + a.source_.length }
+function elementsOf(children: MiniGroup['children']): MiniElement[] {
+  for (const c of children) if (c.kind !== 'element') throw new Error('parseMini: a layer where an element was expected')
+  return children as MiniElement[]
 }
 
-/** a euclid arg (`3`/`8`/`-1`) — arrives as an element-wrapped atom, or bare. */
-const argAtom = (arg: unknown): KAtom | null => {
-  const n = arg as { type_?: string; source_?: unknown } | undefined
-  if (!n || typeof n !== 'object') return null
-  const inner = (n.type_ === 'element' ? n.source_ : n) as KAtom | undefined
-  return inner && inner.type_ === 'atom' ? inner : null
+/** the elements of ONE layer of `<…>`, `a,b`, `a|b` or `{…}` */
+function layerElements(layer: MiniGroup['children'][number]): MiniElement[] {
+  if (layer.kind !== 'group') throw new Error('parseMini: an element where a layer was expected')
+  return elementsOf(layer.children)
 }
 
 // ---------------------------------------------------------------------------
@@ -89,11 +89,11 @@ export function parseMini(
 ): PatternIR {
   if (!input.trim()) return IR.pure()
 
-  let ast: KPattern
+  let ast: MiniGroup
   try {
     // krill throws on a few inputs (e.g. a lone `_` has nothing to extend); fall
     // back opaque.
-    ast = miniTree(input)
+    ast = miniShape(input)
   } catch {
     return IR.code(input)
   }
@@ -117,7 +117,7 @@ export function parseMini(
 }
 
 /**
- * Any krill pattern → one PatternIR node, dispatched on its ALIGNMENT. Shared by
+ * Any group → one PatternIR node, dispatched on its ALIGNMENT. Shared by
  * the top level and by every bracketed group, so `a,b` means the same thing
  * wherever it appears — the uniformity that the position-specific hand parser
  * could not have (it split commas only inside brackets).
@@ -126,29 +126,29 @@ export function parseMini(
  * top level); it is dropped when a single-child container unwraps.
  */
 function patternToNode(
-  pat: KPattern,
+  pat: MiniGroup,
   loc: { start: number; end: number }[],
   isSample: boolean,
   baseOffset: number,
   input: string,
 ): PatternIR | null {
-  const align = pat.arguments_?.alignment
-  // A container's children are PATTERNS (one per arm/voice), not elements.
-  const voices = pat.source_ as unknown as KPattern[]
+  const align = pat.alignment
+  // A container's children are LAYERS (one per arm/voice), not elements.
+  const voices = pat.children
 
   if (align === 'polymeter_slowcat' || align === 'rand') {
     // `<a b>` alternation, and `a|b` random choice. Both play exactly ONE arm
     // per cycle, so Cycle carries the right cardinality; the SELECTION rule
     // (rotate vs random) runs in Strudel and is never modeled here.
     const items: PatternIR[] = []
-    for (const v of voices) items.push(...buildSeq(v?.source_ ?? [], isSample, baseOffset, input))
+    for (const v of voices) items.push(...buildSeq(layerElements(v), isSample, baseOffset, input))
     return items.length === 0 ? null : { tag: 'Cycle', items, loc }
   }
 
   if (align === 'stack' || align === 'polymeter') {
     // `[a,b]` chord / `{a,b}` polymeter — parallel voices.
     const tracks = voices
-      .map((v) => buildSeq(v?.source_ ?? [], isSample, baseOffset, input))
+      .map((v) => buildSeq(layerElements(v), isSample, baseOffset, input))
       .filter((s) => s.length > 0)
       .map((s) => (s.length === 1 ? s[0] : IR.seq(...s)))
     if (tracks.length === 0) return null
@@ -158,7 +158,7 @@ function patternToNode(
   }
 
   // fastcat — a plain sequence. A single child unwraps (`[a]` ≡ `a`).
-  const children = buildSeq(pat.source_, isSample, baseOffset, input)
+  const children = buildSeq(elementsOf(pat.children), isSample, baseOffset, input)
   if (children.length === 0) return null
   return children.length === 1 ? children[0] : { tag: 'Seq', children, loc }
 }
@@ -168,11 +168,11 @@ function patternToNode(
 // ---------------------------------------------------------------------------
 
 /**
- * A krill element list → the sibling nodes it produces. `!n` (replicate) is why
+ * An element list → the sibling nodes it produces. `!n` (replicate) is why
  * this is not a 1:1 map — one element yields `reps` sibling steps.
  */
 function buildSeq(
-  elements: KElement[],
+  elements: MiniElement[],
   isSample: boolean,
   baseOffset: number,
   input: string,
@@ -181,7 +181,7 @@ function buildSeq(
   for (const el of elements) {
     const node = buildElement(el, isSample, baseOffset, input)
     if (!node) continue
-    const reps = el.options_?.reps ?? 1
+    const reps = el.reps
     if (reps > 1) for (let r = 0; r < reps; r++) out.push(node)
     else out.push(node)
   }
@@ -189,21 +189,19 @@ function buildSeq(
 }
 
 /**
- * One krill element → one PatternIR node (the caller replicates it for `!n`).
+ * One element → one PatternIR node (the caller replicates it for `!n`).
  * Builds the base (atom → Play/Sleep, pattern → Seq/Stack/Cycle), expands a
  * euclid, then wraps the single trailing modifier (`*`/`/` → Fast/Slow, `?` →
  * Choice, `@n` → Elongate).
  */
 function buildElement(
-  el: KElement,
+  el: MiniElement,
   isSample: boolean,
   baseOffset: number,
   input: string,
 ): PatternIR | null {
-  const src = el.source_
-  const ops = el.options_?.ops ?? []
-  const weight = el.options_?.weight ?? 1
-  const reps = el.options_?.reps ?? 1
+  const src = el.content
+  const { ops, weight, reps } = el
 
   let node: PatternIR
   let contentStart: number
@@ -211,28 +209,28 @@ function buildElement(
   // bracket of a group) — where a `?`/`@n` modifier begins.
   let afterContent: number
 
-  if (isAtom(src)) {
-    const span = atomSpan(src, input)
+  if (src.kind === 'atom') {
+    const span = src.span
     contentStart = span.start
     afterContent = span.end
     const loc = [{ start: baseOffset + span.start, end: baseOffset + span.end }]
 
-    if (isRestAtom(src)) {
+    if (isRest(src)) {
       node = IR.sleep(1, { loc })
     } else {
-      const params: Partial<PlayParams> = isSample ? { s: src.source_ } : {}
+      const params: Partial<PlayParams> = isSample ? { s: src.text } : {}
       // `bd:2` — krill splits the sample index into a `tail` op. Land the
       // numeric index in `params.slice`; advance past the tail token either way
       // (a word tail like `G:dominant` has no numeric slice but still consumes
       // those bytes, so a following `@n` is located correctly).
-      const tail = ops.find((o) => o.type_ === 'tail')
-      const tailAtom = tail ? argAtom(tail.arguments_?.element) : null
+      const tail = ops.find((o) => o.kind === 'tail')
+      const tailAtom = tail ? argAtom(tail.args.element) : null
       if (tailAtom) {
-        const idx = parseInt(tailAtom.source_, 10)
+        const idx = parseInt(tailAtom.text, 10)
         if (!isNaN(idx) && idx >= 0) params.slice = idx
-        afterContent = atomSpan(tailAtom, input).end
+        afterContent = tailAtom.span.end
       }
-      node = IR.play(src.source_, isSample ? 1 : 0.25, params, loc)
+      node = IR.play(src.text, isSample ? 1 : 0.25, params, loc)
     }
   } else {
     const group = buildGroup(src, isSample, baseOffset, input, el)
@@ -244,9 +242,9 @@ function buildElement(
 
   // Euclid — expand the atom to a flat Seq of Play/Sleep slots (atom-scoped in
   // parseMini, matching Strudel's `atom(k,n)`). Comes before the modifiers.
-  const euclid = ops.find((o) => o.type_ === 'bjorklund')
-  if (euclid && isAtom(src) && !isRestAtom(src)) {
-    const expanded = expandEuclid(node, euclid, baseOffset, contentStart, input)
+  const euclid = ops.find((o) => o.kind === 'bjorklund')
+  if (euclid && src.kind === 'atom' && !isRest(src)) {
+    const expanded = expandEuclid(node, euclid, baseOffset, contentStart)
     if (expanded) {
       node = expanded.node
       afterContent = expanded.closeParen
@@ -255,22 +253,22 @@ function buildElement(
 
   // A single trailing modifier. krill can carry several ops; parseMini's grid
   // only ever produced one per element, so the corpus never stacks them.
-  const stretch = ops.find((o) => o.type_ === 'stretch')
+  const stretch = ops.find((o) => o.kind === 'stretch')
   if (stretch) {
-    const amt = argAtom(stretch.arguments_?.amount)
-    const factor = amt ? Number(amt.source_) : NaN
+    const amt = argAtom(stretch.args.amount)
+    const factor = amt ? Number(amt.text) : NaN
     if (amt && !isNaN(factor) && factor > 0) {
-      const s = atomSpan(amt, input)
+      const s = amt.span
       // the operator char (`*`/`/`) sits exactly one byte before the amount.
       const modLoc = [{ start: baseOffset + s.start - 1, end: baseOffset + s.end }]
       node =
-        stretch.arguments_?.type === 'slow'
+        stretch.args.type === 'slow'
           ? IR.slow(factor, node, { loc: modLoc })
           : IR.fast(factor, node, { loc: modLoc })
     }
   }
 
-  if (ops.some((o) => o.type_ === 'degradeBy')) {
+  if (ops.some((o) => o.kind === 'degradeBy')) {
     // `?` has no located amount; it sits at the end of the base content.
     const modLoc = [{ start: baseOffset + afterContent, end: baseOffset + afterContent + 1 }]
     node = IR.choice(0.5, node, IR.pure(), { loc: modLoc })
@@ -297,13 +295,13 @@ function buildElement(
  * and closing delimiters (so a trailing modifier lands correctly).
  */
 function buildGroup(
-  pat: KPattern,
+  pat: MiniGroup,
   isSample: boolean,
   baseOffset: number,
   input: string,
-  el: KElement,
+  el: MiniElement,
 ): { node: PatternIR; openPos: number; closePos: number } | null {
-  const openPos = firstNonWs(input, el.location_?.start.offset ?? 0)
+  const openPos = firstNonWs(input, el.span?.start ?? 0)
   const closePos = matchBracket(input, openPos)
   const loc = [{ start: baseOffset + openPos, end: baseOffset + closePos + 1 }]
   const node = patternToNode(pat, loc, isSample, baseOffset, input)
@@ -318,19 +316,18 @@ function buildGroup(
  */
 function expandEuclid(
   play: PatternIR,
-  op: KOp,
+  op: MiniOp,
   baseOffset: number,
   contentStart: number,
-  input: string,
 ): { node: PatternIR; closeParen: number } | null {
-  const pulse = argAtom(op.arguments_?.pulse)
-  const step = argAtom(op.arguments_?.step)
+  const pulse = argAtom(op.args.pulse)
+  const step = argAtom(op.args.step)
   if (!pulse || !step) return null
-  const k = Number(pulse.source_)
-  const n = Number(step.source_)
+  const k = Number(pulse.text)
+  const n = Number(step.text)
   if (isNaN(k) || isNaN(n)) return null
-  const rotArg = op.arguments_?.rotation == null ? null : argAtom(op.arguments_?.rotation)
-  const rot = rotArg ? Number(rotArg.source_) : 0
+  const rotArg = argAtom(op.args.rotation)
+  const rot = rotArg ? Number(rotArg.text) : 0
 
   let mask = bjorklund(k, n)
   if (rot) mask = rotateEuclid(mask, rot)
@@ -338,7 +335,7 @@ function expandEuclid(
   const restSlot = IR.sleep(1)
   const slots = mask.map((on) => (on ? play : restSlot))
   // `)` sits one byte after the last present arg (rotation, else step).
-  const closeParen = atomSpan(rotArg ?? step, input).end + 1
+  const closeParen = (rotArg ?? step).span.end + 1
 
   if (slots.length === 1) return { node: slots[0], closeParen }
   return {

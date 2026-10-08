@@ -4015,200 +4015,75 @@ function miniTree(mini) {
   return ast;
 }
 __name(miniTree, "miniTree");
-var bjorklund = /* @__PURE__ */ __name((k, n) => {
-  if (n <= 0) return [];
-  if (k === 0) return Array(n).fill(false);
-  if (Math.abs(k) >= n) return Array(n).fill(k > 0);
-  return euclid_mjs.bjorklund(k, n).map((x) => x === 1);
-}, "bjorklund");
-var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
-  const n = pattern.length;
-  if (n === 0) return pattern;
-  const k = (-rot % n + n) % n;
-  return pattern.slice(k).concat(pattern.slice(0, k));
-}, "rotateEuclid");
 
-// src/codeView/ir/parseMini.ts
-var isAtom = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
-var isRestAtom = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
-var atomSpan = /* @__PURE__ */ __name((a, input) => {
-  const start = firstNonWs(input, a.location_?.start.offset ?? 0);
-  return { start, end: start + a.source_.length };
-}, "atomSpan");
-var argAtom = /* @__PURE__ */ __name((arg) => {
-  const n = arg;
-  if (!n || typeof n !== "object") return null;
-  const inner = n.type_ === "element" ? n.source_ : n;
-  return inner && inner.type_ === "atom" ? inner : null;
-}, "argAtom");
-function parseMini(input, isSample = false, baseOffset = 0) {
-  if (!input.trim()) return IR.pure();
-  let ast;
-  try {
-    ast = miniTree(input);
-  } catch {
-    return IR.code(input);
-  }
-  try {
-    const node = patternToNode(
-      ast,
-      [{ start: baseOffset, end: baseOffset + input.length }],
-      isSample,
-      baseOffset,
-      input
-    );
-    return node ?? IR.pure();
-  } catch {
-    return IR.code(input);
-  }
+// src/codeView/strudelMini/shape.ts
+function argAtom(arg) {
+  if (!arg || typeof arg !== "object") return null;
+  if (arg.kind === "atom") return arg;
+  return arg.kind === "element" && arg.content.kind === "atom" ? arg.content : null;
 }
-__name(parseMini, "parseMini");
-function patternToNode(pat, loc, isSample, baseOffset, input) {
-  const align = pat.arguments_?.alignment;
-  const voices = pat.source_;
-  if (align === "polymeter_slowcat" || align === "rand") {
-    const items = [];
-    for (const v of voices) items.push(...buildSeq(v?.source_ ?? [], isSample, baseOffset, input));
-    return items.length === 0 ? null : { tag: "Cycle", items, loc };
-  }
-  if (align === "stack" || align === "polymeter") {
-    const tracks = voices.map((v) => buildSeq(v?.source_ ?? [], isSample, baseOffset, input)).filter((s) => s.length > 0).map((s) => s.length === 1 ? s[0] : IR.seq(...s));
-    if (tracks.length === 0) return null;
-    return tracks.length === 1 ? tracks[0] : { tag: "Stack", tracks, loc };
-  }
-  const children = buildSeq(pat.source_, isSample, baseOffset, input);
-  if (children.length === 0) return null;
-  return children.length === 1 ? children[0] : { tag: "Seq", children, loc };
-}
-__name(patternToNode, "patternToNode");
-function buildSeq(elements, isSample, baseOffset, input) {
-  const out = [];
-  for (const el of elements) {
-    const node = buildElement(el, isSample, baseOffset, input);
-    if (!node) continue;
-    const reps = el.options_?.reps ?? 1;
-    if (reps > 1) for (let r = 0; r < reps; r++) out.push(node);
-    else out.push(node);
-  }
-  return out;
-}
-__name(buildSeq, "buildSeq");
-function buildElement(el, isSample, baseOffset, input) {
-  const src = el.source_;
-  const ops = el.options_?.ops ?? [];
-  const weight = el.options_?.weight ?? 1;
-  const reps = el.options_?.reps ?? 1;
-  let node;
-  let contentStart;
-  let afterContent;
-  if (isAtom(src)) {
-    const span = atomSpan(src, input);
-    contentStart = span.start;
-    afterContent = span.end;
-    const loc = [{ start: baseOffset + span.start, end: baseOffset + span.end }];
-    if (isRestAtom(src)) {
-      node = IR.sleep(1, { loc });
-    } else {
-      const params = isSample ? { s: src.source_ } : {};
-      const tail = ops.find((o) => o.type_ === "tail");
-      const tailAtom = tail ? argAtom(tail.arguments_?.element) : null;
-      if (tailAtom) {
-        const idx = parseInt(tailAtom.source_, 10);
-        if (!isNaN(idx) && idx >= 0) params.slice = idx;
-        afterContent = atomSpan(tailAtom, input).end;
-      }
-      node = IR.play(src.source_, isSample ? 1 : 0.25, params, loc);
-    }
-  } else {
-    const group = buildGroup(src, isSample, baseOffset, input, el);
-    if (!group) return null;
-    node = group.node;
-    contentStart = group.openPos;
-    afterContent = group.closePos + 1;
-  }
-  const euclid = ops.find((o) => o.type_ === "bjorklund");
-  if (euclid && isAtom(src) && !isRestAtom(src)) {
-    const expanded = expandEuclid(node, euclid, baseOffset, contentStart, input);
-    if (expanded) {
-      node = expanded.node;
-      afterContent = expanded.closeParen;
-    }
-  }
-  const stretch = ops.find((o) => o.type_ === "stretch");
-  if (stretch) {
-    const amt = argAtom(stretch.arguments_?.amount);
-    const factor = amt ? Number(amt.source_) : NaN;
-    if (amt && !isNaN(factor) && factor > 0) {
-      const s = atomSpan(amt, input);
-      const modLoc = [{ start: baseOffset + s.start - 1, end: baseOffset + s.end }];
-      node = stretch.arguments_?.type === "slow" ? IR.slow(factor, node, { loc: modLoc }) : IR.fast(factor, node, { loc: modLoc });
-    }
-  }
-  if (ops.some((o) => o.type_ === "degradeBy")) {
-    const modLoc = [{ start: baseOffset + afterContent, end: baseOffset + afterContent + 1 }];
-    node = IR.choice(0.5, node, IR.pure(), { loc: modLoc });
-  }
-  if (reps <= 1 && weight > 1 && input[afterContent] === "@") {
-    let j = afterContent + 1;
-    while (j < input.length && /[0-9.]/.test(input[j])) j++;
-    const modLoc = [{ start: baseOffset + afterContent, end: baseOffset + j }];
-    node = IR.elongate(weight, node, { loc: modLoc });
-  }
-  return node;
-}
-__name(buildElement, "buildElement");
-function buildGroup(pat, isSample, baseOffset, input, el) {
-  const openPos = firstNonWs(input, el.location_?.start.offset ?? 0);
-  const closePos = matchBracket(input, openPos);
-  const loc = [{ start: baseOffset + openPos, end: baseOffset + closePos + 1 }];
-  const node = patternToNode(pat, loc, isSample, baseOffset, input);
-  return node ? { node, openPos, closePos } : null;
-}
-__name(buildGroup, "buildGroup");
-function expandEuclid(play, op, baseOffset, contentStart, input) {
-  const pulse = argAtom(op.arguments_?.pulse);
-  const step = argAtom(op.arguments_?.step);
-  if (!pulse || !step) return null;
-  const k = Number(pulse.source_);
-  const n = Number(step.source_);
-  if (isNaN(k) || isNaN(n)) return null;
-  const rotArg = op.arguments_?.rotation == null ? null : argAtom(op.arguments_?.rotation);
-  const rot = rotArg ? Number(rotArg.source_) : 0;
-  let mask = bjorklund(k, n);
-  if (rot) mask = rotateEuclid(mask, rot);
-  const restSlot = IR.sleep(1);
-  const slots = mask.map((on) => on ? play : restSlot);
-  const closeParen = atomSpan(rotArg ?? step, input).end + 1;
-  if (slots.length === 1) return { node: slots[0], closeParen };
-  return {
-    node: {
-      tag: "Seq",
-      children: slots,
-      loc: [{ start: baseOffset + contentStart, end: baseOffset + closeParen }]
-    },
-    closeParen
-  };
-}
-__name(expandEuclid, "expandEuclid");
-function firstNonWs(input, from) {
+__name(argAtom, "argAtom");
+var isRest = /* @__PURE__ */ __name((a) => a.text === "~" || a.text === "-", "isRest");
+var isObj = /* @__PURE__ */ __name((v) => !!v && typeof v === "object" && !Array.isArray(v), "isObj");
+function firstNonSpace(mini, from) {
   let i = from;
-  while (i < input.length && /\s/.test(input[i])) i++;
+  while (i < mini.length && /\s/.test(mini[i])) i++;
   return i;
 }
-__name(firstNonWs, "firstNonWs");
-function matchBracket(input, openPos) {
-  let depth = 0;
-  for (let i = openPos; i < input.length; i++) {
-    const c = input[i];
-    if (c === "[" || c === "{" || c === "<") depth++;
-    else if (c === "]" || c === "}" || c === ">") {
-      depth--;
-      if (depth === 0) return i;
-    }
-  }
-  return input.length - 1;
+__name(firstNonSpace, "firstNonSpace");
+var spanOf2 = /* @__PURE__ */ __name((loc) => {
+  const l = loc;
+  return typeof l?.start?.offset === "number" && typeof l.end?.offset === "number" ? { start: l.start.offset, end: l.end.offset } : null;
+}, "spanOf");
+function atomOf(raw, mini) {
+  const text = raw.source_;
+  const start = firstNonSpace(mini, spanOf2(raw.location_)?.start ?? 0);
+  return { kind: "atom", text, span: { start, end: start + text.length } };
 }
-__name(matchBracket, "matchBracket");
+__name(atomOf, "atomOf");
+function groupOf(raw, mini) {
+  const args = raw.arguments_;
+  const kids = Array.isArray(raw.source_) ? raw.source_ : [];
+  return {
+    kind: "group",
+    alignment: args?.alignment,
+    children: kids.filter(isObj).map((k) => k.type_ === "element" ? elementOf(k, mini) : groupOf(k, mini))
+  };
+}
+__name(groupOf, "groupOf");
+function elementOf(raw, mini) {
+  const inner = raw.source_;
+  const options = raw.options_;
+  return {
+    kind: "element",
+    content: isObj(inner) && inner.type_ === "atom" ? atomOf(inner, mini) : groupOf(isObj(inner) ? inner : {}, mini),
+    span: spanOf2(raw.location_),
+    weight: options?.weight ?? 1,
+    reps: options?.reps ?? 1,
+    ops: (options?.ops ?? []).map((op) => opOf(op, mini))
+  };
+}
+__name(elementOf, "elementOf");
+function argOf(raw, mini) {
+  if (raw === void 0 || raw === null) return null;
+  if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") return raw;
+  if (!isObj(raw)) return null;
+  if (raw.type_ === "atom") return atomOf(raw, mini);
+  if (raw.type_ === "element") return elementOf(raw, mini);
+  if (raw.type_ === "pattern") return groupOf(raw, mini);
+  return null;
+}
+__name(argOf, "argOf");
+function opOf(raw, mini) {
+  const args = {};
+  for (const [name, value] of Object.entries(raw.arguments_ ?? {})) args[name] = argOf(value, mini);
+  return { kind: raw.type_, args };
+}
+__name(opOf, "opOf");
+function miniShape(mini) {
+  return groupOf(miniTree(mini), mini);
+}
+__name(miniShape, "miniShape");
 
 // src/codeView/ir/steppedAutomation.ts
 function keepsBarsWhole(placement) {
@@ -4237,29 +4112,32 @@ __name(literalOf, "literalOf");
 function stepsOfLiteral(inner, innerStart) {
   let root;
   try {
-    root = miniTree(inner);
+    root = miniShape(inner);
   } catch {
     return null;
   }
-  if (root?.type_ !== "pattern" || root.source_.length !== 1) return null;
-  const whole = root.source_[0];
+  if (root.children.length !== 1) return null;
+  const whole = root.children[0];
+  if (whole.kind !== "element") return null;
   const stretch = slowFactor(whole);
-  if (stretch === null || (whole.options_?.weight ?? 1) !== 1 || (whole.options_?.reps ?? 1) !== 1) return null;
-  const alt = whole.source_;
-  if (alt.type_ !== "pattern" || alt.arguments_?.alignment !== "polymeter_slowcat" || alt.source_.length !== 1) return null;
-  const arms = alt.source_[0];
+  if (stretch === null || whole.weight !== 1 || whole.reps !== 1) return null;
+  const alt = whole.content;
+  if (alt.kind !== "group" || alt.alignment !== "polymeter_slowcat" || alt.children.length !== 1) return null;
+  const arms = alt.children[0];
+  if (arms.kind !== "group") return null;
   const steps = [];
   let at = 0;
-  for (const el of arms.source_) {
-    const atom = el.source_;
-    if (atom.type_ !== "atom" || !NUMBER.test(atom.source_)) return null;
-    const weight = el.options_?.weight ?? 1;
+  for (const el of arms.children) {
+    if (el.kind !== "element") return null;
+    const atom = el.content;
+    if (atom.kind !== "atom" || !NUMBER.test(atom.text)) return null;
+    const weight = el.weight;
     if (!Number.isInteger(weight) || weight < 1) return null;
-    if (!(el.options_?.ops ?? []).every((op) => op.type_ === "replicate")) return null;
-    const span = atomSpan(atom, inner);
+    if (!el.ops.every((op) => op.kind === "replicate")) return null;
+    const span = atom.span;
     const held2 = weight * stretch;
     steps.push({
-      value: Number(atom.source_),
+      value: Number(atom.text),
       weight: held2,
       startCycle: at,
       valueSpan: { start: innerStart + span.start, end: innerStart + span.end }
@@ -4270,12 +4148,12 @@ function stepsOfLiteral(inner, innerStart) {
 }
 __name(stepsOfLiteral, "stepsOfLiteral");
 function slowFactor(el) {
-  const ops = el.options_?.ops ?? [];
+  const ops = el.ops;
   if (ops.length === 0) return 1;
   if (ops.length !== 1) return null;
-  const args = ops[0].arguments_;
-  if (args?.type !== "slow") return null;
-  const n = Number(args.amount?.source_);
+  const { type, amount } = ops[0].args;
+  if (type !== "slow") return null;
+  const n = amount && typeof amount === "object" && amount.kind === "atom" ? Number(amount.text) : NaN;
   return Number.isInteger(n) && n >= 1 ? n : null;
 }
 __name(slowFactor, "slowFactor");
@@ -4401,6 +4279,196 @@ function songExtent(ir) {
   return { kind: "arranged", cycles: best };
 }
 __name(songExtent, "songExtent");
+var bjorklund = /* @__PURE__ */ __name((k, n) => {
+  if (n <= 0) return [];
+  if (k === 0) return Array(n).fill(false);
+  if (Math.abs(k) >= n) return Array(n).fill(k > 0);
+  return euclid_mjs.bjorklund(k, n).map((x) => x === 1);
+}, "bjorklund");
+var rotateEuclid = /* @__PURE__ */ __name((pattern, rot) => {
+  const n = pattern.length;
+  if (n === 0) return pattern;
+  const k = (-rot % n + n) % n;
+  return pattern.slice(k).concat(pattern.slice(0, k));
+}, "rotateEuclid");
+
+// src/codeView/ir/parseMini.ts
+function elementsOf(children) {
+  for (const c of children) if (c.kind !== "element") throw new Error("parseMini: a layer where an element was expected");
+  return children;
+}
+__name(elementsOf, "elementsOf");
+function layerElements(layer) {
+  if (layer.kind !== "group") throw new Error("parseMini: an element where a layer was expected");
+  return elementsOf(layer.children);
+}
+__name(layerElements, "layerElements");
+function parseMini(input, isSample = false, baseOffset = 0) {
+  if (!input.trim()) return IR.pure();
+  let ast;
+  try {
+    ast = miniShape(input);
+  } catch {
+    return IR.code(input);
+  }
+  try {
+    const node = patternToNode(
+      ast,
+      [{ start: baseOffset, end: baseOffset + input.length }],
+      isSample,
+      baseOffset,
+      input
+    );
+    return node ?? IR.pure();
+  } catch {
+    return IR.code(input);
+  }
+}
+__name(parseMini, "parseMini");
+function patternToNode(pat, loc, isSample, baseOffset, input) {
+  const align = pat.alignment;
+  const voices = pat.children;
+  if (align === "polymeter_slowcat" || align === "rand") {
+    const items = [];
+    for (const v of voices) items.push(...buildSeq(layerElements(v), isSample, baseOffset, input));
+    return items.length === 0 ? null : { tag: "Cycle", items, loc };
+  }
+  if (align === "stack" || align === "polymeter") {
+    const tracks = voices.map((v) => buildSeq(layerElements(v), isSample, baseOffset, input)).filter((s) => s.length > 0).map((s) => s.length === 1 ? s[0] : IR.seq(...s));
+    if (tracks.length === 0) return null;
+    return tracks.length === 1 ? tracks[0] : { tag: "Stack", tracks, loc };
+  }
+  const children = buildSeq(elementsOf(pat.children), isSample, baseOffset, input);
+  if (children.length === 0) return null;
+  return children.length === 1 ? children[0] : { tag: "Seq", children, loc };
+}
+__name(patternToNode, "patternToNode");
+function buildSeq(elements, isSample, baseOffset, input) {
+  const out = [];
+  for (const el of elements) {
+    const node = buildElement(el, isSample, baseOffset, input);
+    if (!node) continue;
+    const reps = el.reps;
+    if (reps > 1) for (let r = 0; r < reps; r++) out.push(node);
+    else out.push(node);
+  }
+  return out;
+}
+__name(buildSeq, "buildSeq");
+function buildElement(el, isSample, baseOffset, input) {
+  const src = el.content;
+  const { ops, weight, reps } = el;
+  let node;
+  let contentStart;
+  let afterContent;
+  if (src.kind === "atom") {
+    const span = src.span;
+    contentStart = span.start;
+    afterContent = span.end;
+    const loc = [{ start: baseOffset + span.start, end: baseOffset + span.end }];
+    if (isRest(src)) {
+      node = IR.sleep(1, { loc });
+    } else {
+      const params = isSample ? { s: src.text } : {};
+      const tail = ops.find((o) => o.kind === "tail");
+      const tailAtom = tail ? argAtom(tail.args.element) : null;
+      if (tailAtom) {
+        const idx = parseInt(tailAtom.text, 10);
+        if (!isNaN(idx) && idx >= 0) params.slice = idx;
+        afterContent = tailAtom.span.end;
+      }
+      node = IR.play(src.text, isSample ? 1 : 0.25, params, loc);
+    }
+  } else {
+    const group = buildGroup(src, isSample, baseOffset, input, el);
+    if (!group) return null;
+    node = group.node;
+    contentStart = group.openPos;
+    afterContent = group.closePos + 1;
+  }
+  const euclid = ops.find((o) => o.kind === "bjorklund");
+  if (euclid && src.kind === "atom" && !isRest(src)) {
+    const expanded = expandEuclid(node, euclid, baseOffset, contentStart);
+    if (expanded) {
+      node = expanded.node;
+      afterContent = expanded.closeParen;
+    }
+  }
+  const stretch = ops.find((o) => o.kind === "stretch");
+  if (stretch) {
+    const amt = argAtom(stretch.args.amount);
+    const factor = amt ? Number(amt.text) : NaN;
+    if (amt && !isNaN(factor) && factor > 0) {
+      const s = amt.span;
+      const modLoc = [{ start: baseOffset + s.start - 1, end: baseOffset + s.end }];
+      node = stretch.args.type === "slow" ? IR.slow(factor, node, { loc: modLoc }) : IR.fast(factor, node, { loc: modLoc });
+    }
+  }
+  if (ops.some((o) => o.kind === "degradeBy")) {
+    const modLoc = [{ start: baseOffset + afterContent, end: baseOffset + afterContent + 1 }];
+    node = IR.choice(0.5, node, IR.pure(), { loc: modLoc });
+  }
+  if (reps <= 1 && weight > 1 && input[afterContent] === "@") {
+    let j = afterContent + 1;
+    while (j < input.length && /[0-9.]/.test(input[j])) j++;
+    const modLoc = [{ start: baseOffset + afterContent, end: baseOffset + j }];
+    node = IR.elongate(weight, node, { loc: modLoc });
+  }
+  return node;
+}
+__name(buildElement, "buildElement");
+function buildGroup(pat, isSample, baseOffset, input, el) {
+  const openPos = firstNonWs(input, el.span?.start ?? 0);
+  const closePos = matchBracket(input, openPos);
+  const loc = [{ start: baseOffset + openPos, end: baseOffset + closePos + 1 }];
+  const node = patternToNode(pat, loc, isSample, baseOffset, input);
+  return node ? { node, openPos, closePos } : null;
+}
+__name(buildGroup, "buildGroup");
+function expandEuclid(play, op, baseOffset, contentStart) {
+  const pulse = argAtom(op.args.pulse);
+  const step = argAtom(op.args.step);
+  if (!pulse || !step) return null;
+  const k = Number(pulse.text);
+  const n = Number(step.text);
+  if (isNaN(k) || isNaN(n)) return null;
+  const rotArg = argAtom(op.args.rotation);
+  const rot = rotArg ? Number(rotArg.text) : 0;
+  let mask = bjorklund(k, n);
+  if (rot) mask = rotateEuclid(mask, rot);
+  const restSlot = IR.sleep(1);
+  const slots = mask.map((on) => on ? play : restSlot);
+  const closeParen = (rotArg ?? step).span.end + 1;
+  if (slots.length === 1) return { node: slots[0], closeParen };
+  return {
+    node: {
+      tag: "Seq",
+      children: slots,
+      loc: [{ start: baseOffset + contentStart, end: baseOffset + closeParen }]
+    },
+    closeParen
+  };
+}
+__name(expandEuclid, "expandEuclid");
+function firstNonWs(input, from) {
+  let i = from;
+  while (i < input.length && /\s/.test(input[i])) i++;
+  return i;
+}
+__name(firstNonWs, "firstNonWs");
+function matchBracket(input, openPos) {
+  let depth = 0;
+  for (let i = openPos; i < input.length; i++) {
+    const c = input[i];
+    if (c === "[" || c === "{" || c === "<") depth++;
+    else if (c === "]" || c === "}" || c === ">") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return input.length - 1;
+}
+__name(matchBracket, "matchBracket");
 
 // src/codeView/ir/trackId.ts
 function trackIdFromLabel(label, index) {
@@ -9502,8 +9570,8 @@ function unwrapAlternation(mini) {
   return t.slice(1, -1);
 }
 __name(unwrapAlternation, "unwrapAlternation");
-var isAtom2 = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
-var isRestAtom2 = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
+var isAtom = /* @__PURE__ */ __name((n) => n.type_ === "atom", "isAtom");
+var isRestAtom = /* @__PURE__ */ __name((a) => a.source_ === "~" || a.source_ === "-", "isRestAtom");
 var tokenOf = /* @__PURE__ */ __name((atom, ops) => {
   let t = atom.source_;
   for (const op of ops) {
@@ -9574,8 +9642,8 @@ function groupSlots(pat, allowNumeric) {
     if (ops.some((o) => o.type_ !== "tail")) {
       return { reason: "operators inside a group are beyond the editable subset" };
     }
-    if (isAtom2(el.source_)) {
-      if (isRestAtom2(el.source_)) {
+    if (isAtom(el.source_)) {
+      if (isRestAtom(el.source_)) {
         if (ops.length) return { reason: 'a ":" variant on a rest has nothing to name' };
         slots.push({ atoms: [], units });
         continue;
@@ -9602,7 +9670,7 @@ function chordAtoms(pat, allowNumeric) {
   }
   const atoms = [];
   for (const voice of pat.source_) {
-    if (isAtom2(voice)) {
+    if (isAtom(voice)) {
       return { reason: "stacked sub-sequences are beyond the editable subset" };
     }
     const vp = voice;
@@ -9611,7 +9679,7 @@ function chordAtoms(pat, allowNumeric) {
     }
     const el = vp.source_[0];
     const ops = el.options_?.ops ?? [];
-    if (!isAtom2(el.source_) || (el.options_?.reps ?? 1) > 1 || ops.some((o) => o.type_ !== "tail")) {
+    if (!isAtom(el.source_) || (el.options_?.reps ?? 1) > 1 || ops.some((o) => o.type_ !== "tail")) {
       return { reason: "stacked sub-sequences are beyond the editable subset" };
     }
     const token = tokenOf(el.source_, ops);
@@ -9638,7 +9706,7 @@ function elementToSteps(el, allowNumeric) {
   if (reps < 1) return { reason: "a zero replicate has nothing to show" };
   if (rawWeight <= 0) return { reason: "a zero-width step has nothing to show" };
   const weight = reps > 1 ? 1 : rawWeight;
-  if (!isAtom2(el.source_)) {
+  if (!isAtom(el.source_)) {
     const alignment = el.source_.arguments_?.alignment;
     if (alignment === "stack") {
       const chord = chordAtoms(el.source_, allowNumeric);
@@ -9680,7 +9748,7 @@ function elementToSteps(el, allowNumeric) {
     return [{ atoms: [], elongation: weight, sub: slots }];
   }
   const atom = el.source_;
-  const rest = isRestAtom2(atom);
+  const rest = isRestAtom(atom);
   if (rest && ops.some((o) => o.type_ === "tail")) {
     return { reason: 'a ":" variant on a rest has nothing to name' };
   }
@@ -9826,7 +9894,7 @@ function singlePart(src, elements, div, total, content) {
 __name(singlePart, "singlePart");
 function altAlternatives(el) {
   const p = el.source_;
-  if (isAtom2(p) || p.arguments_?.alignment !== "polymeter_slowcat") return null;
+  if (isAtom(p) || p.arguments_?.alignment !== "polymeter_slowcat") return null;
   const o = el.options_;
   if (o && ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0)) return null;
   const inner = p.source_[0];
@@ -10052,32 +10120,32 @@ __name(playedBars, "playedBars");
 function isWholeAlternation(src) {
   let ast;
   try {
-    ast = miniTree(src);
+    ast = miniShape(src);
   } catch {
     return false;
   }
-  if (ast?.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return false;
-  if (ast.source_.length !== 1) return false;
-  const inner = ast.source_[0]?.source_;
-  return inner?.type_ === "pattern" && inner.arguments_?.alignment === "polymeter_slowcat";
+  if (ast.alignment !== "fastcat") return false;
+  if (ast.children.length !== 1) return false;
+  const only = ast.children[0];
+  if (only.kind !== "element") return false;
+  const inner = only.content;
+  return inner.kind === "group" && inner.alignment === "polymeter_slowcat";
 }
 __name(isWholeAlternation, "isWholeAlternation");
 function topLevelSpans(src) {
   let ast;
   try {
-    ast = miniTree(src);
+    ast = miniShape(src);
   } catch {
     return null;
   }
-  if (!ast || ast.type_ !== "pattern" || ast.arguments_?.alignment !== "fastcat") return null;
+  if (ast.alignment !== "fastcat") return null;
   const out = [];
-  for (const el of ast.source_) {
-    const loc = el.location_;
-    if (!loc) return null;
-    const reps = el.options_?.reps ?? 1;
-    const weight = reps > 1 ? reps : el.options_?.weight ?? 1;
+  for (const el of ast.children) {
+    if (el.kind !== "element" || !el.span) return null;
+    const weight = el.reps > 1 ? el.reps : el.weight;
     if (!Number.isInteger(weight) || weight < 1) return null;
-    out.push({ start: loc.start.offset, end: loc.end.offset, weight });
+    out.push({ start: el.span.start, end: el.span.end, weight });
   }
   return out;
 }
@@ -10328,31 +10396,25 @@ __name(projectionEditSafe, "projectionEditSafe");
 function restSpansByColumn(src, perBar2, bars) {
   let ast;
   try {
-    ast = miniTree(src);
+    ast = miniShape(src);
   } catch {
     return null;
   }
   const spans = [];
   const walk5 = /* @__PURE__ */ __name((node) => {
-    if (!node || typeof node !== "object") return;
-    if (node.type_ === "pattern") {
-      for (const el of node.source_ ?? []) walk5(el);
+    if (node.kind === "group") {
+      for (const child of node.children) walk5(child);
       return;
     }
-    if (node.type_ === "element") {
-      const el = node;
-      const inner = el.source_;
-      if (inner && inner.type_ === "atom") {
-        const atom = inner;
-        const loc = el.location_;
-        if (isRestAtom2(atom) && loc) {
-          let s = loc.start.offset;
-          while (s < src.length && /\s/.test(src[s])) s++;
-          if (src.slice(s, s + atom.source_.length) === atom.source_)
-            spans.push({ start: s, end: s + atom.source_.length });
-        }
-      } else walk5(inner);
+    const inner = node.content;
+    if (inner.kind === "group") {
+      walk5(inner);
       return;
+    }
+    if (isRest(inner) && node.span) {
+      let s = node.span.start;
+      while (s < src.length && /\s/.test(src[s])) s++;
+      if (src.slice(s, s + inner.text.length) === inner.text) spans.push({ start: s, end: s + inner.text.length });
     }
   }, "walk");
   walk5(ast);
@@ -11564,17 +11626,16 @@ function bracketedBarRegions(raw) {
   const text = raw.trim();
   let ast;
   try {
-    ast = miniTree(text);
+    ast = miniShape(text);
   } catch {
     return null;
   }
-  if (ast.source_.length !== 1) return null;
-  const el = ast.source_[0];
-  if (isAtom2(el.source_) || el.source_.arguments_?.alignment !== "fastcat") return null;
-  const o = el.options_ ?? {};
-  if ((o.weight ?? 1) !== 1 || (o.reps ?? 1) !== 1 || (o.ops?.length ?? 0) > 0 || !el.location_) return null;
-  const start = el.location_.start.offset;
-  const end = el.location_.end.offset;
+  if (ast.children.length !== 1) return null;
+  const el = ast.children[0];
+  if (el.kind !== "element" || el.content.kind !== "group" || el.content.alignment !== "fastcat") return null;
+  if (el.weight !== 1 || el.reps !== 1 || el.ops.length > 0 || !el.span) return null;
+  const start = el.span.start;
+  const end = el.span.end;
   const inner = parseStepGrid(text.slice(start + 1, end - 1));
   if (!inner.ok) return null;
   const src = inner.model.source;
