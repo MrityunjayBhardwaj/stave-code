@@ -297,12 +297,15 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
       // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
       // ⚠ units 80 -> 82 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-      units: 82,
+      // ⚠ units 82 -> 77 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+      units: 77,
       // ⚠ asks 522 -> 533 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-      asks: 533,
+      // ⚠ asks 533 -> 497 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+      asks: 497,
       // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
       // ⚠ refused 211 -> 213 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-      refused: 213,
+      // ⚠ refused 213 -> 197 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+      refused: 197,
     })
   })
 
@@ -356,7 +359,8 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
     // ⚠ grid 211 -> 213, roll 337 -> 351 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-    expect({ grid: g.refusedShared, roll: r.refusedShared }).toEqual({ grid: 213, roll: 351 })
+    // ⚠ grid 213 -> 197 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+    expect({ grid: g.refusedShared, roll: r.refusedShared }).toEqual({ grid: 197, roll: 351 })
   })
 
   it('GRID: sharing is not merely necessary but SUFFICIENT — an exact iff, no residue', () => {
@@ -429,7 +433,8 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
     // ⚠ gridOff 182 -> 184, rollOff 496 -> 510 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-    expect(split).toEqual({ gridOn: 71, gridOff: 184, rollOn: 68, rollOff: 510 })
+    // ⚠ gridOff 184 -> 172, gridOn 71 -> 67 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+    expect(split).toEqual({ gridOn: 67, gridOff: 172, rollOn: 68, rollOff: 510 })
   })
 
   it('POSITIVE CONTROL — the non-leaf paths take the same gesture', () => {
@@ -461,7 +466,8 @@ describe('#1160 — a leaf surface refuses the delete when one token backs sever
       // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
       gridSource: { asks: 4608, refused: 0 },
       // ⚠ asks 619 -> 608 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-      gridAlt: { asks: 608, refused: 0 },
+      // ⚠ asks 608 -> 644 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+      gridAlt: { asks: 644, refused: 0 },
       rollAlt: { asks: 874, refused: 0 },
     })
     // The roll's `source` path refuses a little, and it is NOT this issue's branch —

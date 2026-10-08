@@ -249,13 +249,15 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // ⚠ 4466/4172 -> 4135/3841 at #1849: the leaf path loses the cells of the 4 grids #1849 moves to the core — 331 asks, all refused on the leaf path, so the 294 it takes are unmoved.
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
     // ⚠ asks 4023 -> 4132, refused 3729 -> 3838 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-    ).toEqual({ asks: 4132, refused: 3838 })
+    // ⚠ asks 4132 -> 3884, refused 3838 -> 3594 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+    ).toEqual({ asks: 3884, refused: 3594 })
     expect(
       { asks: by.alt.asks, refused: by.alt.refused },
       'alt path — 512 → 0 refused',
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
     // ⚠ asks 3934 -> 3825 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-    ).toEqual({ asks: 3825, refused: 0 })
+    // ⚠ asks 3825 -> 4073 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+    ).toEqual({ asks: 4073, refused: 0 })
     expect(
       { leaf: by.leaf.units, alt: by.alt.units, element: by.element.units },
       'parseable units per path',
@@ -264,7 +266,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
     // ⚠ alt 61 -> 59, leaf 80 -> 82 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-    ).toEqual({ leaf: 82, alt: 59, element: 885 })
+    // ⚠ alt 59 -> 64, leaf 82 -> 77 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+    ).toEqual({ leaf: 77, alt: 64, element: 885 })
 
     // The residual's SHAPE is asserted in its own test below, not here — an assertion
     // that sits after a failing one never runs, so bundling it into this body would
@@ -286,7 +289,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     expect(
       { leafOffered, leafUnitsOffering },
       'leaf placements the writer takes, and how many units they sit on (#1154)',
-    ).toEqual({ leafOffered: 294, leafUnitsOffering: 17 })
+    // ⚠ leafOffered 294 -> 290, leafUnitsOffering 17 -> 16 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+    ).toEqual({ leafOffered: 290, leafUnitsOffering: 16 })
   })
 
   /**
@@ -573,7 +577,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
     // ⚠ 80 -> 82 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-    expect(leafViews, 'leaf grids in the corpus').toBe(82)
+    // ⚠ 82 -> 77 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+    expect(leafViews, 'leaf grids in the corpus').toBe(77)
     // WHAT THE PATH RULE WOULD HAVE SAID, pinned as the delta rather than described:
     // it answered `false` on all 82. 20 of them now answer `true` — the 18 that take
     // a note on a rest column, plus 2 with no empty cell to ask about.
@@ -585,7 +590,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // also shortened a sustaining neighbour, which the writer cannot spell. Its writes did
     // not project back to the view, so it now correctly says it places nothing; the pair
     // with no empty cell to ask about is untouched.
-    expect(leafViewsPlacing, 'leaf grids that take a note somewhere (#1154)').toBe(19)
+    // ⚠ 19 -> 18 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+    expect(leafViewsPlacing, 'leaf grids that take a note somewhere (#1154)').toBe(18)
     // The denominators, so none of the above can quietly become a claim about an
     // empty set — and the positive control for the no-ask branch.
     // ⚠ MOVED at #1242 (corpus 1535 -> 1633 units, 98 arrivals / 0 departures).
@@ -606,7 +612,8 @@ describe('#1064/#1070 — a placement is offered exactly when the writer will ta
     // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
     // ⚠ 519 -> 517 at #1974 (a hit is anchored on the note that wrote it): the grids `[c eb g <f bb>](3,8,<0 1>)` and `{c [f g] d# d}%2` go element -> leaf writer, and a leaf-written view is offered no finer — store probes/timing-facts-1974/anchor-move.
-    ).toEqual([517, 517])
+    // ⚠ 517 -> 522 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+    ).toEqual([522, 522])
   })
 
   /**

@@ -94,7 +94,8 @@ const minis = [...new Set(corpus.minis.map((o) => o.mini.trim()).filter((m) => m
 // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
 // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
 // ⚠ 3099 -> 3094 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-const GRID_DENOMINATOR = 3094
+// ⚠ 3094 -> 3103 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+const GRID_DENOMINATOR = 3103
 // ⚠ 1361 -> 1364 at #1312: three more asks reconstruct the denominator because the roll
 // writer answers them instead of declining. The identity this arm checks — offers plus
 // refusals minus old-path declines equals the denominator — is what moved with them, and

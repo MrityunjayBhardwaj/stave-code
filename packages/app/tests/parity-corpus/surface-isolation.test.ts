@@ -55,12 +55,14 @@ const GRID_ASKS = 62716
 // ⚠ 4899 -> 4646 at #1849: FEWER refusals — the leaf reading refused every placement on the stacks #1849 moves to the core, which takes many of them.
 // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
 // ⚠ 4470 -> 4584 at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-const GRID_REFUSED = 4584
+// ⚠ 4584 -> 4310 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+const GRID_REFUSED = 4310
 // ⚠ MOVED at #1849: a hash over EVERY answer, so the 28 units whose models #1849 changed move it. Every other unit's model is byte-identical to main's (corpus diff, parseStepGrid/parsePianoRoll), and the answers are functions of the model, so no old unit's answer can have moved.
 // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
 // ⚠ MOVED at #1849's bar-by-bar edits: an edit in bar b of a comma part now changes bar b only. Edit diff over the 81 comma patterns the grid opens, linked vs bar-by-bar: exactly the 3 per-bar stacks differ, the other 78 byte-identical.
 // ⚠ 'd755024957a6e1fa' -> '4f621a1a8503cb6d' at #1974 (a hit is anchored on the note that wrote it): two rolls open on the leaf writer, two grids go element -> leaf, sixteen open views gain a byte-local write — store probes/timing-facts-1974/anchor-move.
-const GRID_ANSWERS = '4f621a1a8503cb6d'
+// ⚠ '4f621a1a8503cb6d' -> 'ccf78ee90283483f' at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+const GRID_ANSWERS = 'ccf78ee90283483f'
 
 const shortHash = (s: string): string =>
   crypto.createHash('sha1').update(s).digest('hex').slice(0, 12)

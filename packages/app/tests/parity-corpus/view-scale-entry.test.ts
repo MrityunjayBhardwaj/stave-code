@@ -322,7 +322,8 @@ describe('#1116 the view scale, through the public entries', () => {
       // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
       // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
       // ⚠ 937/81 -> 935/83 at both scales at #1974 (a hit is anchored on the note that wrote it) — store probes/timing-facts-1974/anchor-move: the two grids that became leaf-written are refused a finer view (`no-finer-view`).
-      935, 83, 935, 83,
+      // ⚠ 935/83 -> 940/78 at both scales at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written and so are offered one step finer — store probes/grid-writer-order-1983.
+      940, 78, 940, 78,
     ])
   })
 

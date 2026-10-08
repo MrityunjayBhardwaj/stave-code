@@ -255,7 +255,8 @@ describe('the step cell carries a length the engine actually played', () => {
     // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
     // ⚠ MOVED at #1974 (hits are anchored on their written note): two grids the element writer could only rewrite whole,
     // `[c eb g <f bb>](3,8,<0 1>)` and `{c [f g] d# d}%2`, are leaf-written now. Same cells, a different path.
-    }).toEqual({ syntactic: 823, derived: 113, 'derived+leaf': 82, cells: 5749 })
+    // ⚠ derived 113 -> 118, derived+leaf 82 -> 77 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written, take a hit on every empty cell and are offered one step finer — store probes/grid-writer-order-1983.
+    }).toEqual({ syntactic: 823, derived: 118, 'derived+leaf': 77, cells: 5749 })
   })
 
   it('CONTROL: a reader that returns 1 for every length is caught', () => {

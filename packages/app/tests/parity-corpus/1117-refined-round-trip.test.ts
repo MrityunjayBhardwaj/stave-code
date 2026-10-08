@@ -416,7 +416,8 @@ describe('#1117 — coming back from a refined view', () => {
  */
 const GRID_PINS: Record<string, [number, number, number]> = {
   // ⚠ 61 -> 59 at #1974 (a hit is anchored on the note that wrote it) — store probes/timing-facts-1974/anchor-move: `[c eb g <f bb>](3,8,<0 1>)` and `{c [f g] d# d}%2` are leaf-written now, and a leaf-written view is not offered one step finer.
-  'alt-element': [59, 59, 0],
+  // ⚠ 59 -> 64 at #1983 (the element writer keeps a grid whose only region is the whole bar): five grids the leaf writer served are element-written and so are offered one step finer — store probes/grid-writer-order-1983.
+  'alt-element': [64, 64, 0],
   'alt-whole': [85, 85, 0],
   // ⚠ MOVED at #1849 (a `,`-part the flat reading refused is now read as it is alone: 4 grids + 18 rolls leave the leaf reading, 3 + 3 open that were refused).
   // ⚠ MOVED at #1849's `<…>` half (a whole-`<…>` `,`-part reads with its own bars and the shorter parts repeat: 2 grids leave the leaf reading, 1 opens that was refused).
