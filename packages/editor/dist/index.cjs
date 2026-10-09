@@ -8355,7 +8355,10 @@ function spansOf(hap) {
 }
 __name(spansOf, "spansOf");
 function miniPattern(mini) {
-  const pat = mini_mjs.mini(mini);
+  return asked(mini, mini_mjs.mini(mini));
+}
+__name(miniPattern, "miniPattern");
+function asked(mini, pat) {
   return {
     mini,
     hits(cyc) {
@@ -8365,10 +8368,18 @@ function miniPattern(mini) {
         out.push({ begin: h.whole.begin, end: h.whole.end, value: h.value, locations: spansOf(h) });
       }
       return out;
+    },
+    pieces(cyc) {
+      const out = [];
+      for (const h of pat.queryArc(cyc, cyc + 1)) {
+        if (!h.whole || !h.part) continue;
+        out.push({ value: h.value, begin: h.part.begin, end: h.part.end, wholeBegin: h.whole.begin, wholeEnd: h.whole.end });
+      }
+      return out;
     }
   };
 }
-__name(miniPattern, "miniPattern");
+__name(asked, "asked");
 
 // src/codeView/notation/perBar.ts
 var MAX_SHARED_STEPS = 4096;
@@ -12844,15 +12855,15 @@ __name(regionTrimEdit, "regionTrimEdit");
 // src/codeView/notation/place.ts
 function viewPlacesNotes(model) {
   if (model.lookOnly) return false;
-  let asked = 0;
+  let asked2 = 0;
   if ("lanes" in model) {
     for (let lane = 0; lane < model.lanes.length; lane++)
       for (let col = 0; col < model.steps; col++) {
         if (isCellOn(model.lanes[lane].cells[col])) continue;
-        asked++;
+        asked2++;
         if (canToggleCell(model, lane, col, true)) return true;
       }
-    return asked === 0;
+    return asked2 === 0;
   }
   const pitches = new Set(model.notes.map((n) => n.pitch));
   if (model.notes.some((n) => pitchToMidi(n.pitch) !== null)) {
@@ -12862,10 +12873,10 @@ function viewPlacesNotes(model) {
   for (const pitch of pitches)
     for (let step = 0; step < model.steps; step++) {
       if (model.notes.some((n) => n.pitch === pitch && n.start === step)) continue;
-      asked++;
+      asked2++;
       if (canPlaceNote(model, pitch, step, 1)) return true;
     }
-  return asked === 0;
+  return asked2 === 0;
 }
 __name(viewPlacesNotes, "viewPlacesNotes");
 var paint = /* @__PURE__ */ __name((value, length = 1) => value ? cellOn(length) : false, "paint");
@@ -37285,14 +37296,14 @@ function rowBoxes(cells, steps, width, isOn) {
 }
 __name(rowBoxes, "rowBoxes");
 function boxesPlaceNotes(lanes, boxes, isOn, placeable) {
-  let asked = 0;
+  let asked2 = 0;
   for (let li = 0; li < lanes.length; li++)
     for (const b of boxes[li] ?? []) {
       if (isOn(lanes[li].cells[b.start])) continue;
-      asked++;
+      asked2++;
       if (placeable[li]?.[b.start]) return true;
     }
-  return asked === 0;
+  return asked2 === 0;
 }
 __name(boxesPlaceNotes, "boxesPlaceNotes");
 function boxLengths(duration, w) {
@@ -38762,8 +38773,8 @@ function PianoRollGrid({
         if (refused2) reportRefusal2("Couldn't delete that note");
       }
       if (d.mode === "resize" && d.moved && d.askedDur != null) {
-        const asked = d.askedDur;
-        const settled = resizeNote(d.base, d.origStart, d.origPitch, asked, {
+        const asked2 = d.askedDur;
+        const settled = resizeNote(d.base, d.origStart, d.origPitch, asked2, {
           readback: true
         });
         const refused2 = settled === d.base;
