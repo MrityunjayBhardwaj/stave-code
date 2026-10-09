@@ -107,3 +107,42 @@ export function miniTree(mini: string): KPattern {
   unquoteOffsets(ast)
   return ast
 }
+
+/** one step of a row to mark: which child, the marker's text, and whether its ops stay */
+export interface StepMark {
+  child: number
+  marker: string
+  keepOps: boolean
+}
+
+/**
+ * MARK the steps of one row of a krill tree, IN PLACE (#1833): each listed child element
+ * has its content replaced by an atom named `marker`, and — unless `keepOps` — its ops
+ * taken off. Weights are left alone, so the marker sits exactly where the written step
+ * sat. Strudel evaluates the result (`./pattern.ts` `markedPattern`); nothing here
+ * decides where anything plays.
+ *
+ * `path` walks from the root to the row: each index picks a child of the group in hand;
+ * a group child IS the next group, an element child means the group it holds. Offsets
+ * are not touched, so the tree may be the quoted or the unquoted parse.
+ *
+ * THROWS when the path or a mark does not name what it should — a caller's bug, not a
+ * property of the pattern.
+ */
+export function markSteps(root: KPattern, path: readonly number[], marks: readonly StepMark[]): void {
+  const kids = (g: KPattern): Array<KElement | KPattern> =>
+    (g.source_ as unknown[]).filter((k): k is KElement | KPattern => !!k && typeof k === 'object' && !Array.isArray(k))
+  let row = root
+  for (const i of path) {
+    const child = kids(row)[i]
+    if (child?.type_ === 'pattern') row = child
+    else if (child?.type_ === 'element' && child.source_.type_ === 'pattern') row = child.source_
+    else throw new Error(`markSteps: no group at ${path.join('.')}`)
+  }
+  for (const mark of marks) {
+    const el = kids(row)[mark.child]
+    if (el?.type_ !== 'element') throw new Error(`markSteps: no step ${mark.child} at ${path.join('.')}`)
+    el.source_ = { type_: 'atom', source_: mark.marker, location_: el.location_ ?? { start: { offset: 0 }, end: { offset: 0 } } }
+    if (!mark.keepOps && el.options_) el.options_ = { ...el.options_, ops: [] }
+  }
+}

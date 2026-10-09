@@ -214,6 +214,10 @@ declare module '@strudel/mini/krill-parser.js' {
 declare module '@strudel/mini/mini.mjs' {
   export const mini: (...args: unknown[]) => unknown
   export function miniAllStrings(): void
+  /** krill's tree for a QUOTED mini string; throws a located parse error */
+  export function mini2ast(code: string, start?: number, userCode?: string): unknown
+  /** the pattern a krill tree plays; `code` is the quoted string the tree was parsed from */
+  export function patternifyAST(ast: unknown, code: string, onEnter?: unknown, offset?: number): unknown
   /** krill's whitespace-corrected leaf spans `[from,to]` for a QUOTED mini string */
   export function getLeafLocations(code: string, start?: number, userCode?: string): Array<[number, number]>
 }

@@ -18,7 +18,8 @@
  *      the opening quote. It is taken back off here, once.
  * `./joined.ts` pairs these hits with the nodes of `./shape.ts`.
  */
-import { mini as reifyMini } from '@strudel/mini/mini.mjs'
+import { mini as reifyMini, mini2ast, patternifyAST } from '@strudel/mini/mini.mjs'
+import { markSteps, type KPattern, type StepMark } from './tree'
 import type { MiniSpan } from './shape'
 
 /** one of Strudel's exact time values (fraction.js) */
@@ -56,6 +57,7 @@ export interface MiniPattern {
 interface StrudelHap {
   hasOnset?: () => boolean
   whole?: { begin: MiniTime; end: MiniTime }
+  part?: { begin: MiniTime; end: MiniTime }
   value: unknown
   context?: { locations?: Array<{ start?: unknown; end?: unknown }> }
 }
@@ -73,7 +75,12 @@ function spansOf(hap: StrudelHap): MiniSpan[] {
  * into its own answer (`not-a-pattern`, "the edit did not read back", null).
  */
 export function miniPattern(mini: string): MiniPattern {
-  const pat = reifyMini(mini) as { queryArc(a: number, b: number): StrudelHap[] }
+  return asked(mini, reifyMini(mini) as Queryable)
+}
+
+type Queryable = { queryArc(a: number, b: number): StrudelHap[] }
+
+function asked(mini: string, pat: Queryable): MarkedPattern {
   return {
     mini,
     hits(cyc) {
@@ -84,5 +91,48 @@ export function miniPattern(mini: string): MiniPattern {
       }
       return out
     },
+    pieces(cyc) {
+      const out: MiniPiece[] = []
+      for (const h of pat.queryArc(cyc, cyc + 1)) {
+        if (!h.whole || !h.part) continue
+        out.push({ value: h.value, begin: h.part.begin, end: h.part.end, wholeBegin: h.whole.begin, wholeEnd: h.whole.end })
+      }
+      return out
+    },
   }
+}
+
+/**
+ * One piece of a hap inside the cycle asked for: the part of it that falls in the cycle,
+ * and the whole it is a piece of. Unlike a hit it need not START here — a step longer
+ * than a bar shows up in every bar it covers.
+ */
+export interface MiniPiece {
+  value: unknown
+  begin: MiniTime
+  end: MiniTime
+  wholeBegin: MiniTime
+  wholeEnd: MiniTime
+}
+
+/** a marked copy of a pattern: its hits, and every piece that falls in a cycle */
+export interface MarkedPattern extends MiniPattern {
+  pieces(cyc: number): MiniPiece[]
+}
+
+/**
+ * What `mini` plays with some steps of one row replaced by markers (#1833) — the way a
+ * written step is asked where it sits. The string is parsed as `mini()` parses it
+ * (`mini.mjs` `mini`: quote, `mini2ast`, `patternifyAST`), the TREE is marked
+ * (`./tree.ts` `markSteps`), and Strudel evaluates that tree; the text is never
+ * rewritten. `mini` on the result is the ORIGINAL string: a marker's locations mean
+ * nothing and are not for joining.
+ *
+ * THROWS what krill and Strudel throw, and what `markSteps` throws for a bad path.
+ */
+export function markedPattern(mini: string, path: readonly number[], marks: readonly StepMark[]): MarkedPattern {
+  const code = '"' + mini + '"'
+  const ast = mini2ast(code) as KPattern
+  markSteps(ast, path, marks)
+  return asked(mini, patternifyAST(ast, code) as Queryable)
 }
