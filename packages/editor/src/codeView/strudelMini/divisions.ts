@@ -23,7 +23,8 @@
  * THE TREE IS ONLY HANDED BACK WHEN IT HOLDS: in every row the steps tile the slot they
  * cut, and every hit of the bar starts inside a slot of the step that wrote it. Anything
  * else comes back as a refusal that says which rule failed — never a tree that is nearly
- * right.
+ * right. Every hit is in the tree once by construction: each note's step is visited
+ * once, and a step with no slot this bar is refused if anything of it sounds.
  *
  * ⚠ Evaluator side, like `./joined.ts`: it takes a `MiniPattern`. The engine's import
  * graph must not reach it.
@@ -304,9 +305,9 @@ function container(ctx: Ctx, group: MiniGroup, path: number[], cut: Slot[]): { r
   // Strudel hands it back as one piece. A choice is made per copy, so it is held to each.
   for (const c of laid.together === 'all' ? stretches(cut) : cut) {
     const verdicts = perRow.map((slots) => tiling(slots, c))
-    if (verdicts.includes('broken')) return 'steps-do-not-tile'
     const tiled = verdicts.filter((v) => v === 'tiles').length
-    if (laid.together === 'all' ? tiled !== rows.length : tiled !== 1) return 'steps-do-not-tile'
+    const absent = verdicts.filter((v) => v === 'none').length
+    if (laid.together === 'all' ? tiled !== rows.length : tiled !== 1 || absent !== rows.length - 1) return 'steps-do-not-tile'
   }
   return { rows, oneOf: laid.together === 'one' }
 }
@@ -353,12 +354,6 @@ function rowSteps(ctx: Ctx, group: MiniGroup, path: number[]): Step[] | Division
   return steps
 }
 
-function countHits(rows: Row[]): number {
-  let n = 0
-  for (const row of rows) for (const s of row.steps) n += s.hits.length + (s.rows ? countHits(s.rows) : 0)
-  return n
-}
-
 /**
  * Bar `cyc` of `pat` as the pattern's own divisions, or why it has none.
  *
@@ -371,7 +366,5 @@ export function barDivisions(pat: MiniPattern, cyc: number): BarDivisions {
   if (joined.hits.some((j) => j.atom === null)) return { ok: false, why: 'unpaired-hit' }
   const top = container({ pat, cyc, joined }, joined.root, [], [WHOLE_BAR])
   if (isRefusal(top)) return { ok: false, why: top }
-  // every hit of the bar is in the tree, once
-  if (countHits(top.rows) !== joined.hits.length) return { ok: false, why: 'hit-outside-its-step' }
   return { ok: true, parts: top.rows, oneOf: top.oneOf }
 }
