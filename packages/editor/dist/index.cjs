@@ -13653,6 +13653,42 @@ function quoteLike(oldToken, name) {
 }
 __name(quoteLike, "quoteLike");
 
+// src/engine/audioStart.ts
+function startAudio(ctx) {
+  if (!ctx || ctx.state === "running" || ctx.state === "closed") return;
+  try {
+    void ctx.resume().catch(() => void 0);
+  } catch {
+  }
+}
+__name(startAudio, "startAudio");
+function declarePlayback(nav = globalThis.navigator) {
+  const session = nav?.audioSession;
+  if (!session || session.type === "playback") return;
+  try {
+    session.type = "playback";
+  } catch {
+  }
+}
+__name(declarePlayback, "declarePlayback");
+var GESTURES = ["pointerdown", "pointerup", "touchend", "keydown"];
+function startAudioOnNextGesture(ctx, target = globalThis.document) {
+  if (!target) return () => void 0;
+  const off = /* @__PURE__ */ __name(() => {
+    for (const g of GESTURES) target.removeEventListener(g, ask, true);
+  }, "off");
+  const ask = /* @__PURE__ */ __name(() => {
+    if (ctx.state === "running" || ctx.state === "closed") {
+      off();
+      return;
+    }
+    startAudio(ctx);
+  }, "ask");
+  for (const g of GESTURES) target.addEventListener(g, ask, true);
+  return off;
+}
+__name(startAudioOnNextGesture, "startAudioOnNextGesture");
+
 // src/engine/NormalizedHap.ts
 var KNOWN_VALUE_FIELDS = /* @__PURE__ */ new Set([
   "note",
@@ -15753,6 +15789,8 @@ var _StrudelEngine = class _StrudelEngine {
      */
     this.unregisterBackgroundRender = registerBackgroundRender(this.trackEnvelopes);
     this.audioCtx = null;
+    /** takes off the "start audio on the next gesture" listeners (#1987) */
+    this.stopAskingForAudio = null;
     /** Notes handed to superdough after their start time, which it drops (#1348). */
     this.lateNotes = 0;
     this.analyserNode = null;
@@ -16195,6 +16233,8 @@ var _StrudelEngine = class _StrudelEngine {
     this.loadedSoundNames = Object.keys(soundMapData).filter((k) => !k.startsWith("_"));
     this.audioCtx = getAudioContext4();
     const audioCtx = this.audioCtx;
+    this.stopAskingForAudio?.();
+    this.stopAskingForAudio = startAudioOnNextGesture(audioCtx);
     this.analyserNode = audioCtx.createAnalyser();
     this.analyserNode.fftSize = 2048;
     this.analyserNode.smoothingTimeConstant = 0.8;
@@ -16530,6 +16570,15 @@ var _StrudelEngine = class _StrudelEngine {
    */
   buildVizRequestsWithLines(requests, code) {
     return scanVizRequestLines(requests, code, this.vizOptions);
+  }
+  /**
+   * #1987 — ask the browser to start audio, inside the gesture that asked for Play.
+   * Before `init()` there is no context yet: the listeners `initInternal` installs
+   * cover that case on the next gesture.
+   */
+  unlockAudio() {
+    declarePlayback();
+    startAudio(this.audioCtx);
   }
   play() {
     this.trackEnvelopes.playing();
@@ -17252,6 +17301,8 @@ var _StrudelEngine = class _StrudelEngine {
   }
   dispose() {
     this.transportHold.cancelResume();
+    this.stopAskingForAudio?.();
+    this.stopAskingForAudio = null;
     this.trackEnvelopes.dispose();
     this.trackEnvelopeListeners.clear();
     this.unregisterBackgroundRender();
@@ -46709,6 +46760,7 @@ var _LiveCodingRuntime = class _LiveCodingRuntime {
       this.fireOnError(err);
       return { error: err };
     }
+    this.engine.unlockAudio?.();
     const myGen = ++this.playGeneration;
     const superseded = /* @__PURE__ */ __name(() => this.isDisposed || myGen !== this.playGeneration, "superseded");
     try {

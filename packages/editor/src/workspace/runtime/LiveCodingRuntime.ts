@@ -468,6 +468,10 @@ export class LiveCodingRuntime implements LiveCodingRuntimeInterface {
       return { error: err }
     }
 
+    // #1987 — FIRST, and before any await: this is still inside the tap or key press
+    // that asked for Play, which is the only moment some browsers let audio start.
+    this.engine.unlockAudio?.()
+
     // Supersede any earlier in-flight play() and record our generation. After
     // each await below we compare against this — if a stop() or a newer play()
     // bumped the counter in the meantime, we abort before starting the

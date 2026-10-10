@@ -1,5 +1,5 @@
-import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-DqypUUJC.js';
-export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-DqypUUJC.js';
+import { I as IREvent, a as IRPattern, P as PatternIR, S as SourceLocation, L as LiveCodingEngine, E as EngineComponents, H as HapEvent, b as HapStream, c as PatternScheduler, V as VizDescriptor, d as VizRenderer, e as VizOptions, f as P5SketchFactory, g as VizQualityLevel, h as StreamingComponent, A as AudioComponent, Q as QueryableComponent, i as InlineVizComponent, j as VizRendererSource } from './vizConfig-uloi4fUx.js';
+export { D as DEFAULT_VIZ_CONFIG, k as DEFAULT_VIZ_QUALITY, l as IR, m as IRComponent, n as PlayParams, o as VizConfig, p as VizQualitySettings, q as VizRefs, W as WorkerVizConfig, r as createVizConfig, s as deriveVizQuality, t as getVizConfig, u as setVizConfig, v as updateVizConfig } from './vizConfig-uloi4fUx.js';
 import * as Monaco from 'monaco-editor';
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import * as React from 'react';
@@ -4402,6 +4402,8 @@ declare class StrudelEngine implements LiveCodingEngine {
      */
     private unregisterBackgroundRender;
     private audioCtx;
+    /** takes off the "start audio on the next gesture" listeners (#1987) */
+    private stopAskingForAudio;
     /** Notes handed to superdough after their start time, which it drops (#1348). */
     private lateNotes;
     private analyserNode;
@@ -4529,6 +4531,12 @@ declare class StrudelEngine implements LiveCodingEngine {
      * viewZones.ts but returns structured data instead of creating DOM zones.
      */
     private buildVizRequestsWithLines;
+    /**
+     * #1987 — ask the browser to start audio, inside the gesture that asked for Play.
+     * Before `init()` there is no context yet: the listeners `initInternal` installs
+     * cover that case on the next gesture.
+     */
+    unlockAudio(): void;
     play(): void;
     /** the destinationGain node our master analyser is currently tapping. */
     private taggedDestinationGain;
