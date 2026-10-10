@@ -1,3 +1,4 @@
+import { declarePlayback, startAudio, startAudioOnNextGesture } from './audioStart'
 import { HapStream } from './HapStream'
 import { BreakpointStore } from './BreakpointStore'
 import { LiveRecorder } from './LiveRecorder'
@@ -494,6 +495,8 @@ export class StrudelEngine implements LiveCodingEngine {
    */
   private unregisterBackgroundRender = registerBackgroundRender(this.trackEnvelopes)
   private audioCtx: AudioContext | null = null
+  /** takes off the "start audio on the next gesture" listeners (#1987) */
+  private stopAskingForAudio: (() => void) | null = null
   /** Notes handed to superdough after their start time, which it drops (#1348). */
   private lateNotes = 0
   private analyserNode: AnalyserNode | null = null
@@ -1007,6 +1010,11 @@ export class StrudelEngine implements LiveCodingEngine {
     this.audioCtx = getAudioContext()
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const audioCtx = this.audioCtx!
+    // #1987 — the context was made at boot, before any gesture, so it is suspended and
+    // nothing upstream resumes it. A Play pressed before this line had no context to
+    // ask; the next touch or key does.
+    this.stopAskingForAudio?.()
+    this.stopAskingForAudio = startAudioOnNextGesture(audioCtx)
 
     // Tap superdough's master output for analysis.
     // connectToDestination() wires a node as a SOURCE into superdough's mix — wrong for
@@ -1758,6 +1766,16 @@ export class StrudelEngine implements LiveCodingEngine {
     // (#725). Handles the anonymous `$:` form (positional `$N` keys) AND named
     // labels keyed by name — both agreeing with the `.p()` capture side above.
     return scanVizRequestLines(requests, code, this.vizOptions)
+  }
+
+  /**
+   * #1987 — ask the browser to start audio, inside the gesture that asked for Play.
+   * Before `init()` there is no context yet: the listeners `initInternal` installs
+   * cover that case on the next gesture.
+   */
+  unlockAudio(): void {
+    declarePlayback()
+    startAudio(this.audioCtx)
   }
 
   play(): void {
@@ -2656,6 +2674,8 @@ export class StrudelEngine implements LiveCodingEngine {
     // #1627 — like stop(): a render still running must not restart playback
     // (on this repl, or on the one a later init() builds) when it finishes.
     this.transportHold.cancelResume()
+    this.stopAskingForAudio?.()
+    this.stopAskingForAudio = null
     this.trackEnvelopes.dispose()
     this.trackEnvelopeListeners.clear()
     this.unregisterBackgroundRender()
