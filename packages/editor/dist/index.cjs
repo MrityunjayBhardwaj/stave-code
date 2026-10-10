@@ -35904,24 +35904,36 @@ function useActiveChunk() {
   return { chunk, applyEdit, beginGesture, endGesture };
 }
 __name(useActiveChunk, "useActiveChunk");
-var TOUCH_DEVICE_QUERY = "(pointer: coarse)";
-function query() {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(TOUCH_DEVICE_QUERY) : null;
+var TOUCH_POINTER_QUERY = "(pointer: coarse)";
+var PHONE_SHORT_SIDE_PX = 600;
+function pointerQuery() {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(TOUCH_POINTER_QUERY) : null;
 }
-__name(query, "query");
-function useTouchDevice() {
+__name(pointerQuery, "pointerQuery");
+function isPhone() {
+  if (!(pointerQuery()?.matches ?? false)) return false;
+  const s = window.screen;
+  if (!s || !(s.width > 0) || !(s.height > 0)) return false;
+  return Math.min(s.width, s.height) < PHONE_SHORT_SIDE_PX;
+}
+__name(isPhone, "isPhone");
+function usePhone() {
   return React23__namespace.useSyncExternalStore(
     (changed) => {
-      const mql = query();
+      const mql = pointerQuery();
       if (!mql) return () => void 0;
       mql.addEventListener("change", changed);
-      return () => mql.removeEventListener("change", changed);
+      window.addEventListener("resize", changed);
+      return () => {
+        mql.removeEventListener("change", changed);
+        window.removeEventListener("resize", changed);
+      };
     },
-    () => query()?.matches ?? false,
+    isPhone,
     () => false
   );
 }
-__name(useTouchDevice, "useTouchDevice");
+__name(usePhone, "usePhone");
 function VisualEditStandby({
   panel,
   hint,
@@ -40685,7 +40697,7 @@ function AddEffectMenu({
   onToggle
 }) {
   const [open, setOpen] = React23__namespace.useState(false);
-  const [query2, setQuery] = React23__namespace.useState("");
+  const [query, setQuery] = React23__namespace.useState("");
   const [pos, setPos] = React23__namespace.useState(null);
   const btnRef = React23__namespace.useRef(null);
   const menuRef = React23__namespace.useRef(null);
@@ -40733,7 +40745,7 @@ function AddEffectMenu({
       window.removeEventListener("scroll", onScroll, true);
     };
   }, [open]);
-  const q = query2.trim().toLowerCase();
+  const q = query.trim().toLowerCase();
   const groups = EFFECT_GROUPS.map(
     ([group, effects]) => [
       group,
@@ -40769,7 +40781,7 @@ function AddEffectMenu({
             {
               autoFocus: true,
               "data-mixer-add-effect-search": true,
-              value: query2,
+              value: query,
               onChange: (e) => setQuery(e.target.value),
               placeholder: "Search effects\u2026",
               style: {
@@ -40833,7 +40845,7 @@ function AddEffectMenu({
           ] }, group)),
           groups.length === 0 && /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { padding: 8, fontSize: 11, color: "var(--foreground-muted, #a0a0aa)" }, children: [
             "No effects match \u201C",
-            query2,
+            query,
             "\u201D."
           ] })
         ]
@@ -40887,8 +40899,8 @@ function totalOptions(groups) {
   return groups.reduce((n, g) => n + g.options.length, 0);
 }
 __name(totalOptions, "totalOptions");
-function filterGroups(groups, query2, category) {
-  const q = query2.trim().toLowerCase();
+function filterGroups(groups, query, category) {
+  const q = query.trim().toLowerCase();
   if (!q && !category) return groups;
   const out = [];
   for (const g of groups) {
@@ -40922,7 +40934,7 @@ function SoundPickerMenu({
   onAudition
 }) {
   const [open, setOpen] = React23__namespace.useState(false);
-  const [query2, setQuery] = React23__namespace.useState("");
+  const [query, setQuery] = React23__namespace.useState("");
   const [category, setCategory] = React23__namespace.useState(null);
   const [pos, setPos] = React23__namespace.useState(null);
   const btnRef = React23__namespace.useRef(null);
@@ -40987,7 +40999,7 @@ function SoundPickerMenu({
   }, "pick");
   const cats = categoryCounts(groups);
   const total = totalOptions(groups);
-  const shown = filterGroups(groups, query2, category);
+  const shown = filterGroups(groups, query, category);
   const menu = open && pos ? reactDom.createPortal(
     /* @__PURE__ */ jsxRuntime.jsxs(
       "div",
@@ -41016,7 +41028,7 @@ function SoundPickerMenu({
             {
               autoFocus: true,
               "data-mixer-sound-search": lc,
-              value: query2,
+              value: query,
               onChange: (e) => setQuery(e.target.value),
               placeholder: `Search ${label.toLowerCase()}\u2026`,
               style: {
@@ -41118,7 +41130,7 @@ function SoundPickerMenu({
               "No ",
               label.toLowerCase(),
               " matches \u201C",
-              query2,
+              query,
               "\u201D."
             ] })
           ] })
@@ -42870,7 +42882,7 @@ var MIXER_WIDTH = 220;
 function PatternPanel() {
   const { chunk } = useActiveChunk();
   const kind = chunkSurface(chunk);
-  const gridAlone = useTouchDevice();
+  const gridAlone = usePhone();
   const [selected, setSelected] = React23__namespace.useState(null);
   const stmtId = chunk ? chunk.statementRange[0] : null;
   const stmtRef = React23__namespace.useRef(stmtId);
