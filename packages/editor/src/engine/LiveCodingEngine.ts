@@ -114,6 +114,14 @@ export interface LiveCodingEngine {
   /** Start the scheduler / begin playback. */
   play(): void
 
+  /**
+   * Ask the browser to start audio (#1987). Called SYNCHRONOUSLY inside the user's
+   * gesture, before anything is awaited — a phone browser starts audio only when the
+   * page asks from inside a touch. Safe before `init()` and safe to call again.
+   * Optional: an engine with no audio of its own to start leaves it out.
+   */
+  unlockAudio?(): void
+
   /** Stop the scheduler / pause playback. */
   stop(): void
 
