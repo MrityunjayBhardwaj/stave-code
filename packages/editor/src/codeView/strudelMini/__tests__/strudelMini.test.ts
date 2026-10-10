@@ -158,6 +158,7 @@ describe('the parser half stays importable from the engine\'s graph', () => {
     // engine loads itself, later — so the two halves of the adapter are two files.
     expect(specifiers('tree.ts')).toEqual(['@strudel/mini/krill-parser.js'])
     // control: the same read finds the evaluator's import next door
-    expect(specifiers('pattern.ts')).toEqual(['@strudel/mini/mini.mjs', './shape'])
+    // (it imports the parser half too, to mark a tree before evaluating it — #1833)
+    expect(specifiers('pattern.ts')).toEqual(['@strudel/mini/mini.mjs', './tree', './shape'])
   })
 })
